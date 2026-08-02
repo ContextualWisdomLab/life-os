@@ -2,6 +2,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { IdentityProvider } from './identity-domain';
 
 const INVALID_OAUTH_TRANSACTION = 'OAuth transaction is invalid or no longer active';
+const INVALID_SESSION = 'Session is invalid or expired';
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -126,5 +128,111 @@ export class OAuthTransactionService {
       provider: transaction.provider,
       codeVerifier: transaction.codeVerifier,
     };
+  }
+}
+
+export interface SessionRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+}
+
+export interface ActiveSession {
+  id: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface SessionRepository {
+  save(session: SessionRecord): void;
+  findByTokenHash(tokenHash: string): SessionRecord | undefined;
+  revokeByTokenHash(tokenHash: string, revokedAt: string): boolean;
+}
+
+export class InMemorySessionRepository implements SessionRepository {
+  private readonly sessions = new Map<string, SessionRecord>();
+
+  save(session: SessionRecord): void {
+    this.sessions.set(session.tokenHash, { ...session });
+  }
+
+  findByTokenHash(tokenHash: string): SessionRecord | undefined {
+    const session = this.sessions.get(tokenHash);
+    return session ? { ...session } : undefined;
+  }
+
+  revokeByTokenHash(tokenHash: string, revokedAt: string): boolean {
+    const session = this.sessions.get(tokenHash);
+    if (!session || session.revokedAt !== null) {
+      return false;
+    }
+    this.sessions.set(tokenHash, { ...session, revokedAt });
+    return true;
+  }
+}
+
+function toActiveSession(session: SessionRecord): ActiveSession {
+  return {
+    id: session.id,
+    userId: session.userId,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+  };
+}
+
+export class SessionService {
+  private readonly now: () => Date;
+  private readonly ttlMs: number;
+
+  constructor(
+    private readonly repository: SessionRepository,
+    options: { now?: () => Date; ttlMs?: number } = {},
+  ) {
+    this.now = options.now ?? (() => new Date());
+    this.ttlMs = options.ttlMs ?? 30 * 24 * 60 * 60 * 1000;
+  }
+
+  create(userId: string): { session: ActiveSession; token: string } {
+    if (!UUID_V4_PATTERN.test(userId)) {
+      throw new Error('User ID must be an opaque UUIDv4');
+    }
+    const now = this.now();
+    const token = createOpaqueSecret(32);
+    const record: SessionRecord = {
+      id: randomUUID(),
+      userId,
+      tokenHash: sha256Hex(token),
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + this.ttlMs).toISOString(),
+      revokedAt: null,
+    };
+    this.repository.save(record);
+    return { session: toActiveSession(record), token };
+  }
+
+  authenticate(token: string): ActiveSession {
+    const now = this.now();
+    const record =
+      typeof token === 'string' && token
+        ? this.repository.findByTokenHash(sha256Hex(token))
+        : undefined;
+    if (!record || record.revokedAt !== null || Date.parse(record.expiresAt) <= now.getTime()) {
+      throw new Error(INVALID_SESSION);
+    }
+    return toActiveSession(record);
+  }
+
+  revoke(token: string): void {
+    if (
+      typeof token !== 'string' ||
+      !token ||
+      !this.repository.revokeByTokenHash(sha256Hex(token), this.now().toISOString())
+    ) {
+      throw new Error(INVALID_SESSION);
+    }
   }
 }
