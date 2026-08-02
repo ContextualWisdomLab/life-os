@@ -10,6 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { requireTitle, toHttpException } from './http-boundary';
 import {
   Goal,
   InMemoryPlanningRepository,
@@ -38,9 +39,15 @@ class PlanningController {
   @Post('goals')
   createGoal(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
-    @Body() body: { title: string },
+    @Body() body: { title?: unknown },
   ): Goal {
-    return planningService.createGoal(requireWorkspaceId(workspaceHeader), body);
+    try {
+      return planningService.createGoal(requireWorkspaceId(workspaceHeader), {
+        title: requireTitle(body),
+      });
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   @Get('goals')
@@ -52,12 +59,16 @@ class PlanningController {
   createProject(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Param('goalId') goalId: string,
-    @Body() body: { title: string },
+    @Body() body: { title?: unknown },
   ): Project {
-    return planningService.createProject(requireWorkspaceId(workspaceHeader), {
-      goalId,
-      title: body.title,
-    });
+    try {
+      return planningService.createProject(requireWorkspaceId(workspaceHeader), {
+        goalId,
+        title: requireTitle(body),
+      });
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   @Get('goals/:goalId/projects')
@@ -72,12 +83,16 @@ class PlanningController {
   createTask(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Param('projectId') projectId: string,
-    @Body() body: { title: string },
+    @Body() body: { title?: unknown },
   ): Task {
-    return planningService.createTask(requireWorkspaceId(workspaceHeader), {
-      projectId,
-      title: body.title,
-    });
+    try {
+      return planningService.createTask(requireWorkspaceId(workspaceHeader), {
+        projectId,
+        title: requireTitle(body),
+      });
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   @Get('projects/:projectId/tasks')
