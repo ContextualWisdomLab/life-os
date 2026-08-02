@@ -87,13 +87,26 @@ function normalizeTitle(title: string): string {
   return normalized;
 }
 
+function requireOpaqueId(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || /^\d+$/.test(normalized)) {
+    throw new Error('Identifier must be an opaque non-numeric string');
+  }
+  return normalized;
+}
+
+function createOpaqueId(): string {
+  return randomUUID();
+}
+
 export class PlanningService {
   constructor(private readonly repository: PlanningRepository) {}
 
   createGoal(workspaceId: string, input: { title: string }): Goal {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
     const goal: Goal = {
-      id: randomUUID(),
-      workspaceId,
+      id: createOpaqueId(),
+      workspaceId: safeWorkspaceId,
       title: normalizeTitle(input.title),
       createdAt: new Date().toISOString(),
     };
@@ -102,13 +115,15 @@ export class PlanningService {
   }
 
   createProject(workspaceId: string, input: { goalId: string; title: string }): Project {
-    if (!this.repository.findGoal(workspaceId, input.goalId)) {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const safeGoalId = requireOpaqueId(input.goalId);
+    if (!this.repository.findGoal(safeWorkspaceId, safeGoalId)) {
       throw new Error('Goal not found');
     }
     const project: Project = {
-      id: randomUUID(),
-      workspaceId,
-      goalId: input.goalId,
+      id: createOpaqueId(),
+      workspaceId: safeWorkspaceId,
+      goalId: safeGoalId,
       title: normalizeTitle(input.title),
       createdAt: new Date().toISOString(),
     };
@@ -117,13 +132,15 @@ export class PlanningService {
   }
 
   createTask(workspaceId: string, input: { projectId: string; title: string }): Task {
-    if (!this.repository.findProject(workspaceId, input.projectId)) {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const safeProjectId = requireOpaqueId(input.projectId);
+    if (!this.repository.findProject(safeWorkspaceId, safeProjectId)) {
       throw new Error('Project not found');
     }
     const task: Task = {
-      id: randomUUID(),
-      workspaceId,
-      projectId: input.projectId,
+      id: createOpaqueId(),
+      workspaceId: safeWorkspaceId,
+      projectId: safeProjectId,
       title: normalizeTitle(input.title),
       status: 'todo',
       createdAt: new Date().toISOString(),
@@ -133,14 +150,14 @@ export class PlanningService {
   }
 
   listGoals(workspaceId: string): Goal[] {
-    return this.repository.listGoals(workspaceId);
+    return this.repository.listGoals(requireOpaqueId(workspaceId));
   }
 
   listProjects(workspaceId: string, goalId: string): Project[] {
-    return this.repository.listProjects(workspaceId, goalId);
+    return this.repository.listProjects(requireOpaqueId(workspaceId), requireOpaqueId(goalId));
   }
 
   listTasks(workspaceId: string, projectId: string): Task[] {
-    return this.repository.listTasks(workspaceId, projectId);
+    return this.repository.listTasks(requireOpaqueId(workspaceId), requireOpaqueId(projectId));
   }
 }
