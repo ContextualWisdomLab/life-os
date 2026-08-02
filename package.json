@@ -12,7 +12,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check README.md package.json turbo.json tsconfig.base.json pnpm-workspace.yaml compose.yaml .github/workflows/ci.yml",
     "format": "prettier --write ."
   },
   "devDependencies": {
