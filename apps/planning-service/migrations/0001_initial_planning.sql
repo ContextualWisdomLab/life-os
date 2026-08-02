@@ -4,7 +4,8 @@ CREATE TABLE planning.goals (
   id uuid PRIMARY KEY,
   workspace_id uuid NOT NULL,
   title text NOT NULL CHECK (length(btrim(title)) > 0),
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT goals_id_workspace_unique UNIQUE (id, workspace_id)
 );
 
 CREATE TABLE planning.projects (
@@ -13,6 +14,7 @@ CREATE TABLE planning.projects (
   goal_id uuid NOT NULL,
   title text NOT NULL CHECK (length(btrim(title)) > 0),
   created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT projects_id_workspace_unique UNIQUE (id, workspace_id),
   CONSTRAINT projects_goal_workspace_fk
     FOREIGN KEY (goal_id, workspace_id)
     REFERENCES planning.goals (id, workspace_id)
@@ -32,12 +34,6 @@ CREATE TABLE planning.tasks (
     REFERENCES planning.projects (id, workspace_id)
     ON DELETE CASCADE
 );
-
-ALTER TABLE planning.goals
-  ADD CONSTRAINT goals_id_workspace_unique UNIQUE (id, workspace_id);
-
-ALTER TABLE planning.projects
-  ADD CONSTRAINT projects_id_workspace_unique UNIQUE (id, workspace_id);
 
 CREATE INDEX goals_workspace_created_idx
   ON planning.goals (workspace_id, created_at DESC);
