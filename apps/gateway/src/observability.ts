@@ -80,7 +80,10 @@ export function createGatewayObservabilityMiddleware(
       method: request.method,
       route: routeTemplate(request.path),
     });
+    let completed = false;
     const recordCompletion = (statusCode: number): void => {
+      if (completed) return;
+      completed = true;
       try {
         finish(statusCode);
       } catch (error) {
