@@ -1,0 +1,149 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  PostgresReviewRepository,
+  ReviewPersistenceError,
+  type ReviewSqlClient,
+  type ReviewSqlQueryResult,
+} from './postgres-review-repository';
+import {
+  parseReviewCompletionInput,
+  ReviewCompletionConflictError,
+  type ReviewCompletionRecord,
+} from './review-domain';
+
+const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
+const IDEMPOTENCY_KEY = 'd1191b96-b7f4-4d8f-b1f7-9e2838686d5f';
+const COMPLETION_ID = '3f044b68-c515-4a52-8862-38af0047b88d';
+const RECORDED_AT = '2026-08-03T20:00:01.000Z';
+
+function record(overrides: Record<string, unknown> = {}): ReviewCompletionRecord {
+  const input = parseReviewCompletionInput(
+    WORKSPACE_ID,
+    'weekly-review',
+    {
+      periodStartDate: '2026-08-03',
+      idempotencyKey: IDEMPOTENCY_KEY,
+      completedStepCount: 5,
+      totalStepCount: 5,
+      plannedItemCount: 4,
+      completedItemCount: 3,
+      habitCompletionCount: 2,
+      reflection: 'Evidence is bounded.',
+      completedAt: '2026-08-03T20:00:00.000Z',
+      ...overrides,
+    },
+  );
+  return { ...input, id: COMPLETION_ID, recordedAt: RECORDED_AT };
+}
+
+function row(value: ReviewCompletionRecord) {
+  return {
+    id: value.id,
+    workspace_id: value.workspaceId,
+    ritual_kind: value.ritualKind,
+    period_start_date: value.periodStartDate,
+    idempotency_key: value.idempotencyKey,
+    completed_step_count: value.completedStepCount,
+    total_step_count: value.totalStepCount,
+    planned_item_count: value.plannedItemCount,
+    completed_item_count: value.completedItemCount,
+    habit_completion_count: value.habitCompletionCount,
+    reflection_text: value.reflection ?? null,
+    completed_at: new Date(value.completedAt),
+    payload_digest: value.payloadDigest,
+    recorded_at: new Date(value.recordedAt),
+  };
+}
+
+class SequentialClient implements ReviewSqlClient {
+  readonly query = vi.fn<
+    <Row>(
+      text: string,
+      values: readonly unknown[],
+    ) => Promise<ReviewSqlQueryResult<Row>>
+  >();
+}
+
+describe('PostgreSQL guided review repository', () => {
+  it('uses parameterized SQL and returns validated inserted evidence', async () => {
+    const completion = record();
+    const client = new SequentialClient();
+    client.query.mockResolvedValueOnce({ rows: [row(completion)] });
+    const repository = new PostgresReviewRepository(client);
+
+    await expect(repository.record(completion)).resolves.toEqual(completion);
+    expect(client.query).toHaveBeenCalledOnce();
+    const [sql, values] = client.query.mock.calls[0];
+    expect(sql).toContain('VALUES\n        ($1, $2, $3');
+    expect(sql).not.toContain(WORKSPACE_ID);
+    expect(values).toContain(WORKSPACE_ID);
+  });
+
+  it('returns exact immutable replays after a uniqueness conflict', async () => {
+    const attempted = record();
+    const persisted = { ...attempted, id: '8073d09a-c36b-42f5-a8c8-2b42ea82d61c' };
+    const client = new SequentialClient();
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row(persisted)] });
+    const repository = new PostgresReviewRepository(client);
+
+    await expect(repository.record(attempted)).resolves.toEqual(persisted);
+    expect(client.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects conflicting idempotency or period reuse', async () => {
+    const attempted = record();
+    const conflict = record({
+      completedItemCount: 2,
+      completedAt: '2026-08-03T20:05:00.000Z',
+    });
+    const client = new SequentialClient();
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [row(conflict)] });
+    const repository = new PostgresReviewRepository(client);
+
+    await expect(repository.record(attempted)).rejects.toBeInstanceOf(
+      ReviewCompletionConflictError,
+    );
+  });
+
+  it('lists only parameterized tenant history with a bounded limit', async () => {
+    const completion = record();
+    const client = new SequentialClient();
+    client.query.mockResolvedValueOnce({ rows: [row(completion)] });
+    const repository = new PostgresReviewRepository(client);
+
+    await expect(repository.list(WORKSPACE_ID, 25)).resolves.toEqual([
+      completion,
+    ]);
+    expect(client.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE workspace_id = $1'),
+      [WORKSPACE_ID, 25],
+    );
+  });
+
+  it('fails closed for malformed rows, impossible limits, and SQL failures', async () => {
+    const completion = record();
+    const malformedClient = new SequentialClient();
+    malformedClient.query.mockResolvedValueOnce({
+      rows: [{ ...row(completion), payload_digest: 'tampered' }],
+    });
+    await expect(
+      new PostgresReviewRepository(malformedClient).list(WORKSPACE_ID, 25),
+    ).rejects.toBeInstanceOf(ReviewPersistenceError);
+
+    const unusedClient = new SequentialClient();
+    await expect(
+      new PostgresReviewRepository(unusedClient).list(WORKSPACE_ID, 0),
+    ).rejects.toBeInstanceOf(ReviewPersistenceError);
+    expect(unusedClient.query).not.toHaveBeenCalled();
+
+    const failingClient = new SequentialClient();
+    failingClient.query.mockRejectedValueOnce(new Error('secret database host'));
+    await expect(
+      new PostgresReviewRepository(failingClient).record(completion),
+    ).rejects.toEqual(new ReviewPersistenceError());
+  });
+});
