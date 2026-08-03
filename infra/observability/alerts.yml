@@ -87,12 +87,12 @@ groups:
               /
               clamp_min(sum(rate(life_os_http_request_duration_seconds_count{service="life-os-gateway",route!~"/v1/(health|metrics)"}[30m])), 0.000001)
             )
-          ) > 0.06
+          ) > 0.01
         for: 15m
         labels:
           severity: ticket
           service: life-os-gateway
           slo: tail-latency
         annotations:
-          summary: LifeOS gateway tail-latency error budget is burning
-          description: More than 6% of user-facing requests have exceeded 2 seconds for 15 minutes, consuming the 99% tail-latency objective at greater than 6x burn.
+          summary: LifeOS gateway tail-latency objective is violated
+          description: More than 1% of user-facing requests have exceeded 2 seconds for 15 minutes, violating the 99% tail-latency objective.
