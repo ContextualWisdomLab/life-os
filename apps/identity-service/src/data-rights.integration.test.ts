@@ -133,6 +133,23 @@ describe('WorkspaceDataRightsCoordinator integration contract', () => {
     );
   });
 
+  it('rejects oversized source inventories before normalizing their records', async () => {
+    const exported = await new WorkspaceDataRightsCoordinator([
+      new StaticSource('identity', identitySnapshot()),
+    ]).createExport(WORKSPACE_ID, GENERATED_AT);
+    const oversized = structuredClone(exported) as unknown as {
+      sources: unknown[];
+    };
+    oversized.sources = Array.from({ length: 65 }, (_, index) => ({
+      ...identitySnapshot(),
+      sourceId: `source-${String(index).padStart(2, '0')}`,
+    }));
+
+    expect(() => verifyWorkspaceDataExport(oversized)).toThrow(
+      DataRightsValidationError,
+    );
+  });
+
   it('fails closed on cross-tenant output, duplicate sources, and unbounded records', async () => {
     expect(
       () =>
@@ -206,6 +223,6 @@ describe('WorkspaceDataRightsCoordinator integration contract', () => {
 
     await expect(
       coordinator.createExport(WORKSPACE_ID, GENERATED_AT),
-    ).rejects.toEqual(new DataRightsDependencyError());
+    ).rejects.toBeInstanceOf(DataRightsDependencyError);
   });
 });
