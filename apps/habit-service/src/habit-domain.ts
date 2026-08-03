@@ -205,7 +205,7 @@ function cloneCompletion(
 }
 
 function entityLookupKey(workspaceId: string, entityId: string): string {
-  return `${workspaceId}:${entityId}`;
+  return JSON.stringify([workspaceId, entityId]);
 }
 
 function isScheduledOn(
@@ -293,16 +293,24 @@ export class InMemoryHabitRepository implements HabitRepository {
   async appendCompletion(
     completion: HabitCompletionEvent,
   ): Promise<HabitCompletionEvent> {
-    const idempotencyLookup = [
+    const idempotencyLookup = JSON.stringify([
       completion.workspaceId,
       completion.habitId,
       completion.idempotencyKey,
-    ].join(':');
+    ]);
     const existingKey = this.completionIdempotency.get(idempotencyLookup);
     if (existingKey) {
       const existing = this.completions.get(existingKey);
       if (!existing) {
         throw new Error('Completion history is inconsistent');
+      }
+      if (
+        existing.scheduledLocalDate !== completion.scheduledLocalDate ||
+        existing.completedAt !== completion.completedAt
+      ) {
+        throw new Error(
+          'Idempotency key reused with a different completion payload',
+        );
       }
       return cloneCompletion(existing);
     }
