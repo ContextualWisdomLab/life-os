@@ -1,0 +1,124 @@
+name: AppGuardrail
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    env:
+      APPGUARDRAIL_COMMIT: 4e4f6c34e4e9640ba769020e9ab4a6ebee07bab1
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout LifeOS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Checkout pinned AppGuardrail
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ContextualWisdomLab/appguardrail
+          ref: 4e4f6c34e4e9640ba769020e9ab4a6ebee07bab1
+          path: _appguardrail
+          persist-credentials: false
+
+      - name: Verify and isolate AppGuardrail source
+        run: |
+          set -euo pipefail
+          actual_commit="$(git -C _appguardrail rev-parse HEAD)"
+          if [ "$actual_commit" != "$APPGUARDRAIL_COMMIT" ]; then
+            echo "::error::Pinned AppGuardrail checkout did not match the expected commit."
+            exit 1
+          fi
+          scanner_dir="${RUNNER_TEMP}/appguardrail"
+          rm -rf "$scanner_dir"
+          cp -R _appguardrail "$scanner_dir"
+          rm -rf _appguardrail
+
+      - name: Run AppGuardrail
+        id: appguardrail
+        continue-on-error: true
+        env:
+          APPGUARDRAIL_NO_EMOJI: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 "${RUNNER_TEMP}/appguardrail/scanner/cli/appguardrail.py" \
+            scan --external off \
+            --findings-json appguardrail-findings.json \
+            --sarif appguardrail.sarif \
+            .
+
+      - name: Verify detector contract
+        id: detector_contract
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          test -s appguardrail-findings.json
+          node packages/appguardrail-contract/src/verify-contract.mjs \
+            appguardrail-findings.json \
+            security/appguardrail-contract.json
+
+      - name: Upload AppGuardrail SARIF to code scanning
+        if: >-
+          always()
+          && hashFiles('appguardrail.sarif') != ''
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          sarif_file: appguardrail.sarif
+
+      - name: Upload AppGuardrail evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: appguardrail-evidence
+          path: |
+            appguardrail-findings.json
+            appguardrail.sarif
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce AppGuardrail gate
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.appguardrail.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.detector_contract.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$SCAN_OUTCOME" != "success" ]; then
+            echo "::error::AppGuardrail reported a deploy-blocking finding or scan failure."
+            exit 1
+          fi
+          if [ "$CONTRACT_OUTCOME" != "success" ]; then
+            echo "::error::AppGuardrail detector contract verification failed."
+            exit 1
+          fi
+          if [ ! -s appguardrail-findings.json ] || [ ! -s appguardrail.sarif ]; then
+            echo "::error::AppGuardrail evidence was not produced."
+            exit 1
+          fi
