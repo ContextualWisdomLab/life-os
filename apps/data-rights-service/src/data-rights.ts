@@ -134,7 +134,11 @@ function requireString(value: unknown, maximumLength: number): string {
     return invalid();
   }
   const normalized = value.trim();
-  if (!normalized || normalized.length > maximumLength || /\u0000/.test(value)) {
+  if (
+    !normalized ||
+    normalized.length > maximumLength ||
+    /\u0000/.test(value)
+  ) {
     return invalid();
   }
   return normalized;
@@ -203,7 +207,7 @@ function validateJsonValue(
       value.map((item) => validateJsonValue(item, depth + 1, budget)),
     );
   }
-  if (typeof value !== 'object' || value === null) {
+  if (typeof value !== 'object') {
     return invalid();
   }
   const prototype = Object.getPrototypeOf(value);
@@ -320,7 +324,10 @@ export class DataRightsCoordinator {
   >;
   private readonly requestOwners = new Map<string, string>();
   private readonly deletionResults = new Map<string, DeletionResult>();
-  private readonly inFlightDeletions = new Map<string, Promise<DeletionResult>>();
+  private readonly inFlightDeletions = new Map<
+    string,
+    Promise<DeletionResult>
+  >();
 
   constructor(
     participants: readonly DataRightsParticipant[],
@@ -338,14 +345,23 @@ export class DataRightsCoordinator {
         REQUIRED_DATA_RIGHTS_DOMAINS.map(async (domain) => {
           const participant = this.participants.get(domain) ?? invalid();
           const records = await participant.exportWorkspace(workspaceId);
-          if (!Array.isArray(records) || records.length > MAXIMUM_DOMAIN_RECORDS) {
+          if (
+            !Array.isArray(records) ||
+            records.length > MAXIMUM_DOMAIN_RECORDS
+          ) {
             return invalid();
           }
           const canonicalRecords = records
             .map(canonicalizeJson)
-            .sort((left, right) =>
-              canonicalStringify(left).localeCompare(canonicalStringify(right)),
-            );
+            .sort((left, right) => {
+              const leftValue = canonicalStringify(left);
+              const rightValue = canonicalStringify(right);
+              return leftValue < rightValue
+                ? -1
+                : leftValue > rightValue
+                  ? 1
+                  : 0;
+            });
           const sectionContent = canonicalizeJson({
             domain,
             schemaVersion: requireSchemaVersion(participant.schemaVersion),
