@@ -27,11 +27,7 @@ interface ProposalProblemDetails {
   code: string;
 }
 
-function problem(
-  status: number,
-  title: string,
-  code: string,
-): HttpException {
+function problem(status: number, title: string, code: string): HttpException {
   const details: ProposalProblemDetails = {
     type: 'about:blank',
     title,
