@@ -5,6 +5,9 @@ const COOKIE_HEADER_LIMIT_BYTES = 4 * 1024;
 const QUERY_VALUE_LIMIT_BYTES = 2 * 1024;
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const OPAQUE_COOKIE_VALUE_PATTERN = /^[A-Za-z0-9_-]+$/;
+const RFC6265_COOKIE_VALUE_PATTERN =
+  /^[\x21\x23-\x2b\x2d-\x3a\x3c-\x5b\x5d-\x7e]*$/;
+const COOKIE_PATH_PATTERN = /^\/[\x20-\x3a\x3c-\x7e]*$/;
 const CALLBACK_QUERY_KEYS = new Set([
   'code',
   'state',
@@ -105,7 +108,7 @@ export function parseCookieHeader(
     return failInvalidCookie();
   }
 
-  const cookies: Record<string, string> = {};
+  const cookies: Record<string, string> = Object.create(null);
   for (const segment of header.split(';')) {
     const separator = segment.indexOf('=');
     if (separator <= 0) {
@@ -116,7 +119,7 @@ export function parseCookieHeader(
     if (
       !value ||
       !OPAQUE_COOKIE_VALUE_PATTERN.test(value) ||
-      cookies[name] !== undefined
+      Object.prototype.hasOwnProperty.call(cookies, name)
     ) {
       return failInvalidCookie();
     }
@@ -133,7 +136,41 @@ export function readOpaqueCookie(
   nameValue: string,
 ): string | undefined {
   const name = requireCookieName(nameValue);
-  return parseCookieHeader(header)[name];
+  if (header === undefined || header === '') {
+    return undefined;
+  }
+  if (
+    typeof header !== 'string' ||
+    Buffer.byteLength(header, 'utf8') > COOKIE_HEADER_LIMIT_BYTES ||
+    /[\r\n\u0000]/.test(header)
+  ) {
+    return failInvalidCookie();
+  }
+
+  let targetValue: string | undefined;
+  for (const segment of header.split(';')) {
+    const separator = segment.indexOf('=');
+    if (separator <= 0) {
+      return failInvalidCookie();
+    }
+    const segmentName = requireCookieName(segment.slice(0, separator).trim());
+    const value = segment.slice(separator + 1).trim();
+    if (!RFC6265_COOKIE_VALUE_PATTERN.test(value)) {
+      return failInvalidCookie();
+    }
+    if (segmentName !== name) {
+      continue;
+    }
+    if (
+      !value ||
+      !OPAQUE_COOKIE_VALUE_PATTERN.test(value) ||
+      targetValue !== undefined
+    ) {
+      return failInvalidCookie();
+    }
+    targetValue = value;
+  }
+  return targetValue;
 }
 
 /**
@@ -188,7 +225,7 @@ export function serializeSecureCookie(input: {
     'Cookie max age must be a positive integer',
   );
   const path = input.path ?? '/';
-  if (!path.startsWith('/') || /[;\r\n]/.test(path)) {
+  if (!COOKIE_PATH_PATTERN.test(path)) {
     throw new Error('Cookie path is invalid');
   }
   return `${name}=${value}; Path=${path}; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=Lax`;

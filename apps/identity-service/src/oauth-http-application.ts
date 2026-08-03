@@ -49,6 +49,9 @@ function requireProviderConfiguration(
   configuration: OAuthHttpApplicationConfiguration,
 ): OAuthProviderStartConfiguration {
   const providerConfiguration = configuration.providers[provider];
+  if (!providerConfiguration) {
+    throw new Error('OAuth provider is not supported');
+  }
   const clientId = providerConfiguration.clientId.trim();
   if (!clientId) {
     throw new Error('OAuth client ID is required');

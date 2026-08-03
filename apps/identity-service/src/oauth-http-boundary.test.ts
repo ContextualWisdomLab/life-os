@@ -62,6 +62,24 @@ describe('OAuth HTTP cookie boundary', () => {
       beta: 'three-four',
     });
     expect(readOpaqueCookie('alpha=one_two', 'alpha')).toBe('one_two');
+    expect(
+      readOpaqueCookie(
+        `AWSALB=route%2Fabc; ${APPLICATION_SESSION_COOKIE_NAME}=opaque_session; cf_clearance=token.with.dots; gateway=a=b`,
+        APPLICATION_SESSION_COOKIE_NAME,
+      ),
+    ).toBe('opaque_session');
+    const prototypeNamedCookies = parseCookieHeader(
+      'constructor=one; __proto__=two; toString=three',
+    );
+    expect(prototypeNamedCookies.constructor).toBe('one');
+    expect(prototypeNamedCookies.__proto__).toBe('two');
+    expect(prototypeNamedCookies.toString).toBe('three');
+    expect(() =>
+      readOpaqueCookie(
+        `${APPLICATION_SESSION_COOKIE_NAME}=token.with.dot`,
+        APPLICATION_SESSION_COOKIE_NAME,
+      ),
+    ).toThrow('Cookie header is invalid');
     expect(() => parseCookieHeader('alpha=one; alpha=two')).toThrow(
       'Cookie header is invalid',
     );
@@ -101,6 +119,14 @@ describe('OAuth HTTP cookie boundary', () => {
         maxAgeSeconds: 10,
       }),
     ).toThrow('Cookie value is invalid');
+    expect(() =>
+      serializeSecureCookie({
+        name: APPLICATION_SESSION_COOKIE_NAME,
+        value: 'opaque_session',
+        maxAgeSeconds: 10,
+        path: '/safe\tpath',
+      }),
+    ).toThrow('Cookie path is invalid');
   });
 });
 
@@ -176,13 +202,20 @@ describe('OAuthHttpApplication', () => {
     const { application: httpApplication } = application();
     const response = await httpApplication.beginAuthorization(
       'github',
-      `${OAUTH_BROWSER_COOKIE_NAME}=existing_binding`,
+      `cf_clearance=token.with.dots; ${OAUTH_BROWSER_COOKIE_NAME}=existing_binding; gateway=a=b`,
     );
     const location = new URL(response.location);
 
     expect(response.setCookie).toBeUndefined();
     expect(location.origin).toBe('https://github.com');
     expect(location.searchParams.get('nonce')).toBeNull();
+  });
+
+  it('rejects unsupported providers with a handled domain error', async () => {
+    const { application: httpApplication } = application();
+    await expect(
+      httpApplication.beginAuthorization('microsoft' as never, undefined),
+    ).rejects.toThrow('OAuth provider is not supported');
   });
 
   it('introspects a server-backed session without returning its bearer token', async () => {
