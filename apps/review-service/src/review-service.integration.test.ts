@@ -19,14 +19,15 @@ import {
 } from './review-domain';
 import { createReviewRuntime, type ReviewRuntime } from './review-runtime';
 
-const DATABASE_URL = process.env.REVIEW_DATABASE_URL;
+const DATABASE_URL =
+  process.env.REVIEW_DATABASE_URL ?? process.env.PLANNING_DATABASE_URL;
 const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
 const activeRuntimes: ReviewRuntime[] = [];
 let administrativePool: Pool;
 
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
-    throw new Error('REVIEW_DATABASE_URL is required for integration tests');
+    throw new Error('A PostgreSQL test database URL is required');
   }
   return DATABASE_URL;
 }
@@ -120,9 +121,9 @@ describeWithPostgres('guided Review service integration', () => {
     await firstRuntime.close();
 
     const restartedRuntime = createRuntime();
-    await expect(restartedRuntime.service.list(workspaceId, 50)).resolves.toEqual(
-      [first],
-    );
+    await expect(
+      restartedRuntime.service.list(workspaceId, 50),
+    ).resolves.toEqual([first]);
   });
 
   it('isolates tenants and rejects conflicting immutable evidence', async () => {
