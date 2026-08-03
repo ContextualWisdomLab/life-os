@@ -207,37 +207,41 @@ function validateProviderResult(
   value: unknown,
   expectedEventId: string,
 ): GoogleCalendarUpsertResult {
-  const record = requireRecord(value);
-  requireAllowedKeys(record, [
-    'eventId',
-    'disposition',
-    'etag',
-    'updatedAt',
-  ]);
-  const eventId = requireGoogleEventId(record.eventId);
-  if (eventId !== expectedEventId) {
-    throw new CalendarProviderError();
-  }
-  const disposition = record.disposition;
-  if (
-    disposition !== 'created' &&
-    disposition !== 'unchanged' &&
-    disposition !== 'updated'
-  ) {
-    throw new CalendarProviderError();
-  }
-  let etag: string;
-  let updatedAt: string;
   try {
-    etag = requireString(record.etag, MAXIMUM_ETAG_LENGTH);
-    updatedAt = requireInstant(record.updatedAt);
+    const record = requireRecord(value);
+    requireAllowedKeys(record, [
+      'eventId',
+      'disposition',
+      'etag',
+      'updatedAt',
+    ]);
+    const eventId = requireGoogleEventId(record.eventId);
+    if (eventId !== expectedEventId) {
+      throw new CalendarProviderError();
+    }
+    const disposition = record.disposition;
+    if (
+      disposition !== 'created' &&
+      disposition !== 'unchanged' &&
+      disposition !== 'updated'
+    ) {
+      throw new CalendarProviderError();
+    }
+    return Object.freeze({
+      eventId,
+      disposition,
+      etag: requireString(record.etag, MAXIMUM_ETAG_LENGTH),
+      updatedAt: requireInstant(record.updatedAt),
+    });
   } catch (error) {
+    if (error instanceof CalendarProviderError) {
+      throw error;
+    }
     if (error instanceof CalendarValidationError) {
       throw new CalendarProviderError();
     }
     throw error;
   }
-  return Object.freeze({ eventId, disposition, etag, updatedAt });
 }
 
 function sameEvent(
