@@ -1,7 +1,10 @@
 import 'reflect-metadata';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it, vi } from 'vitest';
-import { OAuthCallbackApplication } from './oauth-callback-application';
+import {
+  OAuthCallbackApplication,
+  OAuthCallbackAuthenticationError,
+} from './oauth-callback-application';
 import { OAuthHttpApplication } from './oauth-http-application';
 import { OAuthHttpController } from './oauth-http-controller';
 
@@ -179,7 +182,7 @@ describe('OAuthHttpController', () => {
   it('maps callback authentication failures to one credential-free problem response', async () => {
     const completeAuthorization = vi
       .fn()
-      .mockRejectedValue(new Error('OAuth callback authentication failed'));
+      .mockRejectedValue(new OAuthCallbackAuthenticationError());
     const instance = controller({}, { completeAuthorization });
     const response = new TestResponse();
 
