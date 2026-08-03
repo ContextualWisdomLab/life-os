@@ -8,6 +8,16 @@ import {
   OAuthHttpController,
 } from './oauth-http-controller';
 
+/** Public identity routes registered by the production OAuth controller. */
+export const IDENTITY_PUBLIC_ROUTE_CONTRACT = Object.freeze([
+  'v1/auth/google/start',
+  'v1/auth/google/callback',
+  'v1/auth/github/start',
+  'v1/auth/github/callback',
+  'v1/session',
+  'v1/auth/logout',
+] as const);
+
 const IDENTITY_RUNTIME = Symbol('IDENTITY_RUNTIME');
 
 @Controller()
