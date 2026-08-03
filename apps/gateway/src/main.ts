@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { gatewayObservabilityMiddleware } from './observability';
 
 function getAllowedOrigins(): string[] {
   return (process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3000')
@@ -11,9 +12,11 @@ function getAllowedOrigins(): string[] {
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.use(gatewayObservabilityMiddleware);
   app.enableCors({
     origin: getAllowedOrigins(),
     credentials: true,
+    exposedHeaders: ['x-correlation-id'],
   });
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
