@@ -103,7 +103,10 @@ describe('calendar synchronization domain', () => {
 
 describe('CaldavCalendarProvider', () => {
   it('uses deterministic PUT resources and RFC precondition headers', async () => {
-    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const requests: Array<{
+      url: string;
+      init: RequestInit | undefined;
+    }> = [];
     const fetchImplementation: typeof fetch = async (input, init) => {
       requests.push({ url: input.toString(), init });
       return new Response(null, {
