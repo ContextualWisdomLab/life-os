@@ -4,6 +4,7 @@ import {
   InMemoryHabitRepository,
   generateHabitOccurrences,
   type Habit,
+  type IsoWeekday,
 } from './habit-domain';
 
 const UUID_V4_PATTERN =
@@ -55,6 +56,24 @@ describe('habit recurrence kernel', () => {
     ).toEqual(['2026-03-02', '2026-03-06', '2026-03-09', '2026-03-13']);
   });
 
+  it('anchors multi-week intervals to the ISO week containing the start date', () => {
+    const habit: Habit = {
+      ...dailyHabit(),
+      startsOn: '2026-01-07',
+      recurrence: { kind: 'weekly', interval: 2, weekdays: [1] },
+    };
+
+    const occurrences = generateHabitOccurrences(
+      habit,
+      '2026-01-07',
+      '2026-02-02',
+    );
+
+    expect(
+      occurrences.map((occurrence) => occurrence.scheduledLocalDate),
+    ).toEqual(['2026-01-19', '2026-02-02']);
+  });
+
   it('keeps interval schedules stable across year boundaries', () => {
     const habit: Habit = {
       ...dailyHabit(),
@@ -62,16 +81,8 @@ describe('habit recurrence kernel', () => {
       recurrence: { kind: 'weekly', interval: 2, weekdays: [1, 3] },
     };
 
-    const first = generateHabitOccurrences(
-      habit,
-      '2026-12-28',
-      '2027-01-25',
-    );
-    const second = generateHabitOccurrences(
-      habit,
-      '2026-12-28',
-      '2027-01-25',
-    );
+    const first = generateHabitOccurrences(habit, '2026-12-28', '2027-01-25');
+    const second = generateHabitOccurrences(habit, '2026-12-28', '2027-01-25');
 
     expect(first).toEqual(second);
     expect(first.map((occurrence) => occurrence.scheduledLocalDate)).toEqual([
@@ -154,15 +165,25 @@ describe('HabitService', () => {
         startsOn: '2026-08-04',
         recurrence: { kind: 'weekly', interval: 1, weekdays: [] },
       }),
-    ).rejects.toThrowError(
-      'Weekly recurrence requires at least one weekday',
-    );
+    ).rejects.toThrowError('Weekly recurrence requires at least one weekday');
+    await expect(
+      service.createHabit('workspace-a', {
+        title: 'Habit',
+        timezone: 'UTC',
+        startsOn: '2026-08-04',
+        recurrence: {
+          kind: 'weekly',
+          interval: 1,
+          weekdays: [8] as unknown as readonly IsoWeekday[],
+        },
+      }),
+    ).rejects.toThrowError('Weekday must be between 1 and 7');
     await expect(
       service.createHabit('workspace-a', {
         title: '   ',
         timezone: 'UTC',
         startsOn: '2026-08-04',
-        recurrence: { kind: 'weekly', interval: 1, weekdays: [8] as never },
+        recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
       }),
     ).rejects.toThrowError('Title is required');
   });
@@ -187,6 +208,31 @@ describe('HabitService', () => {
     ).rejects.toThrowError('Habit not found');
   });
 
+  it('keeps equal entity identifiers isolated across workspaces', async () => {
+    const repository = new InMemoryHabitRepository();
+    const sharedId = '22222222-2222-4222-8222-222222222222';
+    const workspaceAHabit = dailyHabit({
+      id: sharedId,
+      workspaceId: 'workspace-a',
+      title: 'Workspace A habit',
+    });
+    const workspaceBHabit = dailyHabit({
+      id: sharedId,
+      workspaceId: 'workspace-b',
+      title: 'Workspace B habit',
+    });
+
+    await repository.saveHabit(workspaceAHabit);
+    await repository.saveHabit(workspaceBHabit);
+
+    await expect(repository.findHabit('workspace-a', sharedId)).resolves.toEqual(
+      workspaceAHabit,
+    );
+    await expect(repository.findHabit('workspace-b', sharedId)).resolves.toEqual(
+      workspaceBHabit,
+    );
+  });
+
   it('appends completion history idempotently and returns immutable copies', async () => {
     const repository = new InMemoryHabitRepository();
     const service = new HabitService(repository);
@@ -203,7 +249,11 @@ describe('HabitService', () => {
     };
 
     const first = await service.completeHabit('workspace-a', habit.id, command);
-    const replay = await service.completeHabit('workspace-a', habit.id, command);
+    const replay = await service.completeHabit(
+      'workspace-a',
+      habit.id,
+      command,
+    );
     expect(replay).toEqual(first);
     expect(first.id).toMatch(UUID_V4_PATTERN);
 
@@ -214,6 +264,24 @@ describe('HabitService', () => {
     );
     expect(history).toHaveLength(1);
     expect(history[0]?.completedAt).toBe('2026-08-04T08:00:00.000Z');
+  });
+
+  it('rejects loose or malformed completion timestamps', async () => {
+    const service = new HabitService(new InMemoryHabitRepository());
+    const habit = await service.createHabit('workspace-a', {
+      title: 'Strict completion time',
+      timezone: 'UTC',
+      startsOn: '2026-08-04',
+      recurrence: { kind: 'daily', interval: 1 },
+    });
+
+    await expect(
+      service.completeHabit('workspace-a', habit.id, {
+        scheduledLocalDate: '2026-08-04',
+        completedAt: 'August 4, 2026 08:00',
+        idempotencyKey: FIRST_IDEMPOTENCY_KEY,
+      }),
+    ).rejects.toThrowError('Timestamp is invalid');
   });
 
   it('rejects completion on a date without an occurrence', async () => {
