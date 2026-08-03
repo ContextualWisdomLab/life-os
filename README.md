@@ -33,8 +33,10 @@ apps/
   habit-service/
   review-service/
   integration-calendar-service/
+  integration-service/
 packages/
   contracts/
+  plugin-sdk/
 infra/
 docs/
 ```
@@ -65,6 +67,8 @@ Default endpoints:
 - Planning-service Prometheus metrics: `http://localhost:4102/v1/metrics`
 - Calendar integration health: `http://localhost:4106/health`
 - Calendar synchronization: `POST http://localhost:4106/v1/calendar/sync`
+- Plugin integration health: `http://localhost:4107/health`
+- Plugin contract discovery: `http://localhost:4107/v1/plugin-contract`
 - NATS monitoring: `http://localhost:8222`
 
 Metrics endpoints contain operational data. Production ingress must restrict them to the monitoring network.
@@ -80,6 +84,12 @@ The calendar integration service supports explicit `caldav` and `google` provide
 CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the LifeOS provider contract.
 
 `GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables Google Calendar synchronization.
+
+## Plugin contract
+
+The `@life-os/plugin-sdk` package defines strict versioned manifests, tenant-scoped CloudEvents 1.0 structured JSON envelopes, deterministic canonical serialization, and HMAC-SHA256 delivery-proof helpers. The integration service exposes contract discovery, manifest validation, and event preparation only.
+
+This slice deliberately has no plugin installation, secret persistence, outbound webhook delivery, inbound commands, or direct database access. Those require separately reviewed least-privilege authorization, durable audit, and SSRF-safe delivery boundaries.
 
 ## Backup and recovery
 
@@ -99,6 +109,7 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
+- [Plugin contract surface plan](docs/superpowers/plans/2026-08-04-plugin-contract-surface.md)
 - [PostgreSQL backup and restore runbook](docs/operations/backup-and-restore.md)
 - [Upstream privacy notice](docs/legal/privacy.md)
 - [Upstream project terms](docs/legal/terms.md)
