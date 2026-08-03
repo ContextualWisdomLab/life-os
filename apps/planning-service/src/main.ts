@@ -14,10 +14,7 @@ import { NestFactory } from '@nestjs/core';
 import { requireTitle, toHttpException } from './http-boundary';
 import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
-import {
-  createPlanningRuntime,
-  PlanningRuntime,
-} from './planning-runtime';
+import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 
 export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
 export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
@@ -151,7 +148,8 @@ export class PlanningController {
     {
       provide: PLANNING_SERVICE,
       inject: [PLANNING_RUNTIME],
-      useFactory: (runtime: PlanningRuntime): PlanningService => runtime.service,
+      useFactory: (runtime: PlanningRuntime): PlanningService =>
+        runtime.service,
     },
   ],
 })
