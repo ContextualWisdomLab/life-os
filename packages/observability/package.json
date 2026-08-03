@@ -1,0 +1,14 @@
+{
+  "name": "@life-os/observability",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/index.cjs",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "build": "node --check src/index.cjs",
+    "lint": "node --check src/index.cjs && node --check src/index.test.cjs",
+    "test": "node --test src/index.test.cjs",
+    "typecheck": "node --check src/index.cjs && node --check src/index.test.cjs"
+  }
+}
