@@ -164,7 +164,10 @@ function parseRecurrence(value: unknown): HabitRecurrence {
   }
   if (recurrence.kind === 'weekly') {
     requireExactKeys(recurrence, ['kind', 'interval', 'weekdays']);
-    if (!Array.isArray(recurrence.weekdays) || recurrence.weekdays.length === 0) {
+    if (
+      !Array.isArray(recurrence.weekdays) ||
+      recurrence.weekdays.length === 0
+    ) {
       return invalidRequest();
     }
     const weekdays = recurrence.weekdays.map((weekday) =>
