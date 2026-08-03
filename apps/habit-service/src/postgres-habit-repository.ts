@@ -98,10 +98,16 @@ function requireTimezone(value: unknown): string {
 }
 
 function requireLocalDate(value: unknown): string {
-  if (typeof value !== 'string') {
+  const text =
+    value instanceof Date
+      ? Number.isNaN(value.getTime())
+        ? invalidRow()
+        : value.toISOString().slice(0, 10)
+      : value;
+  if (typeof text !== 'string') {
     return invalidRow();
   }
-  const match = LOCAL_DATE_PATTERN.exec(value);
+  const match = LOCAL_DATE_PATTERN.exec(text);
   if (!match) {
     return invalidRow();
   }
@@ -116,7 +122,7 @@ function requireLocalDate(value: unknown): string {
   ) {
     return invalidRow();
   }
-  return value;
+  return text;
 }
 
 function requireTimestamp(value: unknown): string {
@@ -412,8 +418,9 @@ export class PostgresHabitRepository implements HabitRepository {
     completion: HabitCompletionEvent,
   ): Promise<HabitCompletionEvent> {
     const safe = validateCompletion(completion);
+    let inserted: HabitSqlQueryResult<CompletionRow> | undefined;
     try {
-      const inserted = await this.client.query<CompletionRow>(
+      inserted = await this.client.query<CompletionRow>(
         `INSERT INTO habit.completion_events
           (id, workspace_id, habit_id, scheduled_local_date, completed_at,
            idempotency_key, recorded_at)
@@ -430,16 +437,19 @@ export class PostgresHabitRepository implements HabitRepository {
           safe.recordedAt,
         ],
       );
+    } catch (error) {
+      if (!isIdempotencyUniqueViolation(error)) {
+        throw new HabitPersistenceError();
+      }
+    }
+
+    if (inserted) {
       return parseCompletion(
         exactlyOne(inserted.rows),
         safe.workspaceId,
         safe.habitId,
         safe.idempotencyKey,
       );
-    } catch (error) {
-      if (!isIdempotencyUniqueViolation(error)) {
-        throw new HabitPersistenceError();
-      }
     }
 
     const replay = await this.query<CompletionRow>(
