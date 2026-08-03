@@ -1,0 +1,243 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(460px, 1.2fr);
+  gap: clamp(32px, 7vw, 96px);
+  align-items: center;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: clamp(28px, 6vw, 72px);
+}
+
+.intro {
+  max-width: 540px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 56px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 1.15rem;
+}
+
+.brand span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #17382c;
+  color: #f1c967;
+  font-weight: 900;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #6b776e;
+  font-size: 0.73rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.intro h1 {
+  margin: 0;
+  font-size: clamp(2.8rem, 6vw, 5.5rem);
+  line-height: 0.96;
+  letter-spacing: -0.065em;
+}
+
+.lede {
+  margin: 24px 0 0;
+  color: #5d685f;
+  font-size: 1.03rem;
+  line-height: 1.7;
+}
+
+.boundary {
+  margin-top: 34px;
+  padding: 18px;
+  border: 1px solid #c8d3c9;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.boundary strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.boundary p {
+  margin: 0;
+  color: #657169;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.card {
+  padding: clamp(24px, 4vw, 42px);
+  border: 1px solid #d8dfd7;
+  border-radius: 24px;
+  background: white;
+  box-shadow: 0 28px 70px rgba(30, 55, 38, 0.1);
+}
+
+.card form {
+  display: grid;
+  gap: 0;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 18px;
+  margin: 0;
+  padding: 24px 0;
+  border: 0;
+  border-bottom: 1px solid #edf0eb;
+}
+
+.step > span {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: #f1c967;
+  color: #17382c;
+  font-weight: 900;
+}
+
+.step label {
+  display: block;
+  color: #1f2c23;
+  font-weight: 850;
+}
+
+.step p {
+  margin: 6px 0 13px;
+  color: #707b73;
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+
+.step input,
+.step select {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  border: 1px solid #cbd4cb;
+  border-radius: 11px;
+  background: #fafbf8;
+  color: #172019;
+}
+
+.step small {
+  display: block;
+  margin-top: 7px;
+  color: #7a857d;
+  text-align: right;
+}
+
+.schedule {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.status {
+  min-height: 24px;
+  margin: 18px 0 0;
+  color: #7a5521;
+  font-size: 0.86rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.actions a {
+  color: #5f6a62;
+  font-size: 0.88rem;
+  font-weight: 750;
+  text-underline-offset: 4px;
+}
+
+.actions button {
+  border: 0;
+  border-radius: 12px;
+  padding: 13px 18px;
+  background: #17382c;
+  color: white;
+  font-weight: 850;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 840px) {
+  .shell {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .intro {
+    max-width: 700px;
+  }
+
+  .brand {
+    margin-bottom: 32px;
+  }
+}
+
+@media (max-width: 560px) {
+  .shell {
+    padding: 22px 16px 40px;
+  }
+
+  .card {
+    padding: 20px;
+    border-radius: 18px;
+  }
+
+  .step {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .step > span {
+    width: 36px;
+    height: 36px;
+  }
+
+  .schedule {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .actions a,
+  .actions button {
+    width: 100%;
+    text-align: center;
+  }
+}
