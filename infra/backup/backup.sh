@@ -41,13 +41,13 @@ trap cleanup EXIT INT TERM
 
 created_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 file_timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
-archive_name="life-os-backup-${file_timestamp}.dump"
-archive_path="${backup_directory}/${archive_name}"
-checksum_path="${archive_path}.sha256"
-metadata_path="${archive_path}.metadata"
+bundle_name="life-os-backup-${file_timestamp}"
+bundle_path="${backup_directory}/${bundle_name}"
+archive_name="life-os.dump"
+checksum_name="${archive_name}.sha256"
+metadata_name="${archive_name}.metadata"
 
-[[ ! -e "${archive_path}" && ! -e "${checksum_path}" && ! -e "${metadata_path}" ]] ||
-  fail 'backup_name_collision'
+[[ ! -e "${bundle_path}" ]] || fail 'backup_name_collision'
 
 PGDATABASE="${DATABASE_URL}" pg_dump \
   --format=custom \
@@ -64,20 +64,26 @@ archive_digest="$(sha256sum "${temporary_directory}/${archive_name}" | awk '{pri
 printf '%s  %s\n' \
   "${archive_digest}" \
   "${archive_name}" \
-  >"${temporary_directory}/${archive_name}.sha256"
+  >"${temporary_directory}/${checksum_name}"
 
 pg_dump_version="$(pg_dump --version | tr -d '\r\n')"
 printf 'schema=life-os.backup-metadata.v1\ncreated_at=%s\nformat=postgresql-custom\nsha256=%s\nclient=%s\n' \
   "${created_at}" \
   "${archive_digest}" \
   "${pg_dump_version}" \
-  >"${temporary_directory}/${archive_name}.metadata"
+  >"${temporary_directory}/${metadata_name}"
 
-mv -- "${temporary_directory}/${archive_name}" "${archive_path}"
-mv -- "${temporary_directory}/${archive_name}.sha256" "${checksum_path}"
-mv -- "${temporary_directory}/${archive_name}.metadata" "${metadata_path}"
-chmod 600 -- "${archive_path}" "${checksum_path}" "${metadata_path}"
+chmod 600 -- \
+  "${temporary_directory}/${archive_name}" \
+  "${temporary_directory}/${checksum_name}" \
+  "${temporary_directory}/${metadata_name}"
+chmod 700 -- "${temporary_directory}"
+mv -- "${temporary_directory}" "${bundle_path}"
 
+archive_path="${bundle_path}/${archive_name}"
+checksum_path="${bundle_path}/${checksum_name}"
+metadata_path="${bundle_path}/${metadata_name}"
+printf 'backup_bundle=%s\n' "${bundle_path}"
 printf 'backup_archive=%s\n' "${archive_path}"
 printf 'backup_checksum=%s\n' "${checksum_path}"
 printf 'backup_metadata=%s\n' "${metadata_path}"
