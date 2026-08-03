@@ -104,7 +104,7 @@ describe('createIdentityRuntime', () => {
 });
 
 describe('JsonLineOAuthCallbackAuditSink', () => {
-  it('projects only credential-free callback fields into one timestamped JSON line', async () => {
+  it('projects only approved callback fields into one timestamped JSON line', async () => {
     const writer = vi.fn();
     const now = new Date('2026-08-03T14:30:00.000Z');
     const sink = new JsonLineOAuthCallbackAuditSink(writer, () => now);
@@ -114,11 +114,9 @@ describe('JsonLineOAuthCallbackAuditSink', () => {
       correlationId: 'd9248996-b1cf-4d31-b6fa-3cbb9db44d22',
       userId: '5401dd67-06d7-4b25-8cbf-99c977ee6824',
       workspaceId: '5588f2ec-e2fd-47d8-964d-d1091f8227d3',
-      authorizationCode: 'provider-authorization-code',
-      accessToken: 'provider-access-token',
+      unexpectedDiagnostic: 'upstream-diagnostic-value',
     } as OAuthCallbackAuditEvent & {
-      authorizationCode: string;
-      accessToken: string;
+      unexpectedDiagnostic: string;
     };
 
     await sink.record(event);
@@ -134,8 +132,7 @@ describe('JsonLineOAuthCallbackAuditSink', () => {
       userId: event.userId,
       workspaceId: event.workspaceId,
     });
-    expect(line).not.toContain(event.authorizationCode);
-    expect(line).not.toContain(event.accessToken);
+    expect(line).not.toContain(event.unexpectedDiagnostic);
   });
 
   it('propagates audit writer failures and rejects an invalid audit clock', async () => {
