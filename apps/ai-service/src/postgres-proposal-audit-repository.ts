@@ -87,7 +87,10 @@ function invalidPersistence(): never {
   throw new ProposalAuditPersistenceError();
 }
 
-function requireUuidV4(value: string): string {
+function requireUuidV4(value: unknown): string {
+  if (typeof value !== 'string') {
+    return invalidPersistence();
+  }
   const normalized = value.trim().toLowerCase();
   if (!UUID_V4_PATTERN.test(normalized)) {
     return invalidPersistence();
@@ -270,8 +273,8 @@ export class PostgresProposalAuditRepository implements ProposalAuditRepository 
         safe.request,
         safe.requestDigest,
         safe.proposal.summary,
-        safe.proposal.rationale,
-        safe.proposal.operations,
+        JSON.stringify(safe.proposal.rationale),
+        JSON.stringify(safe.proposal.operations),
         safe.proposal.requiresConfirmation,
         safe.contentDigest,
         safe.proposal.createdAt,
