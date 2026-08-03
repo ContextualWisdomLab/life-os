@@ -37,70 +37,79 @@ class PlanningController {
   }
 
   @Post('goals')
-  createGoal(
+  async createGoal(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Body() body: { title?: unknown },
-  ): Goal {
+  ): Promise<Goal> {
     try {
-      return planningService.createGoal(requireWorkspaceId(workspaceHeader), {
-        title: requireTitle(body),
-      });
+      return await planningService.createGoal(
+        requireWorkspaceId(workspaceHeader),
+        { title: requireTitle(body) },
+      );
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
   @Get('goals')
-  listGoals(@Headers('x-workspace-id') workspaceHeader: string | undefined): Goal[] {
-    return planningService.listGoals(requireWorkspaceId(workspaceHeader));
+  async listGoals(
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+  ): Promise<Goal[]> {
+    return await planningService.listGoals(requireWorkspaceId(workspaceHeader));
   }
 
   @Post('goals/:goalId/projects')
-  createProject(
+  async createProject(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Param('goalId') goalId: string,
     @Body() body: { title?: unknown },
-  ): Project {
+  ): Promise<Project> {
     try {
-      return planningService.createProject(requireWorkspaceId(workspaceHeader), {
-        goalId,
-        title: requireTitle(body),
-      });
+      return await planningService.createProject(
+        requireWorkspaceId(workspaceHeader),
+        { goalId, title: requireTitle(body) },
+      );
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
   @Get('goals/:goalId/projects')
-  listProjects(
+  async listProjects(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Param('goalId') goalId: string,
-  ): Project[] {
-    return planningService.listProjects(requireWorkspaceId(workspaceHeader), goalId);
+  ): Promise<Project[]> {
+    return await planningService.listProjects(
+      requireWorkspaceId(workspaceHeader),
+      goalId,
+    );
   }
 
   @Post('projects/:projectId/tasks')
-  createTask(
+  async createTask(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Param('projectId') projectId: string,
     @Body() body: { title?: unknown },
-  ): Task {
+  ): Promise<Task> {
     try {
-      return planningService.createTask(requireWorkspaceId(workspaceHeader), {
-        projectId,
-        title: requireTitle(body),
-      });
+      return await planningService.createTask(
+        requireWorkspaceId(workspaceHeader),
+        { projectId, title: requireTitle(body) },
+      );
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
   @Get('projects/:projectId/tasks')
-  listTasks(
+  async listTasks(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
     @Param('projectId') projectId: string,
-  ): Task[] {
-    return planningService.listTasks(requireWorkspaceId(workspaceHeader), projectId);
+  ): Promise<Task[]> {
+    return await planningService.listTasks(
+      requireWorkspaceId(workspaceHeader),
+      projectId,
+    );
   }
 }
 
