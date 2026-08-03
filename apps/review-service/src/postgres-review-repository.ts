@@ -72,7 +72,9 @@ function parseLocalDate(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
   }
-  if (typeof value === 'string') return value.slice(0, 10);
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
   return persistenceFailure();
 }
 
@@ -114,7 +116,9 @@ function parseRow(
 
 function exactlyOne<Row>(rows: Row[]): Row {
   if (rows.length !== 1) return persistenceFailure();
-  return rows[0];
+  const row = rows[0];
+  if (row === undefined) return persistenceFailure();
+  return row;
 }
 
 function sameImmutableEvidence(
@@ -189,7 +193,7 @@ export class PostgresReviewRepository implements ReviewRepository {
       ],
     );
     if (inserted.rows.length === 1) {
-      return parseRow(inserted.rows[0], safe.workspaceId);
+      return parseRow(exactlyOne(inserted.rows), safe.workspaceId);
     }
     if (inserted.rows.length > 1) persistenceFailure();
 
