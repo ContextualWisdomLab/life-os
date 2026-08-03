@@ -40,10 +40,28 @@ function createPostgresClientWrapper(commandName: string): void {
     wrapperPath,
     `#!/usr/bin/env bash
 set -Eeuo pipefail
-exec docker run --rm --network host \\
+
+env_arguments=()
+client_env_file=''
+cleanup() {
+  if [[ -n "\${client_env_file}" ]]; then
+    rm -f -- "\${client_env_file}"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+if [[ -n "\${PGDATABASE:-}" ]]; then
+  [[ "\${PGDATABASE}" != *$'\\n'* && "\${PGDATABASE}" != *$'\\r'* ]] || exit 64
+  client_env_file="$(mktemp "\${BACKUP_RECOVERY_MOUNT_ROOT}/.postgres-client-env.XXXXXX")"
+  chmod 600 -- "\${client_env_file}"
+  printf 'PGDATABASE=%s\\n' "\${PGDATABASE}" >"\${client_env_file}"
+  env_arguments+=(--env-file "\${client_env_file}")
+fi
+
+docker run --rm --network host \\
   --user "\${BACKUP_RECOVERY_USER_ID}:\${BACKUP_RECOVERY_GROUP_ID}" \\
   --env HOME=/tmp \\
-  --env "PGDATABASE=\${DATABASE_URL:-}" \\
+  "\${env_arguments[@]}" \\
   --volume "\${BACKUP_RECOVERY_PASSWD_FILE}:/etc/passwd:ro" \\
   --volume "\${BACKUP_RECOVERY_GROUP_FILE}:/etc/group:ro" \\
   --volume "\${BACKUP_RECOVERY_MOUNT_ROOT}:\${BACKUP_RECOVERY_MOUNT_ROOT}" \\
