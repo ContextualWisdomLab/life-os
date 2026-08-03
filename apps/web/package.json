@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev -p 3000",
     "lint": "tsc --noEmit",
-    "test": "tsx --test app/today-state.test.ts",
+    "test": "tsx --test app/today-state.test.ts app/onboarding/onboarding-state.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"
   },
