@@ -18,15 +18,22 @@ CREATE INDEX oauth_transactions_expiry_idx
   ON identity.oauth_transactions (expires_at)
   WHERE consumed_at IS NULL;
 
+ALTER TABLE identity.workspaces
+  ADD CONSTRAINT workspaces_id_owner_unique UNIQUE (id, owner_user_id);
+
 CREATE TABLE identity.sessions (
   id uuid PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES identity.users(id) ON DELETE CASCADE,
-  workspace_id uuid NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
+  workspace_id uuid NOT NULL,
   token_hash text NOT NULL UNIQUE CHECK (length(btrim(token_hash)) >= 43),
   rotated_from_id uuid REFERENCES identity.sessions(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz,
+  CONSTRAINT sessions_workspace_owner_fk
+    FOREIGN KEY (workspace_id, user_id)
+    REFERENCES identity.workspaces (id, owner_user_id)
+    ON DELETE CASCADE,
   CONSTRAINT session_expiry_after_creation CHECK (expires_at > created_at),
   CONSTRAINT session_revoked_after_creation CHECK (
     revoked_at IS NULL OR revoked_at >= created_at
