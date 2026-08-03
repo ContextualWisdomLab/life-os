@@ -11,7 +11,7 @@
 - [x] Support session authentication, expiry, and revocation.
 - [x] Enforce UUIDv4 internal user and session identifiers.
 - [x] Add a PostgreSQL session migration with no raw credential storage.
-- [ ] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
+- [x] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
 
 ## Deliberate boundary
 
