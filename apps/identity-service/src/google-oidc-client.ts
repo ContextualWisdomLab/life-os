@@ -19,6 +19,7 @@ const SUBJECT_PATTERN = /^[\x21-\x7e]{1,255}$/;
 const MAXIMUM_HTTP_RESPONSE_BYTES = 64 * 1024;
 const MAXIMUM_JWT_SEGMENT_BYTES = 32 * 1024;
 const MAXIMUM_JWKS_KEYS = 64;
+const MINIMUM_RSA_MODULUS_BITS = 2_048;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_CLOCK_SKEW_SECONDS = 60;
 const DEFAULT_JWKS_CACHE_SECONDS = 300;
@@ -31,9 +32,11 @@ interface FixedEndpointHeaders {
 interface FixedEndpointResponse {
   readonly status: number;
   readonly headers: FixedEndpointHeaders;
+  readonly body?: ReadableStream<Uint8Array> | null;
   text(): Promise<string>;
 }
 
+/** Request options accepted by the fixed Google provider endpoints. */
 export interface FixedEndpointFetchInit {
   method: 'GET' | 'POST';
   headers: Record<string, string>;
@@ -42,11 +45,13 @@ export interface FixedEndpointFetchInit {
   signal: AbortSignal;
 }
 
+/** Injectable fixed-endpoint transport used by the Google OIDC verifier. */
 export type FixedEndpointFetch = (
   url: string,
   init: FixedEndpointFetchInit,
 ) => Promise<FixedEndpointResponse>;
 
+/** Construction options for the Google OIDC verifier. */
 export interface GoogleOidcClientOptions {
   clientId: string;
   clientSecret?: string;
@@ -57,12 +62,14 @@ export interface GoogleOidcClientOptions {
   clockSkewSeconds?: number;
 }
 
+/** Authorization-code inputs retained by the server-side OAuth transaction. */
 export interface GoogleAuthorizationCodeInput {
   code: string;
   codeVerifier: string;
   nonce: string;
 }
 
+/** Verified Google identity claims safe to cross the identity boundary. */
 export interface VerifiedGoogleIdentity {
   provider: 'google';
   subject: string;
@@ -252,6 +259,72 @@ function requireResponseLength(response: FixedEndpointResponse): void {
   }
 }
 
+async function cancelResponseBody(
+  body: ReadableStream<Uint8Array> | null | undefined,
+): Promise<void> {
+  if (!body) {
+    return;
+  }
+  try {
+    await body.cancel();
+  } catch {
+    // The standardized provider failure remains authoritative.
+  }
+}
+
+async function readBoundedResponseText(
+  response: FixedEndpointResponse,
+): Promise<string> {
+  try {
+    requireResponseLength(response);
+  } catch {
+    await cancelResponseBody(response.body);
+    return fail('Google identity provider response is invalid');
+  }
+
+  if (!response.body) {
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      return fail('Google identity provider response is invalid');
+    }
+    if (Buffer.byteLength(text, 'utf8') > MAXIMUM_HTTP_RESPONSE_BYTES) {
+      return fail('Google identity provider response is invalid');
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let bytesRead = 0;
+  let text = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      bytesRead += chunk.value.byteLength;
+      if (bytesRead > MAXIMUM_HTTP_RESPONSE_BYTES) {
+        return fail('Google identity provider response is invalid');
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } catch {
+    try {
+      await reader.cancel();
+    } catch {
+      // The standardized provider failure remains authoritative.
+    }
+    return fail('Google identity provider response is invalid');
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function requireGoogleJwk(value: unknown): { kid: string; key: KeyObject } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return fail('Google signing key set is invalid');
@@ -286,9 +359,20 @@ function requireGoogleJwk(value: unknown): { kid: string; key: KeyObject } {
   if (key.asymmetricKeyType !== 'rsa') {
     return fail('Google signing key set is invalid');
   }
+  const modulusLength = key.asymmetricKeyDetails?.modulusLength;
+  if (
+    typeof modulusLength !== 'number' ||
+    modulusLength < MINIMUM_RSA_MODULUS_BITS
+  ) {
+    return fail('Google signing key set is invalid');
+  }
   return { kid, key };
 }
 
+/**
+ * Exchanges Google authorization codes and verifies the returned ID tokens
+ * locally before exposing a bounded identity claim set.
+ */
 export class GoogleOidcClient {
   private readonly clientId: string;
   private readonly clientSecret: string | undefined;
@@ -298,6 +382,7 @@ export class GoogleOidcClient {
   private readonly requestTimeoutMs: number;
   private readonly clockSkewSeconds: number;
   private keySet: CachedGoogleKeySet | undefined;
+  private pendingKeySet: Promise<CachedGoogleKeySet> | undefined;
 
   constructor(options: GoogleOidcClientOptions) {
     this.clientId = requireBoundedText(
@@ -333,6 +418,7 @@ export class GoogleOidcClient {
     );
   }
 
+  /** Exchanges one authorization code and returns only verified identity claims. */
   async authenticateAuthorizationCode(
     input: GoogleAuthorizationCodeInput,
   ): Promise<VerifiedGoogleIdentity> {
@@ -491,18 +577,36 @@ export class GoogleOidcClient {
 
   private async signingKey(kid: string): Promise<KeyObject> {
     const nowMs = this.now().getTime();
+    let refreshed = false;
     if (!this.keySet || this.keySet.expiresAtMs <= nowMs) {
-      this.keySet = await this.fetchKeySet();
+      this.keySet = await this.sharedFetchKeySet();
+      refreshed = true;
     }
     let key = this.keySet.keys.get(kid);
-    if (!key) {
-      this.keySet = await this.fetchKeySet();
+    if (!key && !refreshed) {
+      this.keySet = await this.sharedFetchKeySet();
       key = this.keySet.keys.get(kid);
     }
     if (!key) {
       return fail('Google ID token is invalid');
     }
     return key;
+  }
+
+  private async sharedFetchKeySet(): Promise<CachedGoogleKeySet> {
+    const existing = this.pendingKeySet;
+    if (existing) {
+      return await existing;
+    }
+    const pending = this.fetchKeySet();
+    this.pendingKeySet = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.pendingKeySet === pending) {
+        this.pendingKeySet = undefined;
+      }
+    }
   }
 
   private async fetchKeySet(): Promise<CachedGoogleKeySet> {
@@ -515,9 +619,8 @@ export class GoogleOidcClient {
     if (response.status !== 200) {
       return fail('Google signing key retrieval failed');
     }
-    requireResponseLength(response);
     const body = parseJsonObject(
-      await response.text(),
+      await readBoundedResponseText(response),
       'Google signing key set is invalid',
     );
     if (
@@ -552,8 +655,10 @@ export class GoogleOidcClient {
     if (response.status < 200 || response.status >= 300) {
       return fail(failureMessage);
     }
-    requireResponseLength(response);
-    return parseJsonObject(await response.text(), failureMessage);
+    return parseJsonObject(
+      await readBoundedResponseText(response),
+      failureMessage,
+    );
   }
 
   private async fetchResponse(
