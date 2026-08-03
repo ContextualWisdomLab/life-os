@@ -1,5 +1,6 @@
 'use strict';
 
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { randomUUID } = require('node:crypto');
 
 const PROMETHEUS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8';
@@ -10,6 +11,7 @@ const UUID_PATTERN =
 const SERVICE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
 const ROUTE_SEGMENT_PATTERN = /^[A-Za-z0-9._~-]{1,64}$/;
 const ROUTE_PARAMETER_PATTERN = /^:[a-z][a-z0-9_]{1,63}$/;
+const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const ALLOWED_METHODS = new Set([
   'DELETE',
   'GET',
@@ -19,8 +21,17 @@ const ALLOWED_METHODS = new Set([
   'POST',
   'PUT',
 ]);
+const OBSERVABILITY_OPERATIONS = new Set([
+  'metrics.record',
+  'request.context',
+  'request.log',
+]);
 const DEFAULT_DURATION_BUCKETS = Object.freeze([0.05, 0.1, 0.25, 0.5, 1, 2, 5]);
 const MAX_DURATION_SECONDS = 3600;
+
+/** @typedef {{readonly correlationId: string}} RequestContext */
+/** @type {AsyncLocalStorage<RequestContext>} */
+const requestContextStorage = new AsyncLocalStorage();
 
 /** Validates and returns a bounded telemetry service identifier. */
 function requireServiceName(value) {
@@ -36,7 +47,7 @@ function requireServiceName(value) {
   return value;
 }
 
-/** Normalizes an allowed HTTP method for metric labels. */
+/** Normalizes an allowed HTTP method for metric and log fields. */
 function requireMethod(value) {
   if (typeof value !== 'string') {
     throw new TypeError('method must be a supported HTTP method');
@@ -141,6 +152,60 @@ function requireClock(value) {
   return value;
 }
 
+/** Validates the wall-clock dependency used by structured logs. */
+function requireWallClock(value) {
+  if (typeof value !== 'function') {
+    throw new TypeError('wallClock must be a function');
+  }
+  return value;
+}
+
+/** Validates the structured-log writer dependency. */
+function requireWriter(value) {
+  if (typeof value !== 'function') {
+    throw new TypeError('write must be a function');
+  }
+  return value;
+}
+
+/** Validates one normalized UUIDv4 correlation identifier. */
+function requireCorrelationId(value) {
+  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+    throw new TypeError('correlationId must be a UUIDv4');
+  }
+  return value.toLowerCase();
+}
+
+/** Validates a canonical UTC timestamp before it enters a log record. */
+function requireTimestamp(value) {
+  if (
+    typeof value !== 'string' ||
+    !ISO_TIMESTAMP_PATTERN.test(value) ||
+    Number.isNaN(Date.parse(value))
+  ) {
+    throw new TypeError('wallClock must return an ISO UTC timestamp');
+  }
+  return value;
+}
+
+/** Validates the fixed operation vocabulary for failure records. */
+function requireObservabilityOperation(value) {
+  if (typeof value !== 'string' || !OBSERVABILITY_OPERATIONS.has(value)) {
+    throw new TypeError(
+      'operation must be a supported observability operation',
+    );
+  }
+  return value;
+}
+
+/** Validates a callback before entering async request context. */
+function requireCallback(value) {
+  if (typeof value !== 'function') {
+    throw new TypeError('callback must be a function');
+  }
+  return value;
+}
+
 /** Escapes a bounded label value for Prometheus text exposition. */
 function escapeLabel(value) {
   return value
@@ -162,9 +227,21 @@ function metricNumber(value) {
   return String(Number(value.toFixed(9)));
 }
 
+/** Returns a JSON-safe finite duration without avoidable floating-point noise. */
+function logDuration(value) {
+  return Number(value.toFixed(9));
+}
+
 /** Maps an HTTP status code to a bounded class such as 2xx. */
 function statusClass(statusCode) {
   return `${Math.floor(statusCode / 100)}xx`;
+}
+
+/** Maps an HTTP status code to a bounded structured-log level. */
+function statusLevel(statusCode) {
+  if (statusCode >= 500) return 'error';
+  if (statusCode >= 400) return 'warn';
+  return 'info';
 }
 
 /** Creates a collision-safe internal key for one metric series. */
@@ -176,6 +253,11 @@ function keyOf(method, route, responseClass) {
 function parseKey(key) {
   const [method, route, responseClass] = JSON.parse(key);
   return { method, route, status_class: responseClass };
+}
+
+/** Writes one line to standard output without inspecting request data. */
+function defaultStructuredLogWriter(line) {
+  process.stdout.write(`${line}\n`);
 }
 
 /** Preserves a valid UUIDv4 correlation ID or creates a replacement. */
@@ -191,6 +273,80 @@ function normalizeCorrelationId(value, generate = randomUUID) {
     throw new TypeError('correlation ID generator must return a UUIDv4');
   }
   return generated.toLowerCase();
+}
+
+/**
+ * Runs a callback inside an async-safe request context containing only a
+ * validated correlation identifier. Nested contexts restore automatically.
+ */
+function runWithRequestContext(correlationId, callback) {
+  const context = Object.freeze({
+    correlationId: requireCorrelationId(correlationId),
+  });
+  return requestContextStorage.run(context, requireCallback(callback));
+}
+
+/** Returns the current immutable request context, when one is active. */
+function getRequestContext() {
+  return requestContextStorage.getStore();
+}
+
+/**
+ * Emits credential-free JSON records from a fixed schema. Arbitrary request
+ * fields and exception details are not accepted by this interface.
+ */
+class CredentialFreeJsonLogger {
+  /** Creates a structured logger with injectable deterministic boundaries. */
+  constructor({
+    serviceName,
+    write = defaultStructuredLogWriter,
+    wallClock = () => new Date().toISOString(),
+  }) {
+    this.serviceName = requireServiceName(serviceName);
+    this.write = requireWriter(write);
+    this.wallClock = requireWallClock(wallClock);
+  }
+
+  /** Emits one bounded HTTP completion record and returns its serialized line. */
+  httpRequestCompleted({
+    correlationId,
+    method,
+    route,
+    statusCode,
+    durationSeconds,
+  }) {
+    const normalizedStatusCode = requireStatusCode(statusCode);
+    const record = {
+      timestamp: requireTimestamp(this.wallClock()),
+      level: statusLevel(normalizedStatusCode),
+      event: 'http.request.completed',
+      service: this.serviceName,
+      correlation_id: requireCorrelationId(correlationId),
+      method: requireMethod(method),
+      route: requireRouteTemplate(route),
+      status_code: normalizedStatusCode,
+      status_class: statusClass(normalizedStatusCode),
+      duration_seconds: logDuration(requireDuration(durationSeconds)),
+    };
+    const line = JSON.stringify(record);
+    this.write(line);
+    return line;
+  }
+
+  /** Emits a sanitized observability failure without exception details. */
+  observabilityFailure({ correlationId, operation }) {
+    const record = {
+      timestamp: requireTimestamp(this.wallClock()),
+      level: 'error',
+      event: 'observability.failure',
+      service: this.serviceName,
+      correlation_id: requireCorrelationId(correlationId),
+      operation: requireObservabilityOperation(operation),
+    };
+    const line = JSON.stringify(record);
+    this.write(line);
+    return line;
+  }
 }
 
 /**
@@ -327,8 +483,11 @@ class PrometheusHttpMetrics {
 }
 
 module.exports = {
+  CredentialFreeJsonLogger,
   DEFAULT_DURATION_BUCKETS,
   PROMETHEUS_CONTENT_TYPE,
   PrometheusHttpMetrics,
+  getRequestContext,
   normalizeCorrelationId,
+  runWithRequestContext,
 };
