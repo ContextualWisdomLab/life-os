@@ -10,7 +10,7 @@
 - [x] Require HTTPS redirect URIs except for explicit loopback development hosts.
 - [x] Reject provider/transaction mismatches and malformed client configuration.
 - [x] Verify authorization URLs never contain client secrets.
-- [ ] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
+- [x] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
 
 ## Provider references
 
