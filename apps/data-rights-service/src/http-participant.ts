@@ -52,6 +52,40 @@ function requireBaseUrl(value: string, allowedHosts: readonly string[]): URL {
   return parsed;
 }
 
+async function readBoundedBody(response: Response): Promise<Uint8Array> {
+  if (!response.body) {
+    throw new DataRightsDependencyError();
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      const chunk = result.value;
+      receivedBytes += chunk.byteLength;
+      if (receivedBytes > MAXIMUM_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new DataRightsDependencyError();
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 async function readBoundedJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type');
   if (!contentType?.toLowerCase().startsWith('application/json')) {
@@ -67,10 +101,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
     await response.body?.cancel();
     throw new DataRightsDependencyError();
   }
-  const body = await response.arrayBuffer();
-  if (body.byteLength > MAXIMUM_RESPONSE_BYTES) {
-    throw new DataRightsDependencyError();
-  }
+  const body = await readBoundedBody(response);
   try {
     return JSON.parse(new TextDecoder().decode(body)) as unknown;
   } catch {
