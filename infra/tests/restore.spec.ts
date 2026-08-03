@@ -36,32 +36,25 @@ const restoreScript = resolve(process.cwd(), '../backup/restore.sh');
 
 function createPostgresClientWrapper(commandName: string): void {
   const wrapperPath = join(toolDirectory, commandName);
+  const defaultDatabaseUrl =
+    commandName === 'pg_dump' ? SOURCE_DATABASE_URL : TARGET_DATABASE_URL;
   writeFileSync(
     wrapperPath,
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 
-env_arguments=()
-client_env_file=''
+client_env_file="$(mktemp "\${BACKUP_RECOVERY_MOUNT_ROOT}/.postgres-client-env.XXXXXX")"
 cleanup() {
-  if [[ -n "\${client_env_file}" ]]; then
-    rm -f -- "\${client_env_file}"
-  fi
+  rm -f -- "\${client_env_file}"
 }
 trap cleanup EXIT INT TERM
-
-if [[ -n "\${PGDATABASE:-}" ]]; then
-  [[ "\${PGDATABASE}" != *$'\\n'* && "\${PGDATABASE}" != *$'\\r'* ]] || exit 64
-  client_env_file="$(mktemp "\${BACKUP_RECOVERY_MOUNT_ROOT}/.postgres-client-env.XXXXXX")"
-  chmod 600 -- "\${client_env_file}"
-  printf 'PGDATABASE=%s\\n' "\${PGDATABASE}" >"\${client_env_file}"
-  env_arguments+=(--env-file "\${client_env_file}")
-fi
+chmod 600 -- "\${client_env_file}"
+printf 'PGDATABASE=%s\\n' '${defaultDatabaseUrl}' >"\${client_env_file}"
 
 docker run --rm --network host \\
   --user "\${BACKUP_RECOVERY_USER_ID}:\${BACKUP_RECOVERY_GROUP_ID}" \\
   --env HOME=/tmp \\
-  "\${env_arguments[@]}" \\
+  --env-file "\${client_env_file}" \\
   --volume "\${BACKUP_RECOVERY_PASSWD_FILE}:/etc/passwd:ro" \\
   --volume "\${BACKUP_RECOVERY_GROUP_FILE}:/etc/group:ro" \\
   --volume "\${BACKUP_RECOVERY_MOUNT_ROOT}:\${BACKUP_RECOVERY_MOUNT_ROOT}" \\
