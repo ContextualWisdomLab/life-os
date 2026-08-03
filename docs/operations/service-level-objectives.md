@@ -36,7 +36,7 @@ A request is good when its response status class is not `5xx`. A request is tota
 )
 ```
 
-The request error budget is **0.1%**, or one server-failed request per 1,000 completed user-facing requests. For a continuously requested service, 99.9% corresponds to approximately 43 minutes and 50 seconds of unavailable time in a 30-day period; request-based measurement remains authoritative.
+The request error budget is **0.1%**, or one server-failed request per 1,000 completed user-facing requests. For a continuously requested service, 99.9% corresponds to 43 minutes and 12 seconds of unavailable time in a 30-day period; request-based measurement remains authoritative.
 
 ## Latency objectives
 
