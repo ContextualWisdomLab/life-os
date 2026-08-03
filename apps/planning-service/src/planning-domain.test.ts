@@ -21,12 +21,12 @@ describe('PlanningService', () => {
     });
 
     await expect(service.listGoals('workspace-a')).resolves.toEqual([goal]);
-    await expect(
-      service.listProjects('workspace-a', goal.id),
-    ).resolves.toEqual([project]);
-    await expect(
-      service.listTasks('workspace-a', project.id),
-    ).resolves.toEqual([task]);
+    await expect(service.listProjects('workspace-a', goal.id)).resolves.toEqual(
+      [project],
+    );
+    await expect(service.listTasks('workspace-a', project.id)).resolves.toEqual(
+      [task],
+    );
   });
 
   it('generates opaque UUIDv4 identifiers instead of numeric or sequential IDs', async () => {
