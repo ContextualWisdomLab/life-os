@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalizeJson,
   type DataRightsDomain,
   DataRightsConflictError,
   DataRightsCoordinator,
@@ -15,6 +16,7 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 
 interface ParticipantOptions {
   readonly records?: readonly unknown[];
+  readonly schemaVersion?: string;
   readonly failPrepare?: boolean;
   readonly failCommit?: boolean;
   readonly counters?: {
@@ -30,7 +32,7 @@ function participant(
   const counters = options.counters;
   return {
     domain,
-    schemaVersion: `${domain}.v1`,
+    schemaVersion: options.schemaVersion ?? `${domain}.v1`,
     async exportWorkspace(workspaceId) {
       expect(workspaceId).toBe(WORKSPACE_ID);
       return options.records ?? [
@@ -41,7 +43,7 @@ function participant(
     async prepareDeletion(workspaceId, requestId) {
       counters && (counters.prepare += 1);
       if (options.failPrepare) {
-        throw new Error('secret prepare failure');
+        throw new Error('dependency prepare failure');
       }
       return {
         workspaceId,
@@ -52,7 +54,7 @@ function participant(
     async commitDeletion(preparation) {
       counters && (counters.commit += 1);
       if (options.failCommit) {
-        throw new Error('secret commit failure');
+        throw new Error('dependency commit failure');
       }
       return {
         workspaceId: preparation.workspaceId,
@@ -74,7 +76,7 @@ function participants(
 describe('DataRightsCoordinator export', () => {
   it('creates a complete deterministic tenant export with per-domain digests', async () => {
     const coordinator = new DataRightsCoordinator(
-      participants(),
+      participants({ identity: { schemaVersion: ' identity.v1 ' } }),
       () => new Date('2026-08-04T00:00:00.000Z'),
     );
 
@@ -86,10 +88,15 @@ describe('DataRightsCoordinator export', () => {
     expect(first.sections.map((section) => section.domain)).toEqual(
       REQUIRED_DATA_RIGHTS_DOMAINS,
     );
+    expect(first.sections[0]?.schemaVersion).toBe('identity.v1');
     expect(first.sections.every((section) => section.recordCount === 2)).toBe(
       true,
     );
-    expect(first.sections.every((section) => /^[0-9a-f]{64}$/.test(section.contentDigest))).toBe(true);
+    expect(
+      first.sections.every((section) =>
+        /^[0-9a-f]{64}$/.test(section.contentDigest),
+      ),
+    ).toBe(true);
     expect(first.contentDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(first.sections[0]?.records).toEqual([
       { id: 'identity-a', value: 1 },
@@ -99,7 +106,7 @@ describe('DataRightsCoordinator export', () => {
     expect(Object.isFrozen(first.sections)).toBe(true);
   });
 
-  it('requires every domain exactly once and rejects non-JSON participant data', async () => {
+  it('requires every domain exactly once and maps malformed evidence to dependency failure', async () => {
     expect(() => new DataRightsCoordinator(participants().slice(1))).toThrow(
       DataRightsValidationError,
     );
@@ -118,12 +125,22 @@ describe('DataRightsCoordinator export', () => {
       new DataRightsCoordinator(invalidParticipants).exportWorkspace(
         WORKSPACE_ID,
       ),
-    ).rejects.toBeInstanceOf(DataRightsValidationError);
+    ).rejects.toBeInstanceOf(DataRightsDependencyError);
+  });
+
+  it('rejects secret-shaped and prototype-pollution keys', () => {
+    expect(() => canonicalizeJson({ accessToken: 'redacted' })).toThrow(
+      DataRightsValidationError,
+    );
+    expect(() =>
+      canonicalizeJson(JSON.parse('{"__proto__":{"polluted":true}}')),
+    ).toThrow(DataRightsValidationError);
+    expect((Object.prototype as { polluted?: boolean }).polluted).toBeUndefined();
   });
 });
 
 describe('DataRightsCoordinator deletion', () => {
-  it('prepares every participant before committing and returns an immutable receipt', async () => {
+  it('prepares every participant before committing and deletes identity last', async () => {
     const counters = { prepare: 0, commit: 0 };
     const coordinator = new DataRightsCoordinator(
       participants(
@@ -145,6 +162,9 @@ describe('DataRightsCoordinator deletion', () => {
     expect(receipt.status === 'complete' && receipt.domains).toHaveLength(
       REQUIRED_DATA_RIGHTS_DOMAINS.length,
     );
+    expect(
+      receipt.status === 'complete' && receipt.domains.at(-1)?.domain,
+    ).toBe('identity');
     expect(receipt.status === 'complete' && receipt.receiptDigest).toMatch(
       /^[0-9a-f]{64}$/,
     );
@@ -185,8 +205,14 @@ describe('DataRightsCoordinator deletion', () => {
       status: 'pending_reconciliation',
       workspaceId: WORKSPACE_ID,
       requestId: REQUEST_ID,
-      committedDomains: ['identity', 'planning', 'habit'],
-      pendingDomains: ['review', 'ai_audit', 'calendar', 'notification'],
+      committedDomains: ['planning', 'habit'],
+      pendingDomains: [
+        'review',
+        'ai_audit',
+        'calendar',
+        'notification',
+        'identity',
+      ],
     });
     expect(replay).toBe(first);
     expect(counters).toEqual(firstCounters);
