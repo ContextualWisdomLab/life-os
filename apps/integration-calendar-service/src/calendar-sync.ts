@@ -209,12 +209,7 @@ function validateProviderResult(
 ): GoogleCalendarUpsertResult {
   try {
     const record = requireRecord(value);
-    requireAllowedKeys(record, [
-      'eventId',
-      'disposition',
-      'etag',
-      'updatedAt',
-    ]);
+    requireAllowedKeys(record, ['eventId', 'disposition', 'etag', 'updatedAt']);
     const eventId = requireGoogleEventId(record.eventId);
     if (eventId !== expectedEventId) {
       throw new CalendarProviderError();

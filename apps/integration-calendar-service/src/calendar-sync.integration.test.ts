@@ -3,10 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
 import { InMemoryGoogleCalendarGateway } from './calendar-sync';
-import {
-  CalendarAppModule,
-  GOOGLE_CALENDAR_GATEWAY,
-} from './main';
+import { CalendarAppModule, GOOGLE_CALENDAR_GATEWAY } from './main';
 
 const WORKSPACE_ID = '9ea7dd08-3d16-4bb2-9887-1d65d8ee7959';
 const OTHER_WORKSPACE_ID = 'a2282c77-535a-4254-b692-f40c2a0366a4';
@@ -152,9 +149,7 @@ describe('Google calendar synchronization HTTP contract', () => {
       });
       expect(
         (otherWorkspace.body as { providerEventId: string }).providerEventId,
-      ).not.toBe(
-        (created.body as { providerEventId: string }).providerEventId,
-      );
+      ).not.toBe((created.body as { providerEventId: string }).providerEventId);
       expect(updated.statusCode).toBe(201);
       expect(updated.body).toMatchObject({
         providerEventId: (created.body as { providerEventId: string })

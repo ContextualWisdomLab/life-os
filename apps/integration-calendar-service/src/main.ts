@@ -30,11 +30,7 @@ interface CalendarProblemDetails {
   code: string;
 }
 
-function problem(
-  status: number,
-  title: string,
-  code: string,
-): HttpException {
+function problem(status: number, title: string, code: string): HttpException {
   const details: CalendarProblemDetails = {
     type: 'about:blank',
     title,
@@ -46,10 +42,18 @@ function problem(
 
 function toCalendarHttpException(error: unknown): HttpException {
   if (error instanceof CalendarValidationError) {
-    return problem(400, 'Calendar synchronization request is invalid', 'invalid_request');
+    return problem(
+      400,
+      'Calendar synchronization request is invalid',
+      'invalid_request',
+    );
   }
   if (error instanceof CalendarProviderError) {
-    return problem(502, 'Calendar provider rejected the operation', 'provider_error');
+    return problem(
+      502,
+      'Calendar provider rejected the operation',
+      'provider_error',
+    );
   }
   return problem(
     503,
