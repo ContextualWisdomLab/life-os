@@ -13,6 +13,7 @@ import {
 
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
 const IDEMPOTENCY_KEY = 'd1191b96-b7f4-4d8f-b1f7-9e2838686d5f';
+const SECOND_IDEMPOTENCY_KEY = '87c815d4-64fa-46ec-8994-52e8aa9e66e9';
 const COMPLETION_ID = '3f044b68-c515-4a52-8862-38af0047b88d';
 const RECORDED_AT = '2026-08-03T20:00:01.000Z';
 
@@ -129,6 +130,26 @@ describe('PostgreSQL guided review repository', () => {
     const client = new SequentialClient();
     client.enqueueRows([]);
     client.enqueueRows([row(conflict)]);
+    const repository = new PostgresReviewRepository(client);
+
+    await expect(repository.record(attempted)).rejects.toBeInstanceOf(
+      ReviewCompletionConflictError,
+    );
+  });
+
+  it('classifies simultaneous key and period collisions as a conflict', async () => {
+    const attempted = record();
+    const keyConflict = {
+      ...record({ periodStartDate: '2026-08-10' }),
+      id: '8073d09a-c36b-42f5-a8c8-2b42ea82d61c',
+    };
+    const periodConflict = {
+      ...record({ idempotencyKey: SECOND_IDEMPOTENCY_KEY }),
+      id: '5a15ccb3-4084-4f1a-a98a-b651e3294944',
+    };
+    const client = new SequentialClient();
+    client.enqueueRows([]);
+    client.enqueueRows([row(keyConflict), row(periodConflict)]);
     const repository = new PostgresReviewRepository(client);
 
     await expect(repository.record(attempted)).rejects.toBeInstanceOf(
