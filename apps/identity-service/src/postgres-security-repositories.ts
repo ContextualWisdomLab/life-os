@@ -1,10 +1,15 @@
-import type { SessionRecord, StoredOAuthTransaction } from './auth-security';
+import type {
+  OAuthTransactionRepository,
+  SessionRecord,
+  SessionRepository,
+  StoredOAuthTransaction,
+} from './auth-security';
 import type { IdentityProvider } from './identity-domain';
 import { AesGcmSecretBox, type EncryptedSecret } from './secret-box';
 
 export interface SqlQueryResult<Row> {
   rows: Row[];
-  rowCount: number;
+  rowCount: number | null;
 }
 
 export interface SqlClient {
@@ -134,7 +139,7 @@ function mapOAuthTransactionRow(
   };
 }
 
-export class PostgresOAuthTransactionRepository {
+export class PostgresOAuthTransactionRepository implements OAuthTransactionRepository {
   constructor(
     private readonly client: SqlClient,
     private readonly secretBox: AesGcmSecretBox,
@@ -223,7 +228,7 @@ export class PostgresOAuthTransactionRepository {
           OR (consumed_at IS NOT NULL AND consumed_at < $1)`,
       [retentionBoundary],
     );
-    return result.rowCount;
+    return result.rowCount ?? 0;
   }
 }
 
@@ -243,7 +248,7 @@ function mapSessionRow(row: SessionRow): SessionRecord {
   };
 }
 
-export class PostgresSessionRepository {
+export class PostgresSessionRepository implements SessionRepository {
   constructor(private readonly client: SqlClient) {}
 
   async save(session: SessionRecord): Promise<void> {
@@ -299,7 +304,7 @@ export class PostgresSessionRepository {
        RETURNING id`,
       [tokenHash, revokedAt],
     );
-    return result.rowCount === 1;
+    return (result.rowCount ?? 0) === 1;
   }
 
   async deleteInactiveBefore(retentionBoundary: string): Promise<number> {
@@ -309,6 +314,6 @@ export class PostgresSessionRepository {
           OR (revoked_at IS NOT NULL AND revoked_at < $1)`,
       [retentionBoundary],
     );
-    return result.rowCount;
+    return result.rowCount ?? 0;
   }
 }
