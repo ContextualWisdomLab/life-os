@@ -1,9 +1,19 @@
-import { Controller, Get, Headers, Inject, Post, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Headers,
+  Inject,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import type { IdentityProvider } from './identity-domain';
+import { OAuthCallbackApplication } from './oauth-callback-application';
 import { problemDetails } from './oauth-http-boundary';
 import { OAuthHttpApplication } from './oauth-http-application';
 
 export const OAUTH_HTTP_APPLICATION = Symbol('OAUTH_HTTP_APPLICATION');
+export const OAUTH_CALLBACK_APPLICATION = Symbol('OAUTH_CALLBACK_APPLICATION');
 
 interface MutableHttpResponse {
   status(statusCode: number): MutableHttpResponse;
@@ -34,6 +44,21 @@ function mapStartError(error: unknown): ProblemMapping {
       status: 400,
       title: 'Invalid authorization request',
       code: 'invalid_authorization_request',
+    };
+  }
+  return {
+    status: 503,
+    title: 'Identity service is unavailable',
+    code: 'identity_service_unavailable',
+  };
+}
+
+function mapCallbackError(error: unknown): ProblemMapping {
+  if (errorMessage(error) === 'OAuth callback authentication failed') {
+    return {
+      status: 401,
+      title: 'OAuth callback authentication failed',
+      code: 'oauth_callback_failed',
     };
   }
   return {
@@ -79,6 +104,8 @@ export class OAuthHttpController {
   constructor(
     @Inject(OAUTH_HTTP_APPLICATION)
     private readonly application: OAuthHttpApplication,
+    @Inject(OAUTH_CALLBACK_APPLICATION)
+    private readonly callbackApplication: OAuthCallbackApplication,
   ) {}
 
   @Get('v1/auth/google/start')
@@ -95,6 +122,38 @@ export class OAuthHttpController {
     @Res() response: MutableHttpResponse,
   ): Promise<void> {
     await this.startAuthorization('github', cookieHeader, response);
+  }
+
+  @Get('v1/auth/google/callback')
+  async callbackGoogle(
+    @Query() query: Readonly<Record<string, unknown>>,
+    @Headers('cookie') cookieHeader: string | undefined,
+    @Headers('x-correlation-id') correlationId: string | undefined,
+    @Res() response: MutableHttpResponse,
+  ): Promise<void> {
+    await this.completeAuthorization(
+      'google',
+      query,
+      cookieHeader,
+      correlationId,
+      response,
+    );
+  }
+
+  @Get('v1/auth/github/callback')
+  async callbackGitHub(
+    @Query() query: Readonly<Record<string, unknown>>,
+    @Headers('cookie') cookieHeader: string | undefined,
+    @Headers('x-correlation-id') correlationId: string | undefined,
+    @Res() response: MutableHttpResponse,
+  ): Promise<void> {
+    await this.completeAuthorization(
+      'github',
+      query,
+      cookieHeader,
+      correlationId,
+      response,
+    );
   }
 
   @Get('v1/session')
@@ -148,6 +207,30 @@ export class OAuthHttpController {
       response.send();
     } catch (error) {
       sendProblem(response, mapStartError(error));
+    }
+  }
+
+  private async completeAuthorization(
+    provider: IdentityProvider,
+    query: Readonly<Record<string, unknown>>,
+    cookieHeader: string | undefined,
+    correlationId: string | undefined,
+    response: MutableHttpResponse,
+  ): Promise<void> {
+    response.setHeader('Cache-Control', 'no-store');
+    try {
+      const result = await this.callbackApplication.completeAuthorization(
+        provider,
+        query,
+        cookieHeader,
+        correlationId ?? '',
+      );
+      response.setHeader('Set-Cookie', result.setCookie);
+      response.setHeader('Location', result.location);
+      response.status(result.statusCode);
+      response.send();
+    } catch (error) {
+      sendProblem(response, mapCallbackError(error));
     }
   }
 }
