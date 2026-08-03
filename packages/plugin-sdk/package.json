@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "src/index.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit && prettier --single-quote --check package.json tsconfig.json src/**/*.ts",
