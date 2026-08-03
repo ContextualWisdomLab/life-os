@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
