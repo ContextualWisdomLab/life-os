@@ -50,6 +50,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Render Habit runtime formatting diff
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/habit-service/src/main.ts \
+            apps/habit-service/src/habit-runtime.ts \
+            apps/habit-service/src/habit-runtime.test.ts \
+            apps/habit-service/src/habit-http-boundary.ts \
+            apps/habit-service/src/habit-http-boundary.test.ts \
+            apps/habit-service/src/habit-http-controller.ts \
+            apps/habit-service/src/habit-http-controller.test.ts
+          git diff --no-ext-diff --unified=100000 -- \
+            apps/habit-service/src/main.ts \
+            apps/habit-service/src/habit-runtime.ts \
+            apps/habit-service/src/habit-runtime.test.ts \
+            apps/habit-service/src/habit-http-boundary.ts \
+            apps/habit-service/src/habit-http-boundary.test.ts \
+            apps/habit-service/src/habit-http-controller.ts \
+            apps/habit-service/src/habit-http-controller.test.ts
+
       - name: Check formatting
         run: pnpm format:check
 
