@@ -49,7 +49,8 @@ describe('AesGcmSecretBox', () => {
     const box = createSecretBox();
     const encrypted = box.encrypt('sensitive', 'expected-context');
     const tampered = Buffer.from(encrypted.payload);
-    tampered[tampered.length - 1] ^= 0xff;
+    const finalByteIndex = tampered.length - 1;
+    tampered[finalByteIndex] = (tampered[finalByteIndex] ?? 0) ^ 0xff;
 
     expect(() =>
       box.decrypt({ ...encrypted, payload: tampered }, 'expected-context'),
