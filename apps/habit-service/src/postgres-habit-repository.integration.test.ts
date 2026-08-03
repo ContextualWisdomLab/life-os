@@ -46,10 +46,7 @@ function repository(pool: Pool): PostgresHabitRepository {
   return new PostgresHabitRepository(new PoolSqlClient(pool));
 }
 
-function habit(
-  workspaceId: string,
-  overrides: Partial<Habit> = {},
-): Habit {
+function habit(workspaceId: string, overrides: Partial<Habit> = {}): Habit {
   return {
     id: randomUUID(),
     workspaceId,
@@ -161,9 +158,9 @@ describeWithPostgres('PostgreSQL Habit repository integration', () => {
 
     expect(history).toHaveLength(1);
     expect(results.every((result) => result.id === history[0]?.id)).toBe(true);
-    expect(results.every((result) => result.completedAt === history[0]?.completedAt)).toBe(
-      true,
-    );
+    expect(
+      results.every((result) => result.completedAt === history[0]?.completedAt),
+    ).toBe(true);
   });
 
   it('rejects a conflicting idempotency replay without adding history', async () => {
