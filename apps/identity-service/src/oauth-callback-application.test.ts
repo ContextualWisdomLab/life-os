@@ -54,9 +54,9 @@ function providerClients(
   return {
     google: {
       authenticateAuthorizationCode: vi.fn(async () => ({
-        provider: 'google',
+        provider: 'google' as const,
         subject: 'google-subject-123',
-        issuer: 'https://accounts.google.com',
+        issuer: 'https://accounts.google.com' as const,
         email: 'person@example.test',
         emailVerified: true,
         displayName: 'Example Person',
@@ -64,7 +64,7 @@ function providerClients(
     },
     github: {
       authenticateAuthorizationCode: vi.fn(async () => ({
-        provider: 'github',
+        provider: 'github' as const,
         providerSubject: '58323117',
         displayName: 'GitHub Person',
         verifiedEmail: 'person@example.test',
@@ -141,9 +141,9 @@ describe('OAuthCallbackApplication', () => {
         authenticateAuthorizationCode: vi.fn(async (input) => {
           observedGoogleInput = input;
           return {
-            provider: 'google',
+            provider: 'google' as const,
             subject: 'google-subject-123',
-            issuer: 'https://accounts.google.com',
+            issuer: 'https://accounts.google.com' as const,
             email: 'person@example.test',
             emailVerified: true,
             displayName: 'Example Person',
@@ -210,7 +210,7 @@ describe('OAuthCallbackApplication', () => {
         authenticateAuthorizationCode: vi.fn(async (_code, transaction) => {
           observedTransaction = transaction;
           return {
-            provider: 'github',
+            provider: 'github' as const,
             providerSubject: '9007199254740993',
             displayName: 'large-subject',
           };
@@ -400,7 +400,7 @@ describe('OAuthCallbackApplication', () => {
       {
         consume: vi.fn(async () => ({
           id: '67a6772e-6392-4406-aa28-93330a6f36af',
-          provider: 'google',
+          provider: 'google' as const,
           codeVerifier: 'v'.repeat(64),
           redirectUri: GOOGLE_REDIRECT_URI,
           nonce: 'n'.repeat(43),
