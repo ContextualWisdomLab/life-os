@@ -81,7 +81,7 @@ clamp_min(sum(rate(life_os_http_request_duration_seconds_count{
 - `LifeOsGatewayAvailabilityFastBurn` pages immediately when the five-minute and one-hour server-error ratios exceed a 14.4x burn rate. Stop risky rollout activity and mitigate user impact.
 - `LifeOsGatewayAvailabilitySlowBurn` opens an operational incident when the 30-minute and six-hour server-error ratios exceed a 6x burn rate. Assign remediation within the same working period.
 - `LifeOsGatewayLatencyBudgetBurn` opens an operational incident when more than 30% of requests exceed 500 ms for 15 minutes. Investigate saturation and downstream latency.
-- `LifeOsGatewayTailLatencyBudgetBurn` opens an operational incident when more than 6% of requests exceed 2 seconds for 15 minutes. Investigate tail latency before the 99% objective exhausts its budget.
+- `LifeOsGatewayTailLatencyBudgetBurn` opens an operational incident when more than 1% of requests exceed 2 seconds for 15 minutes. Investigate tail latency because the 99% objective is being violated.
 
 A page is actionable only when the operator has access to the deployment, current release identifier, gateway logs, and recent change history. Alert delivery and dashboards remain deployment responsibilities until a reference production stack is added.
 
