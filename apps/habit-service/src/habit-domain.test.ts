@@ -225,12 +225,12 @@ describe('HabitService', () => {
     await repository.saveHabit(workspaceAHabit);
     await repository.saveHabit(workspaceBHabit);
 
-    await expect(repository.findHabit('workspace-a', sharedId)).resolves.toEqual(
-      workspaceAHabit,
-    );
-    await expect(repository.findHabit('workspace-b', sharedId)).resolves.toEqual(
-      workspaceBHabit,
-    );
+    await expect(
+      repository.findHabit('workspace-a', sharedId),
+    ).resolves.toEqual(workspaceAHabit);
+    await expect(
+      repository.findHabit('workspace-b', sharedId),
+    ).resolves.toEqual(workspaceBHabit);
   });
 
   it('appends completion history idempotently and returns immutable copies', async () => {
