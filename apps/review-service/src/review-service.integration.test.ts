@@ -83,9 +83,7 @@ describeWithPostgres('guided Review service integration', () => {
   }, 30_000);
 
   beforeEach(async () => {
-    await administrativePool.query(
-      'TRUNCATE guided_review.review_completions',
-    );
+    await administrativePool.query('TRUNCATE guided_review.review_completions');
   });
 
   afterEach(async () => {
@@ -142,7 +140,9 @@ describeWithPostgres('guided Review service integration', () => {
       completionBody(sharedIdempotencyKey),
     );
 
-    await expect(runtime.service.list(workspaceA, 50)).resolves.toEqual([first]);
+    await expect(runtime.service.list(workspaceA, 50)).resolves.toEqual([
+      first,
+    ]);
     await expect(runtime.service.list(workspaceB, 50)).resolves.toEqual([
       second,
     ]);
