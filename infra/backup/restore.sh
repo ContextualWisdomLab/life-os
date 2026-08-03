@@ -26,14 +26,22 @@ checksum_path="${BACKUP_ARCHIVE}.sha256"
 require_command psql
 require_command pg_restore
 require_command sha256sum
+require_command awk
 require_command date
+require_command tr
 
-checksum_directory="$(cd -- "$(dirname -- "${checksum_path}")" && pwd -P)"
-checksum_name="$(basename -- "${checksum_path}")"
-(
-  cd -- "${checksum_directory}"
-  sha256sum --check --status "${checksum_name}"
-) || fail 'backup_checksum_mismatch'
+mapfile -t checksum_lines <"${checksum_path}"
+[[ "${#checksum_lines[@]}" == '1' ]] || fail 'backup_checksum_manifest_invalid'
+checksum_line="${checksum_lines[0]}"
+[[ "${checksum_line}" =~ ^([0-9a-f]{64})[[:space:]][[:space:]]([^/]+)$ ]] ||
+  fail 'backup_checksum_manifest_invalid'
+expected_digest="${BASH_REMATCH[1]}"
+manifest_archive_name="${BASH_REMATCH[2]}"
+archive_name="${BACKUP_ARCHIVE##*/}"
+[[ "${manifest_archive_name}" == "${archive_name}" ]] ||
+  fail 'backup_checksum_archive_mismatch'
+actual_digest="$(sha256sum "${BACKUP_ARCHIVE}" | awk '{print $1}')"
+[[ "${actual_digest}" == "${expected_digest}" ]] || fail 'backup_checksum_mismatch'
 
 pg_restore --list "${BACKUP_ARCHIVE}" >/dev/null || fail 'backup_archive_unreadable'
 
