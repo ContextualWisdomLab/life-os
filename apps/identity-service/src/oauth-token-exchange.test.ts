@@ -2,21 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { InMemoryOAuthTransactionRepository, OAuthTransactionService } from './auth-security';
 import { buildTokenExchangeRequest } from './oauth-token-exchange';
 
-function consumeTransaction(provider: 'google' | 'github') {
+const BROWSER_SESSION_ID = 'browser-session-a';
+
+function consumeTransaction(provider: 'google' | 'github', redirectUri: string) {
   const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository());
-  const started = service.begin(provider);
-  return service.consume(provider, started.state);
+  const started = service.begin(provider, {
+    browserSessionId: BROWSER_SESSION_ID,
+    redirectUri,
+  });
+  return service.consume(provider, started.state, BROWSER_SESSION_ID);
 }
 
 describe('OAuth authorization-code exchange requests', () => {
   it('builds a Google token request with PKCE and keeps credentials out of the URL', () => {
-    const transaction = consumeTransaction('google');
+    const redirectUri = 'https://life.example.com/v1/auth/google/callback';
+    const transaction = consumeTransaction('google', redirectUri);
     const request = buildTokenExchangeRequest(
       'google',
       {
         clientId: 'google-client-id',
         clientSecret: 'google-client-secret',
-        redirectUri: 'https://life.example.com/v1/auth/google/callback',
+        redirectUri,
       },
       'google-authorization-code',
       transaction,
@@ -33,19 +39,20 @@ describe('OAuth authorization-code exchange requests', () => {
     expect(body.get('client_id')).toBe('google-client-id');
     expect(body.get('client_secret')).toBe('google-client-secret');
     expect(body.get('code')).toBe('google-authorization-code');
-    expect(body.get('redirect_uri')).toBe('https://life.example.com/v1/auth/google/callback');
+    expect(body.get('redirect_uri')).toBe(redirectUri);
     expect(body.get('code_verifier')).toBe(transaction.codeVerifier);
     expect(request.url).not.toContain('google-client-secret');
   });
 
   it('builds a GitHub token request with JSON response negotiation and PKCE', () => {
-    const transaction = consumeTransaction('github');
+    const redirectUri = 'http://localhost:4000/v1/auth/github/callback';
+    const transaction = consumeTransaction('github', redirectUri);
     const request = buildTokenExchangeRequest(
       'github',
       {
         clientId: 'github-client-id',
         clientSecret: 'github-client-secret',
-        redirectUri: 'http://localhost:4000/v1/auth/github/callback',
+        redirectUri,
       },
       'github-authorization-code',
       transaction,
@@ -57,13 +64,14 @@ describe('OAuth authorization-code exchange requests', () => {
     expect(body.get('client_id')).toBe('github-client-id');
     expect(body.get('client_secret')).toBe('github-client-secret');
     expect(body.get('code')).toBe('github-authorization-code');
-    expect(body.get('redirect_uri')).toBe('http://localhost:4000/v1/auth/github/callback');
+    expect(body.get('redirect_uri')).toBe(redirectUri);
     expect(body.get('code_verifier')).toBe(transaction.codeVerifier);
     expect(body.has('grant_type')).toBe(false);
   });
 
-  it('rejects provider mismatches and missing authorization codes or credentials', () => {
-    const transaction = consumeTransaction('google');
+  it('rejects provider and redirect mismatches', () => {
+    const redirectUri = 'https://life.example.com/callback';
+    const transaction = consumeTransaction('google', redirectUri);
 
     expect(() =>
       buildTokenExchangeRequest(
@@ -71,7 +79,7 @@ describe('OAuth authorization-code exchange requests', () => {
         {
           clientId: 'client-id',
           clientSecret: 'client-secret',
-          redirectUri: 'https://life.example.com/callback',
+          redirectUri,
         },
         'code',
         transaction,
@@ -83,8 +91,26 @@ describe('OAuth authorization-code exchange requests', () => {
         'google',
         {
           clientId: 'client-id',
+          clientSecret: 'client-secret',
+          redirectUri: 'https://other.example.com/callback',
+        },
+        'code',
+        transaction,
+      ),
+    ).toThrowError('OAuth transaction redirect URI mismatch');
+  });
+
+  it('rejects missing authorization codes or credentials', () => {
+    const redirectUri = 'https://life.example.com/callback';
+    const transaction = consumeTransaction('google', redirectUri);
+
+    expect(() =>
+      buildTokenExchangeRequest(
+        'google',
+        {
+          clientId: 'client-id',
           clientSecret: '   ',
-          redirectUri: 'https://life.example.com/callback',
+          redirectUri,
         },
         '   ',
         transaction,

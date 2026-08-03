@@ -2,18 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { InMemoryOAuthTransactionRepository, OAuthTransactionService } from './auth-security';
 import { buildAuthorizationUrl } from './oauth-provider';
 
+const BROWSER_SESSION_ID = 'browser-session-a';
+
+function beginTransaction(provider: 'google' | 'github', redirectUri: string) {
+  return new OAuthTransactionService(new InMemoryOAuthTransactionRepository()).begin(provider, {
+    browserSessionId: BROWSER_SESSION_ID,
+    redirectUri,
+  });
+}
+
 describe('OAuth provider authorization requests', () => {
   it('builds a Google authorization-code request with OIDC, state, nonce, and PKCE', () => {
-    const transaction = new OAuthTransactionService(
-      new InMemoryOAuthTransactionRepository(),
-    ).begin('google');
+    const redirectUri = 'https://life.example.com/v1/auth/google/callback';
+    const transaction = beginTransaction('google', redirectUri);
 
     const authorizationUrl = new URL(
       buildAuthorizationUrl(
         'google',
         {
           clientId: 'google-client-id',
-          redirectUri: 'https://life.example.com/v1/auth/google/callback',
+          redirectUri,
         },
         transaction,
       ),
@@ -24,9 +32,7 @@ describe('OAuth provider authorization requests', () => {
     );
     expect(authorizationUrl.searchParams.get('response_type')).toBe('code');
     expect(authorizationUrl.searchParams.get('client_id')).toBe('google-client-id');
-    expect(authorizationUrl.searchParams.get('redirect_uri')).toBe(
-      'https://life.example.com/v1/auth/google/callback',
-    );
+    expect(authorizationUrl.searchParams.get('redirect_uri')).toBe(redirectUri);
     expect(authorizationUrl.searchParams.get('scope')).toBe('openid email profile');
     expect(authorizationUrl.searchParams.get('state')).toBe(transaction.state);
     expect(authorizationUrl.searchParams.get('nonce')).toBe(transaction.nonce);
@@ -37,16 +43,15 @@ describe('OAuth provider authorization requests', () => {
   });
 
   it('builds a GitHub authorization request with minimum identity scopes and PKCE', () => {
-    const transaction = new OAuthTransactionService(
-      new InMemoryOAuthTransactionRepository(),
-    ).begin('github');
+    const redirectUri = 'http://localhost:4000/v1/auth/github/callback';
+    const transaction = beginTransaction('github', redirectUri);
 
     const authorizationUrl = new URL(
       buildAuthorizationUrl(
         'github',
         {
           clientId: 'github-client-id',
-          redirectUri: 'http://localhost:4000/v1/auth/github/callback',
+          redirectUri,
         },
         transaction,
       ),
@@ -66,18 +71,25 @@ describe('OAuth provider authorization requests', () => {
     expect(authorizationUrl.searchParams.has('client_secret')).toBe(false);
   });
 
-  it('rejects provider mismatches and unsafe redirect URIs', () => {
-    const transaction = new OAuthTransactionService(
-      new InMemoryOAuthTransactionRepository(),
-    ).begin('google');
+  it('rejects provider mismatches, redirect mismatches, and unsafe redirect URIs', () => {
+    const redirectUri = 'https://life.example.com/callback';
+    const transaction = beginTransaction('google', redirectUri);
 
     expect(() =>
       buildAuthorizationUrl(
         'github',
-        { clientId: 'client-id', redirectUri: 'https://life.example.com/callback' },
+        { clientId: 'client-id', redirectUri },
         transaction,
       ),
     ).toThrowError('OAuth transaction provider mismatch');
+
+    expect(() =>
+      buildAuthorizationUrl(
+        'google',
+        { clientId: 'client-id', redirectUri: 'https://other.example.com/callback' },
+        transaction,
+      ),
+    ).toThrowError('OAuth transaction redirect URI mismatch');
 
     expect(() =>
       buildAuthorizationUrl(
@@ -89,14 +101,13 @@ describe('OAuth provider authorization requests', () => {
   });
 
   it('rejects an empty client identifier', () => {
-    const transaction = new OAuthTransactionService(
-      new InMemoryOAuthTransactionRepository(),
-    ).begin('github');
+    const redirectUri = 'https://life.example.com/callback';
+    const transaction = beginTransaction('github', redirectUri);
 
     expect(() =>
       buildAuthorizationUrl(
         'github',
-        { clientId: '   ', redirectUri: 'https://life.example.com/callback' },
+        { clientId: '   ', redirectUri },
         transaction,
       ),
     ).toThrowError('OAuth client ID is required');

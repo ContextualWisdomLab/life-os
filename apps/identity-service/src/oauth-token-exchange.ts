@@ -1,6 +1,9 @@
-import type { ConsumedOAuthTransaction } from './auth-security';
+import {
+  requireIdentityProvider,
+  type ConsumedOAuthTransaction,
+} from './auth-security';
 import type { IdentityProvider } from './identity-domain';
-import { requireSafeRedirectUri } from './oauth-provider';
+import { requireSafeRedirectUri } from './oauth-redirect-uri';
 
 const TOKEN_ENDPOINTS: Record<IdentityProvider, string> = {
   google: 'https://oauth2.googleapis.com/token',
@@ -26,11 +29,12 @@ export interface OAuthTokenExchangeRequest {
 }
 
 export function buildTokenExchangeRequest(
-  provider: IdentityProvider,
+  providerValue: IdentityProvider,
   configuration: { clientId: string; clientSecret: string; redirectUri: string },
   authorizationCode: string,
   transaction: ConsumedOAuthTransaction,
 ): OAuthTokenExchangeRequest {
+  const provider = requireIdentityProvider(providerValue);
   if (transaction.provider !== provider) {
     throw new Error('OAuth transaction provider mismatch');
   }
@@ -41,6 +45,10 @@ export function buildTokenExchangeRequest(
     'OAuth client secret is required',
   );
   const redirectUri = requireSafeRedirectUri(configuration.redirectUri);
+  if (transaction.redirectUri !== redirectUri) {
+    throw new Error('OAuth transaction redirect URI mismatch');
+  }
+
   const code = requireText(authorizationCode, 'OAuth authorization code is required');
   const codeVerifier = requireText(
     transaction.codeVerifier,

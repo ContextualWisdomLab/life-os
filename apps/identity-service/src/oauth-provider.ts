@@ -1,5 +1,9 @@
-import type { OAuthTransactionStart } from './auth-security';
+import {
+  requireIdentityProvider,
+  type OAuthTransactionStart,
+} from './auth-security';
 import type { IdentityProvider } from './identity-domain';
+import { requireSafeRedirectUri } from './oauth-redirect-uri';
 
 const AUTHORIZATION_ENDPOINTS: Record<IdentityProvider, string> = {
   google: 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -19,44 +23,24 @@ function requireClientId(value: string): string {
   return normalized;
 }
 
-export function requireSafeRedirectUri(value: string): string {
-  let redirectUri: URL;
-  try {
-    redirectUri = new URL(value);
-  } catch {
-    throw new Error('OAuth redirect URI is invalid');
-  }
-
-  const isLoopback =
-    redirectUri.hostname === 'localhost' ||
-    redirectUri.hostname === '127.0.0.1' ||
-    redirectUri.hostname === '[::1]';
-  const isAllowedProtocol =
-    redirectUri.protocol === 'https:' || (redirectUri.protocol === 'http:' && isLoopback);
-  if (!isAllowedProtocol) {
-    throw new Error('OAuth redirect URI must use HTTPS except on loopback hosts');
-  }
-  if (redirectUri.username || redirectUri.password || redirectUri.hash) {
-    throw new Error('OAuth redirect URI contains unsupported components');
-  }
-  return redirectUri.toString();
-}
-
 export function buildAuthorizationUrl(
-  provider: IdentityProvider,
+  providerValue: IdentityProvider,
   configuration: { clientId: string; redirectUri: string },
   transaction: OAuthTransactionStart,
 ): string {
+  const provider = requireIdentityProvider(providerValue);
   if (transaction.provider !== provider) {
     throw new Error('OAuth transaction provider mismatch');
   }
 
+  const redirectUri = requireSafeRedirectUri(configuration.redirectUri);
+  if (transaction.redirectUri !== redirectUri) {
+    throw new Error('OAuth transaction redirect URI mismatch');
+  }
+
   const authorizationUrl = new URL(AUTHORIZATION_ENDPOINTS[provider]);
   authorizationUrl.searchParams.set('client_id', requireClientId(configuration.clientId));
-  authorizationUrl.searchParams.set(
-    'redirect_uri',
-    requireSafeRedirectUri(configuration.redirectUri),
-  );
+  authorizationUrl.searchParams.set('redirect_uri', redirectUri);
   authorizationUrl.searchParams.set('scope', IDENTITY_SCOPES[provider]);
   authorizationUrl.searchParams.set('state', transaction.state);
   authorizationUrl.searchParams.set('code_challenge', transaction.codeChallenge);
