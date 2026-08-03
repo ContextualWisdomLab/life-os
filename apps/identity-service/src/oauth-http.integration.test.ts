@@ -121,14 +121,14 @@ async function createHarness(): Promise<TestHarness> {
     { webOrigin: WEB_ORIGIN, now: () => NOW },
   );
 
-  class OAuthHttpIntegrationModule {}
-  Module({
+  @Module({
     controllers: [OAuthHttpController],
     providers: [
       { provide: OAUTH_HTTP_APPLICATION, useValue: httpApplication },
       { provide: OAUTH_CALLBACK_APPLICATION, useValue: callbackApplication },
     ],
-  })(OAuthHttpIntegrationModule);
+  })
+  class OAuthHttpIntegrationModule {}
 
   const app = await NestFactory.create(OAuthHttpIntegrationModule, {
     logger: false,
