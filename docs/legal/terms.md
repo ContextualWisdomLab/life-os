@@ -7,7 +7,7 @@
 
 These terms govern participation in project-operated LifeOS community surfaces and use of upstream reference materials that are not governed exclusively by a separate agreement. They do not replace the Apache License 2.0 for source-code use, reproduction, modification, or distribution.
 
-An independent person or organization that deploys or offers LifeOS is responsible for its own service terms, privacy notice, security controls, support commitments, regulatory obligations, and user relationships. The upstream project does not operate or endorse every deployment.
+An independent LifeOS deployment is operated by the person or organization that deploys or offers it. That operator is responsible for its own service terms, privacy notice, security controls, support commitments, regulatory obligations, and user relationships. The upstream project does not operate or endorse every deployment.
 
 ## 2. Open-source license
 
