@@ -208,29 +208,24 @@ describe('HabitService', () => {
     ).rejects.toThrowError('Habit not found');
   });
 
-  it('keeps equal entity identifiers isolated across workspaces', async () => {
+  it('uses delimiter-safe composite keys for tenant isolation', async () => {
     const repository = new InMemoryHabitRepository();
-    const sharedId = '22222222-2222-4222-8222-222222222222';
-    const workspaceAHabit = dailyHabit({
-      id: sharedId,
-      workspaceId: 'workspace-a',
-      title: 'Workspace A habit',
+    const first = dailyHabit({
+      id: 'c',
+      workspaceId: 'a:b',
+      title: 'First composite key',
     });
-    const workspaceBHabit = dailyHabit({
-      id: sharedId,
-      workspaceId: 'workspace-b',
-      title: 'Workspace B habit',
+    const second = dailyHabit({
+      id: 'b:c',
+      workspaceId: 'a',
+      title: 'Second composite key',
     });
 
-    await repository.saveHabit(workspaceAHabit);
-    await repository.saveHabit(workspaceBHabit);
+    await repository.saveHabit(first);
+    await repository.saveHabit(second);
 
-    await expect(
-      repository.findHabit('workspace-a', sharedId),
-    ).resolves.toEqual(workspaceAHabit);
-    await expect(
-      repository.findHabit('workspace-b', sharedId),
-    ).resolves.toEqual(workspaceBHabit);
+    await expect(repository.findHabit('a:b', 'c')).resolves.toEqual(first);
+    await expect(repository.findHabit('a', 'b:c')).resolves.toEqual(second);
   });
 
   it('appends completion history idempotently and returns immutable copies', async () => {
@@ -264,6 +259,31 @@ describe('HabitService', () => {
     );
     expect(history).toHaveLength(1);
     expect(history[0]?.completedAt).toBe('2026-08-04T08:00:00.000Z');
+  });
+
+  it('rejects an idempotency key replayed with a different payload', async () => {
+    const service = new HabitService(new InMemoryHabitRepository());
+    const habit = await service.createHabit('workspace-a', {
+      title: 'Detect conflicting replay',
+      timezone: 'UTC',
+      startsOn: '2026-08-04',
+      recurrence: { kind: 'daily', interval: 1 },
+    });
+
+    await service.completeHabit('workspace-a', habit.id, {
+      scheduledLocalDate: '2026-08-04',
+      completedAt: '2026-08-04T08:00:00.000Z',
+      idempotencyKey: FIRST_IDEMPOTENCY_KEY,
+    });
+    await expect(
+      service.completeHabit('workspace-a', habit.id, {
+        scheduledLocalDate: '2026-08-04',
+        completedAt: '2026-08-04T09:00:00.000Z',
+        idempotencyKey: FIRST_IDEMPOTENCY_KEY,
+      }),
+    ).rejects.toThrowError(
+      'Idempotency key reused with a different completion payload',
+    );
   });
 
   it('rejects loose or malformed completion timestamps', async () => {
