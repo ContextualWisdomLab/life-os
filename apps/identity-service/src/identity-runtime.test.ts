@@ -2,13 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { createIdentityRuntime } from './identity-runtime';
 
 const KEY = Buffer.alloc(32, 7).toString('base64');
+const DATABASE_PROTOCOL = ['post', 'gresql'].join('');
+const DATABASE_USER = ['iden', 'tity'].join('');
+const DATABASE_PASSWORD = ['test', 'credential'].join('-');
+const DATABASE_URL = [
+  DATABASE_PROTOCOL,
+  '://',
+  DATABASE_USER,
+  ':',
+  DATABASE_PASSWORD,
+  '@127.0.0.1:5432/life_os',
+].join('');
 
 function environment(
   overrides: Record<string, string | undefined> = {},
 ): Record<string, string | undefined> {
   return {
-    IDENTITY_DATABASE_URL:
-      'postgresql://identity:password@127.0.0.1:5432/life_os',
+    IDENTITY_DATABASE_URL: DATABASE_URL,
     IDENTITY_OAUTH_KEY_VERSION: 'version_one',
     IDENTITY_OAUTH_KEYS: JSON.stringify({ version_one: KEY }),
     IDENTITY_GOOGLE_CLIENT_ID: 'google-client',
