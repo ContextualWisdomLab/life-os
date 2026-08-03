@@ -1,0 +1,97 @@
+name: AI Audit Hardening Once
+
+on:
+  push:
+    branches: [feat/ai-proposal-audit-repository]
+    paths: [.github/workflows/ai-audit-hardening-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/ai-proposal-audit-repository
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Harden runtime identifier validation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source = Path('apps/ai-service/src/postgres-proposal-audit-repository.ts')
+          text = source.read_text()
+          old = '''function requireUuidV4(value: string): string {
+            const normalized = value.trim().toLowerCase();
+            if (!UUID_V4_PATTERN.test(normalized)) {
+              return invalidPersistence();
+            }
+            return normalized;
+          }
+          '''
+          new = '''function requireUuidV4(value: unknown): string {
+            if (typeof value !== 'string') {
+              return invalidPersistence();
+            }
+            const normalized = value.trim().toLowerCase();
+            if (!UUID_V4_PATTERN.test(normalized)) {
+              return invalidPersistence();
+            }
+            return normalized;
+          }
+          '''
+          if old not in text:
+            raise SystemExit('identifier validator target not found')
+          source.write_text(text.replace(old, new, 1))
+
+          test = Path('apps/ai-service/src/postgres-proposal-audit-repository.test.ts')
+          text = test.read_text()
+          marker = "  it('uses tenant predicates, verifies digests, and returns stable ordering', async () => {"
+          block = '''  it('fails closed before SQL when runtime identifiers are non-string', async () => {
+            const client = new RecordingSqlClient();
+            const repository = new PostgresProposalAuditRepository(client);
+
+            await expect(
+              repository.listProposals(42 as unknown as string),
+            ).rejects.toBeInstanceOf(ProposalAuditPersistenceError);
+            await expect(
+              repository.findProposal(WORKSPACE_ID, null as unknown as string),
+            ).rejects.toBeInstanceOf(ProposalAuditPersistenceError);
+            expect(client.calls).toHaveLength(0);
+          });
+
+'''
+          if marker not in text:
+            raise SystemExit('repository test insertion target not found')
+          test.write_text(text.replace(marker, block + marker, 1))
+
+      - name: Format and test audit repository
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/postgres-proposal-audit-repository.ts \
+            apps/ai-service/src/postgres-proposal-audit-repository.test.ts
+          pnpm --filter @life-os/ai-service test -- postgres-proposal-audit-repository.test.ts
+
+      - name: Remove one-time workflow and commit
+        run: |
+          rm .github/workflows/ai-audit-hardening-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/ai-service/src .github/workflows/ai-audit-hardening-once.yml
+          git commit -m "fix(ai): fail closed on malformed audit identifiers"
+          git push origin HEAD:feat/ai-proposal-audit-repository
