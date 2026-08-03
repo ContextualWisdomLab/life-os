@@ -76,10 +76,10 @@ function parseScopes(value: unknown): string[] {
 }
 
 function parsePositiveSeconds(value: unknown): number {
-  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
     return failProviderResponse();
   }
-  return value as number;
+  return value;
 }
 
 export function parseOAuthTokenResponse(
@@ -93,6 +93,7 @@ export function parseOAuthTokenResponse(
     response.status >= 300 ||
     typeof response.body !== 'string' ||
     Buffer.byteLength(response.body, 'utf8') > MAX_PROVIDER_RESPONSE_BYTES ||
+    typeof response.contentType !== 'string' ||
     response.contentType.split(';', 1)[0]?.trim().toLowerCase() !== 'application/json'
   ) {
     return failProviderResponse();
@@ -176,11 +177,18 @@ export function validateVerifiedGoogleIdentity(
   const clientId = requireString(expected.clientId, INVALID_GOOGLE_ID_TOKEN);
   const nonce = requireString(expected.nonce, INVALID_GOOGLE_ID_TOKEN);
   const clockSkewSeconds = expected.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS;
+  const now = expected.now ?? new Date();
   if (
+    !token ||
+    typeof token !== 'object' ||
     token.signatureVerified !== true ||
+    !token.claims ||
+    typeof token.claims !== 'object' ||
+    Array.isArray(token.claims) ||
     !Number.isSafeInteger(clockSkewSeconds) ||
     clockSkewSeconds < 0 ||
-    clockSkewSeconds > DEFAULT_CLOCK_SKEW_SECONDS
+    clockSkewSeconds > DEFAULT_CLOCK_SKEW_SECONDS ||
+    !Number.isFinite(now.getTime())
   ) {
     throw new Error(INVALID_GOOGLE_ID_TOKEN);
   }
@@ -192,7 +200,7 @@ export function validateVerifiedGoogleIdentity(
   const tokenNonce = readStringClaim(claims, 'nonce');
   const expiration = claims.exp;
   const issuedAt = claims.iat;
-  const nowSeconds = Math.floor((expected.now ?? new Date()).getTime() / 1000);
+  const nowSeconds = Math.floor(now.getTime() / 1000);
 
   if (
     (issuer !== 'https://accounts.google.com' && issuer !== 'accounts.google.com') ||
@@ -203,17 +211,12 @@ export function validateVerifiedGoogleIdentity(
     typeof expiration !== 'number' ||
     !Number.isSafeInteger(expiration) ||
     expiration <= nowSeconds - clockSkewSeconds ||
+    typeof issuedAt !== 'number' ||
+    !Number.isSafeInteger(issuedAt) ||
+    issuedAt > nowSeconds + clockSkewSeconds ||
+    issuedAt >= expiration ||
     !tokenNonce ||
     !constantTimeEqual(tokenNonce, nonce)
-  ) {
-    throw new Error(INVALID_GOOGLE_ID_TOKEN);
-  }
-
-  if (
-    issuedAt !== undefined &&
-    (typeof issuedAt !== 'number' ||
-      !Number.isSafeInteger(issuedAt) ||
-      issuedAt > nowSeconds + clockSkewSeconds)
   ) {
     throw new Error(INVALID_GOOGLE_ID_TOKEN);
   }
