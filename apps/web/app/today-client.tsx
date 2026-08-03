@@ -6,10 +6,8 @@ import {
   clearTodaySchedule,
   createEmptyTodayDraft,
   formatMinuteOfDay,
-  parseStoredTodayDraft,
   parseTimeInput,
   scheduleTodayAction,
-  serializeTodayDraft,
   TodayPriorityLimitError,
   TodayScheduleConflictError,
   type TodayAction,
@@ -17,6 +15,7 @@ import {
   toggleTodayCompletion,
   toggleTodayPriority,
 } from './today-state';
+import { parseStoredTodayDraft, serializeTodayDraft } from './today-storage';
 
 const STORAGE_KEY = 'life-os.today-draft.v1';
 const DURATIONS = [15, 30, 45, 60, 90, 120] as const;
@@ -30,7 +29,9 @@ function scheduleLabel(action: TodayAction): string {
   if (action.startMinute === null || action.durationMinutes === null) {
     return 'Not scheduled';
   }
-  return `${formatMinuteOfDay(action.startMinute)}–${formatMinuteOfDay(action.startMinute + action.durationMinutes)}`;
+  const endMinute = action.startMinute + action.durationMinutes;
+  const end = endMinute === 24 * 60 ? '24:00' : formatMinuteOfDay(endMinute);
+  return `${formatMinuteOfDay(action.startMinute)}–${end}`;
 }
 
 export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
