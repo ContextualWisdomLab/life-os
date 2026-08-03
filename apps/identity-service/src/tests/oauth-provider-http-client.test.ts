@@ -173,14 +173,15 @@ describe('BoundedOAuthProviderHttpClient', () => {
   });
 
   it('rejects redirect status responses generically', async () => {
-    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
-      new Response('', {
-        status: 302,
-        headers: {
-          location: 'https://attacker.example.test',
-          'content-type': 'application/json',
-        },
-      }),
+    const fetchFunction: OAuthProviderFetch = vi.fn(
+      async () =>
+        new Response('', {
+          status: 302,
+          headers: {
+            location: 'https://attacker.example.test',
+            'content-type': 'application/json',
+          },
+        }),
     );
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
@@ -190,11 +191,12 @@ describe('BoundedOAuthProviderHttpClient', () => {
   });
 
   it('rejects non-JSON provider responses generically', async () => {
-    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
-      new Response('<html>upstream failure</html>', {
-        status: 502,
-        headers: { 'content-type': 'text/html' },
-      }),
+    const fetchFunction: OAuthProviderFetch = vi.fn(
+      async () =>
+        new Response('<html>upstream failure</html>', {
+          status: 502,
+          headers: { 'content-type': 'text/html' },
+        }),
     );
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
@@ -211,11 +213,12 @@ describe('BoundedOAuthProviderHttpClient', () => {
       },
       cancel,
     });
-    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
-      new Response(responseBody, {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetchFunction: OAuthProviderFetch = vi.fn(
+      async () =>
+        new Response(responseBody, {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     );
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
@@ -285,7 +288,9 @@ describe('BoundedOAuthProviderHttpClient', () => {
   });
 
   it('accepts timeout boundaries and rejects unsafe timeout configuration', () => {
-    const fetchFunction: OAuthProviderFetch = vi.fn(async () => jsonResponse({}));
+    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
+      jsonResponse({}),
+    );
 
     expect(
       () =>
@@ -303,8 +308,7 @@ describe('BoundedOAuthProviderHttpClient', () => {
     ).not.toThrow();
     for (const timeoutMs of [99, 100.5, 10_001]) {
       expect(
-        () =>
-          new BoundedOAuthProviderHttpClient({ fetchFunction, timeoutMs }),
+        () => new BoundedOAuthProviderHttpClient({ fetchFunction, timeoutMs }),
       ).toThrow('OAuth provider request failed');
     }
   });
