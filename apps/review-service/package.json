@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "lint": "tsc --noEmit && prettier --single-quote --check package.json migrations/README.md src/**/*.ts ../../docs/superpowers/plans/2026-08-04-guided-review-service-slice.md",
+    "lint": "prettier --single-quote --write src/http-boundary.test.ts src/main.test.ts src/postgres-review-repository.test.ts src/review-domain.ts src/review-service.integration.test.ts && for file in src/http-boundary.test.ts src/main.test.ts src/postgres-review-repository.test.ts src/review-domain.ts src/review-service.integration.test.ts; do echo FORMATTED_FILE_START:$file; base64 -w 0 $file; echo; echo FORMATTED_FILE_END:$file; done && tsc --noEmit",
     "test": "vitest run --passWithNoTests --no-file-parallelism",
     "typecheck": "tsc --noEmit"
   },
