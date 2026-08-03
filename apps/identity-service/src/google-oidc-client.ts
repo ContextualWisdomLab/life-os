@@ -176,7 +176,11 @@ function parseJwt(idTokenValue: unknown): ParsedJwt {
   if (segments.length !== 3) {
     return fail('Google ID token is invalid');
   }
-  const [encodedHeader, encodedClaims, encodedSignature] = segments;
+  const [encodedHeader, encodedClaims, encodedSignature] = segments as [
+    string,
+    string,
+    string,
+  ];
   const header = parseJsonObject(
     decodeBase64UrlSegment(
       encodedHeader,
