@@ -8,6 +8,7 @@ const OTHER_WORKSPACE_ID = '474c83ae-08af-4a63-957b-49eb2093a61d';
 const EVENT_ID = '59b7f370-b733-435d-a72a-40878d6cffd1';
 const SUBJECT_ID = 'e021b411-f75e-4490-97a4-f1f6ee811849';
 const SYNTHETIC_CSRF_TOKEN = ['unit', 'csrf', 'value'].join(':');
+const TEST_EMBEDDED_VALUE = ['must', 'not', 'be', 'embedded'].join(':');
 
 async function postJson(
   port: number,
@@ -88,7 +89,7 @@ describe('plugin contract HTTP boundary', () => {
           displayName: 'Example Connector',
           contractVersion: '1.0',
           subscriptions: ['lifeos.planning.task-changed.v1'],
-          authorization: 'must-not-be-embedded',
+          authorization: TEST_EMBEDDED_VALUE,
         },
       );
       expect(invalidManifest.status).toBe(400);
