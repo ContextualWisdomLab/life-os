@@ -2,7 +2,7 @@
 
 ## Goal
 
-Persist recurring habit definitions and append-only completion history through a parameterized, tenant-safe PostgreSQL adapter without yet coupling the Habit service to a runtime pool or HTTP framework.
+Persist recurring habit definitions and append-only completion history through a parameterized, tenant-safe PostgreSQL adapter without yet coupling the Habit service to a production runtime pool or HTTP framework.
 
 ## Changes
 
@@ -15,14 +15,14 @@ Persist recurring habit definitions and append-only completion history through a
 7. Reject an idempotency-key replay when its scheduled date or completion timestamp differs from the original persisted payload.
 8. Preserve unrelated database errors rather than misclassifying them as idempotent retries.
 9. Cover SQL binding, recurrence encoding and decoding, malformed rows, cross-tenant data, missing and duplicate lookups, new completions, exact retries, conflicting retries, unrelated database errors, and completion ordering.
+10. Execute the Habit migration against the CI PostgreSQL service and prove restart durability, tenant isolation, concurrent duplicate serialization, conflicting replay rejection, and database-enforced append-only history.
 
 ## Deferred slices
 
-- pooled PostgreSQL integration tests that execute the Habit migration and exercise real unique-constraint races;
-- validated pool configuration and NestJS shutdown lifecycle wiring;
+- validated production pool configuration and NestJS shutdown lifecycle wiring;
 - versioned HTTP endpoints and credential-free RFC 9457-compatible persistence errors;
 - pause, archive, streak, reminder, calendar, and controlled-erasure workflows.
 
 ## Validation
 
-Formatting, lint, type checking, unit tests, build, AppGuardrail, Semgrep, Security Scan, Commercial Readiness, CodeRabbit, and human review must pass on the exact pull-request head.
+Formatting, lint, type checking, unit and pooled PostgreSQL integration tests, build, AppGuardrail, Semgrep, Security Scan, Commercial Readiness, CodeRabbit, and human review must pass on the exact pull-request head.
