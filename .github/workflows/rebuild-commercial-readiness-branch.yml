@@ -1,0 +1,76 @@
+name: Rebuild commercial readiness branch
+
+on:
+  push:
+    branches:
+      - "automation/commercial-readiness-rebase-20260803"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebuild-commercial-readiness-branch
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout temporary control branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Rebuild pull request branch on current main
+        env:
+          SOURCE_BRANCH: feat/commercial-readiness-loop
+          SOURCE_SHA: 62749b99782d3c3140c253907cec450476644641
+          TARGET_BRANCH: feat/commercial-readiness-loop
+          TEMP_BRANCH: automation/commercial-readiness-rebase-20260803
+        run: |
+          set -euo pipefail
+          git config user.name "LifeOS maintenance automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/${SOURCE_BRANCH}:refs/remotes/origin/${SOURCE_BRANCH}"
+
+          actual_source_sha="$(git rev-parse "refs/remotes/origin/${SOURCE_BRANCH}")"
+          if [ "$actual_source_sha" != "$SOURCE_SHA" ]; then
+            echo "::error::Source branch moved from the reviewed SHA."
+            exit 1
+          fi
+
+          git checkout -B rebuilt-commercial-readiness refs/remotes/origin/main
+          git checkout "refs/remotes/origin/${SOURCE_BRANCH}" -- \
+            .github/workflows/commercial-readiness.yml \
+            .gitignore \
+            docs/superpowers/plans/2026-08-03-commercial-readiness-loop.md \
+            docs/superpowers/specs/2026-08-03-commercial-readiness-loop-design.md \
+            package.json \
+            packages/commercial-readiness/package.json \
+            packages/commercial-readiness/src/audit.mjs \
+            packages/commercial-readiness/src/audit.test.mjs \
+            packages/commercial-readiness/src/cli.mjs \
+            packages/commercial-readiness/src/cli.test.mjs \
+            packages/commercial-readiness/src/github-client.mjs \
+            packages/commercial-readiness/src/github-client.test.mjs \
+            packages/commercial-readiness/src/pr-gate.mjs \
+            packages/commercial-readiness/src/pr-gate.test.mjs \
+            packages/commercial-readiness/src/render.mjs \
+            packages/commercial-readiness/src/render.test.mjs \
+            packages/commercial-readiness/src/schema.mjs \
+            packages/commercial-readiness/src/schema.test.mjs \
+            packages/commercial-readiness/src/workflow-contract.test.mjs \
+            product/capabilities.json \
+            product/commercial-readiness-policy.json
+
+          git add --all
+          git commit -m "feat: add hourly commercial readiness control loop"
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${SOURCE_SHA}" \
+            origin HEAD:"refs/heads/${TARGET_BRANCH}"
+          git push origin --delete "$TEMP_BRANCH"
