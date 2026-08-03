@@ -24,10 +24,10 @@ function sha256Hex(value: string): string {
 }
 
 describe('OAuthTransactionService', () => {
-  it('creates an opaque state and an S256 PKCE challenge without exposing the verifier', () => {
+  it('creates an opaque state and an S256 PKCE challenge without exposing the verifier', async () => {
     const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository());
 
-    const transaction = service.begin('github', {
+    const transaction = await service.begin('github', {
       browserSessionId: BROWSER_SESSION_ID,
       redirectUri: GITHUB_REDIRECT_URI,
     });
@@ -39,67 +39,67 @@ describe('OAuthTransactionService', () => {
     expect(transaction.redirectUri).toBe(GITHUB_REDIRECT_URI);
     expect(transaction).not.toHaveProperty('codeVerifier');
 
-    const consumed = service.consume('github', transaction.state, BROWSER_SESSION_ID);
+    const consumed = await service.consume('github', transaction.state, BROWSER_SESSION_ID);
     expect(consumed.codeVerifier).toMatch(/^[A-Za-z0-9_-]{86}$/);
     expect(sha256Base64Url(consumed.codeVerifier)).toBe(transaction.codeChallenge);
     expect(consumed.redirectUri).toBe(GITHUB_REDIRECT_URI);
   });
 
-  it('consumes an OAuth state exactly once', () => {
+  it('consumes an OAuth state exactly once', async () => {
     const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository());
-    const transaction = service.begin('google', {
+    const transaction = await service.begin('google', {
       browserSessionId: BROWSER_SESSION_ID,
       redirectUri: GOOGLE_REDIRECT_URI,
     });
 
-    service.consume('google', transaction.state, BROWSER_SESSION_ID);
+    await service.consume('google', transaction.state, BROWSER_SESSION_ID);
 
-    expect(() =>
+    await expect(
       service.consume('google', transaction.state, BROWSER_SESSION_ID),
-    ).toThrowError('OAuth transaction is invalid or no longer active');
+    ).rejects.toThrowError('OAuth transaction is invalid or no longer active');
   });
 
-  it('rejects expired, provider-mismatched, or browser-mismatched OAuth states', () => {
+  it('rejects expired, provider-mismatched, or browser-mismatched OAuth states', async () => {
     let now = new Date('2026-08-03T00:00:00.000Z');
     const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository(), {
       now: () => now,
       ttlMs: 60_000,
     });
-    const githubTransaction = service.begin('github', {
+    const githubTransaction = await service.begin('github', {
       browserSessionId: BROWSER_SESSION_ID,
       redirectUri: GITHUB_REDIRECT_URI,
     });
 
-    expect(() =>
+    await expect(
       service.consume('google', githubTransaction.state, BROWSER_SESSION_ID),
-    ).toThrowError('OAuth transaction is invalid or no longer active');
+    ).rejects.toThrowError('OAuth transaction is invalid or no longer active');
 
-    expect(() =>
+    await expect(
       service.consume('github', githubTransaction.state, 'browser-session-b'),
-    ).toThrowError('OAuth transaction is invalid or no longer active');
+    ).rejects.toThrowError('OAuth transaction is invalid or no longer active');
 
     now = new Date('2026-08-03T00:02:00.000Z');
-    expect(() =>
+    await expect(
       service.consume('github', githubTransaction.state, BROWSER_SESSION_ID),
-    ).toThrowError('OAuth transaction is invalid or no longer active');
+    ).rejects.toThrowError('OAuth transaction is invalid or no longer active');
   });
 
-  it('rejects unsupported providers and unsafe redirect URIs at runtime', () => {
+  it('rejects unsupported providers and unsafe redirect URIs at runtime', async () => {
     const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository());
 
-    expect(() =>
+    await expect(
       service.begin('gitlab' as IdentityProvider, {
         browserSessionId: BROWSER_SESSION_ID,
         redirectUri: 'https://life.example.com/v1/auth/gitlab/callback',
       }),
-    ).toThrowError('Unsupported identity provider');
+    ).rejects.toThrowError('Unsupported identity provider');
 
-    expect(() =>
+    await expect(
       service.begin('github', {
         browserSessionId: BROWSER_SESSION_ID,
         redirectUri: 'http://life.example.com/v1/auth/github/callback',
       }),
-    ).toThrowError('OAuth redirect URI must use HTTPS except on loopback hosts');
+    ).rejects.toThrowError('OAuth redirect URI must use HTTPS except on loopback hosts');
   });
 
   it('rejects invalid transaction TTL values', () => {
@@ -113,11 +113,11 @@ describe('OAuthTransactionService', () => {
 });
 
 describe('SessionService', () => {
-  it('issues an opaque token while persisting only its hash', () => {
+  it('issues an opaque token while persisting only its hash', async () => {
     const repository = new InMemorySessionRepository();
     const service = new SessionService(repository);
 
-    const issued = service.create(USER_ID, WORKSPACE_ID);
+    const issued = await service.create(USER_ID, WORKSPACE_ID);
 
     expect(issued.session.id).toMatch(UUID_V4_PATTERN);
     expect(issued.session.workspaceId).toBe(WORKSPACE_ID);
@@ -129,54 +129,60 @@ describe('SessionService', () => {
     expect(repository.findByTokenHash(issued.token)).toBeUndefined();
   });
 
-  it('authenticates active sessions and rejects replay after revocation', () => {
+  it('authenticates active sessions and rejects replay after revocation', async () => {
     const service = new SessionService(new InMemorySessionRepository());
-    const issued = service.create(USER_ID, WORKSPACE_ID);
+    const issued = await service.create(USER_ID, WORKSPACE_ID);
 
-    expect(service.authenticate(issued.token)).toMatchObject({
+    await expect(service.authenticate(issued.token)).resolves.toMatchObject({
       id: issued.session.id,
       userId: USER_ID,
       workspaceId: WORKSPACE_ID,
     });
 
-    service.revoke(issued.token);
-    expect(() => service.authenticate(issued.token)).toThrowError('Session is invalid or expired');
-    expect(service.revoke(issued.token)).toBeUndefined();
-    expect(service.revoke('unknown-opaque-session-token')).toBeUndefined();
+    await service.revoke(issued.token);
+    await expect(service.authenticate(issued.token)).rejects.toThrowError(
+      'Session is invalid or expired',
+    );
+    await expect(service.revoke(issued.token)).resolves.toBeUndefined();
+    await expect(service.revoke('unknown-opaque-session-token')).resolves.toBeUndefined();
   });
 
-  it('rotates a session and invalidates the previous token', () => {
+  it('rotates a session and invalidates the previous token', async () => {
     const service = new SessionService(new InMemorySessionRepository());
-    const issued = service.create(USER_ID, WORKSPACE_ID);
+    const issued = await service.create(USER_ID, WORKSPACE_ID);
 
-    const rotated = service.rotate(issued.token);
+    const rotated = await service.rotate(issued.token);
 
     expect(rotated.token).not.toBe(issued.token);
     expect(rotated.session.rotatedFromId).toBe(issued.session.id);
     expect(rotated.session.userId).toBe(USER_ID);
     expect(rotated.session.workspaceId).toBe(WORKSPACE_ID);
-    expect(() => service.authenticate(issued.token)).toThrowError('Session is invalid or expired');
-    expect(service.authenticate(rotated.token)).toEqual(rotated.session);
+    await expect(service.authenticate(issued.token)).rejects.toThrowError(
+      'Session is invalid or expired',
+    );
+    await expect(service.authenticate(rotated.token)).resolves.toEqual(rotated.session);
   });
 
-  it('rejects expired sessions and invalid internal IDs', () => {
+  it('rejects expired sessions and invalid internal IDs', async () => {
     let now = new Date('2026-08-03T00:00:00.000Z');
     const service = new SessionService(new InMemorySessionRepository(), {
       now: () => now,
       ttlMs: 60_000,
     });
 
-    expect(() => service.create('123456', WORKSPACE_ID)).toThrowError(
+    await expect(service.create('123456', WORKSPACE_ID)).rejects.toThrowError(
       'User ID must be an opaque UUIDv4',
     );
-    expect(() => service.create(USER_ID, '123456')).toThrowError(
+    await expect(service.create(USER_ID, '123456')).rejects.toThrowError(
       'Workspace ID must be an opaque UUIDv4',
     );
 
-    const issued = service.create(USER_ID, WORKSPACE_ID);
+    const issued = await service.create(USER_ID, WORKSPACE_ID);
     now = new Date('2026-08-03T00:02:00.000Z');
 
-    expect(() => service.authenticate(issued.token)).toThrowError('Session is invalid or expired');
+    await expect(service.authenticate(issued.token)).rejects.toThrowError(
+      'Session is invalid or expired',
+    );
   });
 
   it('rejects invalid session TTL values', () => {

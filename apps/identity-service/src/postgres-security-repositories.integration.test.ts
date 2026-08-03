@@ -1,0 +1,203 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { readdir, readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { Client } from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { OAuthTransactionService, SessionService, type SessionRecord } from './auth-security';
+import {
+  PostgresOAuthTransactionRepository,
+  PostgresSessionRepository,
+  type SqlClient,
+  type SqlQueryResult,
+} from './postgres-security-repositories';
+import { AesGcmSecretBox } from './secret-box';
+
+const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
+const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
+const SECRET_KEY = Buffer.from('44'.repeat(32), 'hex');
+
+class NodePostgresSqlClient implements SqlClient {
+  constructor(private readonly client: Client) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<SqlQueryResult<Row>> {
+    const result = await this.client.query(text, [...values]);
+    return {
+      rows: result.rows as Row[],
+      rowCount: result.rowCount,
+    };
+  }
+}
+
+function sha256Hex(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function createSecretBox(): AesGcmSecretBox {
+  return new AesGcmSecretBox({
+    currentKeyVersion: 'v1',
+    keys: { v1: SECRET_KEY },
+  });
+}
+
+describeWithDatabase('PostgreSQL identity security repositories', () => {
+  let client: Client;
+  let sqlClient: SqlClient;
+
+  beforeAll(async () => {
+    if (!DATABASE_URL) {
+      throw new Error('IDENTITY_DATABASE_URL is required for PostgreSQL integration tests');
+    }
+
+    client = new Client({ connectionString: DATABASE_URL });
+    await client.connect();
+    await client.query('DROP SCHEMA IF EXISTS identity CASCADE');
+
+    const migrationDirectory = resolve(process.cwd(), 'migrations');
+    const migrationFiles = (await readdir(migrationDirectory))
+      .filter((file) => file.endsWith('.sql'))
+      .sort();
+    for (const migrationFile of migrationFiles) {
+      const migration = await readFile(resolve(migrationDirectory, migrationFile), 'utf8');
+      await client.query(migration);
+    }
+
+    sqlClient = new NodePostgresSqlClient(client);
+  }, 30_000);
+
+  afterAll(async () => {
+    if (client) {
+      await client.query('DROP SCHEMA IF EXISTS identity CASCADE');
+      await client.end();
+    }
+  });
+
+  it('persists encrypted OAuth transactions and consumes state exactly once', async () => {
+    const now = new Date('2026-08-03T01:30:00.000Z');
+    const repository = new PostgresOAuthTransactionRepository(sqlClient, createSecretBox());
+    const service = new OAuthTransactionService(repository, {
+      now: () => now,
+      ttlMs: 10 * 60 * 1000,
+    });
+    const browserSessionId = `browser-${randomUUID()}`;
+
+    const started = await service.begin('google', {
+      browserSessionId,
+      redirectUri: 'https://life.example.com/v1/auth/google/callback',
+    });
+
+    const stored = await client.query<{
+      state_hash: string;
+      browser_session_hash: string;
+      code_verifier_ciphertext: Buffer;
+      code_verifier_key_version: string;
+      nonce_ciphertext: Buffer;
+      nonce_key_version: string;
+    }>(
+      `SELECT
+         state_hash,
+         browser_session_hash,
+         code_verifier_ciphertext,
+         code_verifier_key_version,
+         nonce_ciphertext,
+         nonce_key_version
+       FROM identity.oauth_transactions
+       WHERE id = $1`,
+      [started.id],
+    );
+    const row = stored.rows[0];
+    expect(row).toBeDefined();
+    if (!row) {
+      throw new Error('Expected persisted OAuth transaction');
+    }
+
+    expect(row.state_hash).toBe(sha256Hex(started.state));
+    expect(row.browser_session_hash).toBe(sha256Hex(browserSessionId));
+    expect(row.code_verifier_ciphertext).toBeInstanceOf(Buffer);
+    expect(row.code_verifier_ciphertext.length).toBeGreaterThanOrEqual(28);
+    expect(row.code_verifier_key_version).toBe('v1');
+    expect(row.nonce_ciphertext).toBeInstanceOf(Buffer);
+    expect(row.nonce_key_version).toBe('v1');
+
+    const consumed = await service.consume('google', started.state, browserSessionId);
+    expect(createHash('sha256').update(consumed.codeVerifier).digest('base64url')).toBe(
+      started.codeChallenge,
+    );
+    expect(consumed.nonce).toBe(started.nonce);
+    await expect(service.consume('google', started.state, browserSessionId)).rejects.toThrowError(
+      'OAuth transaction is invalid or no longer active',
+    );
+  });
+
+  it('enforces workspace ownership and rotates persisted sessions atomically at revocation', async () => {
+    const userId = randomUUID();
+    const otherUserId = randomUUID();
+    const workspaceId = randomUUID();
+    await client.query(
+      `INSERT INTO identity.users (id, display_name)
+       VALUES ($1, $2), ($3, $4)`,
+      [userId, 'Integration User', otherUserId, 'Other User'],
+    );
+    await client.query(
+      `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
+       VALUES ($1, $2, $3, 'personal')`,
+      [workspaceId, userId, 'Integration workspace'],
+    );
+
+    const repository = new PostgresSessionRepository(sqlClient);
+    const service = new SessionService(repository, {
+      now: () => new Date('2026-08-03T01:30:00.000Z'),
+      ttlMs: 60 * 60 * 1000,
+    });
+    const issued = await service.create(userId, workspaceId);
+
+    const stored = await client.query<{
+      token_hash: string;
+      workspace_id: string;
+      revoked_at: Date | null;
+    }>(
+      `SELECT token_hash, workspace_id, revoked_at
+       FROM identity.sessions
+       WHERE id = $1`,
+      [issued.session.id],
+    );
+    expect(stored.rows[0]).toMatchObject({
+      token_hash: sha256Hex(issued.token),
+      workspace_id: workspaceId,
+      revoked_at: null,
+    });
+    expect(stored.rows[0]?.token_hash).not.toBe(issued.token);
+    await expect(service.authenticate(issued.token)).resolves.toEqual(issued.session);
+
+    const rotated = await service.rotate(issued.token);
+    await expect(service.authenticate(issued.token)).rejects.toThrowError(
+      'Session is invalid or expired',
+    );
+    await expect(service.authenticate(rotated.token)).resolves.toEqual(rotated.session);
+
+    const oldSession = await client.query<{ revoked_at: Date | null }>(
+      'SELECT revoked_at FROM identity.sessions WHERE id = $1',
+      [issued.session.id],
+    );
+    const replacement = await client.query<{ rotated_from_id: string | null }>(
+      'SELECT rotated_from_id FROM identity.sessions WHERE id = $1',
+      [rotated.session.id],
+    );
+    expect(oldSession.rows[0]?.revoked_at).toBeInstanceOf(Date);
+    expect(replacement.rows[0]?.rotated_from_id).toBe(issued.session.id);
+
+    const crossTenantSession: SessionRecord = {
+      id: randomUUID(),
+      userId: otherUserId,
+      workspaceId,
+      tokenHash: 'a'.repeat(64),
+      createdAt: '2026-08-03T01:30:00.000Z',
+      expiresAt: '2026-08-03T02:30:00.000Z',
+      revokedAt: null,
+      rotatedFromId: null,
+    };
+    await expect(repository.save(crossTenantSession)).rejects.toThrow();
+  });
+});

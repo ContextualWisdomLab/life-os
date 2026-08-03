@@ -12,9 +12,9 @@ function beginTransaction(provider: 'google' | 'github', redirectUri: string) {
 }
 
 describe('OAuth provider authorization requests', () => {
-  it('builds a Google authorization-code request with OIDC, state, nonce, and PKCE', () => {
+  it('builds a Google authorization-code request with OIDC, state, nonce, and PKCE', async () => {
     const redirectUri = 'https://life.example.com/v1/auth/google/callback';
-    const transaction = beginTransaction('google', redirectUri);
+    const transaction = await beginTransaction('google', redirectUri);
 
     const authorizationUrl = new URL(
       buildAuthorizationUrl(
@@ -42,9 +42,9 @@ describe('OAuth provider authorization requests', () => {
     expect(authorizationUrl.searchParams.get('code_challenge_method')).toBe('S256');
   });
 
-  it('builds a GitHub authorization request with minimum identity scopes and PKCE', () => {
+  it('builds a GitHub authorization request with minimum identity scopes and PKCE', async () => {
     const redirectUri = 'http://localhost:4000/v1/auth/github/callback';
-    const transaction = beginTransaction('github', redirectUri);
+    const transaction = await beginTransaction('github', redirectUri);
 
     const authorizationUrl = new URL(
       buildAuthorizationUrl(
@@ -71,9 +71,9 @@ describe('OAuth provider authorization requests', () => {
     expect(authorizationUrl.searchParams.has('client_secret')).toBe(false);
   });
 
-  it('rejects provider mismatches, redirect mismatches, and unsafe redirect URIs', () => {
+  it('rejects provider mismatches, redirect mismatches, and unsafe redirect URIs', async () => {
     const redirectUri = 'https://life.example.com/callback';
-    const transaction = beginTransaction('google', redirectUri);
+    const transaction = await beginTransaction('google', redirectUri);
 
     expect(() =>
       buildAuthorizationUrl(
@@ -100,9 +100,9 @@ describe('OAuth provider authorization requests', () => {
     ).toThrowError('OAuth redirect URI must use HTTPS except on loopback hosts');
   });
 
-  it('rejects an empty client identifier', () => {
+  it('rejects an empty client identifier', async () => {
     const redirectUri = 'https://life.example.com/callback';
-    const transaction = beginTransaction('github', redirectUri);
+    const transaction = await beginTransaction('github', redirectUri);
 
     expect(() =>
       buildAuthorizationUrl(
