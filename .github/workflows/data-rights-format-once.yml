@@ -1,0 +1,46 @@
+name: Data Rights Format Once
+
+on:
+  push:
+    branches: [feat/data-rights-export-readiness]
+    paths: [.github/workflows/data-rights-format-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/data-rights-export-readiness
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format data-rights slice
+        run: |
+          pnpm exec prettier --single-quote --write \
+            package.json \
+            apps/identity-service/src/data-rights.ts \
+            apps/identity-service/src/data-rights.integration.test.ts
+
+      - name: Remove workflow and commit
+        run: |
+          rm .github/workflows/data-rights-format-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/identity-service/src .github/workflows/data-rights-format-once.yml
+          git commit -m "style(identity): format data-rights slice"
+          git push origin HEAD:feat/data-rights-export-readiness
