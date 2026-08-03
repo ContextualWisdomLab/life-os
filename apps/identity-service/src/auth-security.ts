@@ -17,11 +17,29 @@ function createOpaqueSecret(bytes: number): string {
   return randomBytes(bytes).toString('base64url');
 }
 
+export interface OAuthTransactionStart {
+  id: string;
+  provider: IdentityProvider;
+  state: string;
+  codeChallenge: string;
+  codeChallengeMethod: 'S256';
+  nonce?: string;
+  expiresAt: string;
+}
+
+export interface ConsumedOAuthTransaction {
+  id: string;
+  provider: IdentityProvider;
+  codeVerifier: string;
+  nonce?: string;
+}
+
 export interface StoredOAuthTransaction {
   id: string;
   provider: IdentityProvider;
   stateHash: string;
   codeVerifier: string;
+  nonce: string | null;
   createdAt: string;
   expiresAt: string;
   consumedAt: string | null;
@@ -75,23 +93,18 @@ export class OAuthTransactionService {
     this.ttlMs = options.ttlMs ?? 10 * 60 * 1000;
   }
 
-  begin(provider: IdentityProvider): {
-    id: string;
-    provider: IdentityProvider;
-    state: string;
-    codeChallenge: string;
-    codeChallengeMethod: 'S256';
-    expiresAt: string;
-  } {
+  begin(provider: IdentityProvider): OAuthTransactionStart {
     const now = this.now();
     const state = createOpaqueSecret(32);
     const codeVerifier = createOpaqueSecret(64);
+    const nonce = provider === 'google' ? createOpaqueSecret(32) : null;
     const expiresAt = new Date(now.getTime() + this.ttlMs).toISOString();
     const transaction: StoredOAuthTransaction = {
       id: randomUUID(),
       provider,
       stateHash: sha256Hex(state),
       codeVerifier,
+      nonce,
       createdAt: now.toISOString(),
       expiresAt,
       consumedAt: null,
@@ -103,15 +116,12 @@ export class OAuthTransactionService {
       state,
       codeChallenge: sha256Base64Url(codeVerifier),
       codeChallengeMethod: 'S256',
+      ...(nonce ? { nonce } : {}),
       expiresAt,
     };
   }
 
-  consume(provider: IdentityProvider, state: string): {
-    id: string;
-    provider: IdentityProvider;
-    codeVerifier: string;
-  } {
+  consume(provider: IdentityProvider, state: string): ConsumedOAuthTransaction {
     const transaction =
       typeof state === 'string' && state
         ? this.repository.consumeByStateHash(
@@ -127,6 +137,7 @@ export class OAuthTransactionService {
       id: transaction.id,
       provider: transaction.provider,
       codeVerifier: transaction.codeVerifier,
+      ...(transaction.nonce ? { nonce: transaction.nonce } : {}),
     };
   }
 }
