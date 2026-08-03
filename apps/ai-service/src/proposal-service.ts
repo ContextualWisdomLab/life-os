@@ -7,6 +7,7 @@ const MAXIMUM_CONTEXT_ITEMS = 200;
 const MAXIMUM_TEXT_LENGTH = 1_000;
 const MAXIMUM_RATIONALE_ITEMS = 20;
 const MAXIMUM_OPERATIONS = 20;
+const TRUNCATION_MARKER = '…';
 
 /** Read-only planning evidence supplied to proposal generation. */
 export interface ProposalContextItem {
@@ -199,13 +200,33 @@ function validateOperations(value: unknown): readonly ProposalOperation[] {
   return Object.freeze(value.map(validateOperation));
 }
 
+function boundedInterpolation(
+  prefix: string,
+  value: string,
+  suffix: string,
+): string {
+  const available = MAXIMUM_TEXT_LENGTH - prefix.length - suffix.length;
+  if (available < TRUNCATION_MARKER.length) {
+    return invalid();
+  }
+  const boundedValue =
+    value.length <= available
+      ? value
+      : `${value.slice(0, available - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}`;
+  return `${prefix}${boundedValue}${suffix}`;
+}
+
 /** A deterministic local adapter used until a bounded external model is wired. */
 export class RuleBasedProposalModel implements ProposalModel {
   async generate(input: ProposalRequest): Promise<ProposalModelDraft> {
     const actionable = input.context.find((item) => item.status !== 'completed');
     if (actionable) {
       return {
-        summary: `Focus the next action on ${actionable.title}.`,
+        summary: boundedInterpolation(
+          'Focus the next action on ',
+          actionable.title,
+          '.',
+        ),
         rationale: [
           `The item is ${actionable.status} and directly supports the stated objective.`,
           'No user-owned record will change until the proposal is explicitly confirmed.',
@@ -214,7 +235,11 @@ export class RuleBasedProposalModel implements ProposalModel {
           {
             kind: 'prioritize_item',
             targetId: actionable.id,
-            description: `Prioritize ${actionable.title} for explicit user review.`,
+            description: boundedInterpolation(
+              'Prioritize ',
+              actionable.title,
+              ' for explicit user review.',
+            ),
           },
         ],
       };
@@ -228,7 +253,11 @@ export class RuleBasedProposalModel implements ProposalModel {
       operations: [
         {
           kind: 'create_task',
-          description: `Create a task for: ${input.objective}`,
+          description: boundedInterpolation(
+            'Create a task for: ',
+            input.objective,
+            '',
+          ),
         },
       ],
     };
