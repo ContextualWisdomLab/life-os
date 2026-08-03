@@ -122,9 +122,9 @@ describe('ProposalService', () => {
 
   it('rejects non-opaque workspace and context identifiers', async () => {
     const service = new ProposalService(new RuleBasedProposalModel());
-    await expect(service.generateProposal('42', request)).rejects.toBeInstanceOf(
-      ProposalValidationError,
-    );
+    await expect(
+      service.generateProposal('42', request),
+    ).rejects.toBeInstanceOf(ProposalValidationError);
     expect(() =>
       validateProposalRequest({
         objective: request.objective,
