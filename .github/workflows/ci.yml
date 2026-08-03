@@ -50,6 +50,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Render Habit repository formatting diff
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/habit-service/src/postgres-habit-repository.test.ts \
+            apps/habit-service/src/postgres-habit-repository.integration.test.ts
+          git diff --no-ext-diff --unified=100000 -- \
+            apps/habit-service/src/postgres-habit-repository.test.ts \
+            apps/habit-service/src/postgres-habit-repository.integration.test.ts
+
       - name: Check formatting
         run: pnpm format:check
 
