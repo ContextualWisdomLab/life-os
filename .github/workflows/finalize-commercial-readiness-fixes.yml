@@ -64,10 +64,12 @@ jobs:
           def replace_once(path_value, old, new):
               path = Path(path_value)
               text = path.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one replacement, found {count}')
-              path.write_text(text.replace(old, new), encoding='utf-8')
+              if old in text:
+                  if text.count(old) != 1:
+                      raise SystemExit(f'{path}: ambiguous replacement: {old}')
+                  path.write_text(text.replace(old, new), encoding='utf-8')
+              elif new not in text:
+                  raise SystemExit(f'{path}: expected text missing: {old}')
 
           render_path = Path('packages/commercial-readiness/src/render.test.mjs')
           render_text = render_path.read_text(encoding='utf-8')
@@ -77,38 +79,37 @@ jobs:
               if render_text.count(anchor) != 1:
                   raise SystemExit('render.test.mjs: token-prefix anchor changed')
               render_text = render_text.replace(anchor, anchor + marker)
-          replacements = {
-              "title: `evil ](javascript:alert(1)) <script> ${SYNTHETIC_OPENAI_TOKEN} @ContextualWisdomLab/security`,":
-                  "title: `evil ](javascript:alert(1)) ${SCRIPT_TAG} ${SYNTHETIC_OPENAI_TOKEN} @ContextualWisdomLab/security`,",
-              "`name *x* <script> ${SYNTHETIC_GITHUB_TOKEN} @example-team`":
-                  "`name *x* ${SCRIPT_TAG} ${SYNTHETIC_GITHUB_TOKEN} @example-team`",
-              "value.includes('<script>')": "value.includes(SCRIPT_TAG)",
-              "markdown.includes('<script>')": "markdown.includes(SCRIPT_TAG)",
-              "assert.match(value, /\\[redacted\\]/);":
-                  "assert.equal(value.includes('\\\\[redacted\\\\]'), true);",
-          }
-          for old, new in replacements.items():
-              if old in render_text:
-                  if render_text.count(old) != 1:
-                      raise SystemExit(f'render.test.mjs: ambiguous replacement: {old}')
-                  render_text = render_text.replace(old, new)
-              elif new not in render_text:
-                  raise SystemExit(f'render.test.mjs: expected text missing: {old}')
-          render_path.write_text(render_text, encoding='utf-8')
+              render_path.write_text(render_text, encoding='utf-8')
 
-          client_test_path = Path('packages/commercial-readiness/src/github-client.test.mjs')
-          client_test = client_test_path.read_text(encoding='utf-8')
-          for old, new in [
-              ("path.includes('page=1')", "path.includes('&page=1')"),
-              ("path.includes('page=2')", "path.includes('&page=2')"),
-          ]:
-              if old in client_test:
-                  if client_test.count(old) != 1:
-                      raise SystemExit(f'github-client.test.mjs: ambiguous replacement: {old}')
-                  client_test = client_test.replace(old, new)
-              elif new not in client_test:
-                  raise SystemExit(f'github-client.test.mjs: expected text missing: {old}')
-          client_test_path.write_text(client_test, encoding='utf-8')
+          replace_once(
+              render_path,
+              "title: `evil ](javascript:alert(1)) <script> ${SYNTHETIC_OPENAI_TOKEN} @ContextualWisdomLab/security`,",
+              "title: `evil ](javascript:alert(1)) ${SCRIPT_TAG} ${SYNTHETIC_OPENAI_TOKEN} @ContextualWisdomLab/security`,",
+          )
+          replace_once(
+              render_path,
+              "`name *x* <script> ${SYNTHETIC_GITHUB_TOKEN} @example-team`",
+              "`name *x* ${SCRIPT_TAG} ${SYNTHETIC_GITHUB_TOKEN} @example-team`",
+          )
+          replace_once(render_path, "value.includes('<script>')", 'value.includes(SCRIPT_TAG)')
+          replace_once(render_path, "markdown.includes('<script>')", 'markdown.includes(SCRIPT_TAG)')
+          replace_once(
+              render_path,
+              'assert.match(value, /\\[redacted\\]/);',
+              "assert.equal(value.includes('\\\\[redacted\\\\]'), true);",
+          )
+
+          client_test = Path('packages/commercial-readiness/src/github-client.test.mjs')
+          replace_once(
+              client_test,
+              "path.includes('/repos/o/r/issues?') && path.includes('page=1')",
+              "path.includes('/repos/o/r/issues?') && path.endsWith('&page=1')",
+          )
+          replace_once(
+              client_test,
+              "path.includes('/repos/o/r/issues?') && path.includes('page=2')",
+              "path.includes('/repos/o/r/issues?') && path.endsWith('&page=2')",
+          )
 
           workflow_path = Path('.github/workflows/commercial-readiness.yml')
           workflow_text = workflow_path.read_text(encoding='utf-8')
@@ -123,16 +124,34 @@ jobs:
               if workflow_text.count(old_permissions) != 1:
                   raise SystemExit('commercial-readiness.yml: ambiguous drain permissions')
               workflow_text = workflow_text.replace(old_permissions, new_permissions)
+              workflow_path.write_text(workflow_text, encoding='utf-8')
           elif new_permissions not in workflow_text:
               raise SystemExit('commercial-readiness.yml: drain permissions changed')
-          workflow_path.write_text(workflow_text, encoding='utf-8')
 
           Path('.github/workflows/finalize-commercial-readiness-fixes.yml').unlink()
           Path('.github/workflows/run-finalizer-on-pr.yml').unlink(missing_ok=True)
           PY
 
-      - name: Format repository
-        run: pnpm format
+      - name: Format CI-governed files only
+        run: |
+          set -euo pipefail
+          pnpm format
+          python3 - <<'PY'
+          import json
+          import shlex
+          import subprocess
+          from pathlib import Path
+
+          package = json.loads(Path('package.json').read_text(encoding='utf-8'))
+          command = shlex.split(package['scripts']['format:check'])
+          allowed = set(command[3:])
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only'], text=True
+          ).splitlines()
+          for path in changed:
+              if path not in allowed and not path.startswith('.github/workflows/'):
+                  subprocess.run(['git', 'checkout', '--', path], check=True)
+          PY
 
       - name: Validate repository
         run: |
