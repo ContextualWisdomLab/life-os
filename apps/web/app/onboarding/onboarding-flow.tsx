@@ -11,9 +11,24 @@ import { parseStoredTodayDraft, serializeTodayDraft } from '../today-storage';
 
 const DURATIONS = [30, 45, 60, 90, 120] as const;
 
+class OnboardingStorageCommitError extends Error {
+  constructor() {
+    super('Onboarding storage commit failed');
+    this.name = 'OnboardingStorageCommitError';
+  }
+}
+
 function localDate(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function restoreStorageValue(key: string, previousValue: string | null): void {
+  if (previousValue === null) {
+    window.localStorage.removeItem(key);
+  } else {
+    window.localStorage.setItem(key, previousValue);
+  }
 }
 
 export function OnboardingFlow() {
@@ -43,10 +58,11 @@ export function OnboardingFlow() {
     }
     try {
       const date = localDate();
-      const currentDraft = parseStoredTodayDraft(
-        window.localStorage.getItem(TODAY_STORAGE_KEY),
-        date,
+      const previousToday = window.localStorage.getItem(TODAY_STORAGE_KEY);
+      const previousOnboarding = window.localStorage.getItem(
+        ONBOARDING_STORAGE_KEY,
       );
+      const currentDraft = parseStoredTodayDraft(previousToday, date);
       const result = createFirstRunPlan({
         currentDraft,
         weeklyFocus,
@@ -55,22 +71,38 @@ export function OnboardingFlow() {
         createdAt: new Date().toISOString(),
         ...(startTime ? { startTime, durationMinutes } : {}),
       });
-      window.localStorage.setItem(
-        TODAY_STORAGE_KEY,
-        serializeTodayDraft(result.draft),
+      const serializedToday = serializeTodayDraft(result.draft);
+      const serializedCompletion = serializeOnboardingCompletion(
+        result.completion,
       );
-      window.localStorage.setItem(
-        ONBOARDING_STORAGE_KEY,
-        serializeOnboardingCompletion(result.completion),
-      );
+
+      try {
+        window.localStorage.setItem(TODAY_STORAGE_KEY, serializedToday);
+        window.localStorage.setItem(
+          ONBOARDING_STORAGE_KEY,
+          serializedCompletion,
+        );
+      } catch {
+        try {
+          restoreStorageValue(TODAY_STORAGE_KEY, previousToday);
+          restoreStorageValue(ONBOARDING_STORAGE_KEY, previousOnboarding);
+        } catch {
+          // A storage-denied browser may also reject rollback. The error below
+          // remains explicit so the user is never told that persistence worked.
+        }
+        throw new OnboardingStorageCommitError();
+      }
       window.location.assign('/');
     } catch (error) {
       const conflict =
         error instanceof Error && error.name === 'TodayScheduleConflictError';
+      const storageFailure = error instanceof OnboardingStorageCommitError;
       setMessage(
         conflict
           ? 'That time overlaps an existing open action. Choose another time or leave it unscheduled.'
-          : 'Review the fields and try again. Existing Today actions were not changed.',
+          : storageFailure
+            ? 'The plan could not be saved consistently. Review browser storage settings and reload Today before retrying.'
+            : 'Review the fields and try again. No existing action was intentionally replaced.',
       );
     }
   }
@@ -174,7 +206,11 @@ export function OnboardingFlow() {
           <p className="sr-status" aria-live="polite">
             {message}
           </p>
-          <button className="onboarding-submit" disabled={!storageReady} type="submit">
+          <button
+            className="onboarding-submit"
+            disabled={!storageReady}
+            type="submit"
+          >
             Build my first Today plan
           </button>
         </form>
