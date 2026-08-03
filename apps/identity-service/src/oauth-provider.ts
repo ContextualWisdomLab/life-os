@@ -19,7 +19,7 @@ function requireClientId(value: string): string {
   return normalized;
 }
 
-function requireSafeRedirectUri(value: string): string {
+export function requireSafeRedirectUri(value: string): string {
   let redirectUri: URL;
   try {
     redirectUri = new URL(value);
