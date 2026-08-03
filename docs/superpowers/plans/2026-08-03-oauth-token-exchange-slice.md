@@ -9,7 +9,7 @@
 - [x] Keep client secrets and authorization codes in form-encoded POST bodies.
 - [x] Reuse strict redirect URI validation from authorization request construction.
 - [x] Reject provider mismatches and incomplete credentials before network execution.
-- [ ] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
+- [x] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
 
 ## Provider references
 
