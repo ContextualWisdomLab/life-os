@@ -44,7 +44,11 @@ export function toHttpException(error: unknown): HttpException {
   }
 
   if (error instanceof Error && VALIDATION_MESSAGES.has(error.message)) {
-    return problemException(400, 'Planning request is invalid', 'invalid_request');
+    return problemException(
+      400,
+      'Planning request is invalid',
+      'invalid_request',
+    );
   }
 
   return problemException(
