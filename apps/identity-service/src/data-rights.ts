@@ -19,9 +19,7 @@ const EXPORT_SCHEMA_VERSION = 'life-os.workspace-export.v1';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
-  | JsonPrimitive
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue };
+  JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
 /** One portable, tenant-owned record returned by a registered source. */
 export interface WorkspaceDataRecord {
@@ -106,7 +104,11 @@ function invalid(): never {
 }
 
 function consumeBytes(budget: MutableBudget, amount: number): void {
-  if (!Number.isSafeInteger(amount) || amount < 0 || amount > budget.remainingBytes) {
+  if (
+    !Number.isSafeInteger(amount) ||
+    amount < 0 ||
+    amount > budget.remainingBytes
+  ) {
     invalid();
   }
   budget.remainingBytes -= amount;
@@ -390,7 +392,9 @@ function normalizeSourceSnapshot(
   });
 }
 
-function normalizeSource(source: WorkspaceDataRightsSource): WorkspaceDataRightsSource {
+function normalizeSource(
+  source: WorkspaceDataRightsSource,
+): WorkspaceDataRightsSource {
   const sourceId = requireSourceId(source.sourceId);
   if (typeof source.inspectWorkspace !== 'function') {
     return invalid();
@@ -551,7 +555,12 @@ export class WorkspaceDataRightsCoordinator {
         ];
       }),
     );
-    const evidence = readinessEvidence(workspace, timestamp, sourceIds, blockers);
+    const evidence = readinessEvidence(
+      workspace,
+      timestamp,
+      sourceIds,
+      blockers,
+    );
     return Object.freeze({
       workspaceId: workspace,
       evaluatedAt: timestamp,
