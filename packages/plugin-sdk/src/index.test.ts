@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  PluginContractError,
-  validatePluginManifest,
-} from './index';
+import { PluginContractError, validatePluginManifest } from './index';
 
 function validManifest(): Record<string, unknown> {
   return {
@@ -12,10 +9,7 @@ function validManifest(): Record<string, unknown> {
     display_name: 'Acme Delivery Assistant',
     callback_url: 'https://hooks.example.com/life-os',
     permissions: ['planning.read', 'planning.write'],
-    webhook_event_types: [
-      'planning.task.created',
-      'planning.task.completed',
-    ],
+    webhook_event_types: ['planning.task.created', 'planning.task.completed'],
   };
 }
 
@@ -30,10 +24,7 @@ describe('validatePluginManifest', () => {
       display_name: 'Acme Delivery Assistant',
       callback_url: 'https://hooks.example.com/life-os',
       permissions: ['planning.read', 'planning.write'],
-      webhook_event_types: [
-        'planning.task.completed',
-        'planning.task.created',
-      ],
+      webhook_event_types: ['planning.task.completed', 'planning.task.created'],
     });
     expect(Object.isFrozen(manifest)).toBe(true);
     expect(Object.isFrozen(manifest.permissions)).toBe(true);
@@ -48,10 +39,7 @@ describe('validatePluginManifest', () => {
     [
       'duplicate event',
       {
-        webhook_event_types: [
-          'planning.task.created',
-          'planning.task.created',
-        ],
+        webhook_event_types: ['planning.task.created', 'planning.task.created'],
       },
     ],
     ['unknown field', { secret: 'should-not-be-accepted' }],

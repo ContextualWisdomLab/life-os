@@ -94,7 +94,9 @@ describe('versioned plugin contract HTTP boundary', () => {
         'content-type': 'application/json',
         'x-workspace-id': SECONDARY_WORKSPACE_ID,
       },
-      body: JSON.stringify(manifest('https://169.254.169.254/latest/meta-data')),
+      body: JSON.stringify(
+        manifest('https://169.254.169.254/latest/meta-data'),
+      ),
     });
     expect(unsafe.status).toBe(400);
     expect(await unsafe.json()).toMatchObject({

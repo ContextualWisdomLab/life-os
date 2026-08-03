@@ -92,7 +92,11 @@ function requireUniqueEnumValues<T extends string>(
   const observed = new Set<string>();
   const normalized: T[] = [];
   for (const entry of value) {
-    if (typeof entry !== 'string' || !allowed.has(entry) || observed.has(entry)) {
+    if (
+      typeof entry !== 'string' ||
+      !allowed.has(entry) ||
+      observed.has(entry)
+    ) {
       throw new PluginContractError(code);
     }
     observed.add(entry);

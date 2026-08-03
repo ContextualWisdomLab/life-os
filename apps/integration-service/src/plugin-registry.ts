@@ -87,7 +87,10 @@ export class InMemoryPluginRegistry implements PluginRegistry {
   list(workspaceId: string): readonly PluginInstallation[] {
     const validatedWorkspaceId = requireWorkspaceId(workspaceId);
     return Object.freeze(
-      [...(this.installationsByWorkspace.get(validatedWorkspaceId)?.values() ?? [])]
+      [
+        ...(this.installationsByWorkspace.get(validatedWorkspaceId)?.values() ??
+          []),
+      ]
         .sort((left, right) =>
           left.manifest.plugin_id.localeCompare(right.manifest.plugin_id),
         )
