@@ -74,7 +74,7 @@ Google and GitHub OAuth are the required login providers. Provider credentials a
 
 This is a public repository. It contains synthetic examples only. Personal goals, health information, relationship data, credentials, access tokens, private prompts, customer data, and production exports must not be committed.
 
-The upstream project does not operate every LifeOS deployment. A self-hosting organization controls its deployment data and must establish its own privacy notice, retention policy, security controls, subprocessors, and legal basis. See `docs/legal/privacy.md` and `docs/legal/terms.md` for the upstream project boundary.
+The upstream project does not operate every LifeOS deployment. A self-hosting organization controls its deployment data and must establish its own privacy notice, retention policy, security controls, subprocessors, and legal basis. See the [upstream privacy notice](docs/legal/privacy.md) and [upstream project terms](docs/legal/terms.md) for the upstream project boundary.
 
 ## Documentation
 
@@ -82,16 +82,16 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
-- Upstream privacy notice: `docs/legal/privacy.md`
-- Upstream project terms: `docs/legal/terms.md`
-- Vulnerability reporting: `SECURITY.md`
+- [Upstream privacy notice](docs/legal/privacy.md)
+- [Upstream project terms](docs/legal/terms.md)
+- [Vulnerability reporting](SECURITY.md)
 
 ## Contributing
 
 Create descriptive branches from the current `main` branch and submit reviewed pull requests back to `main`. Keep service boundaries explicit, update contracts before consumers, add tests with behavior changes, and avoid infrastructure without a measured need.
 
-Contributions are accepted under the Apache License 2.0 using the inbound-equals-outbound model described in `CONTRIBUTING.md`. Do not disclose unpatched vulnerabilities or sensitive evidence in public issues; use `SECURITY.md`.
+Contributions are accepted under the Apache License 2.0 using the inbound-equals-outbound model described in [CONTRIBUTING.md](CONTRIBUTING.md). Do not disclose unpatched vulnerabilities or sensitive evidence in public issues; use [SECURITY.md](SECURITY.md).
 
 ## License
 
-LifeOS is licensed under the Apache License 2.0. See `LICENSE` and `NOTICE`. The license does not grant trademark rights beyond reasonable attribution and identification of origin.
+LifeOS is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). The license does not grant trademark rights beyond reasonable attribution and identification of origin.
