@@ -15,6 +15,8 @@ require_command() {
 [[ -n "${DATABASE_URL:-}" ]] || fail 'database_url_missing'
 [[ -n "${BACKUP_DIRECTORY:-}" ]] || fail 'backup_directory_missing'
 [[ "${BACKUP_DIRECTORY}" != "/" ]] || fail 'backup_directory_unsafe'
+[[ "${BACKUP_DIRECTORY}" != *$'\n'* && "${BACKUP_DIRECTORY}" != *$'\r'* ]] ||
+  fail 'backup_directory_invalid'
 [[ ! -L "${BACKUP_DIRECTORY}" ]] || fail 'backup_directory_symlink'
 
 require_command pg_dump
@@ -47,8 +49,7 @@ metadata_path="${archive_path}.metadata"
 [[ ! -e "${archive_path}" && ! -e "${checksum_path}" && ! -e "${metadata_path}" ]] ||
   fail 'backup_name_collision'
 
-pg_dump \
-  --dbname="${DATABASE_URL}" \
+PGDATABASE="${DATABASE_URL}" pg_dump \
   --format=custom \
   --compress=6 \
   --no-owner \
