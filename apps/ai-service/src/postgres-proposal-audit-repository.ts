@@ -55,8 +55,7 @@ interface PostgreSqlErrorShape {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const IDEMPOTENCY_CONSTRAINT =
-  'proposal_decision_events_idempotency_unique';
+const IDEMPOTENCY_CONSTRAINT = 'proposal_decision_events_idempotency_unique';
 const DIGEST_FOREIGN_KEY_CONSTRAINT =
   'proposal_decision_events_proposal_digest_foreign';
 
@@ -202,7 +201,9 @@ function parseDecisionRow(
   }
 }
 
-function validateProposalInput(record: ProposalAuditRecord): ProposalAuditRecord {
+function validateProposalInput(
+  record: ProposalAuditRecord,
+): ProposalAuditRecord {
   try {
     return validateProposalAuditRecord(record);
   } catch (error) {
@@ -213,7 +214,9 @@ function validateProposalInput(record: ProposalAuditRecord): ProposalAuditRecord
   }
 }
 
-function validateDecisionInput(event: ProposalDecisionEvent): ProposalDecisionEvent {
+function validateDecisionInput(
+  event: ProposalDecisionEvent,
+): ProposalDecisionEvent {
   try {
     return validateProposalDecisionEvent(event);
   } catch (error) {
@@ -238,9 +241,7 @@ function sameDecisionPayload(
 }
 
 /** Parameterized, tenant-scoped PostgreSQL proposal audit repository. */
-export class PostgresProposalAuditRepository
-  implements ProposalAuditRepository
-{
+export class PostgresProposalAuditRepository implements ProposalAuditRepository {
   constructor(private readonly client: ProposalAuditSqlClient) {}
 
   private async query<Row>(
@@ -342,9 +343,7 @@ export class PostgresProposalAuditRepository
         ],
       );
     } catch (error) {
-      if (
-        isNamedDatabaseError(error, '23503', DIGEST_FOREIGN_KEY_CONSTRAINT)
-      ) {
+      if (isNamedDatabaseError(error, '23503', DIGEST_FOREIGN_KEY_CONSTRAINT)) {
         throw new ProposalDigestMismatchError();
       }
       if (!isNamedDatabaseError(error, '23505', IDEMPOTENCY_CONSTRAINT)) {
