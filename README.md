@@ -32,6 +32,7 @@ apps/
   planning-service/
   habit-service/
   review-service/
+  integration-calendar-service/
 packages/
   contracts/
 infra/
@@ -62,6 +63,8 @@ Default endpoints:
 - Gateway Prometheus metrics: `http://localhost:4000/v1/metrics`
 - Planning-service health: `http://localhost:4102/v1/health`
 - Planning-service Prometheus metrics: `http://localhost:4102/v1/metrics`
+- Calendar integration health: `http://localhost:4106/health`
+- Calendar synchronization: `POST http://localhost:4106/v1/calendar/sync`
 - NATS monitoring: `http://localhost:8222`
 
 Metrics endpoints contain operational data. Production ingress must restrict them to the monitoring network.
@@ -69,6 +72,14 @@ Metrics endpoints contain operational data. Production ingress must restrict the
 ## Authentication
 
 Google and GitHub OAuth are the required login providers. Provider credentials are supplied through environment variables and must never be committed. Deployment operators are responsible for provider registration, redirect URI policy, secret rotation, and production access controls.
+
+## Calendar synchronization
+
+The calendar integration service supports explicit `caldav` and `google` provider modes. Set `CALENDAR_PROVIDER` and the matching variables in `.env.example` before starting the service.
+
+CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the LifeOS provider contract.
+
+`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables Google Calendar synchronization.
 
 ## Privacy and deployment responsibility
 
