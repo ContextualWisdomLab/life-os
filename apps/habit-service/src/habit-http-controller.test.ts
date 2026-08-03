@@ -8,9 +8,7 @@ const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const IDEMPOTENCY_KEY = '22222222-2222-4222-8222-222222222222';
 
 function controller(): HabitController {
-  return new HabitController(
-    new HabitService(new InMemoryHabitRepository()),
-  );
+  return new HabitController(new HabitService(new InMemoryHabitRepository()));
 }
 
 describe('HabitController', () => {
