@@ -33,7 +33,7 @@ class TestResponse {
 function application(
   overrides: Partial<OAuthHttpApplication>,
 ): OAuthHttpApplication {
-  return overrides as OAuthHttpApplication;
+  return overrides as unknown as OAuthHttpApplication;
 }
 
 describe('OAuthHttpController', () => {
