@@ -55,6 +55,8 @@ export interface HabitRepository {
 }
 
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const RFC_3339_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAXIMUM_OCCURRENCE_RANGE_DAYS = 366;
@@ -110,6 +112,9 @@ function requireInterval(value: number): number {
 }
 
 function requireTimestamp(value: string): string {
+  if (!RFC_3339_TIMESTAMP_PATTERN.test(value)) {
+    throw new Error('Timestamp is invalid');
+  }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     throw new Error('Timestamp is invalid');
@@ -199,6 +204,10 @@ function cloneCompletion(
   return { ...completion };
 }
 
+function entityLookupKey(workspaceId: string, entityId: string): string {
+  return `${workspaceId}:${entityId}`;
+}
+
 function isScheduledOn(
   habit: Habit,
   date: ParsedLocalDate,
@@ -211,7 +220,9 @@ function isScheduledOn(
   if (habit.recurrence.kind === 'daily') {
     return elapsedDays % habit.recurrence.interval === 0;
   }
-  const elapsedWeeks = Math.floor(elapsedDays / 7);
+  const startWeekEpochDay = start.epochDay - (start.isoWeekday - 1);
+  const dateWeekEpochDay = date.epochDay - (date.isoWeekday - 1);
+  const elapsedWeeks = (dateWeekEpochDay - startWeekEpochDay) / 7;
   return (
     elapsedWeeks % habit.recurrence.interval === 0 &&
     habit.recurrence.weekdays.includes(date.isoWeekday)
@@ -254,15 +265,18 @@ export class InMemoryHabitRepository implements HabitRepository {
   private readonly completionIdempotency = new Map<string, string>();
 
   async saveHabit(habit: Habit): Promise<void> {
-    this.habits.set(habit.id, cloneHabit(habit));
+    this.habits.set(
+      entityLookupKey(habit.workspaceId, habit.id),
+      cloneHabit(habit),
+    );
   }
 
   async findHabit(
     workspaceId: string,
     habitId: string,
   ): Promise<Habit | undefined> {
-    const habit = this.habits.get(habitId);
-    return habit?.workspaceId === workspaceId ? cloneHabit(habit) : undefined;
+    const habit = this.habits.get(entityLookupKey(workspaceId, habitId));
+    return habit ? cloneHabit(habit) : undefined;
   }
 
   async listHabits(workspaceId: string): Promise<Habit[]> {
@@ -284,17 +298,18 @@ export class InMemoryHabitRepository implements HabitRepository {
       completion.habitId,
       completion.idempotencyKey,
     ].join(':');
-    const existingId = this.completionIdempotency.get(idempotencyLookup);
-    if (existingId) {
-      const existing = this.completions.get(existingId);
+    const existingKey = this.completionIdempotency.get(idempotencyLookup);
+    if (existingKey) {
+      const existing = this.completions.get(existingKey);
       if (!existing) {
         throw new Error('Completion history is inconsistent');
       }
       return cloneCompletion(existing);
     }
     const stored = cloneCompletion(completion);
-    this.completions.set(stored.id, stored);
-    this.completionIdempotency.set(idempotencyLookup, stored.id);
+    const completionKey = entityLookupKey(stored.workspaceId, stored.id);
+    this.completions.set(completionKey, stored);
+    this.completionIdempotency.set(idempotencyLookup, completionKey);
     return cloneCompletion(stored);
   }
 
@@ -354,10 +369,7 @@ export class HabitService {
   ): Promise<HabitOccurrence[]> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const safeHabitId = requireOpaqueId(habitId);
-    const habit = await this.repository.findHabit(
-      safeWorkspaceId,
-      safeHabitId,
-    );
+    const habit = await this.repository.findHabit(safeWorkspaceId, safeHabitId);
     if (!habit) {
       throw new Error('Habit not found');
     }
@@ -375,20 +387,14 @@ export class HabitService {
   ): Promise<HabitCompletionEvent> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const safeHabitId = requireOpaqueId(habitId);
-    const habit = await this.repository.findHabit(
-      safeWorkspaceId,
-      safeHabitId,
-    );
+    const habit = await this.repository.findHabit(safeWorkspaceId, safeHabitId);
     if (!habit) {
       throw new Error('Habit not found');
     }
     const scheduledLocalDate = parseLocalDate(input.scheduledLocalDate).text;
     if (
-      generateHabitOccurrences(
-        habit,
-        scheduledLocalDate,
-        scheduledLocalDate,
-      ).length !== 1
+      generateHabitOccurrences(habit, scheduledLocalDate, scheduledLocalDate)
+        .length !== 1
     ) {
       throw new Error('Habit is not scheduled on this date');
     }
@@ -413,9 +419,6 @@ export class HabitService {
     if (!(await this.repository.findHabit(safeWorkspaceId, safeHabitId))) {
       throw new Error('Habit not found');
     }
-    return await this.repository.listCompletions(
-      safeWorkspaceId,
-      safeHabitId,
-    );
+    return await this.repository.listCompletions(safeWorkspaceId, safeHabitId);
   }
 }
