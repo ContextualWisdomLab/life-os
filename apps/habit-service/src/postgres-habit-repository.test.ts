@@ -78,7 +78,9 @@ function completion(
   };
 }
 
-function habitRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function habitRow(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     id: HABIT_ID,
     workspace_id: WORKSPACE_ID,
@@ -279,7 +281,7 @@ describe('PostgresHabitRepository', () => {
     ).rejects.toBeInstanceOf(HabitIdempotencyConflictError);
   });
 
-  it('does not misclassify unrelated database failures as replays', async () => {
+  it('converts unrelated database failures into a safe persistence error', async () => {
     const unrelatedViolation = {
       code: '23505',
       constraint: 'completion_events_pkey',
@@ -287,9 +289,9 @@ describe('PostgresHabitRepository', () => {
     const client = new RecordingSqlClient({ error: unrelatedViolation });
     const repository = new PostgresHabitRepository(client);
 
-    await expect(repository.appendCompletion(completion())).rejects.toBe(
-      unrelatedViolation,
-    );
+    await expect(
+      repository.appendCompletion(completion()),
+    ).rejects.toBeInstanceOf(HabitPersistenceError);
     expect(client.calls).toHaveLength(1);
   });
 
