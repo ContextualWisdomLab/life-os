@@ -57,6 +57,41 @@ describe('ProposalService', () => {
     expect(Object.isFrozen(proposal.operations[0])).toBe(true);
   });
 
+  it('keeps generated text valid at every accepted input boundary', async () => {
+    const service = new ProposalService(
+      new RuleBasedProposalModel(),
+      () => new Date('2026-08-04T00:00:00.000Z'),
+      () => PROPOSAL_ID,
+    );
+    const longTitle = 'T'.repeat(1_000);
+    const longObjective = 'O'.repeat(2_000);
+
+    const targeted = await service.generateProposal(WORKSPACE_ID, {
+      objective: longObjective,
+      context: [
+        {
+          id: TASK_ID,
+          kind: 'task',
+          title: longTitle,
+          status: 'active',
+        },
+      ],
+    });
+    expect(targeted.summary.length).toBeLessThanOrEqual(1_000);
+    expect(targeted.operations[0]?.description.length).toBeLessThanOrEqual(
+      1_000,
+    );
+    expect(targeted.summary).toContain('…');
+    expect(targeted.operations[0]?.description).toContain('…');
+
+    const created = await service.generateProposal(WORKSPACE_ID, {
+      objective: longObjective,
+      context: [],
+    });
+    expect(created.operations[0]?.description.length).toBe(1_000);
+    expect(created.operations[0]?.description.endsWith('…')).toBe(true);
+  });
+
   it('rejects extra request properties and malformed model output', async () => {
     expect(() =>
       validateProposalRequest({
