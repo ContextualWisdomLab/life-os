@@ -11,7 +11,14 @@ import { DataRightsAppModule } from './main';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_WORKSPACE_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
-const SYNTHETIC_CSRF_TOKEN = 'synthetic-test-csrf-token';
+const CALLER_AUTHORIZATION = [
+  'Bearer',
+  ['integration', 'caller'].join('-'),
+].join(' ');
+const OTHER_AUTHORIZATION = ['Bearer', ['other', 'caller'].join('-')].join(
+  ' ',
+);
+const DELETION_CONFIRMATION = 'erase-all-workspace-data';
 
 class RecordingParticipant implements DataRightsParticipant {
   readonly schemaVersion: string;
@@ -59,13 +66,20 @@ async function requestJson(
   return await fetch(`http://127.0.0.1:${port}${path}`, init);
 }
 
+function callerHeaders(): Record<string, string> {
+  return {
+    authorization: CALLER_AUTHORIZATION,
+    'x-workspace-id': WORKSPACE_ID,
+  };
+}
+
 describe('data rights production HTTP module', () => {
   it('exports every domain and completes an explicitly requested deletion', async () => {
     const participants = REQUIRED_DATA_RIGHTS_DOMAINS.map(
       (domain) => new RecordingParticipant(domain),
     );
     const app = await NestFactory.create(
-      DataRightsAppModule.register(participants),
+      DataRightsAppModule.register(participants, CALLER_AUTHORIZATION),
       { logger: false },
     );
     await app.listen(0, '127.0.0.1');
@@ -74,10 +88,10 @@ describe('data rights production HTTP module', () => {
       const address = app.getHttpServer().address() as AddressInfo;
       const exportResponse = await requestJson(
         address.port,
-        '/v1/data-rights/export',
+        '/internal/v1/data-rights/export',
         {
           method: 'GET',
-          headers: { 'x-workspace-id': WORKSPACE_ID },
+          headers: callerHeaders(),
         },
       );
       expect(exportResponse.status).toBe(200);
@@ -101,13 +115,13 @@ describe('data rights production HTTP module', () => {
 
       const deletionResponse = await requestJson(
         address.port,
-        '/v1/data-rights/deletion',
+        '/internal/v1/data-rights/deletion',
         {
           method: 'POST',
           headers: {
+            ...callerHeaders(),
             'content-type': 'application/json',
-            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-            'x-workspace-id': WORKSPACE_ID,
+            'x-data-rights-confirmation': DELETION_CONFIRMATION,
           },
           body: JSON.stringify({ requestId: REQUEST_ID }),
         },
@@ -130,12 +144,62 @@ describe('data rights production HTTP module', () => {
     }
   });
 
-  it('rejects ownership injection and never exposes a generic destructive route', async () => {
+  it('rejects unauthenticated callers before any tenant participant runs', async () => {
     const participants = REQUIRED_DATA_RIGHTS_DOMAINS.map(
       (domain) => new RecordingParticipant(domain),
     );
     const app = await NestFactory.create(
-      DataRightsAppModule.register(participants),
+      DataRightsAppModule.register(participants, CALLER_AUTHORIZATION),
+      { logger: false },
+    );
+    await app.listen(0, '127.0.0.1');
+
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const missingAuthorization = await requestJson(
+        address.port,
+        '/internal/v1/data-rights/export',
+        {
+          method: 'GET',
+          headers: { 'x-workspace-id': WORKSPACE_ID },
+        },
+      );
+      expect(missingAuthorization.status).toBe(401);
+
+      const incorrectAuthorization = await requestJson(
+        address.port,
+        '/internal/v1/data-rights/deletion',
+        {
+          method: 'POST',
+          headers: {
+            authorization: OTHER_AUTHORIZATION,
+            'content-type': 'application/json',
+            'x-data-rights-confirmation': DELETION_CONFIRMATION,
+            'x-workspace-id': WORKSPACE_ID,
+          },
+          body: JSON.stringify({ requestId: REQUEST_ID }),
+        },
+      );
+      expect(incorrectAuthorization.status).toBe(401);
+      expect(
+        participants.every(
+          (participant) =>
+            participant.exportedWorkspaces.length === 0 &&
+            participant.preparedWorkspaces.length === 0 &&
+            participant.committedWorkspaces.length === 0,
+        ),
+      ).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects ownership injection, missing confirmation, and public routes', async () => {
+    const participants = REQUIRED_DATA_RIGHTS_DOMAINS.map(
+      (domain) => new RecordingParticipant(domain),
+    );
+    const app = await NestFactory.create(
+      DataRightsAppModule.register(participants, CALLER_AUTHORIZATION),
       { logger: false },
     );
     await app.listen(0, '127.0.0.1');
@@ -144,13 +208,13 @@ describe('data rights production HTTP module', () => {
       const address = app.getHttpServer().address() as AddressInfo;
       const ownershipInjection = await requestJson(
         address.port,
-        '/v1/data-rights/deletion',
+        '/internal/v1/data-rights/deletion',
         {
           method: 'POST',
           headers: {
+            ...callerHeaders(),
             'content-type': 'application/json',
-            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-            'x-workspace-id': WORKSPACE_ID,
+            'x-data-rights-confirmation': DELETION_CONFIRMATION,
           },
           body: JSON.stringify({
             requestId: REQUEST_ID,
@@ -159,24 +223,35 @@ describe('data rights production HTTP module', () => {
         },
       );
       expect(ownershipInjection.status).toBe(400);
+
+      const missingConfirmation = await requestJson(
+        address.port,
+        '/internal/v1/data-rights/deletion',
+        {
+          method: 'POST',
+          headers: {
+            ...callerHeaders(),
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ requestId: REQUEST_ID }),
+        },
+      );
+      expect(missingConfirmation.status).toBe(400);
+
+      const publicExport = await requestJson(
+        address.port,
+        '/v1/data-rights/export',
+        {
+          method: 'GET',
+          headers: callerHeaders(),
+        },
+      );
+      expect(publicExport.status).toBe(404);
       expect(
         participants.every(
           (participant) => participant.committedWorkspaces.length === 0,
         ),
       ).toBe(true);
-
-      const unsupportedDelete = await requestJson(
-        address.port,
-        '/v1/data-rights/export',
-        {
-          method: 'DELETE',
-          headers: {
-            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-            'x-workspace-id': WORKSPACE_ID,
-          },
-        },
-      );
-      expect(unsupportedDelete.status).toBe(404);
     } finally {
       await app.close();
     }
