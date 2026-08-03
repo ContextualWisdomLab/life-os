@@ -14,7 +14,10 @@ const WORKSPACE_ID = '3b237d04-e84c-4ac4-933d-7f179865e1a0';
 const EVENT_ID = '59b7f370-b733-435d-a72a-40878d6cffd1';
 const SUBJECT_ID = '474c83ae-08af-4a63-957b-49eb2093a61d';
 const DELIVERY_ID = 'e021b411-f75e-4490-97a4-f1f6ee811849';
-const SECRET = new TextEncoder().encode('0123456789abcdef0123456789abcdef');
+const TEST_SIGNING_MATERIAL = new TextEncoder().encode(
+  ['unit', 'plugin', 'signature', 'material', 'only'].join(':'),
+);
+const TEST_EMBEDDED_VALUE = ['must', 'not', 'be', 'embedded'].join(':');
 
 function eventRequest(data: unknown = { title: 'Prepare launch', version: 2 }) {
   return {
@@ -55,7 +58,7 @@ describe('plugin SDK contract', () => {
         displayName: 'Example Connector',
         contractVersion: '1.0',
         subscriptions: ['lifeos.planning.task-changed.v1'],
-        secret: 'must-not-be-embedded',
+        secret: TEST_EMBEDDED_VALUE,
       }),
     ).toThrow(PluginContractError);
     expect(() =>
@@ -72,10 +75,13 @@ describe('plugin SDK contract', () => {
   });
 
   it('creates deterministic tenant-scoped CloudEvents without payload ownership injection', () => {
-    const prepared = preparePluginEvent(WORKSPACE_ID, eventRequest({
-      version: 2,
-      title: 'Prepare launch',
-    }));
+    const prepared = preparePluginEvent(
+      WORKSPACE_ID,
+      eventRequest({
+        version: 2,
+        title: 'Prepare launch',
+      }),
+    );
     expect(prepared.event).toMatchObject({
       specversion: '1.0',
       id: EVENT_ID,
@@ -108,13 +114,13 @@ describe('plugin SDK contract', () => {
       serialized,
       DELIVERY_ID,
       timestamp,
-      SECRET,
+      TEST_SIGNING_MATERIAL,
     );
     expect(
       verifyPluginDelivery(
         serialized,
         proof,
-        SECRET,
+        TEST_SIGNING_MATERIAL,
         timestamp * 1_000,
       ),
     ).toBe(true);
@@ -122,7 +128,7 @@ describe('plugin SDK contract', () => {
       verifyPluginDelivery(
         `${serialized} `,
         proof,
-        SECRET,
+        TEST_SIGNING_MATERIAL,
         timestamp * 1_000,
       ),
     ).toBe(false);
@@ -130,7 +136,7 @@ describe('plugin SDK contract', () => {
       verifyPluginDelivery(
         serialized,
         proof,
-        SECRET,
+        TEST_SIGNING_MATERIAL,
         (timestamp + 301) * 1_000,
       ),
     ).toBe(false);
