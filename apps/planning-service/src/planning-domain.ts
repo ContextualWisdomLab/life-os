@@ -71,20 +71,14 @@ export class InMemoryPlanningRepository implements PlanningRepository {
     );
   }
 
-  async listProjects(
-    workspaceId: string,
-    goalId: string,
-  ): Promise<Project[]> {
+  async listProjects(workspaceId: string, goalId: string): Promise<Project[]> {
     return [...this.projects.values()].filter(
       (project) =>
         project.workspaceId === workspaceId && project.goalId === goalId,
     );
   }
 
-  async listTasks(
-    workspaceId: string,
-    projectId: string,
-  ): Promise<Task[]> {
+  async listTasks(workspaceId: string, projectId: string): Promise<Task[]> {
     return [...this.tasks.values()].filter(
       (task) =>
         task.workspaceId === workspaceId && task.projectId === projectId,
@@ -175,20 +169,14 @@ export class PlanningService {
     return await this.repository.listGoals(requireOpaqueId(workspaceId));
   }
 
-  async listProjects(
-    workspaceId: string,
-    goalId: string,
-  ): Promise<Project[]> {
+  async listProjects(workspaceId: string, goalId: string): Promise<Project[]> {
     return await this.repository.listProjects(
       requireOpaqueId(workspaceId),
       requireOpaqueId(goalId),
     );
   }
 
-  async listTasks(
-    workspaceId: string,
-    projectId: string,
-  ): Promise<Task[]> {
+  async listTasks(workspaceId: string, projectId: string): Promise<Task[]> {
     return await this.repository.listTasks(
       requireOpaqueId(workspaceId),
       requireOpaqueId(projectId),
