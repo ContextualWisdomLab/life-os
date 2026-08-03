@@ -60,6 +60,7 @@ pnpm dev
 Default endpoints:
 
 - Web: `http://localhost:3000`
+- First-run planning: `http://localhost:3000/onboarding`
 - Gateway health: `http://localhost:4000/v1/health`
 - Gateway Today composition: `http://localhost:4000/v1/today`
 - Gateway Prometheus metrics: `http://localhost:4000/v1/metrics`
@@ -76,6 +77,12 @@ Metrics endpoints contain operational data. Production ingress must restrict the
 ## Authentication
 
 Google and GitHub OAuth are the required login providers. Provider credentials are supplied through environment variables and must never be committed. Deployment operators are responsible for provider registration, redirect URI policy, secret rotation, and production access controls.
+
+## First-run planning
+
+A genuinely empty browser is guided through one weekly focus, one visible next action, and an optional time block before entering Today. The flow reuses the Today domain's priority and overlap rules, preserves existing actions, and remains directly available at `/onboarding` for an intentional revisit.
+
+This first-run slice is browser-local. It does not create an account, provision a durable workspace, synchronize across devices, or claim that local completion is authenticated user evidence. Those capabilities require a separately reviewed identity and planning-service boundary.
 
 ## Calendar synchronization
 
@@ -107,6 +114,7 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 
 - Product and architecture design: `docs/superpowers/specs/2026-08-02-life-os-design.md`
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
+- [First-run onboarding plan](docs/superpowers/plans/2026-08-04-first-run-onboarding.md)
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
 - [Plugin contract surface plan](docs/superpowers/plans/2026-08-04-plugin-contract-surface.md)
