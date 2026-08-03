@@ -13,6 +13,7 @@ import {
 } from './identity-domain';
 import {
   OAuthCallbackApplication,
+  OAuthCallbackServiceError,
   type OAuthCallbackAuditEvent,
   type OAuthCallbackAuditSink,
   type OAuthCallbackProviderClients,
@@ -32,7 +33,7 @@ const GITHUB_REDIRECT_URI =
 const BROWSER_SESSION_ID = 'browser_binding_value_'.padEnd(43, 'x');
 const AUTHORIZATION_CODE = 'provider-authorization-code';
 const CORRELATION_ID = 'c1d93eb4-3297-4c30-a96d-6703ee213682';
-const SECRET_DIAGNOSTIC = 'provider-token-and-upstream-diagnostic';
+const INTERNAL_DIAGNOSTIC = 'upstream-internal-diagnostic';
 
 function cookieHeader(value = BROWSER_SESSION_ID): string {
   return `${OAUTH_BROWSER_COOKIE_NAME}=${value}`;
@@ -135,7 +136,8 @@ async function beginGitHub(
 describe('OAuthCallbackApplication', () => {
   it('verifies Google, provisions one account, issues one session, audits, and redirects to the fixed origin', async () => {
     let observedGoogleInput:
-      { code: string; codeVerifier: string; nonce: string } | undefined;
+      | { code: string; codeVerifier: string; nonce: string }
+      | undefined;
     const clients = providerClients({
       google: {
         authenticateAuthorizationCode: vi.fn(async (input) => {
@@ -318,11 +320,11 @@ describe('OAuthCallbackApplication', () => {
     },
   );
 
-  it('maps provider diagnostics to one generic error and credential-free failure audit', async () => {
+  it('maps provider diagnostics to a credential-free service error and failure audit', async () => {
     const clients = providerClients({
       google: {
         authenticateAuthorizationCode: vi.fn(async () => {
-          throw new Error(SECRET_DIAGNOSTIC);
+          throw new Error(INTERNAL_DIAGNOSTIC);
         }),
       },
     });
@@ -338,13 +340,13 @@ describe('OAuthCallbackApplication', () => {
       )
       .catch((error: unknown) => error);
 
-    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toBeInstanceOf(OAuthCallbackServiceError);
     expect((failure as Error).message).toBe(
-      'OAuth callback authentication failed',
+      'OAuth callback service is unavailable',
     );
-    expect((failure as Error).message).not.toContain(SECRET_DIAGNOSTIC);
+    expect((failure as Error).message).not.toContain(INTERNAL_DIAGNOSTIC);
     expect(JSON.stringify(harness.auditEvents)).not.toContain(
-      SECRET_DIAGNOSTIC,
+      INTERNAL_DIAGNOSTIC,
     );
     expect(JSON.stringify(harness.auditEvents)).not.toContain(
       transaction.state,
@@ -358,7 +360,56 @@ describe('OAuthCallbackApplication', () => {
     ]);
   });
 
-  it('revokes an issued session when the success audit cannot be recorded', async () => {
+  it('maps transaction infrastructure failures to a credential-free service error', async () => {
+    const auditEvents: OAuthCallbackAuditEvent[] = [];
+    const clients = providerClients();
+    const application = new OAuthCallbackApplication(
+      {
+        consume: vi.fn(async () => {
+          throw new Error(INTERNAL_DIAGNOSTIC);
+        }),
+      },
+      {
+        signInWithExternalIdentity: vi.fn(),
+      },
+      {
+        create: vi.fn(),
+        revoke: vi.fn(),
+      },
+      clients,
+      {
+        record(event): void {
+          auditEvents.push({ ...event });
+        },
+      },
+      { webOrigin: WEB_ORIGIN, now: () => NOW },
+    );
+
+    const failure = await application
+      .completeAuthorization(
+        'github',
+        { code: AUTHORIZATION_CODE, state: 'state-value' },
+        cookieHeader(),
+        CORRELATION_ID,
+      )
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(OAuthCallbackServiceError);
+    expect((failure as Error).message).toBe(
+      'OAuth callback service is unavailable',
+    );
+    expect((failure as Error).message).not.toContain(INTERNAL_DIAGNOSTIC);
+    expect(clients.github.authenticateAuthorizationCode).not.toHaveBeenCalled();
+    expect(auditEvents).toEqual([
+      {
+        provider: 'github',
+        outcome: 'failure',
+        correlationId: CORRELATION_ID,
+      },
+    ]);
+  });
+
+  it('keeps an issued session active when the success audit cannot be recorded', async () => {
     const account: ProvisionedAccount = {
       user: {
         id: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
@@ -392,9 +443,7 @@ describe('OAuthCallbackApplication', () => {
           expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
         },
       })),
-      revoke: vi.fn(async () => {
-        throw new Error('revocation diagnostic');
-      }),
+      revoke: vi.fn(),
     };
     const application = new OAuthCallbackApplication(
       {
@@ -412,22 +461,28 @@ describe('OAuthCallbackApplication', () => {
       {
         record: vi.fn(async (event) => {
           if (event.outcome === 'success') {
-            throw new Error('audit storage diagnostic');
+            throw new Error('audit storage unavailable');
           }
         }),
       },
       { webOrigin: WEB_ORIGIN, now: () => NOW },
     );
 
-    await expect(
-      application.completeAuthorization(
-        'google',
-        { code: AUTHORIZATION_CODE, state: 'state-value' },
-        cookieHeader(),
-        CORRELATION_ID,
+    const response = await application.completeAuthorization(
+      'google',
+      { code: AUTHORIZATION_CODE, state: 'state-value' },
+      cookieHeader(),
+      CORRELATION_ID,
+    );
+
+    expect(response).toEqual({
+      statusCode: 303,
+      location: 'https://app.example.test/auth/complete',
+      setCookie: expect.stringContaining(
+        `${APPLICATION_SESSION_COOKIE_NAME}=${issuedToken};`,
       ),
-    ).rejects.toThrow('OAuth callback authentication failed');
-    expect(sessions.revoke).toHaveBeenCalledWith(issuedToken);
+    });
+    expect(sessions.revoke).not.toHaveBeenCalled();
   });
 
   it('rejects malformed callback input and correlation identifiers without leaking details', async () => {
