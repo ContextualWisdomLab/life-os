@@ -37,8 +37,8 @@ class HealthController {
   }
 }
 
+/** Root NestJS module for the LifeOS gateway. */
 @Module({
   controllers: [HealthController],
 })
-/** Root NestJS module for the LifeOS gateway. */
 export class AppModule {}
