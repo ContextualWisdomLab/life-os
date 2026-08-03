@@ -1,0 +1,46 @@
+name: Calendar Format Once
+
+on:
+  push:
+    branches: [feat/calendar-idempotent-sync]
+    paths: [.github/workflows/calendar-format-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/calendar-idempotent-sync
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Format calendar slice
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/integration-calendar-service/src/calendar-sync.integration.test.ts
+          apps/integration-calendar-service/src/calendar-sync.ts
+          apps/integration-calendar-service/src/main.ts
+
+      - name: Remove one-time workflow and commit
+        run: |
+          rm .github/workflows/calendar-format-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/integration-calendar-service/src .github/workflows/calendar-format-once.yml
+          git commit -m "style(calendar): apply Prettier formatting"
+          git push origin HEAD:feat/calendar-idempotent-sync
