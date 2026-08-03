@@ -8,6 +8,9 @@ const INVALID_CONTRACT = 'Invalid AppGuardrail detector contract';
 const DUPLICATE_CONTRACT = 'Duplicate AppGuardrail detector contract entry';
 const MISSING_DETECTION = 'Expected AppGuardrail detection is missing';
 
+/**
+ * Returns whether a value is a plain record suitable for schema validation.
+ */
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -16,6 +19,9 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
+/**
+ * Normalizes a required non-empty string or throws the supplied safe error.
+ */
 function requireString(value, errorMessage) {
   if (typeof value !== 'string') {
     throw new Error(errorMessage);
@@ -27,6 +33,9 @@ function requireString(value, errorMessage) {
   return normalized;
 }
 
+/**
+ * Validates and minimizes one AppGuardrail finding used by the contract check.
+ */
 function validateFinding(value) {
   if (!isPlainObject(value)) {
     throw new Error(INVALID_FINDINGS);
@@ -39,6 +48,9 @@ function validateFinding(value) {
   };
 }
 
+/**
+ * Validates and minimizes one expected detector-contract finding.
+ */
 function validateExpectedFinding(value) {
   if (!isPlainObject(value)) {
     throw new Error(INVALID_CONTRACT);
@@ -55,6 +67,9 @@ function validateExpectedFinding(value) {
   };
 }
 
+/**
+ * Builds a deterministic key for duplicate detector-contract detection.
+ */
 function findingKey(value) {
   return [
     value.issue,
@@ -65,6 +80,9 @@ function findingKey(value) {
   ].join('|');
 }
 
+/**
+ * Returns whether a scanner finding exactly satisfies an expected finding.
+ */
 function isExactMatch(finding, expected) {
   return (
     finding.rule_id === expected.rule_id &&
@@ -74,6 +92,9 @@ function isExactMatch(finding, expected) {
   );
 }
 
+/**
+ * Verifies that every expected detector-contract entry has an exact finding.
+ */
 export function verifyAppGuardrailContract(findingsEnvelope, detectorContract) {
   if (
     !isPlainObject(findingsEnvelope) ||
@@ -110,6 +131,9 @@ export function verifyAppGuardrailContract(findingsEnvelope, detectorContract) {
   }
 }
 
+/**
+ * Reads and parses a JSON evidence file without disclosing its contents on failure.
+ */
 async function readJson(path) {
   try {
     return JSON.parse(await readFile(path, 'utf8'));
@@ -118,6 +142,9 @@ async function readJson(path) {
   }
 }
 
+/**
+ * Runs the command-line detector-contract verifier.
+ */
 async function runCli() {
   const [, , findingsPath, contractPath, ...unexpectedArguments] = process.argv;
   if (!findingsPath || !contractPath || unexpectedArguments.length > 0) {
