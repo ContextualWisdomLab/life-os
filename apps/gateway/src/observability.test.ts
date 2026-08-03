@@ -65,7 +65,11 @@ describe('gateway observability middleware', () => {
     const response = new FakeResponse();
     const concretePath = '/v1/tasks/018f47b2-c1d2-4a30-8c17-221fb579c042';
 
-    middleware(request(concretePath, 'token=secret'), response, () => undefined);
+    middleware(
+      request(concretePath, 'token=secret'),
+      response,
+      () => undefined,
+    );
     response.finish(404);
 
     const output = metrics.renderPrometheus();

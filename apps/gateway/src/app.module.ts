@@ -20,7 +20,8 @@ class HealthController {
     return {
       tasks: [],
       habits: [],
-      message: 'Today composition endpoint is ready for domain-service integration.',
+      message:
+        'Today composition endpoint is ready for domain-service integration.',
     };
   }
 

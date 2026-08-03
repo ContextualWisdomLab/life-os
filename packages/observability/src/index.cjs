@@ -2,8 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 
-const PROMETHEUS_CONTENT_TYPE =
-  'text/plain; version=0.0.4; charset=utf-8';
+const PROMETHEUS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8';
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UUID_PATTERN =
@@ -20,15 +19,7 @@ const ALLOWED_METHODS = new Set([
   'POST',
   'PUT',
 ]);
-const DEFAULT_DURATION_BUCKETS = Object.freeze([
-  0.05,
-  0.1,
-  0.25,
-  0.5,
-  1,
-  2,
-  5,
-]);
+const DEFAULT_DURATION_BUCKETS = Object.freeze([0.05, 0.1, 0.25, 0.5, 1, 2, 5]);
 const MAX_DURATION_SECONDS = 3600;
 
 function requireServiceName(value) {
