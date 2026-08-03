@@ -153,7 +153,7 @@ afterEach(async () => {
 });
 
 describe('OAuth HTTP integration', () => {
-  it('completes Google sign-in, introspection, replay rejection, and idempotent logout over HTTP', async () => {
+  it('completes the Google browser-session lifecycle over HTTP', async () => {
     const harness = await createHarness();
 
     const start = await request(harness.baseUrl, '/v1/auth/google/start');
@@ -252,7 +252,7 @@ describe('OAuth HTTP integration', () => {
     ]);
   });
 
-  it('rejects cross-browser GitHub callback use before provider access and then accepts the bound browser', async () => {
+  it('binds GitHub callbacks to the initiating browser', async () => {
     const harness = await createHarness();
     const start = await request(harness.baseUrl, '/v1/auth/github/start');
     const browserCookie = cookiePair(start.headers.get('set-cookie'));
