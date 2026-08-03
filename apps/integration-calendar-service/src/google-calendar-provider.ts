@@ -184,8 +184,8 @@ function parseCalendarEvent(write: CalendarProviderWrite): ParsedCalendarEvent {
       'PRODID:-//Contextual Wisdom Lab//LifeOS Calendar Sync 1.0//EN' ||
     lines[3] !== 'CALSCALE:GREGORIAN' ||
     lines[4] !== 'BEGIN:VEVENT' ||
-    lines[12] !== 'STATUS:CONFIRMED' ||
-    lines[13] !== 'TRANSP:OPAQUE' ||
+    lines[11] !== 'STATUS:CONFIRMED' ||
+    lines[12] !== 'TRANSP:OPAQUE' ||
     lines[16] !== 'END:VEVENT' ||
     lines[17] !== 'END:VCALENDAR'
   ) {
@@ -193,10 +193,10 @@ function parseCalendarEvent(write: CalendarProviderWrite): ParsedCalendarEvent {
   }
 
   const workspaceId = requireUuidV4(
-    requireLineValue(lines[14] ?? '', 'X-LIFE-OS-WORKSPACE-ID:'),
+    requireLineValue(lines[13] ?? '', 'X-LIFE-OS-WORKSPACE-ID:'),
   );
   const blockId = requireUuidV4(
-    requireLineValue(lines[15] ?? '', 'X-LIFE-OS-BLOCK-ID:'),
+    requireLineValue(lines[14] ?? '', 'X-LIFE-OS-BLOCK-ID:'),
   );
   const expectedResourceName = `life-os-${workspaceId}-${blockId}.ics`;
   if (write.resourceName !== expectedResourceName) {
@@ -236,7 +236,7 @@ function parseCalendarEvent(write: CalendarProviderWrite): ParsedCalendarEvent {
     return invalid();
   }
   const timeZone = unescapeIcalendarText(
-    requireLineValue(lines[11] ?? '', 'X-LIFE-OS-TIME-ZONE:'),
+    requireLineValue(lines[15] ?? '', 'X-LIFE-OS-TIME-ZONE:'),
   );
   try {
     new Intl.DateTimeFormat('en-US', { timeZone }).format();
@@ -400,13 +400,16 @@ export class GoogleCalendarProvider implements CalendarProvider {
       headers['if-match'] = requireStrongEtag(write.precondition.etag);
     }
 
-    const response = await this.request(new URL(path, GOOGLE_CALENDAR_API_BASE_URL), {
-      method: createOperation ? 'POST' : 'PUT',
-      headers,
-      body: JSON.stringify(createEventBody(parsed, eventId, createOperation)),
-      redirect: 'error',
-      cache: 'no-store',
-    });
+    const response = await this.request(
+      new URL(path, GOOGLE_CALENDAR_API_BASE_URL),
+      {
+        method: createOperation ? 'POST' : 'PUT',
+        headers,
+        body: JSON.stringify(createEventBody(parsed, eventId, createOperation)),
+        redirect: 'error',
+        cache: 'no-store',
+      },
+    );
     if (response.status === 409 || response.status === 412) {
       await discardResponseBody(response);
       throw new CalendarConflictError();
