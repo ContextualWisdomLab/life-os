@@ -60,27 +60,27 @@ test('registers one bounded shell cache without storing Today HTML', async ({
     )
     .toBe('registered');
 
-  const cachedPaths = await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const cacheNames = (await caches.keys()).filter((name) =>
-          name.startsWith('life-os-shell-'),
-        );
-        const requests = (
-          await Promise.all(
-            cacheNames.map(async (name) => {
-              const cache = await caches.open(name);
-              return cache.keys();
-            }),
-          )
-        ).flat();
-        return requests
-          .map((request) => new URL(request.url).pathname)
-          .sort();
-      }),
-    )
-    .toEqual(EXPECTED_PUBLIC_CACHE_PATHS);
+  async function readCachedPaths(): Promise<string[]> {
+    return page.evaluate(async () => {
+      const cacheNames = (await caches.keys()).filter((name) =>
+        name.startsWith('life-os-shell-'),
+      );
+      const requests = (
+        await Promise.all(
+          cacheNames.map(async (name) => {
+            const cache = await caches.open(name);
+            return cache.keys();
+          }),
+        )
+      ).flat();
+      return requests
+        .map((request) => new URL(request.url).pathname)
+        .sort();
+    });
+  }
 
+  await expect.poll(readCachedPaths).toEqual(EXPECTED_PUBLIC_CACHE_PATHS);
+  const cachedPaths = await readCachedPaths();
   expect(cachedPaths).not.toContain('/');
   expect(cachedPaths).not.toContain('/onboarding');
 });
