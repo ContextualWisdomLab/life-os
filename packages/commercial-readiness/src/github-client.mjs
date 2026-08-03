@@ -1,0 +1,499 @@
+import { evaluatePullRequestForMerge } from './pr-gate.mjs';
+
+const API_ORIGIN = 'https://api.github.com';
+const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
+const API_PAGE_SIZE = 100;
+const MAX_API_PAGES = 10;
+const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+function assertRepository(repository) {
+  if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
+    throw new Error('Repository identifier is invalid');
+  }
+  return repository;
+}
+
+async function readBoundedText(response, maxBytes) {
+  const declared = Number(response.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error('GitHub API response exceeded the size limit');
+  }
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > maxBytes) {
+      await reader.cancel();
+      throw new Error('GitHub API response exceeded the size limit');
+    }
+    chunks.push(value);
+  }
+  const merged = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
+}
+
+export class GitHubApiClient {
+  constructor({
+    token,
+    fetchImpl = globalThis.fetch,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES
+  }) {
+    if (typeof token !== 'string' || !token.trim()) {
+      throw new Error('GitHub token is required');
+    }
+    if (typeof fetchImpl !== 'function') throw new Error('Fetch implementation is required');
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60_000) {
+      throw new Error('GitHub timeout is invalid');
+    }
+    if (
+      !Number.isSafeInteger(maxResponseBytes) ||
+      maxResponseBytes < 1024 ||
+      maxResponseBytes > 5 * 1024 * 1024
+    ) {
+      throw new Error('GitHub response limit is invalid');
+    }
+    this.token = token;
+    this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
+    this.maxResponseBytes = maxResponseBytes;
+  }
+
+  async requestJson(path, { method = 'GET', body, headers = {} } = {}) {
+    if (
+      typeof path !== 'string' ||
+      !path.startsWith('/') ||
+      path.startsWith('//') ||
+      /[\u0000-\u001f\u007f]/.test(path) ||
+      path.includes('\\')
+    ) {
+      throw new Error('Invalid GitHub API path');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(`${API_ORIGIN}${path}`, {
+        method,
+        redirect: 'error',
+        signal: controller.signal,
+        headers: {
+          accept: 'application/vnd.github+json',
+          authorization: `Bearer ${this.token}`,
+          'user-agent': 'life-os-commercial-readiness',
+          'x-github-api-version': '2022-11-28',
+          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+          ...headers
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      });
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.toLowerCase().includes('json')) {
+        throw new Error('GitHub API response was invalid');
+      }
+      const text = await readBoundedText(response, this.maxResponseBytes);
+      if (!response.ok) {
+        throw new Error(`GitHub API request failed with status ${response.status}`);
+      }
+      try {
+        return text ? JSON.parse(text) : null;
+      } catch {
+        throw new Error('GitHub API response was invalid');
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('GitHub API request timed out');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+export function findReadinessIssues(issues, marker) {
+  return (Array.isArray(issues) ? issues : [])
+    .filter(
+      (issue) =>
+        issue &&
+        !issue.pull_request &&
+        issue.state === 'open' &&
+        typeof issue.body === 'string' &&
+        issue.body.startsWith(marker)
+    )
+    .sort((left, right) => left.number - right.number);
+}
+
+export async function syncReadinessIssue(client, repository, { marker, title, body }) {
+  assertRepository(repository);
+  if (typeof body !== 'string' || !body.startsWith(marker) || body.length > 60_000) {
+    throw new Error('Readiness issue body is invalid');
+  }
+  const issues = await collectPaginatedArray(
+    client,
+    `/repos/${repository}/issues?state=open`,
+    'GitHub issue response was invalid'
+  );
+  const matches = findReadinessIssues(issues, marker);
+  let canonical;
+  if (matches.length === 0) {
+    canonical = await client.requestJson(`/repos/${repository}/issues`, {
+      method: 'POST',
+      body: {
+        title,
+        body,
+        labels: ['commercial-readiness', 'automation']
+      }
+    });
+  } else {
+    canonical = await client.requestJson(`/repos/${repository}/issues/${matches[0].number}`, {
+      method: 'PATCH',
+      body: { title, body }
+    });
+    for (const duplicate of matches.slice(1)) {
+      await client.requestJson(`/repos/${repository}/issues/${duplicate.number}`, {
+        method: 'PATCH',
+        body: {
+          state: 'closed',
+          state_reason: 'not_planned',
+          body: `${marker}\n\nSuperseded by #${canonical.number}.`
+        }
+      });
+    }
+  }
+  return canonical;
+}
+
+function normalizeReview(review) {
+  return {
+    actor: String(review?.user?.login ?? ''),
+    state: String(review?.state ?? ''),
+    submitted_at: review?.submitted_at ?? null
+  };
+}
+
+async function collectPaginatedArray(client, path, errorMessage) {
+  const values = [];
+  const separator = path.includes('?') ? '&' : '?';
+  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
+    const payload = await client.requestJson(
+      `${path}${separator}per_page=${API_PAGE_SIZE}&page=${page}`
+    );
+    if (!Array.isArray(payload) || payload.length > API_PAGE_SIZE) {
+      throw new Error(errorMessage);
+    }
+    values.push(...payload);
+    if (payload.length < API_PAGE_SIZE) return values;
+  }
+  throw new Error(`${errorMessage} exceeded the page limit`);
+}
+
+async function collectWorkflowRuns(client, repository, headSha) {
+  const values = [];
+  let expectedTotal = null;
+  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
+    const payload = await client.requestJson(
+      `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+        headSha
+      )}&event=pull_request&per_page=${API_PAGE_SIZE}&page=${page}`
+    );
+    const pageValues = payload?.workflow_runs;
+    if (!Array.isArray(pageValues) || pageValues.length > API_PAGE_SIZE) {
+      throw new Error('GitHub workflow run response was invalid');
+    }
+    if (Number.isSafeInteger(payload?.total_count) && payload.total_count >= 0) {
+      expectedTotal = payload.total_count;
+    }
+    values.push(...pageValues);
+    if (
+      pageValues.length < API_PAGE_SIZE ||
+      (expectedTotal !== null && values.length >= expectedTotal)
+    ) {
+      return values;
+    }
+  }
+  throw new Error('GitHub workflow run response exceeded the page limit');
+}
+
+async function unresolvedThreadCount(client, repository, number) {
+  const [owner, name] = repository.split('/');
+  const query = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}`;
+  let cursor = null;
+  let count = 0;
+  let pages = 0;
+  do {
+    const payload = await client.requestJson('/graphql', {
+      method: 'POST',
+      body: { query, variables: { owner, name, number, cursor } }
+    });
+    if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
+      throw new Error('GitHub review thread query failed');
+    }
+    const threads = payload?.data?.repository?.pullRequest?.reviewThreads;
+    if (!threads || !Array.isArray(threads.nodes)) {
+      throw new Error('GitHub review thread response was invalid');
+    }
+    count += threads.nodes.filter((node) => node?.isResolved === false).length;
+    cursor = threads.pageInfo?.hasNextPage ? threads.pageInfo.endCursor : null;
+    pages += 1;
+    if (pages > MAX_API_PAGES) {
+      throw new Error('GitHub review thread response exceeded the page limit');
+    }
+  } while (cursor);
+  return count;
+}
+
+function runIsNewer(candidate, current) {
+  if (candidate.id !== current.id) return candidate.id > current.id;
+  if (candidate.run_attempt !== current.run_attempt) {
+    return candidate.run_attempt > current.run_attempt;
+  }
+  const candidateTime = Date.parse(candidate.updated_at ?? '') || 0;
+  const currentTime = Date.parse(current.updated_at ?? '') || 0;
+  return candidateTime > currentTime;
+}
+
+function latestWorkflowRuns(runs) {
+  const latest = new Map();
+  for (const run of Array.isArray(runs) ? runs : []) {
+    const normalized = {
+      id: Number.isSafeInteger(run?.id) ? run.id : 0,
+      name: String(run?.name ?? ''),
+      status: String(run?.status ?? ''),
+      conclusion: run?.conclusion ?? null,
+      head_sha: String(run?.head_sha ?? ''),
+      run_attempt: Number(run?.run_attempt ?? 0),
+      updated_at: run?.updated_at ?? null
+    };
+    if (!normalized.name) continue;
+    const current = latest.get(normalized.name);
+    if (!current || runIsNewer(normalized, current)) {
+      latest.set(normalized.name, normalized);
+    }
+  }
+  return [...latest.values()]
+    .map(({ id: _id, ...run }) => run)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function statusIsNewer(candidate, current) {
+  if (candidate.id !== current.id) return candidate.id > current.id;
+  const candidateTime = Date.parse(candidate.created_at ?? '') || 0;
+  const currentTime = Date.parse(current.created_at ?? '') || 0;
+  return candidateTime > currentTime;
+}
+
+function latestStatuses(statuses, headSha) {
+  const latest = new Map();
+  for (const status of Array.isArray(statuses) ? statuses : []) {
+    const normalized = {
+      id: Number.isSafeInteger(status?.id) ? status.id : 0,
+      context: String(status?.context ?? ''),
+      state: String(status?.state ?? ''),
+      sha: String(status?.sha ?? headSha),
+      created_at: status?.created_at ?? null
+    };
+    if (!normalized.context || normalized.sha !== headSha) continue;
+    const current = latest.get(normalized.context);
+    if (!current || statusIsNewer(normalized, current)) {
+      latest.set(normalized.context, normalized);
+    }
+  }
+  return [...latest.values()]
+    .map(({ id: _id, created_at: _createdAt, ...status }) => status)
+    .sort((left, right) => left.context.localeCompare(right.context));
+}
+
+async function collectOnePullRequest(client, repository, summary, policy) {
+  const number = summary.number;
+  const detail = await client.requestJson(`/repos/${repository}/pulls/${number}`);
+  const headSha = String(detail?.head?.sha ?? '');
+  if (!SHA_PATTERN.test(headSha)) {
+    throw new Error('GitHub pull request head was invalid');
+  }
+  const [reviews, workflowRuns, statuses, comparePayload, unresolvedThreads] =
+    await Promise.all([
+      collectPaginatedArray(
+        client,
+        `/repos/${repository}/pulls/${number}/reviews`,
+        'GitHub review response was invalid'
+      ),
+      collectWorkflowRuns(client, repository, headSha),
+      collectPaginatedArray(
+        client,
+        `/repos/${repository}/commits/${headSha}/statuses`,
+        'GitHub status response was invalid'
+      ),
+      client.requestJson(
+        `/repos/${repository}/compare/${encodeURIComponent(
+          detail.base.sha
+        )}...${encodeURIComponent(headSha)}`
+      ),
+      unresolvedThreadCount(client, repository, number)
+    ]);
+
+  const pull = {
+    number,
+    title: String(detail.title ?? ''),
+    state: String(detail.state ?? ''),
+    draft: detail.draft === true,
+    mergeable: detail.mergeable === true,
+    mergeable_state: String(detail.mergeable_state ?? 'unknown'),
+    base_ref: String(detail.base?.ref ?? ''),
+    head_sha: headSha,
+    head_repo: String(detail.head?.repo?.full_name ?? ''),
+    repository,
+    author_association: String(detail.author_association ?? ''),
+    behind_by: Number.isSafeInteger(comparePayload?.behind_by) ? comparePayload.behind_by : -1,
+    reviews: reviews.map(normalizeReview),
+    unresolved_threads: unresolvedThreads,
+    workflows: latestWorkflowRuns(workflowRuns),
+    statuses: latestStatuses(statuses, headSha)
+  };
+  return { ...pull, ...evaluatePullRequestForMerge(pull, policy) };
+}
+
+export async function collectRepositorySnapshot(
+  client,
+  repositoryValue,
+  { policy, commitSha, generatedAt }
+) {
+  const repository = assertRepository(repositoryValue);
+  if (!SHA_PATTERN.test(commitSha ?? '')) {
+    throw new Error('Snapshot commit SHA is invalid');
+  }
+  if (!Number.isFinite(Date.parse(generatedAt))) {
+    throw new Error('Snapshot timestamp is invalid');
+  }
+  const [pullSummaries, issuePayload] = await Promise.all([
+    collectPaginatedArray(
+      client,
+      `/repos/${repository}/pulls?state=open&sort=created&direction=asc`,
+      'GitHub pull request list was invalid'
+    ),
+    collectPaginatedArray(
+      client,
+      `/repos/${repository}/issues?state=open&sort=created&direction=asc`,
+      'GitHub issue list was invalid'
+    )
+  ]);
+  const pullRequests = [];
+  for (const summary of pullSummaries) {
+    pullRequests.push(await collectOnePullRequest(client, repository, summary, policy));
+  }
+  const issues = issuePayload
+    .filter((issue) => !issue?.pull_request)
+    .map((issue) => ({
+      number: issue.number,
+      title: String(issue.title ?? ''),
+      state: String(issue.state ?? ''),
+      labels: (Array.isArray(issue.labels) ? issue.labels : []).map((label) =>
+        typeof label === 'string' ? label : String(label?.name ?? '')
+      )
+    }));
+  return {
+    schema: 'life-os.github-snapshot.v1',
+    repository,
+    commit_sha: commitSha.toLowerCase(),
+    generated_at: new Date(generatedAt).toISOString(),
+    truncated: false,
+    pull_requests: pullRequests,
+    issues
+  };
+}
+
+export async function mergeEligiblePullRequests({
+  repository,
+  policy,
+  dryRun,
+  collectPullRequests,
+  mergePullRequest
+}) {
+  assertRepository(repository);
+  const initial = await collectPullRequests();
+  const results = [];
+  for (const candidate of initial) {
+    const evaluation = evaluatePullRequestForMerge(candidate, policy);
+    if (!evaluation.eligible) {
+      results.push({
+        number: candidate.number,
+        action: 'blocked',
+        blockers: evaluation.blockers
+      });
+      continue;
+    }
+    if (dryRun) {
+      results.push({ number: candidate.number, action: 'would-merge' });
+      continue;
+    }
+    const refreshed = (await collectPullRequests()).find(
+      (item) => item.number === candidate.number
+    );
+    if (!refreshed) {
+      results.push({
+        number: candidate.number,
+        action: 'blocked',
+        blockers: ['not-open']
+      });
+      continue;
+    }
+    if (refreshed.head_sha !== candidate.head_sha) {
+      results.push({
+        number: candidate.number,
+        action: 'blocked',
+        blockers: ['head-changed']
+      });
+      continue;
+    }
+    const refreshedEvaluation = evaluatePullRequestForMerge(refreshed, policy);
+    if (!refreshedEvaluation.eligible) {
+      results.push({
+        number: candidate.number,
+        action: 'blocked',
+        blockers: refreshedEvaluation.blockers
+      });
+      continue;
+    }
+    const result = await mergePullRequest(
+      candidate.number,
+      candidate.head_sha,
+      policy.merge_method
+    );
+    results.push({
+      number: candidate.number,
+      action: result?.merged === false ? 'blocked' : 'merged',
+      ...(result?.merged === false ? { blockers: ['github-rejected-merge'] } : {})
+    });
+  }
+  return results;
+}
+
+export async function mergePullRequestThroughApi(
+  client,
+  repositoryValue,
+  number,
+  expectedHeadSha,
+  mergeMethod
+) {
+  const repository = assertRepository(repositoryValue);
+  if (
+    !Number.isSafeInteger(number) ||
+    number <= 0 ||
+    !SHA_PATTERN.test(expectedHeadSha)
+  ) {
+    throw new Error('Merge request is invalid');
+  }
+  if (mergeMethod !== 'squash') throw new Error('Merge method is invalid');
+  return await client.requestJson(`/repos/${repository}/pulls/${number}/merge`, {
+    method: 'PUT',
+    body: { sha: expectedHeadSha, merge_method: 'squash' }
+  });
+}
