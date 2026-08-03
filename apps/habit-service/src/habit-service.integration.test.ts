@@ -27,6 +27,12 @@ interface TestHarness {
   baseUrl: string;
 }
 
+interface RequestOptions {
+  method?: 'GET' | 'POST';
+  workspaceId?: string;
+  body?: unknown;
+}
+
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
     throw new Error('HABIT_DATABASE_URL is required for integration tests');
@@ -64,11 +70,7 @@ async function closeHarness(harness: TestHarness): Promise<void> {
 async function request(
   baseUrl: string,
   path: string,
-  options: {
-    method?: 'GET' | 'POST';
-    workspaceId?: string;
-    body?: unknown;
-  } = {},
+  options: RequestOptions = {},
 ): Promise<Response> {
   const headers = new Headers();
   if (options.workspaceId) {
@@ -80,7 +82,7 @@ async function request(
   return await fetch(`${baseUrl}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.body === undefined ? null : JSON.stringify(options.body),
   });
 }
 
