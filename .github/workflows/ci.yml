@@ -48,11 +48,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Print planning formatting diff
-        run: |
-          pnpm exec prettier --single-quote --write apps/planning-service/src/main.ts apps/planning-service/src/planning-domain.ts apps/planning-service/src/planning-domain.test.ts apps/planning-service/src/postgres-planning-repository.ts apps/planning-service/src/postgres-planning-repository.test.ts
-          git diff --no-ext-diff -- apps/planning-service/src/main.ts apps/planning-service/src/planning-domain.ts apps/planning-service/src/planning-domain.test.ts apps/planning-service/src/postgres-planning-repository.ts apps/planning-service/src/postgres-planning-repository.test.ts
-          exit 1
+      - name: Check formatting
+        run: pnpm format:check
 
       - name: Lint
         run: pnpm lint
