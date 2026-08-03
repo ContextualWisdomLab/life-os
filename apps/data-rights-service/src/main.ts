@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   Body,
   Controller,
@@ -26,6 +27,12 @@ import {
 import { HttpDataRightsParticipant } from './http-participant';
 
 export const DATA_RIGHTS_COORDINATOR = Symbol('DATA_RIGHTS_COORDINATOR');
+export const DATA_RIGHTS_CALLER_AUTHORIZATION = Symbol(
+  'DATA_RIGHTS_CALLER_AUTHORIZATION',
+);
+
+const REQUIRED_DELETION_CONFIRMATION = 'erase-all-workspace-data';
+const MAXIMUM_AUTHORIZATION_LENGTH = 4_096;
 
 interface ProblemDetails {
   type: 'about:blank';
@@ -44,6 +51,13 @@ interface ParticipantEnvironmentEntry {
   readonly baseUrl: string;
 }
 
+class DataRightsAuthenticationError extends Error {
+  constructor() {
+    super('Data rights caller authentication failed');
+    this.name = 'DataRightsAuthenticationError';
+  }
+}
+
 function problem(status: number, title: string, code: string): HttpException {
   const details: ProblemDetails = {
     type: 'about:blank',
@@ -52,6 +66,33 @@ function problem(status: number, title: string, code: string): HttpException {
     code,
   };
   return new HttpException(details, status);
+}
+
+function requireAuthorizationConfiguration(value: string): string {
+  if (
+    !value ||
+    value.length > MAXIMUM_AUTHORIZATION_LENGTH ||
+    /[\r\n]/.test(value)
+  ) {
+    throw new Error('Data rights caller authorization is invalid');
+  }
+  return value;
+}
+
+function authenticateCaller(value: unknown, expected: string): void {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > MAXIMUM_AUTHORIZATION_LENGTH ||
+    /[\r\n]/.test(value)
+  ) {
+    throw new DataRightsAuthenticationError();
+  }
+  const suppliedDigest = createHash('sha256').update(value).digest();
+  const expectedDigest = createHash('sha256').update(expected).digest();
+  if (!timingSafeEqual(suppliedDigest, expectedDigest)) {
+    throw new DataRightsAuthenticationError();
+  }
 }
 
 function validateDeletionRequest(value: unknown): DeletionRequestBody {
@@ -74,6 +115,8 @@ export class DataRightsController {
   constructor(
     @Inject(DATA_RIGHTS_COORDINATOR)
     private readonly coordinator: DataRightsCoordinator,
+    @Inject(DATA_RIGHTS_CALLER_AUTHORIZATION)
+    private readonly callerAuthorization: string,
   ) {}
 
   @Get('health')
@@ -81,11 +124,13 @@ export class DataRightsController {
     return { status: 'ok', service: 'data-rights-service' };
   }
 
-  @Get('v1/data-rights/export')
+  @Get('internal/v1/data-rights/export')
   async exportWorkspace(
+    @Headers('authorization') authorization: string | undefined,
     @Headers('x-workspace-id') workspaceId: string | undefined,
   ): Promise<DataExportBundle> {
     try {
+      authenticateCaller(authorization, this.callerAuthorization);
       if (!workspaceId) {
         throw new DataRightsValidationError();
       }
@@ -95,14 +140,20 @@ export class DataRightsController {
     }
   }
 
-  @Post('v1/data-rights/deletion')
+  @Post('internal/v1/data-rights/deletion')
   @HttpCode(200)
   async deleteWorkspace(
+    @Headers('authorization') authorization: string | undefined,
     @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-data-rights-confirmation') confirmation: string | undefined,
     @Body() body: unknown,
   ): Promise<DeletionResult> {
     try {
-      if (!workspaceId) {
+      authenticateCaller(authorization, this.callerAuthorization);
+      if (
+        !workspaceId ||
+        confirmation !== REQUIRED_DELETION_CONFIRMATION
+      ) {
         throw new DataRightsValidationError();
       }
       const request = validateDeletionRequest(body);
@@ -116,6 +167,13 @@ export class DataRightsController {
   }
 
   private mapError(error: unknown): never {
+    if (error instanceof DataRightsAuthenticationError) {
+      throw problem(
+        401,
+        'Data rights caller authentication failed',
+        'caller_unauthorized',
+      );
+    }
     if (error instanceof DataRightsValidationError) {
       throw problem(400, 'Data rights request is invalid', 'invalid_request');
     }
@@ -143,7 +201,12 @@ export class DataRightsController {
 
 @Module({})
 export class DataRightsAppModule {
-  static register(participants: readonly DataRightsParticipant[]): DynamicModule {
+  static register(
+    participants: readonly DataRightsParticipant[],
+    callerAuthorization: string,
+  ): DynamicModule {
+    const trustedCallerAuthorization =
+      requireAuthorizationConfiguration(callerAuthorization);
     return {
       module: DataRightsAppModule,
       controllers: [DataRightsController],
@@ -152,6 +215,10 @@ export class DataRightsAppModule {
           provide: DATA_RIGHTS_COORDINATOR,
           useFactory: (): DataRightsCoordinator =>
             new DataRightsCoordinator(participants),
+        },
+        {
+          provide: DATA_RIGHTS_CALLER_AUTHORIZATION,
+          useValue: trustedCallerAuthorization,
         },
       ],
     };
@@ -217,11 +284,16 @@ export function createParticipantsFromEnvironment(
 
 async function bootstrap(): Promise<void> {
   const participants = createParticipantsFromEnvironment(process.env);
-  const app = await NestFactory.create(DataRightsAppModule.register(participants));
+  const callerAuthorization = requireAuthorizationConfiguration(
+    process.env.DATA_RIGHTS_CALLER_AUTHORIZATION ?? '',
+  );
+  const app = await NestFactory.create(
+    DataRightsAppModule.register(participants, callerAuthorization),
+  );
   app.enableShutdownHooks();
   await app.listen(
     Number(process.env.DATA_RIGHTS_SERVICE_PORT ?? 4107),
-    '0.0.0.0',
+    process.env.DATA_RIGHTS_SERVICE_HOST ?? '127.0.0.1',
   );
 }
 
