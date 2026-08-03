@@ -23,6 +23,7 @@ require_command sha256sum
 require_command awk
 require_command date
 require_command mktemp
+require_command tr
 
 mkdir -p -- "${BACKUP_DIRECTORY}"
 chmod 700 -- "${BACKUP_DIRECTORY}"
@@ -59,14 +60,17 @@ pg_restore --list "${temporary_directory}/${archive_name}" >/dev/null
 
 archive_digest="$(sha256sum "${temporary_directory}/${archive_name}" | awk '{print $1}')"
 [[ "${archive_digest}" =~ ^[0-9a-f]{64}$ ]] || fail 'backup_checksum_invalid'
-printf '%s  %s\n' "${archive_digest}" "${archive_name}" >
-  "${temporary_directory}/${archive_name}.sha256"
+printf '%s  %s\n' \
+  "${archive_digest}" \
+  "${archive_name}" \
+  >"${temporary_directory}/${archive_name}.sha256"
 
 pg_dump_version="$(pg_dump --version | tr -d '\r\n')"
 printf 'schema=life-os.backup-metadata.v1\ncreated_at=%s\nformat=postgresql-custom\nsha256=%s\nclient=%s\n' \
   "${created_at}" \
   "${archive_digest}" \
-  "${pg_dump_version}" >"${temporary_directory}/${archive_name}.metadata"
+  "${pg_dump_version}" \
+  >"${temporary_directory}/${archive_name}.metadata"
 
 mv -- "${temporary_directory}/${archive_name}" "${archive_path}"
 mv -- "${temporary_directory}/${archive_name}.sha256" "${checksum_path}"
