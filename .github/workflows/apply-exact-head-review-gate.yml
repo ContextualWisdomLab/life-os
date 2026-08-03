@@ -1,0 +1,324 @@
+name: Apply exact-head review gate
+
+on:
+  push:
+    branches:
+      - fix/exact-head-coderabbit-review
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-exact-head-review-gate
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Apply fail-closed exact-head review evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def replace_once(path_value, old, new):
+              path = Path(path_value)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one replacement, found {count}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          policy_path = Path('product/commercial-readiness-policy.json')
+          policy = json.loads(policy_path.read_text(encoding='utf-8'))
+          policy['required_review_actors'] = ['coderabbitai']
+          ordered = {
+              'schema': policy['schema'],
+              'default_branch': policy['default_branch'],
+              'readiness_issue_marker': policy['readiness_issue_marker'],
+              'readiness_issue_title': policy['readiness_issue_title'],
+              'trusted_author_associations': policy['trusted_author_associations'],
+              'required_review_actors': policy['required_review_actors'],
+              'required_workflows': policy['required_workflows'],
+              'required_statuses': policy['required_statuses'],
+              'artifact_retention_days': policy['artifact_retention_days'],
+              'merge_method': policy['merge_method'],
+          }
+          policy_path.write_text(json.dumps(ordered, indent=2) + '\n', encoding='utf-8')
+
+          replace_once(
+              'packages/commercial-readiness/src/schema.mjs',
+              "const REQUIRED_COMMIT_STATUSES = Object.freeze(['CodeRabbit']);\nconst ALLOWED_EVIDENCE_KINDS = new Set([",
+              "const REQUIRED_COMMIT_STATUSES = Object.freeze(['CodeRabbit']);\nconst DEFAULT_REQUIRED_REVIEW_ACTORS = Object.freeze(['coderabbitai']);\nconst ALLOWED_EVIDENCE_KINDS = new Set([",
+          )
+          replace_once(
+              'packages/commercial-readiness/src/schema.mjs',
+              "  const workflows = uniqueStrings(\n    value.required_workflows,\n    'invalid required workflows',\n  );",
+              "  const reviewActors = (\n    value.required_review_actors === undefined\n      ? [...DEFAULT_REQUIRED_REVIEW_ACTORS]\n      : uniqueStrings(\n          value.required_review_actors,\n          'invalid required review actors',\n        )\n  ).map((actor) => actor.toLowerCase());\n  if (new Set(reviewActors).size !== reviewActors.length) {\n    failPolicy('duplicate required review actor');\n  }\n  for (const required of DEFAULT_REQUIRED_REVIEW_ACTORS) {\n    if (!reviewActors.includes(required)) {\n      failPolicy(`required review actor missing: ${required}`);\n    }\n  }\n  const workflows = uniqueStrings(\n    value.required_workflows,\n    'invalid required workflows',\n  );",
+          )
+          replace_once(
+              'packages/commercial-readiness/src/schema.mjs',
+              "    trusted_author_associations: Object.freeze(associations),\n    required_workflows: Object.freeze(workflows),",
+              "    trusted_author_associations: Object.freeze(associations),\n    required_review_actors: Object.freeze(reviewActors),\n    required_workflows: Object.freeze(workflows),",
+          )
+          replace_once(
+              'packages/commercial-readiness/src/schema.mjs',
+              "function validateSnapshotReview(value) {\n  const allowed = new Set(['actor', 'state', 'submitted_at']);\n  if (!exactKeys(value, allowed)) failSnapshot('invalid review');\n  const submittedAt = value.submitted_at;\n  if (submittedAt !== null && !Number.isFinite(Date.parse(submittedAt))) {\n    failSnapshot('invalid review timestamp');\n  }\n  return Object.freeze({\n    actor: snapshotString(value.actor, 'invalid review actor', 100),\n    state: snapshotString(value.state, 'invalid review state', 50),\n    submitted_at: submittedAt,\n  });\n}",
+              "function validateSnapshotReview(value) {\n  const allowed = new Set(['actor', 'state', 'submitted_at', 'commit_sha']);\n  if (!exactKeys(value, allowed)) failSnapshot('invalid review');\n  const submittedAt = value.submitted_at;\n  if (submittedAt !== null && !Number.isFinite(Date.parse(submittedAt))) {\n    failSnapshot('invalid review timestamp');\n  }\n  const commitSha = snapshotString(\n    value.commit_sha,\n    'invalid review commit SHA',\n    40,\n  );\n  if (!SNAPSHOT_SHA_PATTERN.test(commitSha)) {\n    failSnapshot('invalid review commit SHA');\n  }\n  return Object.freeze({\n    actor: snapshotString(value.actor, 'invalid review actor', 100),\n    state: snapshotString(value.state, 'invalid review state', 50),\n    submitted_at: submittedAt,\n    commit_sha: commitSha.toLowerCase(),\n  });\n}",
+          )
+
+          replace_once(
+              'packages/commercial-readiness/src/github-client.mjs',
+              "function normalizeReview(review) {\n  return {\n    actor: String(review?.user?.login ?? ''),\n    state: String(review?.state ?? ''),\n    submitted_at: review?.submitted_at ?? null,\n  };\n}",
+              "function normalizeReview(review) {\n  return {\n    actor: String(review?.user?.login ?? ''),\n    state: String(review?.state ?? ''),\n    submitted_at: review?.submitted_at ?? null,\n    commit_sha: String(review?.commit_id ?? ''),\n  };\n}",
+          )
+
+          gate_path = Path('packages/commercial-readiness/src/pr-gate.mjs')
+          gate_text = gate_path.read_text(encoding='utf-8')
+          gate_text = gate_text.replace(
+              "const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);",
+              "const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);\nconst COMPLETED_REVIEW_STATES = new Set([\n  'APPROVED',\n  'CHANGES_REQUESTED',\n  'COMMENTED',\n]);",
+              1,
+          )
+          gate_text = gate_text.replace(
+              "function latestReviewsByActor(reviews) {",
+              "function normalizedActor(value) {\n  return typeof value === 'string' ? value.toLowerCase() : '';\n}\n\nfunction latestReviewsByActor(reviews) {",
+              1,
+          )
+          gate_text = gate_text.replace(
+              "    const timestamp = Date.parse(review.submitted_at ?? '') || 0;\n    const current = latest.get(review.actor);\n    if (!current || timestamp >= current.timestamp) {\n      latest.set(review.actor, { state: review.state, timestamp });\n    }",
+              "    const actor = normalizedActor(review.actor);\n    if (!actor) continue;\n    const timestamp = Date.parse(review.submitted_at ?? '') || 0;\n    const current = latest.get(actor);\n    if (!current || timestamp >= current.timestamp) {\n      latest.set(actor, { state: review.state, timestamp });\n    }",
+              1,
+          )
+          insertion = """
+function reviewEvidence(pr, requiredActor) {
+  const actor = normalizedActor(requiredActor);
+  const matchingActor = (Array.isArray(pr.reviews) ? pr.reviews : []).filter(
+    (review) =>
+      normalizedActor(review?.actor) === actor &&
+      COMPLETED_REVIEW_STATES.has(review?.state),
+  );
+  if (matchingActor.length === 0) {
+    return { blocker: `missing-review:${actor}` };
+  }
+  const headSha = typeof pr.head_sha === 'string' ? pr.head_sha.toLowerCase() : '';
+  return matchingActor.some(
+    (review) =>
+      typeof review?.commit_sha === 'string' &&
+      review.commit_sha.toLowerCase() === headSha,
+  )
+    ? {}
+    : { blocker: `stale-review:${actor}` };
+}
+
+"""
+          marker = 'function workflowEvidence(pr, requiredName) {'
+          if gate_text.count(marker) != 1:
+              raise SystemExit('pr-gate.mjs: workflow marker changed')
+          gate_text = gate_text.replace(marker, insertion + marker, 1)
+          marker = "  for (const workflow of policy.required_workflows) {"
+          review_loop = """  for (const actor of policy.required_review_actors ?? []) {
+    const evidence = reviewEvidence(pr, actor);
+    if (evidence.blocker) blockers.push(evidence.blocker);
+  }
+
+"""
+          if gate_text.count(marker) != 1:
+              raise SystemExit('pr-gate.mjs: policy loop marker changed')
+          gate_text = gate_text.replace(marker, review_loop + marker, 1)
+          gate_path.write_text(gate_text, encoding='utf-8')
+
+          test_path = Path('packages/commercial-readiness/src/exact-review-gate.test.mjs')
+          test_path.write_text("""import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { evaluatePullRequestForMerge } from './pr-gate.mjs';
+import { validateGitHubSnapshot } from './schema.mjs';
+
+const HEAD_SHA = 'a'.repeat(40);
+
+function candidate(reviews) {
+  return {
+    state: 'open',
+    draft: false,
+    repository: 'ContextualWisdomLab/life-os',
+    head_repo: 'ContextualWisdomLab/life-os',
+    author_association: 'OWNER',
+    base_ref: 'main',
+    head_sha: HEAD_SHA,
+    mergeable: true,
+    mergeable_state: 'clean',
+    behind_by: 0,
+    unresolved_threads: 0,
+    reviews,
+    workflows: [],
+    statuses: [],
+  };
+}
+
+const policy = {
+  default_branch: 'main',
+  trusted_author_associations: ['OWNER'],
+  required_review_actors: ['coderabbitai'],
+  required_workflows: [],
+  required_statuses: [],
+};
+
+describe('exact-head required review evidence', () => {
+  it('requires CodeRabbit to submit a completed review on the exact current head', () => {
+    const missing = evaluatePullRequestForMerge(candidate([]), policy);
+    assert.deepEqual(missing.blockers, ['missing-review:coderabbitai']);
+
+    const stale = evaluatePullRequestForMerge(
+      candidate([
+        {
+          actor: 'CodeRabbitAI',
+          state: 'COMMENTED',
+          submitted_at: '2026-08-03T09:00:00Z',
+          commit_sha: 'b'.repeat(40),
+        },
+      ]),
+      policy,
+    );
+    assert.deepEqual(stale.blockers, ['stale-review:coderabbitai']);
+
+    const current = evaluatePullRequestForMerge(
+      candidate([
+        {
+          actor: 'coderabbitai',
+          state: 'COMMENTED',
+          submitted_at: '2026-08-03T09:00:00Z',
+          commit_sha: HEAD_SHA,
+        },
+      ]),
+      policy,
+    );
+    assert.deepEqual(current, { eligible: true, blockers: [] });
+  });
+
+  it('rejects review snapshots that omit or forge the reviewed commit SHA', () => {
+    const base = {
+      schema: 'life-os.github-snapshot.v1',
+      repository: 'ContextualWisdomLab/life-os',
+      commit_sha: HEAD_SHA,
+      generated_at: '2026-08-03T09:00:00Z',
+      truncated: false,
+      issues: [],
+    };
+    const pullRequest = {
+      number: 1,
+      title: 'PR',
+      state: 'open',
+      draft: false,
+      mergeable: true,
+      mergeable_state: 'clean',
+      base_ref: 'main',
+      head_sha: HEAD_SHA,
+      head_repo: 'ContextualWisdomLab/life-os',
+      repository: 'ContextualWisdomLab/life-os',
+      author_association: 'OWNER',
+      behind_by: 0,
+      reviews: [
+        {
+          actor: 'coderabbitai',
+          state: 'COMMENTED',
+          submitted_at: null,
+          commit_sha: HEAD_SHA,
+        },
+      ],
+      unresolved_threads: 0,
+      workflows: [],
+      statuses: [],
+      eligible: true,
+      blockers: [],
+    };
+    assert.equal(
+      validateGitHubSnapshot({ ...base, pull_requests: [pullRequest] })
+        .pull_requests[0].reviews[0].commit_sha,
+      HEAD_SHA,
+    );
+    const { commit_sha: ignored, ...withoutSha } = pullRequest.reviews[0];
+    assert.throws(
+      () =>
+        validateGitHubSnapshot({
+          ...base,
+          pull_requests: [
+            { ...pullRequest, reviews: [withoutSha] },
+          ],
+        }),
+      /Invalid GitHub snapshot/,
+    );
+  });
+});
+""", encoding='utf-8')
+
+          replace_once(
+              'packages/commercial-readiness/src/workflow-contract.test.mjs',
+              "    assert.deepEqual(policy.required_statuses, ['CodeRabbit']);",
+              "    assert.deepEqual(policy.required_review_actors, ['coderabbitai']);\n    assert.deepEqual(policy.required_statuses, ['CodeRabbit']);",
+          )
+          replace_once(
+              'packages/commercial-readiness/src/render.mjs',
+              'The hourly loop may squash-merge only an exact, same-repository head SHA with every required workflow and status successful, no requested changes, no unresolved review thread, and no base drift. It never uses an administrative bypass.',
+              'The hourly loop may squash-merge only an exact, same-repository head SHA with every required workflow and status successful, every required reviewer represented on that exact head, no requested changes, no unresolved review thread, and no base drift. It never uses an administrative bypass.',
+          )
+          PY
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Format and validate
+        run: |
+          set -euo pipefail
+          pnpm format
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          docker compose config --quiet
+          git diff --check
+
+      - name: Commit validated source changes
+        run: |
+          set -euo pipefail
+          git config user.name "LifeOS maintenance automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout HEAD -- .github/workflows
+          rm -f apps/web/tsconfig.tsbuildinfo
+          git add --all
+          git diff --cached --check
+          git commit -m "fix: require exact-head CodeRabbit review evidence"
+          git push origin HEAD:fix/exact-head-coderabbit-review
