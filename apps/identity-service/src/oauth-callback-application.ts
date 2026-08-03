@@ -20,7 +20,29 @@ import type {
 import type { ProviderIdentityProfile } from './oauth-provider-response';
 
 const CALLBACK_AUTHENTICATION_FAILED = 'OAuth callback authentication failed';
+const CALLBACK_SERVICE_UNAVAILABLE = 'OAuth callback service is unavailable';
 const MAXIMUM_CORRELATION_ID_LENGTH = 128;
+const EXPECTED_TRANSACTION_FAILURES = new Set([
+  'OAuth transaction is invalid or no longer active',
+  'Identifier must be an opaque non-numeric string',
+  'Unsupported identity provider',
+]);
+
+/** Credential-free failure raised for invalid or rejected callback input. */
+export class OAuthCallbackAuthenticationError extends Error {
+  constructor() {
+    super(CALLBACK_AUTHENTICATION_FAILED);
+    this.name = 'OAuthCallbackAuthenticationError';
+  }
+}
+
+/** Credential-free failure raised when callback infrastructure is unavailable. */
+export class OAuthCallbackServiceError extends Error {
+  constructor() {
+    super(CALLBACK_SERVICE_UNAVAILABLE);
+    this.name = 'OAuthCallbackServiceError';
+  }
+}
 
 /** Consumes one browser- and provider-bound OAuth transaction. */
 export interface OAuthTransactionConsumer {
@@ -98,7 +120,11 @@ export interface OAuthCallbackSuccessResponse {
 }
 
 function failAuthentication(): never {
-  throw new Error(CALLBACK_AUTHENTICATION_FAILED);
+  throw new OAuthCallbackAuthenticationError();
+}
+
+function failService(): never {
+  throw new OAuthCallbackServiceError();
 }
 
 function requireCorrelationId(value: string): string {
@@ -114,6 +140,12 @@ function requireCorrelationId(value: string): string {
     return failAuthentication();
   }
   return normalized;
+}
+
+function isExpectedTransactionFailure(error: unknown): boolean {
+  return (
+    error instanceof Error && EXPECTED_TRANSACTION_FAILURES.has(error.message)
+  );
 }
 
 function googleDisplayName(identity: VerifiedGoogleIdentity): string {
@@ -188,15 +220,12 @@ export class OAuthCallbackApplication {
     let issuedToken: string | undefined;
 
     try {
-      const query = parseOAuthCallbackQuery(queryInput);
-      const browserSessionId = readOpaqueCookie(
-        cookieHeader,
-        OAUTH_BROWSER_COOKIE_NAME,
-      );
-      const transaction = await this.transactions.consume(
+      const query = this.requireCallbackInput(queryInput, cookieHeader);
+      const browserSessionId = this.requireBrowserSessionId(cookieHeader);
+      const transaction = await this.consumeTransaction(
         provider,
         query.state,
-        browserSessionId ?? '',
+        browserSessionId,
       );
       if (query.outcome !== 'authorization_code') {
         return failAuthentication();
@@ -220,7 +249,7 @@ export class OAuthCallbackApplication {
         issued.session.expiresAt,
         this.now(),
       );
-      await this.audit.record({
+      await this.auditWithoutThrowing({
         provider,
         outcome: 'success',
         correlationId,
@@ -233,7 +262,7 @@ export class OAuthCallbackApplication {
         location: this.redirectLocation,
         setCookie,
       };
-    } catch {
+    } catch (error) {
       if (issuedToken) {
         await this.revokeWithoutThrowing(issuedToken);
       }
@@ -248,7 +277,52 @@ export class OAuthCallbackApplication {
             }
           : {}),
       });
+      if (error instanceof OAuthCallbackAuthenticationError) {
+        throw error;
+      }
+      return failService();
+    }
+  }
+
+  private requireCallbackInput(
+    queryInput: Readonly<Record<string, unknown>>,
+    cookieHeader: string | undefined,
+  ): OAuthCallbackQuery {
+    try {
+      const query = parseOAuthCallbackQuery(queryInput);
+      this.requireBrowserSessionId(cookieHeader);
+      return query;
+    } catch {
       return failAuthentication();
+    }
+  }
+
+  private requireBrowserSessionId(cookieHeader: string | undefined): string {
+    try {
+      return (
+        readOpaqueCookie(cookieHeader, OAUTH_BROWSER_COOKIE_NAME) ??
+        failAuthentication()
+      );
+    } catch (error) {
+      if (error instanceof OAuthCallbackAuthenticationError) {
+        throw error;
+      }
+      return failAuthentication();
+    }
+  }
+
+  private async consumeTransaction(
+    provider: IdentityProvider,
+    state: string,
+    browserSessionId: string,
+  ): Promise<ConsumedOAuthTransaction> {
+    try {
+      return await this.transactions.consume(provider, state, browserSessionId);
+    } catch (error) {
+      if (isExpectedTransactionFailure(error)) {
+        return failAuthentication();
+      }
+      throw error;
     }
   }
 
@@ -287,7 +361,7 @@ export class OAuthCallbackApplication {
     try {
       await this.audit.record(event);
     } catch {
-      // Callback failure remains authoritative and never exposes audit details.
+      // Authentication remains authoritative and never exposes audit details.
     }
   }
 }

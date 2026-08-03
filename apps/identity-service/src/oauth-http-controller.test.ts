@@ -1,8 +1,15 @@
 import 'reflect-metadata';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  OAuthCallbackApplication,
+  OAuthCallbackAuthenticationError,
+} from './oauth-callback-application';
 import { OAuthHttpApplication } from './oauth-http-application';
 import { OAuthHttpController } from './oauth-http-controller';
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class TestResponse {
   statusCode = 0;
@@ -36,8 +43,24 @@ function application(
   return overrides as unknown as OAuthHttpApplication;
 }
 
+function callbackApplication(
+  overrides: Partial<OAuthCallbackApplication> = {},
+): OAuthCallbackApplication {
+  return overrides as unknown as OAuthCallbackApplication;
+}
+
+function controller(
+  httpOverrides: Partial<OAuthHttpApplication>,
+  callbackOverrides: Partial<OAuthCallbackApplication> = {},
+): OAuthHttpController {
+  return new OAuthHttpController(
+    application(httpOverrides),
+    callbackApplication(callbackOverrides),
+  );
+}
+
 describe('OAuthHttpController', () => {
-  it('publishes the fixed authorization, session, and logout routes', () => {
+  it('publishes fixed authorization, callback, session, and logout routes', () => {
     expect(
       Reflect.getMetadata(
         PATH_METADATA,
@@ -50,6 +73,18 @@ describe('OAuthHttpController', () => {
         OAuthHttpController.prototype.startGitHub,
       ),
     ).toBe('v1/auth/github/start');
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        OAuthHttpController.prototype.callbackGoogle,
+      ),
+    ).toBe('v1/auth/google/callback');
+    expect(
+      Reflect.getMetadata(
+        PATH_METADATA,
+        OAuthHttpController.prototype.callbackGitHub,
+      ),
+    ).toBe('v1/auth/github/callback');
     expect(
       Reflect.getMetadata(PATH_METADATA, OAuthHttpController.prototype.session),
     ).toBe('v1/session');
@@ -64,12 +99,10 @@ describe('OAuthHttpController', () => {
       location: 'https://accounts.google.com/o/oauth2/v2/auth?state=opaque',
       setCookie: 'life_os_oauth_browser=opaque; Secure; HttpOnly',
     });
-    const controller = new OAuthHttpController(
-      application({ beginAuthorization }),
-    );
+    const instance = controller({ beginAuthorization });
     const response = new TestResponse();
 
-    await controller.startGoogle(undefined, response);
+    await instance.startGoogle(undefined, response);
 
     expect(beginAuthorization).toHaveBeenCalledWith('google', undefined);
     expect(response.statusCode).toBe(303);
@@ -79,6 +112,116 @@ describe('OAuthHttpController', () => {
     );
     expect(response.headers.get('set-cookie')).toContain('Secure');
     expect(response.body).toBeUndefined();
+  });
+
+  it('completes callbacks with the exact provider, query, browser cookie, and valid correlation ID', async () => {
+    const completeAuthorization = vi.fn().mockResolvedValue({
+      statusCode: 303,
+      location: 'https://app.example.test/auth/complete',
+      setCookie:
+        'life_os_session=opaque; Path=/; HttpOnly; Secure; SameSite=Lax',
+    });
+    const instance = controller({}, { completeAuthorization });
+    const response = new TestResponse();
+    const query = { code: 'authorization-code', state: 'opaque-state' };
+
+    await instance.callbackGitHub(
+      query,
+      'life_os_oauth_browser=browser-binding',
+      'correlation-value',
+      response,
+    );
+
+    expect(completeAuthorization).toHaveBeenCalledWith(
+      'github',
+      query,
+      'life_os_oauth_browser=browser-binding',
+      'correlation-value',
+    );
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-correlation-id')).toBe('correlation-value');
+    expect(response.headers.get('location')).toBe(
+      'https://app.example.test/auth/complete',
+    );
+    expect(response.headers.get('set-cookie')).toContain(
+      'HttpOnly; Secure; SameSite=Lax',
+    );
+    expect(response.body).toBeUndefined();
+  });
+
+  it.each([undefined, 'bad\ncorrelation'])(
+    'generates and returns a bounded correlation ID when the request header is %s',
+    async (correlationIdHeader) => {
+      const completeAuthorization = vi.fn().mockResolvedValue({
+        statusCode: 303,
+        location: 'https://app.example.test/auth/complete',
+        setCookie: 'life_os_session=opaque; Secure; HttpOnly',
+      });
+      const instance = controller({}, { completeAuthorization });
+      const response = new TestResponse();
+
+      await instance.callbackGoogle(
+        { code: 'authorization-code', state: 'opaque-state' },
+        'life_os_oauth_browser=browser-binding',
+        correlationIdHeader,
+        response,
+      );
+
+      const generatedCorrelationId = response.headers.get('x-correlation-id');
+      expect(generatedCorrelationId).toMatch(UUID_V4_PATTERN);
+      expect(completeAuthorization).toHaveBeenCalledWith(
+        'google',
+        expect.any(Object),
+        'life_os_oauth_browser=browser-binding',
+        generatedCorrelationId,
+      );
+    },
+  );
+
+  it('maps callback authentication failures to one credential-free problem response', async () => {
+    const completeAuthorization = vi
+      .fn()
+      .mockRejectedValue(new OAuthCallbackAuthenticationError());
+    const instance = controller({}, { completeAuthorization });
+    const response = new TestResponse();
+
+    await instance.callbackGoogle(
+      { error: 'access_denied', state: 'opaque-state' },
+      undefined,
+      undefined,
+      response,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.contentType).toBe('application/problem+json');
+    expect(response.body).toEqual({
+      type: 'about:blank',
+      title: 'Authorization could not be completed',
+      status: 400,
+      code: 'oauth_callback_failed',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('opaque-state');
+  });
+
+  it('redacts unexpected callback diagnostics behind service unavailability', async () => {
+    const completeAuthorization = vi
+      .fn()
+      .mockRejectedValue(new Error('provider-token-and-upstream-diagnostic'));
+    const instance = controller({}, { completeAuthorization });
+    const response = new TestResponse();
+
+    await instance.callbackGitHub(
+      { code: 'authorization-code', state: 'opaque-state' },
+      undefined,
+      'correlation-value',
+      response,
+    );
+
+    expect(response.statusCode).toBe(503);
+    expect(response.contentType).toBe('application/problem+json');
+    expect(JSON.stringify(response.body)).not.toContain('provider-token');
+    expect(JSON.stringify(response.body)).not.toContain('opaque-state');
   });
 
   it('returns token-free session JSON and an idempotent logout response', async () => {
@@ -97,14 +240,12 @@ describe('OAuthHttpController', () => {
       setCookie:
         'life_os_session=deleted; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
     });
-    const controller = new OAuthHttpController(
-      application({ introspectSession, logout }),
-    );
+    const instance = controller({ introspectSession, logout });
     const sessionResponse = new TestResponse();
     const logoutResponse = new TestResponse();
 
-    await controller.session('life_os_session=opaque', sessionResponse);
-    await controller.logout('life_os_session=opaque', logoutResponse);
+    await instance.session('life_os_session=opaque', sessionResponse);
+    await instance.logout('life_os_session=opaque', logoutResponse);
 
     expect(sessionResponse.statusCode).toBe(200);
     expect(sessionResponse.contentType).toBe('application/json');
@@ -120,14 +261,12 @@ describe('OAuthHttpController', () => {
     const introspectSession = vi
       .fn()
       .mockRejectedValue(new Error('Session is invalid or expired'));
-    const controller = new OAuthHttpController(
-      application({ beginAuthorization, introspectSession }),
-    );
+    const instance = controller({ beginAuthorization, introspectSession });
     const startResponse = new TestResponse();
     const sessionResponse = new TestResponse();
 
-    await controller.startGitHub(undefined, startResponse);
-    await controller.session(undefined, sessionResponse);
+    await instance.startGitHub(undefined, startResponse);
+    await instance.session(undefined, sessionResponse);
 
     expect(startResponse.statusCode).toBe(503);
     expect(startResponse.contentType).toBe('application/problem+json');

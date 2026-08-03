@@ -3,6 +3,7 @@ import { Controller, Get, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { createIdentityRuntime, IdentityRuntime } from './identity-runtime';
 import {
+  OAUTH_CALLBACK_APPLICATION,
   OAUTH_HTTP_APPLICATION,
   OAuthHttpController,
 } from './oauth-http-controller';
@@ -28,6 +29,11 @@ class HealthController {
       provide: OAUTH_HTTP_APPLICATION,
       inject: [IDENTITY_RUNTIME],
       useFactory: (runtime: IdentityRuntime) => runtime.application,
+    },
+    {
+      provide: OAUTH_CALLBACK_APPLICATION,
+      inject: [IDENTITY_RUNTIME],
+      useFactory: (runtime: IdentityRuntime) => runtime.callbackApplication,
     },
   ],
 })

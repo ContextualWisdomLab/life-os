@@ -1,11 +1,24 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Pool, type PoolConfig } from 'pg';
+import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { OAuthTransactionService, SessionService } from './auth-security';
+import { GitHubOAuthClient } from './github-oauth-client';
+import { GoogleOidcClient } from './google-oidc-client';
+import { IdentityService } from './identity-domain';
+import {
+  OAuthCallbackApplication,
+  type OAuthCallbackAuditEvent,
+  type OAuthCallbackAuditSink,
+} from './oauth-callback-application';
 import { OAuthHttpApplication } from './oauth-http-application';
+import { BoundedOAuthProviderHttpClient } from './oauth-provider-http-client';
+import {
+  PostgresIdentityRepository,
+  type SqlTransaction,
+  type TransactionalSqlClient,
+} from './postgres-identity-repository';
 import {
   PostgresOAuthTransactionRepository,
   PostgresSessionRepository,
-  type SqlClient,
   type SqlQueryResult,
 } from './postgres-security-repositories';
 import { AesGcmSecretBox } from './secret-box';
@@ -16,8 +29,28 @@ const KEY_VERSION_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,31}$/;
 const ENCODED_KEY_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+export type OAuthCallbackAuditWriter = (line: string) => void | Promise<void>;
 
-class NodePostgresSqlClient implements SqlClient {
+class NodePostgresSqlTransaction implements SqlTransaction {
+  constructor(private readonly client: PoolClient) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<SqlQueryResult<Row>> {
+    const result = await this.client.query(text, [...values]);
+    return {
+      rows: result.rows as Row[],
+      rowCount: result.rowCount,
+    };
+  }
+
+  release(): void {
+    this.client.release();
+  }
+}
+
+class NodePostgresSqlClient implements TransactionalSqlClient {
   constructor(private readonly pool: Pool) {}
 
   async query<Row>(
@@ -29,6 +62,39 @@ class NodePostgresSqlClient implements SqlClient {
       rows: result.rows as Row[],
       rowCount: result.rowCount,
     };
+  }
+
+  async connect(): Promise<SqlTransaction> {
+    return new NodePostgresSqlTransaction(await this.pool.connect());
+  }
+}
+
+function defaultAuditWriter(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
+/** Writes a projected credential-free callback audit event as one JSON line. */
+export class JsonLineOAuthCallbackAuditSink implements OAuthCallbackAuditSink {
+  constructor(
+    private readonly writer: OAuthCallbackAuditWriter = defaultAuditWriter,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async record(event: OAuthCallbackAuditEvent): Promise<void> {
+    const occurredAt = this.now();
+    if (!Number.isFinite(occurredAt.getTime())) {
+      throw new Error('OAuth callback audit clock is invalid');
+    }
+    const line = JSON.stringify({
+      eventType: 'identity.oauth_callback',
+      occurredAt: occurredAt.toISOString(),
+      provider: event.provider,
+      outcome: event.outcome,
+      correlationId: event.correlationId,
+      ...(event.userId ? { userId: event.userId } : {}),
+      ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
+    });
+    await this.writer(line);
   }
 }
 
@@ -145,6 +211,7 @@ export class IdentityRuntime implements OnApplicationShutdown {
   constructor(
     private readonly pool: Pool,
     readonly application: OAuthHttpApplication,
+    readonly callbackApplication: OAuthCallbackApplication,
   ) {}
 
   async close(): Promise<void> {
@@ -177,36 +244,84 @@ export function createIdentityRuntime(
     currentKeyVersion,
     keys,
   });
+  const googleClientId = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_CLIENT_ID',
+  );
+  const googleClientSecret = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_CLIENT_SECRET',
+  );
+  const googleRedirectUri = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_REDIRECT_URI',
+  );
+  const githubClientId = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_CLIENT_ID',
+  );
+  const githubClientSecret = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_CLIENT_SECRET',
+  );
+  const githubRedirectUri = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_REDIRECT_URI',
+  );
+  const webOrigin = requireConfiguration(environment, 'LIFE_OS_WEB_ORIGIN');
+  const providerRequestTimeoutMs = requireBoundedInteger(
+    environment.IDENTITY_PROVIDER_REQUEST_TIMEOUT_MS,
+    5_000,
+    100,
+    10_000,
+    'Identity provider request timeout is invalid',
+  );
+
   const pool = new Pool(createPoolConfiguration(environment));
   const sqlClient = new NodePostgresSqlClient(pool);
   const transactions = new OAuthTransactionService(
     new PostgresOAuthTransactionRepository(sqlClient, secretBox),
   );
   const sessions = new SessionService(new PostgresSessionRepository(sqlClient));
+  const identities = new IdentityService(
+    new PostgresIdentityRepository(sqlClient),
+  );
   const application = new OAuthHttpApplication(transactions, sessions, {
     providers: {
       google: {
-        clientId: requireConfiguration(
-          environment,
-          'IDENTITY_GOOGLE_CLIENT_ID',
-        ),
-        redirectUri: requireConfiguration(
-          environment,
-          'IDENTITY_GOOGLE_REDIRECT_URI',
-        ),
+        clientId: googleClientId,
+        redirectUri: googleRedirectUri,
       },
       github: {
-        clientId: requireConfiguration(
-          environment,
-          'IDENTITY_GITHUB_CLIENT_ID',
-        ),
-        redirectUri: requireConfiguration(
-          environment,
-          'IDENTITY_GITHUB_REDIRECT_URI',
-        ),
+        clientId: githubClientId,
+        redirectUri: githubRedirectUri,
       },
     },
-    webOrigin: requireConfiguration(environment, 'LIFE_OS_WEB_ORIGIN'),
+    webOrigin,
   });
-  return new IdentityRuntime(pool, application);
+  const providerHttpClient = new BoundedOAuthProviderHttpClient({
+    timeoutMs: providerRequestTimeoutMs,
+  });
+  const callbackApplication = new OAuthCallbackApplication(
+    transactions,
+    identities,
+    sessions,
+    {
+      google: new GoogleOidcClient({
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+        redirectUri: googleRedirectUri,
+        requestTimeoutMs: providerRequestTimeoutMs,
+      }),
+      github: new GitHubOAuthClient({
+        clientId: githubClientId,
+        clientSecret: githubClientSecret,
+        redirectUri: githubRedirectUri,
+        httpClient: providerHttpClient,
+      }),
+    },
+    new JsonLineOAuthCallbackAuditSink(),
+    { webOrigin },
+  );
+  return new IdentityRuntime(pool, application, callbackApplication);
 }
