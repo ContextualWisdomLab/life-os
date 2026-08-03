@@ -37,6 +37,76 @@ test('creates a useful first plan without overwriting the Today contract', async
   expect(storedCompletion).toContain('life-os.onboarding-completion.v1');
 });
 
+test('restores the existing Today draft when completion storage fails', async ({
+  page,
+}) => {
+  const existingDraft = await page.evaluate(() => {
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const value = JSON.stringify({
+      version: 'life-os.today-draft.v1',
+      date,
+      actions: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          title: 'Protect the existing plan',
+          status: 'open',
+          priority: 1,
+          startMinute: null,
+          durationMinutes: null,
+          createdAt: new Date().toISOString(),
+          completedAt: null,
+        },
+      ],
+    });
+    window.localStorage.setItem('life-os.today-draft.v1', value);
+    return value;
+  });
+
+  await page.addInitScript(() => {
+    const nativeSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItem(
+      key: string,
+      value: string,
+    ): void {
+      if (key === 'life-os.onboarding-completion.v1') {
+        throw new DOMException('Simulated storage failure', 'QuotaExceededError');
+      }
+      nativeSetItem.call(this, key, value);
+    };
+  });
+  await page.reload();
+
+  await page
+    .getByLabel('What direction matters most right now?')
+    .fill('Prepare a calm product launch');
+  await page
+    .getByLabel('What is the next visible action?')
+    .fill('Review the release evidence');
+  await page.getByRole('button', { name: 'Create my first plan' }).click();
+
+  await expect(
+    page.getByText(
+      'Your browser could not save the complete plan safely. Your previous Today draft was restored.',
+    ),
+  ).toBeVisible();
+  await expect(page).toHaveURL('/onboarding');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem('life-os.today-draft.v1'),
+      ),
+    )
+    .toBe(existingDraft);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem('life-os.onboarding-completion.v1'),
+      ),
+    )
+    .toBeNull();
+});
+
 test('fails closed when required planning inputs are absent', async ({ page }) => {
   await page.getByRole('button', { name: 'Create my first plan' }).click();
   await expect(
