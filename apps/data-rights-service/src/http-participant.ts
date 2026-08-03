@@ -53,10 +53,16 @@ function requireBaseUrl(value: string, allowedHosts: readonly string[]): URL {
 }
 
 async function readBoundedJson(response: Response): Promise<unknown> {
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.toLowerCase().startsWith('application/json')) {
+    await response.body?.cancel();
+    throw new DataRightsDependencyError();
+  }
   const declaredLength = response.headers.get('content-length');
   if (
     declaredLength &&
-    (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAXIMUM_RESPONSE_BYTES)
+    (!/^\d+$/.test(declaredLength) ||
+      Number(declaredLength) > MAXIMUM_RESPONSE_BYTES)
   ) {
     await response.body?.cancel();
     throw new DataRightsDependencyError();
@@ -102,11 +108,10 @@ export class HttpDataRightsParticipant implements DataRightsParticipant {
   }
 
   async exportWorkspace(workspaceId: string): Promise<readonly unknown[]> {
-    const response = await this.request('internal/v1/data-rights/export', {
+    const value = await this.requestJson('internal/v1/data-rights/export', {
       method: 'GET',
       headers: this.headers(workspaceId),
     });
-    const value = await readBoundedJson(response);
     if (!Array.isArray(value)) {
       throw new DataRightsDependencyError();
     }
@@ -117,21 +122,20 @@ export class HttpDataRightsParticipant implements DataRightsParticipant {
     workspaceId: string,
     requestId: string,
   ): Promise<DeletionPreparation> {
-    const response = await this.request(
+    return (await this.requestJson(
       'internal/v1/data-rights/prepare-deletion',
       {
         method: 'POST',
         headers: this.headers(workspaceId, true),
         body: JSON.stringify({ requestId }),
       },
-    );
-    return (await readBoundedJson(response)) as DeletionPreparation;
+    )) as DeletionPreparation;
   }
 
   async commitDeletion(
     preparation: DeletionPreparation,
   ): Promise<DeletionConfirmation> {
-    const response = await this.request(
+    return (await this.requestJson(
       'internal/v1/data-rights/commit-deletion',
       {
         method: 'POST',
@@ -141,8 +145,7 @@ export class HttpDataRightsParticipant implements DataRightsParticipant {
           token: preparation.token,
         }),
       },
-    );
-    return (await readBoundedJson(response)) as DeletionConfirmation;
+    )) as DeletionConfirmation;
   }
 
   private headers(
@@ -157,21 +160,24 @@ export class HttpDataRightsParticipant implements DataRightsParticipant {
     };
   }
 
-  private async request(path: string, init: RequestInit): Promise<Response> {
+  private async requestJson(path: string, init: RequestInit): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMilliseconds);
     try {
-      const response = await this.fetchImplementation(new URL(path, this.baseUrl), {
-        ...init,
-        redirect: 'error',
-        cache: 'no-store',
-        signal: controller.signal,
-      });
+      const response = await this.fetchImplementation(
+        new URL(path, this.baseUrl),
+        {
+          ...init,
+          redirect: 'error',
+          cache: 'no-store',
+          signal: controller.signal,
+        },
+      );
       if (!response.ok) {
         await response.body?.cancel();
         throw new DataRightsDependencyError();
       }
-      return response;
+      return await readBoundedJson(response);
     } catch (error) {
       if (error instanceof DataRightsDependencyError) {
         throw error;
