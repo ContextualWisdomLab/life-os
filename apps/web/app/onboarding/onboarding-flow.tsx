@@ -22,6 +22,15 @@ function localDate(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+/** Restores one browser-storage entry to its exact pre-submit value. */
+function restoreStorageValue(key: string, value: string | null): void {
+  if (value === null) {
+    window.localStorage.removeItem(key);
+    return;
+  }
+  window.localStorage.setItem(key, value);
+}
+
 /**
  * Converts one concrete first-run commitment into a non-destructive Today draft.
  * All state remains browser-local until authenticated workspace sync is available.
@@ -48,9 +57,15 @@ export function OnboardingFlow({
     }
 
     setSubmitting(true);
+    let previousToday: string | null | undefined;
+    let previousCompletion: string | null | undefined;
     try {
       const date = localDate();
       const stored = window.localStorage.getItem(TODAY_STORAGE_KEY);
+      previousToday = stored;
+      previousCompletion = window.localStorage.getItem(
+        ONBOARDING_STORAGE_KEY,
+      );
       let draft = parseStoredTodayDraft(stored, date);
       const actionId = globalThis.crypto.randomUUID();
       draft = addTodayAction(draft, {
@@ -88,8 +103,20 @@ export function OnboardingFlow({
       window.location.assign('/');
     } catch {
       setSubmitting(false);
+      let restored = false;
+      if (previousToday !== undefined && previousCompletion !== undefined) {
+        try {
+          restoreStorageValue(TODAY_STORAGE_KEY, previousToday);
+          restoreStorageValue(ONBOARDING_STORAGE_KEY, previousCompletion);
+          restored = true;
+        } catch {
+          // Browser storage is unavailable; keep the user on this page.
+        }
+      }
       setMessage(
-        'Your browser could not save the plan safely. No existing Today draft was replaced.',
+        restored
+          ? 'Your browser could not save the complete plan safely. Your previous Today draft was restored.'
+          : 'Your browser could not save the plan safely. Review Today before trying again.',
       );
     }
   }
