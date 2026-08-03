@@ -13,6 +13,7 @@
 - [x] Revoke sessions idempotently without disclosing unknown token hashes.
 - [x] Add cleanup operations for expired, consumed, and revoked records.
 - [x] Add a forward migration for mandatory encryption-key metadata.
+- [x] Apply all identity migrations and exercise the adapters against PostgreSQL in CI.
 - [ ] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
 
 ## Deployment guidance
@@ -25,4 +26,4 @@ The PostgreSQL client passed to these adapters must preserve parameter binding a
 
 ## Verification boundary
 
-The unit tests use a recording SQL client to verify parameterization, atomic SQL shape, encryption, decryption, cleanup, and row mapping. A deployment pipeline should additionally apply all identity migrations to a disposable PostgreSQL instance and execute adapter smoke tests against that instance before promotion.
+Unit tests use a recording SQL client to verify parameterization, atomic SQL shape, encryption, decryption, cleanup, and row mapping. CI also starts a disposable PostgreSQL service, applies every identity migration in lexical order, and verifies encrypted OAuth transaction consumption, hashed session persistence and rotation, and the composite user/workspace tenant boundary against the real database engine.
