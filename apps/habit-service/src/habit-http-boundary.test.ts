@@ -97,14 +97,14 @@ describe('Habit HTTP boundary', () => {
       status: 409,
       code: 'idempotency_conflict',
     });
-    expect(responseOf(toHabitHttpException(new Error('Habit not found')))).toEqual(
-      {
-        type: 'about:blank',
-        title: 'Habit not found',
-        status: 404,
-        code: 'not_found',
-      },
-    );
+    expect(
+      responseOf(toHabitHttpException(new Error('Habit not found'))),
+    ).toEqual({
+      type: 'about:blank',
+      title: 'Habit not found',
+      status: 404,
+      code: 'not_found',
+    });
     expect(
       responseOf(toHabitHttpException(new Error('Timezone is invalid'))),
     ).toEqual({
@@ -113,14 +113,14 @@ describe('Habit HTTP boundary', () => {
       status: 400,
       code: 'invalid_request',
     });
-    expect(responseOf(toHabitHttpException(new HabitPersistenceError()))).toEqual(
-      {
-        type: 'about:blank',
-        title: 'Habit persistence is unavailable',
-        status: 503,
-        code: 'persistence_unavailable',
-      },
-    );
+    expect(
+      responseOf(toHabitHttpException(new HabitPersistenceError())),
+    ).toEqual({
+      type: 'about:blank',
+      title: 'Habit persistence is unavailable',
+      status: 503,
+      code: 'persistence_unavailable',
+    });
   });
 
   it('does not expose unexpected error contents', () => {
