@@ -43,7 +43,7 @@ set -Eeuo pipefail
 exec docker run --rm --network host \\
   --user "\${BACKUP_RECOVERY_USER_ID}:\${BACKUP_RECOVERY_GROUP_ID}" \\
   --env HOME=/tmp \\
-  --env "PGDATABASE=\${PGDATABASE:-}" \\
+  --env "PGDATABASE=\${DATABASE_URL:-}" \\
   --volume "\${BACKUP_RECOVERY_PASSWD_FILE}:/etc/passwd:ro" \\
   --volume "\${BACKUP_RECOVERY_GROUP_FILE}:/etc/group:ro" \\
   --volume "\${BACKUP_RECOVERY_MOUNT_ROOT}:\${BACKUP_RECOVERY_MOUNT_ROOT}" \\
