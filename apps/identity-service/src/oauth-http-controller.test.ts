@@ -147,7 +147,7 @@ describe('OAuthHttpController', () => {
     expect(response.body).toBeUndefined();
   });
 
-  it.each([undefined, 'bad\ncorrelation']) (
+  it.each([undefined, 'bad\ncorrelation'])(
     'generates and returns a bounded correlation ID when the request header is %s',
     async (correlationIdHeader) => {
       const completeAuthorization = vi.fn().mockResolvedValue({
