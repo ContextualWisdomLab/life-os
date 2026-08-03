@@ -133,9 +133,7 @@ export class GitHubOAuthClient {
       const userPayload = parseGitHubResponse(userResponse, 'object');
       const emailResponse = await this.httpClient.execute(requests.emails);
       const emailPayload = parseGitHubResponse(emailResponse, 'array');
-      return Object.freeze(
-        normalizeGitHubIdentity(userPayload, emailPayload),
-      );
+      return Object.freeze(normalizeGitHubIdentity(userPayload, emailPayload));
     } catch {
       return failAuthentication();
     }
