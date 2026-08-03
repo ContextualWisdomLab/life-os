@@ -5,21 +5,19 @@ import {
   Controller,
   Get,
   Headers,
+  Inject,
   Module,
   Param,
   Post,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { requireTitle, toHttpException } from './http-boundary';
-import {
-  Goal,
-  InMemoryPlanningRepository,
-  PlanningService,
-  Project,
-  Task,
-} from './planning-domain';
+import type { Goal, Project, Task } from './planning-domain';
+import { PlanningService } from './planning-domain';
+import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 
-const planningService = new PlanningService(new InMemoryPlanningRepository());
+export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
+export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
 
 function requireWorkspaceId(value: string | undefined): string {
   const workspaceId = value?.trim();
@@ -30,7 +28,12 @@ function requireWorkspaceId(value: string | undefined): string {
 }
 
 @Controller()
-class PlanningController {
+export class PlanningController {
+  constructor(
+    @Inject(PLANNING_SERVICE)
+    private readonly planningService: PlanningService,
+  ) {}
+
   @Get('health')
   health(): { status: 'ok'; service: 'planning-service' } {
     return { status: 'ok', service: 'planning-service' };
@@ -42,7 +45,7 @@ class PlanningController {
     @Body() body: { title?: unknown },
   ): Promise<Goal> {
     try {
-      return await planningService.createGoal(
+      return await this.planningService.createGoal(
         requireWorkspaceId(workspaceHeader),
         {
           title: requireTitle(body),
@@ -58,7 +61,7 @@ class PlanningController {
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
   ): Promise<Goal[]> {
     try {
-      return await planningService.listGoals(
+      return await this.planningService.listGoals(
         requireWorkspaceId(workspaceHeader),
       );
     } catch (error) {
@@ -73,7 +76,7 @@ class PlanningController {
     @Body() body: { title?: unknown },
   ): Promise<Project> {
     try {
-      return await planningService.createProject(
+      return await this.planningService.createProject(
         requireWorkspaceId(workspaceHeader),
         {
           goalId,
@@ -91,7 +94,7 @@ class PlanningController {
     @Param('goalId') goalId: string,
   ): Promise<Project[]> {
     try {
-      return await planningService.listProjects(
+      return await this.planningService.listProjects(
         requireWorkspaceId(workspaceHeader),
         goalId,
       );
@@ -107,7 +110,7 @@ class PlanningController {
     @Body() body: { title?: unknown },
   ): Promise<Task> {
     try {
-      return await planningService.createTask(
+      return await this.planningService.createTask(
         requireWorkspaceId(workspaceHeader),
         {
           projectId,
@@ -125,7 +128,7 @@ class PlanningController {
     @Param('projectId') projectId: string,
   ): Promise<Task[]> {
     try {
-      return await planningService.listTasks(
+      return await this.planningService.listTasks(
         requireWorkspaceId(workspaceHeader),
         projectId,
       );
@@ -135,8 +138,22 @@ class PlanningController {
   }
 }
 
-@Module({ controllers: [PlanningController] })
-class AppModule {}
+@Module({
+  controllers: [PlanningController],
+  providers: [
+    {
+      provide: PLANNING_RUNTIME,
+      useFactory: (): PlanningRuntime => createPlanningRuntime(process.env),
+    },
+    {
+      provide: PLANNING_SERVICE,
+      inject: [PLANNING_RUNTIME],
+      useFactory: (runtime: PlanningRuntime): PlanningService =>
+        runtime.service,
+    },
+  ],
+})
+export class AppModule {}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
