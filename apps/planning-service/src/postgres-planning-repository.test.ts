@@ -9,6 +9,7 @@ import {
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const GOAL_ID = '22222222-2222-4222-8222-222222222222';
+const OTHER_GOAL_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const TASK_ID = '44444444-4444-4444-8444-444444444444';
 const CREATED_AT = '2026-08-03T15:00:00.000Z';
@@ -89,7 +90,7 @@ describe('PostgresPlanningRepository', () => {
     ]);
   });
 
-  it('requires tenant filters and deterministic creation ordering', async () => {
+  it('requires tenant filters, parent joins, and deterministic ordering', async () => {
     const client = new RecordingSqlClient(
       [
         {
@@ -104,6 +105,7 @@ describe('PostgresPlanningRepository', () => {
           id: PROJECT_ID,
           workspace_id: WORKSPACE_ID,
           goal_id: GOAL_ID,
+          goal_workspace_id: WORKSPACE_ID,
           title: 'PostgreSQL adapter',
           created_at: CREATED_AT,
         },
@@ -113,6 +115,7 @@ describe('PostgresPlanningRepository', () => {
           id: TASK_ID,
           workspace_id: WORKSPACE_ID,
           project_id: PROJECT_ID,
+          project_workspace_id: WORKSPACE_ID,
           title: 'Validate rows',
           status: 'todo',
           created_at: CREATED_AT,
@@ -158,7 +161,9 @@ describe('PostgresPlanningRepository', () => {
       'ORDER BY created_at ASC, id ASC',
     );
     expect(client.calls[0]?.values).toEqual([WORKSPACE_ID]);
+    expect(client.calls[1]?.text).toContain('JOIN planning.goals');
     expect(client.calls[1]?.values).toEqual([WORKSPACE_ID, GOAL_ID]);
+    expect(client.calls[2]?.text).toContain('JOIN planning.projects');
     expect(client.calls[2]?.values).toEqual([WORKSPACE_ID, PROJECT_ID]);
   });
 
@@ -168,9 +173,10 @@ describe('PostgresPlanningRepository', () => {
         id: TASK_ID,
         workspace_id: WORKSPACE_ID,
         project_id: PROJECT_ID,
-        title: 'Malformed status',
-        status: 'blocked',
-        created_at: CREATED_AT,
+        project_workspace_id: WORKSPACE_ID,
+        title: 'Malformed timestamp',
+        status: 'todo',
+        created_at: 'August 3, 2026',
       },
     ]);
     const repository = new PostgresPlanningRepository(client);
@@ -196,6 +202,24 @@ describe('PostgresPlanningRepository', () => {
     );
   });
 
+  it('fails closed when persisted parent ownership is inconsistent', async () => {
+    const client = new RecordingSqlClient([
+      {
+        id: PROJECT_ID,
+        workspace_id: WORKSPACE_ID,
+        goal_id: GOAL_ID,
+        goal_workspace_id: OTHER_WORKSPACE_ID,
+        title: 'Cross-tenant parent',
+        created_at: CREATED_AT,
+      },
+    ]);
+    const repository = new PostgresPlanningRepository(client);
+
+    await expect(
+      repository.listProjects(WORKSPACE_ID, GOAL_ID),
+    ).rejects.toBeInstanceOf(PlanningPersistenceError);
+  });
+
   it('rejects malformed identifiers before querying PostgreSQL', async () => {
     const client = new RecordingSqlClient();
     const repository = new PostgresPlanningRepository(client);
@@ -203,6 +227,14 @@ describe('PostgresPlanningRepository', () => {
     await expect(repository.listGoals('workspace-a')).rejects.toBeInstanceOf(
       PlanningPersistenceError,
     );
+    await expect(
+      repository.saveGoal({
+        id: 'not-a-uuid',
+        workspaceId: WORKSPACE_ID,
+        title: 'Invalid identifier',
+        createdAt: CREATED_AT,
+      }),
+    ).rejects.toBeInstanceOf(PlanningPersistenceError);
     expect(client.calls).toEqual([]);
   });
 
@@ -215,6 +247,22 @@ describe('PostgresPlanningRepository', () => {
     ).resolves.toBeUndefined();
     expect(client.calls[0]?.values).toEqual([WORKSPACE_ID, GOAL_ID]);
     expect(client.calls[0]?.text).toContain('LIMIT 2');
+  });
+
+  it('fails closed when a lookup returns an unexpected identifier', async () => {
+    const client = new RecordingSqlClient([
+      {
+        id: OTHER_GOAL_ID,
+        workspace_id: WORKSPACE_ID,
+        title: 'Unexpected row',
+        created_at: CREATED_AT,
+      },
+    ]);
+    const repository = new PostgresPlanningRepository(client);
+
+    await expect(
+      repository.findGoal(WORKSPACE_ID, GOAL_ID),
+    ).rejects.toBeInstanceOf(PlanningPersistenceError);
   });
 
   it('fails closed if a supposedly unique lookup returns multiple rows', async () => {
