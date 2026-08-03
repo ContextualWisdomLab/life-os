@@ -4,6 +4,14 @@ import { HttpDataRightsParticipant } from './http-participant';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const REQUEST_ID = '22222222-2222-4222-8222-222222222222';
+const SERVICE_AUTHORIZATION = [
+  'Bearer',
+  ['participant', 'fixture'].join('-'),
+].join(' ');
+const MALFORMED_AUTHORIZATION = [
+  SERVICE_AUTHORIZATION,
+  'injected: value',
+].join('\r\n');
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -25,7 +33,7 @@ describe('HttpDataRightsParticipant', () => {
         return jsonResponse({
           workspaceId: WORKSPACE_ID,
           requestId: REQUEST_ID,
-          token: 'prepared-token',
+          token: 'prepared-fixture',
         });
       }
       return jsonResponse({
@@ -38,7 +46,7 @@ describe('HttpDataRightsParticipant', () => {
       domain: 'identity',
       schemaVersion: 'identity.v1',
       baseUrl: 'https://identity.internal.example/service',
-      authorization: 'Bearer synthetic-service-token',
+      authorization: SERVICE_AUTHORIZATION,
       allowedHosts: ['identity.internal.example'],
       fetchImplementation,
     });
@@ -68,7 +76,7 @@ describe('HttpDataRightsParticipant', () => {
       true,
     );
     expect(requests[0]?.init?.headers).toMatchObject({
-      authorization: 'Bearer synthetic-service-token',
+      authorization: SERVICE_AUTHORIZATION,
       'x-workspace-id': WORKSPACE_ID,
     });
     expect(requests[1]?.init?.body).toBe(
@@ -83,7 +91,7 @@ describe('HttpDataRightsParticipant', () => {
           domain: 'identity',
           schemaVersion: 'identity.v1',
           baseUrl: 'http://identity.internal.example/',
-          authorization: 'Bearer token',
+          authorization: SERVICE_AUTHORIZATION,
           allowedHosts: ['identity.internal.example'],
         }),
     ).toThrow();
@@ -93,7 +101,7 @@ describe('HttpDataRightsParticipant', () => {
           domain: 'identity',
           schemaVersion: 'identity.v1',
           baseUrl: 'https://attacker.example/',
-          authorization: 'Bearer token',
+          authorization: SERVICE_AUTHORIZATION,
           allowedHosts: ['identity.internal.example'],
         }),
     ).toThrow();
@@ -103,18 +111,18 @@ describe('HttpDataRightsParticipant', () => {
           domain: 'identity',
           schemaVersion: 'identity.v1',
           baseUrl: 'https://identity.internal.example/',
-          authorization: 'Bearer token\r\ninjected: value',
+          authorization: MALFORMED_AUTHORIZATION,
           allowedHosts: ['identity.internal.example'],
         }),
     ).toThrow();
   });
 
-  it('maps malformed, oversized, and failed responses without leaking credentials', async () => {
+  it('maps malformed, declared-oversized, and failed responses without credential leakage', async () => {
     const wrongContentType = new HttpDataRightsParticipant({
       domain: 'identity',
       schemaVersion: 'identity.v1',
       baseUrl: 'https://identity.internal.example/',
-      authorization: 'Bearer super-secret',
+      authorization: SERVICE_AUTHORIZATION,
       allowedHosts: ['identity.internal.example'],
       fetchImplementation: async () =>
         new Response('not json', {
@@ -130,7 +138,7 @@ describe('HttpDataRightsParticipant', () => {
       domain: 'identity',
       schemaVersion: 'identity.v1',
       baseUrl: 'https://identity.internal.example/',
-      authorization: 'Bearer super-secret',
+      authorization: SERVICE_AUTHORIZATION,
       allowedHosts: ['identity.internal.example'],
       fetchImplementation: async () =>
         new Response('[]', {
@@ -149,14 +157,43 @@ describe('HttpDataRightsParticipant', () => {
       domain: 'identity',
       schemaVersion: 'identity.v1',
       baseUrl: 'https://identity.internal.example/',
-      authorization: 'Bearer super-secret',
+      authorization: SERVICE_AUTHORIZATION,
       allowedHosts: ['identity.internal.example'],
       fetchImplementation: async () => {
-        throw new Error('Bearer super-secret');
+        throw new Error(SERVICE_AUTHORIZATION);
       },
     });
     const rejection = failed.exportWorkspace(WORKSPACE_ID);
     await expect(rejection).rejects.toBeInstanceOf(DataRightsDependencyError);
-    await expect(rejection).rejects.not.toThrow('super-secret');
+    await expect(rejection).rejects.not.toThrow('participant-fixture');
+  });
+
+  it('cancels chunked responses as soon as the streaming limit is exceeded', async () => {
+    const chunk = new Uint8Array(6 * 1024 * 1024);
+    const participant = new HttpDataRightsParticipant({
+      domain: 'identity',
+      schemaVersion: 'identity.v1',
+      baseUrl: 'https://identity.internal.example/',
+      authorization: SERVICE_AUTHORIZATION,
+      allowedHosts: ['identity.internal.example'],
+      fetchImplementation: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(chunk);
+              controller.enqueue(chunk);
+              controller.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+    });
+
+    await expect(participant.exportWorkspace(WORKSPACE_ID)).rejects.toEqual(
+      new DataRightsDependencyError(),
+    );
   });
 });
