@@ -19,10 +19,11 @@ const MAXIMUM_BLOCKERS = 20;
 const MAXIMUM_BLOCKER_LENGTH = 500;
 
 export type JsonPrimitive = boolean | number | string | null;
-export type JsonValue =
-  | JsonPrimitive
-  | readonly JsonValue[]
-  | Readonly<Record<string, JsonValue>>;
+export interface JsonArray extends ReadonlyArray<JsonValue> {}
+export interface JsonObject {
+  readonly [key: string]: JsonValue;
+}
+export type JsonValue = JsonPrimitive | JsonArray | JsonObject;
 
 export interface DataRightsWorkspaceContext {
   readonly workspaceId: string;
@@ -204,8 +205,14 @@ function normalizeJson(value: unknown, depth = 0): JsonValue {
 }
 
 function canonicalJson(value: JsonValue): string {
-  if (value === null || typeof value !== 'object') {
+  if (value === null) {
+    return 'null';
+  }
+  if (typeof value === 'string') {
     return JSON.stringify(value);
+  }
+  if (typeof value === 'boolean' || typeof value === 'number') {
+    return String(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
