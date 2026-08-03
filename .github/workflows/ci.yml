@@ -49,15 +49,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Render habit formatting diff
-        run: |
-          pnpm exec prettier --single-quote --write \
-            apps/habit-service/src/habit-domain.ts \
-            apps/habit-service/src/habit-domain.test.ts
-          git diff --no-ext-diff --unified=100000 -- \
-            apps/habit-service/src/habit-domain.ts \
-            apps/habit-service/src/habit-domain.test.ts
-
       - name: Check formatting
         run: pnpm format:check
 
