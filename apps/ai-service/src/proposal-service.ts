@@ -219,7 +219,9 @@ function boundedInterpolation(
 /** A deterministic local adapter used until a bounded external model is wired. */
 export class RuleBasedProposalModel implements ProposalModel {
   async generate(input: ProposalRequest): Promise<ProposalModelDraft> {
-    const actionable = input.context.find((item) => item.status !== 'completed');
+    const actionable = input.context.find(
+      (item) => item.status !== 'completed',
+    );
     if (actionable) {
       return {
         summary: boundedInterpolation(
