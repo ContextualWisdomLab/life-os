@@ -16,23 +16,21 @@ const IDEMPOTENCY_KEY = 'd1191b96-b7f4-4d8f-b1f7-9e2838686d5f';
 const COMPLETION_ID = '3f044b68-c515-4a52-8862-38af0047b88d';
 const RECORDED_AT = '2026-08-03T20:00:01.000Z';
 
-function record(overrides: Record<string, unknown> = {}): ReviewCompletionRecord {
-  const input = parseReviewCompletionInput(
-    WORKSPACE_ID,
-    'weekly-review',
-    {
-      periodStartDate: '2026-08-03',
-      idempotencyKey: IDEMPOTENCY_KEY,
-      completedStepCount: 5,
-      totalStepCount: 5,
-      plannedItemCount: 4,
-      completedItemCount: 3,
-      habitCompletionCount: 2,
-      reflection: 'Evidence is bounded.',
-      completedAt: '2026-08-03T20:00:00.000Z',
-      ...overrides,
-    },
-  );
+function record(
+  overrides: Record<string, unknown> = {},
+): ReviewCompletionRecord {
+  const input = parseReviewCompletionInput(WORKSPACE_ID, 'weekly-review', {
+    periodStartDate: '2026-08-03',
+    idempotencyKey: IDEMPOTENCY_KEY,
+    completedStepCount: 5,
+    totalStepCount: 5,
+    plannedItemCount: 4,
+    completedItemCount: 3,
+    habitCompletionCount: 2,
+    reflection: 'Evidence is bounded.',
+    completedAt: '2026-08-03T20:00:00.000Z',
+    ...overrides,
+  });
   return { ...input, id: COMPLETION_ID, recordedAt: RECORDED_AT };
 }
 
