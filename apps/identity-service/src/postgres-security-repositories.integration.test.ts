@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Client } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OAuthTransactionService, SessionService, type SessionRecord } from './auth-security';
 import { IdentityService } from './identity-domain';
@@ -23,7 +23,7 @@ const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const SECRET_KEY = Buffer.from('44'.repeat(32), 'hex');
 
 class NodePostgresTransaction implements SqlTransaction {
-  constructor(private readonly client: Client) {}
+  constructor(private readonly client: PoolClient) {}
 
   async query<Row>(
     text: string,
@@ -37,18 +37,18 @@ class NodePostgresTransaction implements SqlTransaction {
   }
 
   release(): void {
-    // The integration suite owns one dedicated Client for its full lifetime.
+    this.client.release();
   }
 }
 
 class NodePostgresSqlClient implements SqlClient, TransactionalSqlClient {
-  constructor(private readonly client: Client) {}
+  constructor(private readonly pool: Pool) {}
 
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    const result = await this.client.query(text, [...values]);
+    const result = await this.pool.query(text, [...values]);
     return {
       rows: result.rows as Row[],
       rowCount: result.rowCount,
@@ -56,7 +56,7 @@ class NodePostgresSqlClient implements SqlClient, TransactionalSqlClient {
   }
 
   async connect(): Promise<SqlTransaction> {
-    return new NodePostgresTransaction(this.client);
+    return new NodePostgresTransaction(await this.pool.connect());
   }
 }
 
@@ -72,7 +72,7 @@ function createSecretBox(): AesGcmSecretBox {
 }
 
 describeWithDatabase('PostgreSQL identity security repositories', () => {
-  let client: Client;
+  let pool: Pool;
   let sqlClient: NodePostgresSqlClient;
 
   beforeAll(async () => {
@@ -80,9 +80,8 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
       throw new Error('IDENTITY_DATABASE_URL is required for PostgreSQL integration tests');
     }
 
-    client = new Client({ connectionString: DATABASE_URL });
-    await client.connect();
-    await client.query('DROP SCHEMA IF EXISTS identity CASCADE');
+    pool = new Pool({ connectionString: DATABASE_URL });
+    await pool.query('DROP SCHEMA IF EXISTS identity CASCADE');
 
     const migrationDirectory = resolve(process.cwd(), 'migrations');
     const migrationFiles = (await readdir(migrationDirectory))
@@ -90,37 +89,42 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
       .sort();
     for (const migrationFile of migrationFiles) {
       const migration = await readFile(resolve(migrationDirectory, migrationFile), 'utf8');
-      await client.query(migration);
+      await pool.query(migration);
     }
 
-    sqlClient = new NodePostgresSqlClient(client);
+    sqlClient = new NodePostgresSqlClient(pool);
   }, 30_000);
 
   afterAll(async () => {
-    if (client) {
-      await client.query('DROP SCHEMA IF EXISTS identity CASCADE');
-      await client.end();
+    if (pool) {
+      await pool.query('DROP SCHEMA IF EXISTS identity CASCADE');
+      await pool.end();
     }
   });
 
-  it('persists one account and personal workspace for repeated provider sign-in', async () => {
+  it('persists one account and personal workspace when first sign-ins race', async () => {
     const providerSubject = `github-${randomUUID()}`;
     const repository = new PostgresIdentityRepository(sqlClient);
-    const service = new IdentityService(repository);
-
-    const first = await service.signInWithExternalIdentity({
-      provider: 'github',
+    const firstService = new IdentityService(repository);
+    const secondService = new IdentityService(repository);
+    const input = {
+      provider: 'github' as const,
       providerSubject,
       displayName: 'Integration Identity',
-    });
-    const repeated = await service.signInWithExternalIdentity({
-      provider: 'github',
-      providerSubject,
+    };
+
+    const [first, concurrent] = await Promise.all([
+      firstService.signInWithExternalIdentity(input),
+      secondService.signInWithExternalIdentity(input),
+    ]);
+    const repeated = await firstService.signInWithExternalIdentity({
+      ...input,
       displayName: 'Ignored Replacement Name',
     });
 
+    expect(concurrent).toEqual(first);
     expect(repeated).toEqual(first);
-    const stored = await client.query<{
+    const stored = await pool.query<{
       user_id: string;
       external_identity_id: string;
       workspace_id: string;
@@ -150,7 +154,7 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     });
 
     await expect(
-      client.query(
+      pool.query(
         `INSERT INTO identity.users (id, display_name)
          VALUES ($1, $2)`,
         ['00000000-0000-1000-8000-000000000000', 'Sequential Identifier'],
@@ -172,7 +176,7 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
       redirectUri: 'https://life.example.com/v1/auth/google/callback',
     });
 
-    const stored = await client.query<{
+    const stored = await pool.query<{
       state_hash: string;
       browser_session_hash: string;
       code_verifier_ciphertext: Buffer;
@@ -219,12 +223,12 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     const userId = randomUUID();
     const otherUserId = randomUUID();
     const workspaceId = randomUUID();
-    await client.query(
+    await pool.query(
       `INSERT INTO identity.users (id, display_name)
        VALUES ($1, $2), ($3, $4)`,
       [userId, 'Integration User', otherUserId, 'Other User'],
     );
-    await client.query(
+    await pool.query(
       `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
        VALUES ($1, $2, $3, 'personal')`,
       [workspaceId, userId, 'Integration workspace'],
@@ -237,7 +241,7 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     });
     const issued = await service.create(userId, workspaceId);
 
-    const stored = await client.query<{
+    const stored = await pool.query<{
       token_hash: string;
       workspace_id: string;
       revoked_at: Date | null;
@@ -261,11 +265,11 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     );
     await expect(service.authenticate(rotated.token)).resolves.toEqual(rotated.session);
 
-    const oldSession = await client.query<{ revoked_at: Date | null }>(
+    const oldSession = await pool.query<{ revoked_at: Date | null }>(
       'SELECT revoked_at FROM identity.sessions WHERE id = $1',
       [issued.session.id],
     );
-    const replacement = await client.query<{ rotated_from_id: string | null }>(
+    const replacement = await pool.query<{ rotated_from_id: string | null }>(
       'SELECT rotated_from_id FROM identity.sessions WHERE id = $1',
       [rotated.session.id],
     );
