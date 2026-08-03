@@ -1,11 +1,23 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Pool, type PoolConfig } from 'pg';
+import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { OAuthTransactionService, SessionService } from './auth-security';
+import { GitHubOAuthClient } from './github-oauth-client';
+import { GoogleOidcClient } from './google-oidc-client';
+import { IdentityService } from './identity-domain';
+import {
+  OAuthCallbackApplication,
+  type OAuthCallbackAuditEvent,
+  type OAuthCallbackAuditSink,
+} from './oauth-callback-application';
 import { OAuthHttpApplication } from './oauth-http-application';
+import {
+  PostgresIdentityRepository,
+  type SqlTransaction,
+  type TransactionalSqlClient,
+} from './postgres-identity-repository';
 import {
   PostgresOAuthTransactionRepository,
   PostgresSessionRepository,
-  type SqlClient,
   type SqlQueryResult,
 } from './postgres-security-repositories';
 import { AesGcmSecretBox } from './secret-box';
@@ -17,7 +29,26 @@ const ENCODED_KEY_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
-class NodePostgresSqlClient implements SqlClient {
+class NodePostgresSqlTransaction implements SqlTransaction {
+  constructor(private readonly client: PoolClient) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<SqlQueryResult<Row>> {
+    const result = await this.client.query(text, [...values]);
+    return {
+      rows: result.rows as Row[],
+      rowCount: result.rowCount,
+    };
+  }
+
+  release(): void {
+    this.client.release();
+  }
+}
+
+class NodePostgresSqlClient implements TransactionalSqlClient {
   constructor(private readonly pool: Pool) {}
 
   async query<Row>(
@@ -29,6 +60,18 @@ class NodePostgresSqlClient implements SqlClient {
       rows: result.rows as Row[],
       rowCount: result.rowCount,
     };
+  }
+
+  async connect(): Promise<SqlTransaction> {
+    return new NodePostgresSqlTransaction(await this.pool.connect());
+  }
+}
+
+class StructuredOAuthCallbackAuditSink implements OAuthCallbackAuditSink {
+  record(event: OAuthCallbackAuditEvent): void {
+    process.stdout.write(
+      `${JSON.stringify({ eventType: 'oauth_callback', ...event })}\n`,
+    );
   }
 }
 
@@ -145,6 +188,7 @@ export class IdentityRuntime implements OnApplicationShutdown {
   constructor(
     private readonly pool: Pool,
     readonly application: OAuthHttpApplication,
+    readonly callbackApplication: OAuthCallbackApplication,
   ) {}
 
   async close(): Promise<void> {
@@ -183,6 +227,18 @@ export function createIdentityRuntime(
     new PostgresOAuthTransactionRepository(sqlClient, secretBox),
   );
   const sessions = new SessionService(new PostgresSessionRepository(sqlClient));
+  const identities = new IdentityService(
+    new PostgresIdentityRepository(sqlClient),
+  );
+  const webOrigin = requireConfiguration(environment, 'LIFE_OS_WEB_ORIGIN');
+  const googleRedirectUri = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_REDIRECT_URI',
+  );
+  const githubRedirectUri = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_REDIRECT_URI',
+  );
   const application = new OAuthHttpApplication(transactions, sessions, {
     providers: {
       google: {
@@ -190,23 +246,48 @@ export function createIdentityRuntime(
           environment,
           'IDENTITY_GOOGLE_CLIENT_ID',
         ),
-        redirectUri: requireConfiguration(
-          environment,
-          'IDENTITY_GOOGLE_REDIRECT_URI',
-        ),
+        redirectUri: googleRedirectUri,
       },
       github: {
         clientId: requireConfiguration(
           environment,
           'IDENTITY_GITHUB_CLIENT_ID',
         ),
-        redirectUri: requireConfiguration(
-          environment,
-          'IDENTITY_GITHUB_REDIRECT_URI',
-        ),
+        redirectUri: githubRedirectUri,
       },
     },
-    webOrigin: requireConfiguration(environment, 'LIFE_OS_WEB_ORIGIN'),
+    webOrigin,
   });
-  return new IdentityRuntime(pool, application);
+  const callbackApplication = new OAuthCallbackApplication(
+    transactions,
+    identities,
+    sessions,
+    {
+      google: new GoogleOidcClient({
+        clientId: requireConfiguration(
+          environment,
+          'IDENTITY_GOOGLE_CLIENT_ID',
+        ),
+        clientSecret: requireConfiguration(
+          environment,
+          'IDENTITY_GOOGLE_CLIENT_SECRET',
+        ),
+        redirectUri: googleRedirectUri,
+      }),
+      github: new GitHubOAuthClient({
+        clientId: requireConfiguration(
+          environment,
+          'IDENTITY_GITHUB_CLIENT_ID',
+        ),
+        clientSecret: requireConfiguration(
+          environment,
+          'IDENTITY_GITHUB_CLIENT_SECRET',
+        ),
+        redirectUri: githubRedirectUri,
+      }),
+    },
+    new StructuredOAuthCallbackAuditSink(),
+    { webOrigin },
+  );
+  return new IdentityRuntime(pool, application, callbackApplication);
 }
