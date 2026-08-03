@@ -9,7 +9,10 @@ import {
   Res,
 } from '@nestjs/common';
 import type { IdentityProvider } from './identity-domain';
-import { OAuthCallbackApplication } from './oauth-callback-application';
+import {
+  OAuthCallbackApplication,
+  OAuthCallbackAuthenticationError,
+} from './oauth-callback-application';
 import { problemDetails } from './oauth-http-boundary';
 import { OAuthHttpApplication } from './oauth-http-application';
 
@@ -68,7 +71,7 @@ function mapStartError(error: unknown): ProblemMapping {
 }
 
 function mapCallbackError(error: unknown): ProblemMapping {
-  if (errorMessage(error) === 'OAuth callback authentication failed') {
+  if (error instanceof OAuthCallbackAuthenticationError) {
     return {
       status: 400,
       title: 'Authorization could not be completed',
