@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 export type IdentityProvider = 'google' | 'github';
+export type MaybePromise<T> = T | Promise<T>;
 
 export interface User {
   id: string;
@@ -34,8 +35,16 @@ export interface IdentityRepository {
   findByExternalIdentity(
     provider: IdentityProvider,
     providerSubject: string,
-  ): ProvisionedAccount | undefined;
-  save(account: ProvisionedAccount): void;
+  ): MaybePromise<ProvisionedAccount | undefined>;
+  save(account: ProvisionedAccount): MaybePromise<ProvisionedAccount>;
+}
+
+function cloneAccount(account: ProvisionedAccount): ProvisionedAccount {
+  return {
+    user: { ...account.user },
+    externalIdentity: { ...account.externalIdentity },
+    workspace: { ...account.workspace },
+  };
 }
 
 export class InMemoryIdentityRepository implements IdentityRepository {
@@ -45,13 +54,29 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     provider: IdentityProvider,
     providerSubject: string,
   ): ProvisionedAccount | undefined {
-    return this.accounts.get(`${provider}:${providerSubject}`);
+    const account = this.accounts.get(`${provider}:${providerSubject}`);
+    return account ? cloneAccount(account) : undefined;
   }
 
-  save(account: ProvisionedAccount): void {
+  save(account: ProvisionedAccount): ProvisionedAccount {
     const { provider, providerSubject } = account.externalIdentity;
-    this.accounts.set(`${provider}:${providerSubject}`, account);
+    const key = `${provider}:${providerSubject}`;
+    const existing = this.accounts.get(key);
+    if (existing) {
+      return cloneAccount(existing);
+    }
+
+    const stored = cloneAccount(account);
+    this.accounts.set(key, stored);
+    return cloneAccount(stored);
   }
+}
+
+function requireProvider(value: IdentityProvider): IdentityProvider {
+  if (value !== 'google' && value !== 'github') {
+    throw new Error('Unsupported identity provider');
+  }
+  return value;
 }
 
 function requireText(value: string, message: string): string {
@@ -69,13 +94,14 @@ function createOpaqueId(): string {
 export class IdentityService {
   constructor(private readonly repository: IdentityRepository) {}
 
-  signInWithExternalIdentity(input: {
+  async signInWithExternalIdentity(input: {
     provider: IdentityProvider;
     providerSubject: string;
     displayName: string;
-  }): ProvisionedAccount {
+  }): Promise<ProvisionedAccount> {
+    const provider = requireProvider(input.provider);
     const providerSubject = requireText(input.providerSubject, 'Provider subject is required');
-    const existing = this.repository.findByExternalIdentity(input.provider, providerSubject);
+    const existing = await this.repository.findByExternalIdentity(provider, providerSubject);
     if (existing) {
       return existing;
     }
@@ -91,7 +117,7 @@ export class IdentityService {
       externalIdentity: {
         id: createOpaqueId(),
         userId: user.id,
-        provider: input.provider,
+        provider,
         providerSubject,
         createdAt,
       },
@@ -104,7 +130,6 @@ export class IdentityService {
       },
     };
 
-    this.repository.save(account);
-    return account;
+    return await this.repository.save(account);
   }
 }
