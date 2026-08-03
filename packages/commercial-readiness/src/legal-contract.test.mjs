@@ -8,6 +8,7 @@ const repositoryRoot = process.env.LIFE_OS_REPOSITORY_ROOT
   ? resolve(process.env.LIFE_OS_REPOSITORY_ROOT)
   : resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 
+/** Reads one UTF-8 repository file from the configured test root. */
 async function repositoryFile(path) {
   return await readFile(resolve(repositoryRoot, path), 'utf8');
 }
@@ -23,7 +24,16 @@ describe('open-source legal readiness contract', () => {
     assert.match(license, /Grant of Patent License/);
     assert.match(license, /Redistribution/);
     assert.match(license, /Disclaimer of Warranty/);
+    assert.match(notice, /^LifeOS\s*$/m);
     assert.match(notice, /Copyright 2026 ContextualWisdomLab/);
+    assert.match(
+      notice,
+      /This product includes software developed by ContextualWisdomLab\./,
+    );
+    assert.match(
+      notice,
+      /Third-party software and assets remain subject to their respective license and attribution terms\./,
+    );
     assert.match(notice, /does not grant permission to use/i);
   });
 
@@ -67,7 +77,8 @@ describe('open-source legal readiness contract', () => {
       'docs/legal/privacy.md',
       'docs/legal/terms.md',
     ]) {
-      assert.match(readme, new RegExp(path.replaceAll('.', '\\.')));
+      const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      assert.match(readme, new RegExp(`\\[[^\\]\\n]+\\]\\(${escapedPath}\\)`));
     }
 
     assert.doesNotMatch(readme, /no license grant is implied/i);
