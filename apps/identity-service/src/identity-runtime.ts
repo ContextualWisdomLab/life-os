@@ -29,9 +29,7 @@ const KEY_VERSION_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,31}$/;
 const ENCODED_KEY_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
-export type OAuthCallbackAuditWriter = (
-  line: string,
-) => void | Promise<void>;
+export type OAuthCallbackAuditWriter = (line: string) => void | Promise<void>;
 
 class NodePostgresSqlTransaction implements SqlTransaction {
   constructor(private readonly client: PoolClient) {}
