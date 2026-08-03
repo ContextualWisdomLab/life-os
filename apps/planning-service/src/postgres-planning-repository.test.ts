@@ -74,18 +74,14 @@ describe('PostgresPlanningRepository', () => {
     await repository.saveTask(task());
 
     expect(database.calls).toHaveLength(3);
-    expect(database.calls[0]?.text).toContain(
-      'INSERT INTO planning.goals',
-    );
+    expect(database.calls[0]?.text).toContain('INSERT INTO planning.goals');
     expect(database.calls[0]?.values).toEqual([
       GOAL_ID,
       WORKSPACE_ID,
       'Durable planning',
       CREATED_AT,
     ]);
-    expect(database.calls[1]?.text).toContain(
-      'INSERT INTO planning.projects',
-    );
+    expect(database.calls[1]?.text).toContain('INSERT INTO planning.projects');
     expect(database.calls[1]?.values).toEqual([
       PROJECT_ID,
       WORKSPACE_ID,
@@ -93,9 +89,7 @@ describe('PostgresPlanningRepository', () => {
       'PostgreSQL repository',
       CREATED_AT,
     ]);
-    expect(database.calls[2]?.text).toContain(
-      'INSERT INTO planning.tasks',
-    );
+    expect(database.calls[2]?.text).toContain('INSERT INTO planning.tasks');
     expect(database.calls[2]?.values).toEqual([
       TASK_ID,
       WORKSPACE_ID,
