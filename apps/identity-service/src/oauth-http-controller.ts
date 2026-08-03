@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   Controller,
   Get,
@@ -28,6 +29,7 @@ interface ProblemMapping {
   code: string;
 }
 
+const MAXIMUM_CORRELATION_ID_LENGTH = 128;
 const INVALID_REQUEST_MESSAGES = new Set([
   'Cookie header is invalid',
   'Cookie name is invalid',
@@ -36,6 +38,18 @@ const INVALID_REQUEST_MESSAGES = new Set([
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '';
+}
+
+function callbackCorrelationId(value: string | undefined): string {
+  const normalized = value?.trim();
+  if (
+    normalized &&
+    normalized.length <= MAXIMUM_CORRELATION_ID_LENGTH &&
+    !/[\u0000-\u001f\u007f]/.test(normalized)
+  ) {
+    return normalized;
+  }
+  return randomUUID();
 }
 
 function mapStartError(error: unknown): ProblemMapping {
@@ -56,8 +70,8 @@ function mapStartError(error: unknown): ProblemMapping {
 function mapCallbackError(error: unknown): ProblemMapping {
   if (errorMessage(error) === 'OAuth callback authentication failed') {
     return {
-      status: 401,
-      title: 'OAuth callback authentication failed',
+      status: 400,
+      title: 'Authorization could not be completed',
       code: 'oauth_callback_failed',
     };
   }
@@ -128,14 +142,14 @@ export class OAuthHttpController {
   async callbackGoogle(
     @Query() query: Readonly<Record<string, unknown>>,
     @Headers('cookie') cookieHeader: string | undefined,
-    @Headers('x-correlation-id') correlationId: string | undefined,
+    @Headers('x-correlation-id') correlationIdHeader: string | undefined,
     @Res() response: MutableHttpResponse,
   ): Promise<void> {
     await this.completeAuthorization(
       'google',
       query,
       cookieHeader,
-      correlationId,
+      correlationIdHeader,
       response,
     );
   }
@@ -144,14 +158,14 @@ export class OAuthHttpController {
   async callbackGitHub(
     @Query() query: Readonly<Record<string, unknown>>,
     @Headers('cookie') cookieHeader: string | undefined,
-    @Headers('x-correlation-id') correlationId: string | undefined,
+    @Headers('x-correlation-id') correlationIdHeader: string | undefined,
     @Res() response: MutableHttpResponse,
   ): Promise<void> {
     await this.completeAuthorization(
       'github',
       query,
       cookieHeader,
-      correlationId,
+      correlationIdHeader,
       response,
     );
   }
@@ -214,16 +228,18 @@ export class OAuthHttpController {
     provider: IdentityProvider,
     query: Readonly<Record<string, unknown>>,
     cookieHeader: string | undefined,
-    correlationId: string | undefined,
+    correlationIdHeader: string | undefined,
     response: MutableHttpResponse,
   ): Promise<void> {
     response.setHeader('Cache-Control', 'no-store');
+    const correlationId = callbackCorrelationId(correlationIdHeader);
+    response.setHeader('X-Correlation-Id', correlationId);
     try {
       const result = await this.callbackApplication.completeAuthorization(
         provider,
         query,
         cookieHeader,
-        correlationId ?? '',
+        correlationId,
       );
       response.setHeader('Set-Cookie', result.setCookie);
       response.setHeader('Location', result.location);
