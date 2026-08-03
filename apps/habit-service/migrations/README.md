@@ -18,6 +18,12 @@ A duplicate completion command is recovered only when PostgreSQL reports the nam
 
 CI applies the migration to the disposable PostgreSQL service through `HABIT_DATABASE_URL` and exercises restart durability, tenant isolation, concurrent duplicate serialization, conflicting replay rejection, stable ordering, and append-only `UPDATE`, `DELETE`, and `TRUNCATE` enforcement.
 
+## Runtime configuration
+
+The service requires `HABIT_DATABASE_URL` with a `postgres:` or `postgresql:` scheme. Optional pool settings are `HABIT_DATABASE_POOL_MAX` (`1`–`32`, default `10`), `HABIT_DATABASE_CONNECT_TIMEOUT_MS` (`100`–`30000`, default `5000`), and `HABIT_DATABASE_IDLE_TIMEOUT_MS` (`1000`–`300000`, default `30000`). Credentials belong in the deployment secret store and must never be committed, logged, or returned in HTTP failures.
+
+The application does not apply migrations during startup. Deployment automation must apply migrations exactly once before shifting traffic, then start the service with a database role limited to its owned Habit schema and append-only completion privileges.
+
 ## Rollback
 
 This migration is forward-only in automated environments. An operator-approved rollback must first export tenant data, then drop `habit.completion_events`, `habit.habit_definitions`, `habit.reject_completion_mutation()`, and the `habit` schema. Do not roll back after serving completion writes unless the exported history has been verified and the data-retention decision is documented.
