@@ -398,7 +398,7 @@ describe('GoogleOidcClient', () => {
       createClient(fetcher, {
         redirectUri: 'http://identity.example.test/callback',
       }),
-    ).toThrow('Redirect URI must use HTTPS');
+    ).toThrow('OAuth redirect URI must use HTTPS except on loopback hosts');
     expect(() => createClient(fetcher, { requestTimeoutMs: 99 })).toThrow(
       'Google request timeout is invalid',
     );
