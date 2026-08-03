@@ -47,18 +47,22 @@ function jsonResponse(
   return {
     status: options.status ?? 200,
     headers: new TestHeaders(options.headers),
+    body: null,
     async text(): Promise<string> {
       return text;
     },
   };
 }
 
-function keyFixture(kid: string): {
+function keyFixture(
+  kid: string,
+  modulusLength = 2_048,
+): {
   privateKey: KeyObject;
   jwk: Record<string, unknown>;
 } {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-    modulusLength: 2_048,
+    modulusLength,
   });
   return {
     privateKey,
@@ -210,6 +214,7 @@ describe('GoogleOidcClient', () => {
     const tokens = [
       signIdToken(firstKey.privateKey, validClaims()),
       signIdToken(secondKey.privateKey, validClaims(), { kid: 'key-two' }),
+      signIdToken(firstKey.privateKey, validClaims()),
     ];
     let tokenRequests = 0;
     let keyRequests = 0;
@@ -223,7 +228,10 @@ describe('GoogleOidcClient', () => {
         keyRequests += 1;
         return jsonResponse(
           {
-            keys: keyRequests === 1 ? [firstKey.jwk] : [secondKey.jwk],
+            keys:
+              keyRequests === 1
+                ? [firstKey.jwk]
+                : [firstKey.jwk, secondKey.jwk],
           },
           { headers: { 'cache-control': 'max-age=3600' } },
         );
@@ -238,9 +246,66 @@ describe('GoogleOidcClient', () => {
     await expect(
       client.authenticateAuthorizationCode(authenticationInput()),
     ).resolves.toMatchObject({ subject: '107691503500061507151' });
+    await expect(
+      client.authenticateAuthorizationCode({
+        ...authenticationInput(),
+        code: `${AUTHORIZATION_CODE}-cached`,
+      }),
+    ).resolves.toMatchObject({ subject: '107691503500061507151' });
 
-    expect(tokenRequests).toBe(2);
+    expect(tokenRequests).toBe(3);
     expect(keyRequests).toBe(2);
+  });
+
+  it('shares an in-flight signing key fetch across concurrent authentications', async () => {
+    const key = keyFixture('key-one');
+    const idToken = signIdToken(key.privateKey, validClaims());
+    let tokenRequests = 0;
+    let keyRequests = 0;
+    let releaseKeySet: (() => void) | undefined;
+    let markKeyFetchStarted: (() => void) | undefined;
+    const keySetGate = new Promise<void>((resolve) => {
+      releaseKeySet = resolve;
+    });
+    const keyFetchStarted = new Promise<void>((resolve) => {
+      markKeyFetchStarted = resolve;
+    });
+    const fetcher: FixedEndpointFetch = async (url) => {
+      if (url === TOKEN_ENDPOINT) {
+        tokenRequests += 1;
+        return jsonResponse({ id_token: idToken });
+      }
+      if (url === JWKS_ENDPOINT) {
+        keyRequests += 1;
+        markKeyFetchStarted?.();
+        await keySetGate;
+        return jsonResponse(
+          { keys: [key.jwk] },
+          { headers: { 'cache-control': 'max-age=3600' } },
+        );
+      }
+      throw new Error('unexpected endpoint');
+    };
+    const client = createClient(fetcher);
+
+    const authentications = [
+      client.authenticateAuthorizationCode({
+        ...authenticationInput(),
+        code: `${AUTHORIZATION_CODE}-one`,
+      }),
+      client.authenticateAuthorizationCode({
+        ...authenticationInput(),
+        code: `${AUTHORIZATION_CODE}-two`,
+      }),
+    ];
+
+    await keyFetchStarted;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(keyRequests).toBe(1);
+    releaseKeySet?.();
+    await expect(Promise.all(authentications)).resolves.toHaveLength(2);
+    expect(tokenRequests).toBe(2);
+    expect(keyRequests).toBe(1);
   });
 
   it.each([
@@ -302,6 +367,21 @@ describe('GoogleOidcClient', () => {
         authenticationInput(),
       ),
     ).rejects.toThrow('Google signing key set is invalid');
+
+    const weakKey = keyFixture('key-weak', 1_024);
+    const weakKeySet: FixedEndpointFetch = async (url) =>
+      url === TOKEN_ENDPOINT
+        ? jsonResponse({
+            id_token: signIdToken(weakKey.privateKey, validClaims(), {
+              kid: 'key-weak',
+            }),
+          })
+        : jsonResponse({ keys: [weakKey.jwk] });
+    await expect(
+      createClient(weakKeySet).authenticateAuthorizationCode(
+        authenticationInput(),
+      ),
+    ).rejects.toThrow('Google signing key set is invalid');
   });
 
   it('fails closed before network access for invalid PKCE and configuration', async () => {
@@ -354,6 +434,31 @@ describe('GoogleOidcClient', () => {
         authenticationInput(),
       ),
     ).rejects.toThrow('Google identity provider response is invalid');
+  });
+
+  it('cancels a chunked provider response when it exceeds the byte limit', async () => {
+    const cancel = vi.fn();
+    const responseBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(64 * 1_024 + 1));
+      },
+      cancel,
+    });
+    const oversizedStream: FixedEndpointFetch = async () => ({
+      status: 200,
+      headers: new TestHeaders(),
+      body: responseBody,
+      async text(): Promise<string> {
+        throw new Error('streaming response must not use text()');
+      },
+    });
+
+    await expect(
+      createClient(oversizedStream).authenticateAuthorizationCode(
+        authenticationInput(),
+      ),
+    ).rejects.toThrow('Google identity provider response is invalid');
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it('turns transport failures into a stable provider error', async () => {
