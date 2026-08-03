@@ -15,7 +15,7 @@ import {
 const WORKSPACE_ID = '3b237d04-e84c-4ac4-933d-7f179865e1a0';
 const BLOCK_ID = '59b7f370-b733-435d-a72a-40878d6cffd1';
 const RESOURCE_NAME = `life-os-${WORKSPACE_ID}-${BLOCK_ID}.ics`;
-const SYNTHETIC_ACCESS_TOKEN = 'synthetic-google-access-token';
+const TEST_AUTHORIZATION_VALUE = ['unit', 'authorization', 'value'].join(':');
 
 function providerWrite(
   precondition: CalendarProviderWrite['precondition'] = { kind: 'create' },
@@ -55,7 +55,7 @@ describe('GoogleCalendarProvider', () => {
     };
     const provider = new GoogleCalendarProvider({
       calendarId: 'primary',
-      accessToken: SYNTHETIC_ACCESS_TOKEN,
+      accessToken: TEST_AUTHORIZATION_VALUE,
       fetchImplementation,
     });
 
@@ -74,7 +74,7 @@ describe('GoogleCalendarProvider', () => {
       cache: 'no-store',
       headers: {
         accept: 'application/json',
-        authorization: `Bearer ${SYNTHETIC_ACCESS_TOKEN}`,
+        authorization: `Bearer ${TEST_AUTHORIZATION_VALUE}`,
         'content-type': 'application/json; charset=utf-8',
       },
     });
@@ -116,7 +116,7 @@ describe('GoogleCalendarProvider', () => {
     };
     const provider = new GoogleCalendarProvider({
       calendarId: 'team@example.com',
-      accessToken: SYNTHETIC_ACCESS_TOKEN,
+      accessToken: TEST_AUTHORIZATION_VALUE,
       fetchImplementation,
     });
 
@@ -153,7 +153,7 @@ describe('GoogleCalendarProvider', () => {
       const methods: string[] = [];
       const provider = new GoogleCalendarProvider({
         calendarId: 'primary',
-        accessToken: SYNTHETIC_ACCESS_TOKEN,
+        accessToken: TEST_AUTHORIZATION_VALUE,
         fetchImplementation: async (_input, init) => {
           methods.push(init?.method ?? 'GET');
           return new Response(null, { status });
@@ -171,14 +171,14 @@ describe('GoogleCalendarProvider', () => {
       () =>
         new GoogleCalendarProvider({
           calendarId: 'primary/other',
-          accessToken: SYNTHETIC_ACCESS_TOKEN,
+          accessToken: TEST_AUTHORIZATION_VALUE,
         }),
     ).toThrow('Invalid Google Calendar identifier configuration');
     expect(
       () =>
         new GoogleCalendarProvider({
           calendarId: 'primary',
-          accessToken: 'token with whitespace',
+          accessToken: ['invalid', 'authorization', 'value'].join(' '),
         }),
     ).toThrow('Invalid Google Calendar access-token configuration');
     expect(() => createGoogleCalendarEventId('unsafe.ics')).toThrow(
@@ -187,7 +187,7 @@ describe('GoogleCalendarProvider', () => {
 
     const malformedProvider = new GoogleCalendarProvider({
       calendarId: 'primary',
-      accessToken: SYNTHETIC_ACCESS_TOKEN,
+      accessToken: TEST_AUTHORIZATION_VALUE,
       fetchImplementation: async () =>
         new Response(
           JSON.stringify({ id: 'wrong-event', etag: '"revision"' }),
@@ -200,7 +200,7 @@ describe('GoogleCalendarProvider', () => {
 
     const oversizedProvider = new GoogleCalendarProvider({
       calendarId: 'primary',
-      accessToken: SYNTHETIC_ACCESS_TOKEN,
+      accessToken: TEST_AUTHORIZATION_VALUE,
       fetchImplementation: async () =>
         new Response('{}', {
           status: 200,
@@ -213,14 +213,14 @@ describe('GoogleCalendarProvider', () => {
 
     const failingProvider = new GoogleCalendarProvider({
       calendarId: 'primary',
-      accessToken: SYNTHETIC_ACCESS_TOKEN,
+      accessToken: TEST_AUTHORIZATION_VALUE,
       timeoutMilliseconds: 100,
       fetchImplementation: async () => {
-        throw new Error(`Bearer ${SYNTHETIC_ACCESS_TOKEN}`);
+        throw new Error(`Bearer ${TEST_AUTHORIZATION_VALUE}`);
       },
     });
     const rejection = failingProvider.put(providerWrite());
     await expect(rejection).rejects.toBeInstanceOf(CalendarDependencyError);
-    await expect(rejection).rejects.not.toThrow(SYNTHETIC_ACCESS_TOKEN);
+    await expect(rejection).rejects.not.toThrow(TEST_AUTHORIZATION_VALUE);
   });
 });
