@@ -8,6 +8,8 @@ const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}
 const DEFAULT_OAUTH_TRANSACTION_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+export type MaybePromise<T> = T | Promise<T>;
+
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -80,13 +82,13 @@ export interface StoredOAuthTransaction {
 }
 
 export interface OAuthTransactionRepository {
-  save(transaction: StoredOAuthTransaction): void;
+  save(transaction: StoredOAuthTransaction): MaybePromise<void>;
   consumeByStateHash(
     provider: IdentityProvider,
     stateHash: string,
     browserSessionHash: string,
     consumedAt: string,
-  ): StoredOAuthTransaction | undefined;
+  ): MaybePromise<StoredOAuthTransaction | undefined>;
 }
 
 export class InMemoryOAuthTransactionRepository implements OAuthTransactionRepository {
@@ -134,10 +136,10 @@ export class OAuthTransactionService {
     );
   }
 
-  begin(
+  async begin(
     providerValue: IdentityProvider,
     binding: OAuthTransactionBinding,
-  ): OAuthTransactionStart {
+  ): Promise<OAuthTransactionStart> {
     const provider = requireIdentityProvider(providerValue);
     const browserSessionId = requireOpaqueIdentifier(binding.browserSessionId);
     const redirectUri = requireSafeRedirectUri(binding.redirectUri);
@@ -159,7 +161,7 @@ export class OAuthTransactionService {
       consumedAt: null,
     };
 
-    this.repository.save(transaction);
+    await this.repository.save(transaction);
     return {
       id: transaction.id,
       provider,
@@ -172,16 +174,16 @@ export class OAuthTransactionService {
     };
   }
 
-  consume(
+  async consume(
     providerValue: IdentityProvider,
     state: string,
     browserSessionIdValue: string,
-  ): ConsumedOAuthTransaction {
+  ): Promise<ConsumedOAuthTransaction> {
     const provider = requireIdentityProvider(providerValue);
     const browserSessionId = requireOpaqueIdentifier(browserSessionIdValue);
     const transaction =
       typeof state === 'string' && state
-        ? this.repository.consumeByStateHash(
+        ? await this.repository.consumeByStateHash(
             provider,
             sha256Hex(state),
             sha256Hex(browserSessionId),
@@ -224,9 +226,9 @@ export interface ActiveSession {
 }
 
 export interface SessionRepository {
-  save(session: SessionRecord): void;
-  findByTokenHash(tokenHash: string): SessionRecord | undefined;
-  revokeByTokenHash(tokenHash: string, revokedAt: string): boolean;
+  save(session: SessionRecord): MaybePromise<void>;
+  findByTokenHash(tokenHash: string): MaybePromise<SessionRecord | undefined>;
+  revokeByTokenHash(tokenHash: string, revokedAt: string): MaybePromise<boolean>;
 }
 
 export class InMemorySessionRepository implements SessionRepository {
@@ -278,34 +280,37 @@ export class SessionService {
     );
   }
 
-  create(userId: string, workspaceId: string): { session: ActiveSession; token: string } {
+  async create(
+    userId: string,
+    workspaceId: string,
+  ): Promise<{ session: ActiveSession; token: string }> {
     return this.issue(userId, workspaceId, null);
   }
 
-  authenticate(token: string): ActiveSession {
-    return toActiveSession(this.requireActiveRecord(token));
+  async authenticate(token: string): Promise<ActiveSession> {
+    return toActiveSession(await this.requireActiveRecord(token));
   }
 
-  rotate(token: string): { session: ActiveSession; token: string } {
-    const current = this.requireActiveRecord(token);
-    if (!this.repository.revokeByTokenHash(current.tokenHash, this.now().toISOString())) {
+  async rotate(token: string): Promise<{ session: ActiveSession; token: string }> {
+    const current = await this.requireActiveRecord(token);
+    if (!(await this.repository.revokeByTokenHash(current.tokenHash, this.now().toISOString()))) {
       throw new Error(INVALID_SESSION);
     }
     return this.issue(current.userId, current.workspaceId, current.id);
   }
 
-  revoke(token: string): void {
+  async revoke(token: string): Promise<void> {
     if (typeof token !== 'string' || !token) {
       return;
     }
-    this.repository.revokeByTokenHash(sha256Hex(token), this.now().toISOString());
+    await this.repository.revokeByTokenHash(sha256Hex(token), this.now().toISOString());
   }
 
-  private issue(
+  private async issue(
     userId: string,
     workspaceId: string,
     rotatedFromId: string | null,
-  ): { session: ActiveSession; token: string } {
+  ): Promise<{ session: ActiveSession; token: string }> {
     if (!UUID_V4_PATTERN.test(userId)) {
       throw new Error('User ID must be an opaque UUIDv4');
     }
@@ -326,15 +331,15 @@ export class SessionService {
       rotatedFromId,
     };
 
-    this.repository.save(record);
+    await this.repository.save(record);
     return { session: toActiveSession(record), token };
   }
 
-  private requireActiveRecord(token: string): SessionRecord {
+  private async requireActiveRecord(token: string): Promise<SessionRecord> {
     const now = this.now();
     const record =
       typeof token === 'string' && token
-        ? this.repository.findByTokenHash(sha256Hex(token))
+        ? await this.repository.findByTokenHash(sha256Hex(token))
         : undefined;
 
     if (!record || record.revokedAt !== null || Date.parse(record.expiresAt) <= now.getTime()) {
