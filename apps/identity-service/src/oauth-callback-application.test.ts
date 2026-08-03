@@ -135,8 +135,7 @@ async function beginGitHub(
 describe('OAuthCallbackApplication', () => {
   it('verifies Google, provisions one account, issues one session, audits, and redirects to the fixed origin', async () => {
     let observedGoogleInput:
-      | { code: string; codeVerifier: string; nonce: string }
-      | undefined;
+      { code: string; codeVerifier: string; nonce: string } | undefined;
     const clients = providerClients({
       google: {
         authenticateAuthorizationCode: vi.fn(async (input) => {
@@ -173,7 +172,9 @@ describe('OAuthCallbackApplication', () => {
       code: AUTHORIZATION_CODE,
       nonce: transaction.nonce,
     });
-    expect(observedGoogleInput?.codeVerifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
+    expect(observedGoogleInput?.codeVerifier).toMatch(
+      /^[A-Za-z0-9_-]{43,128}$/,
+    );
 
     const activeSession = await harness.sessions.authenticate(
       sessionToken(response.setCookie),
@@ -266,9 +267,7 @@ describe('OAuthCallbackApplication', () => {
       ),
     ).rejects.toThrow('OAuth callback authentication failed');
 
-    expect(
-      clients.github.authenticateAuthorizationCode,
-    ).not.toHaveBeenCalled();
+    expect(clients.github.authenticateAuthorizationCode).not.toHaveBeenCalled();
     expect(harness.auditEvents).toEqual([
       {
         provider: 'github',
@@ -284,7 +283,12 @@ describe('OAuthCallbackApplication', () => {
   });
 
   it.each([
-    ['cross-browser use', 'google', 'google', 'another_browser_binding_value_x'],
+    [
+      'cross-browser use',
+      'google',
+      'google',
+      'another_browser_binding_value_x',
+    ],
     ['provider mismatch', 'google', 'github', BROWSER_SESSION_ID],
   ] as const)(
     'fails closed for %s before provider access',
