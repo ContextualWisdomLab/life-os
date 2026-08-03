@@ -170,13 +170,26 @@ describe('PostgresProposalAuditRepository', () => {
       audit.request,
       audit.requestDigest,
       audit.proposal.summary,
-      audit.proposal.rationale,
-      audit.proposal.operations,
+      JSON.stringify(audit.proposal.rationale),
+      JSON.stringify(audit.proposal.operations),
       true,
       audit.contentDigest,
       audit.proposal.createdAt,
       audit.recordedAt,
     ]);
+  });
+
+  it('fails closed before SQL when runtime identifiers are non-string', async () => {
+    const client = new RecordingSqlClient();
+    const repository = new PostgresProposalAuditRepository(client);
+
+    await expect(
+      repository.listProposals(42 as unknown as string),
+    ).rejects.toBeInstanceOf(ProposalAuditPersistenceError);
+    await expect(
+      repository.findProposal(WORKSPACE_ID, null as unknown as string),
+    ).rejects.toBeInstanceOf(ProposalAuditPersistenceError);
+    expect(client.calls).toHaveLength(0);
   });
 
   it('uses tenant predicates, verifies digests, and returns stable ordering', async () => {
