@@ -80,6 +80,14 @@ CREATE INDEX completion_events_workspace_habit_schedule_idx
     id ASC
   );
 
+CREATE INDEX completion_events_workspace_habit_recorded_idx
+  ON habit.completion_events (
+    workspace_id,
+    habit_id,
+    recorded_at ASC,
+    id ASC
+  );
+
 CREATE FUNCTION habit.reject_completion_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
