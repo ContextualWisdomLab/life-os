@@ -6,11 +6,11 @@ export const MATURITY_LEVELS = Object.freeze([
   'prototype',
   'usable',
   'production',
-  'differentiated'
+  'differentiated',
 ]);
 
 export const MATURITY_RANK = Object.freeze(
-  Object.fromEntries(MATURITY_LEVELS.map((level, index) => [level, index]))
+  Object.fromEntries(MATURITY_LEVELS.map((level, index) => [level, index])),
 );
 
 const CAPABILITY_ID_PATTERN = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$/;
@@ -18,28 +18,35 @@ const REQUIRED_SECURITY_WORKFLOWS = Object.freeze([
   'CI',
   'SAST Semgrep',
   'Security Scan',
-  'AppGuardrail'
+  'AppGuardrail',
 ]);
 const REQUIRED_COMMIT_STATUSES = Object.freeze(['CodeRabbit']);
 const ALLOWED_EVIDENCE_KINDS = new Set([
   'implementation',
   'test',
   'workflow',
-  'documentation'
+  'documentation',
 ]);
 const ALLOWED_EVIDENCE_MODES = new Set(['exists', 'contains', 'not_contains']);
-const TRUSTED_AUTHOR_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+const TRUSTED_AUTHOR_ASSOCIATIONS = new Set([
+  'OWNER',
+  'MEMBER',
+  'COLLABORATOR',
+]);
 
 function failManifest(detail = '') {
   throw new Error(`Invalid capability manifest${detail ? `: ${detail}` : ''}`);
 }
 
 function failPolicy(detail = '') {
-  throw new Error(`Invalid commercial readiness policy${detail ? `: ${detail}` : ''}`);
+  throw new Error(
+    `Invalid commercial readiness policy${detail ? `: ${detail}` : ''}`,
+  );
 }
 
 function isPlainObject(value) {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
@@ -56,7 +63,8 @@ function score(value, fail, label) {
 
 function positiveIssueOrNull(value) {
   if (value === null || value === undefined) return null;
-  if (!Number.isSafeInteger(value) || value <= 0) failManifest('invalid tracking issue');
+  if (!Number.isSafeInteger(value) || value <= 0)
+    failManifest('invalid tracking issue');
   return value;
 }
 
@@ -82,7 +90,7 @@ function isDocumentationPath(path) {
       'CONTRIBUTING.md',
       'CODE_OF_CONDUCT.md',
       'PRIVACY.md',
-      'TERMS.md'
+      'TERMS.md',
     ].includes(path) || path.startsWith('docs/')
   );
 }
@@ -97,13 +105,25 @@ function isTestPath(path) {
 
 function validateEvidence(value) {
   if (!isPlainObject(value)) failManifest('invalid evidence');
-  const maturity = requiredString(value.maturity, failManifest, 'invalid evidence maturity');
+  const maturity = requiredString(
+    value.maturity,
+    failManifest,
+    'invalid evidence maturity',
+  );
   if (maturity === 'missing' || !(maturity in MATURITY_RANK)) {
     failManifest('invalid evidence maturity');
   }
-  const kind = requiredString(value.kind, failManifest, 'invalid evidence kind');
+  const kind = requiredString(
+    value.kind,
+    failManifest,
+    'invalid evidence kind',
+  );
   if (!ALLOWED_EVIDENCE_KINDS.has(kind)) failManifest('invalid evidence kind');
-  const mode = requiredString(value.mode, failManifest, 'invalid evidence mode');
+  const mode = requiredString(
+    value.mode,
+    failManifest,
+    'invalid evidence mode',
+  );
   if (!ALLOWED_EVIDENCE_MODES.has(mode)) failManifest('invalid evidence mode');
   const path = validateRelativePath(value.path);
 
@@ -125,14 +145,22 @@ function validateEvidence(value) {
 
   let probeValue;
   if (mode === 'contains' || mode === 'not_contains') {
-    probeValue = requiredString(value.value, failManifest, 'invalid evidence probe');
+    probeValue = requiredString(
+      value.value,
+      failManifest,
+      'invalid evidence probe',
+    );
     if (probeValue.length > 512) failManifest('invalid evidence probe');
   } else if (value.value !== undefined) {
     failManifest('invalid evidence probe');
   }
 
   const maxBytes = value.max_bytes ?? 512 * 1024;
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 * 1024) {
+  if (
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 1 ||
+    maxBytes > 1024 * 1024
+  ) {
     failManifest('invalid evidence byte limit');
   }
 
@@ -142,7 +170,7 @@ function validateEvidence(value) {
     mode,
     path,
     ...(probeValue === undefined ? {} : { value: probeValue }),
-    max_bytes: maxBytes
+    max_bytes: maxBytes,
   });
 }
 
@@ -150,7 +178,8 @@ function detectDependencyProblems(capabilities) {
   const ids = new Set(capabilities.map((item) => item.id));
   for (const capability of capabilities) {
     for (const dependency of capability.dependencies) {
-      if (!ids.has(dependency)) failManifest(`unknown dependency ${dependency}`);
+      if (!ids.has(dependency))
+        failManifest(`unknown dependency ${dependency}`);
     }
   }
 
@@ -163,7 +192,8 @@ function detectDependencyProblems(capabilities) {
     if (current === 'visited') return;
     state.set(id, 'visiting');
     const capability = capabilities.find((item) => item.id === id);
-    for (const dependency of capability.dependencies) visit(dependency, [...chain, id]);
+    for (const dependency of capability.dependencies)
+      visit(dependency, [...chain, id]);
     state.set(id, 'visited');
   }
   for (const capability of capabilities) visit(capability.id, []);
@@ -177,7 +207,8 @@ export function validateCapabilityManifest(value) {
   ) {
     failManifest();
   }
-  if (value.capabilities.length === 0 || value.capabilities.length > 100) failManifest();
+  if (value.capabilities.length === 0 || value.capabilities.length > 100)
+    failManifest();
 
   const seen = new Set();
   const capabilities = value.capabilities.map((entry) => {
@@ -187,19 +218,28 @@ export function validateCapabilityManifest(value) {
       failManifest('invalid or duplicate capability id');
     }
     seen.add(id);
-    const outcome = requiredString(entry.outcome, failManifest, 'invalid outcome');
+    const outcome = requiredString(
+      entry.outcome,
+      failManifest,
+      'invalid outcome',
+    );
     if (outcome.length > 300) failManifest('invalid outcome');
     const targetMaturity = requiredString(
       entry.target_maturity,
       failManifest,
-      'invalid target maturity'
+      'invalid target maturity',
     );
     if (!(targetMaturity in MATURITY_RANK) || targetMaturity === 'missing') {
       failManifest('invalid target maturity');
     }
-    if (!Array.isArray(entry.dependencies) || entry.dependencies.length > 25) failManifest();
+    if (!Array.isArray(entry.dependencies) || entry.dependencies.length > 25)
+      failManifest();
     const dependencies = entry.dependencies.map((dependency) => {
-      const normalized = requiredString(dependency, failManifest, 'invalid dependency');
+      const normalized = requiredString(
+        dependency,
+        failManifest,
+        'invalid dependency',
+      );
       if (!CAPABILITY_ID_PATTERN.test(normalized) || normalized === id) {
         failManifest('invalid dependency');
       }
@@ -220,29 +260,34 @@ export function validateCapabilityManifest(value) {
       id,
       outcome,
       target_maturity: targetMaturity,
-      customer_impact: score(entry.customer_impact, failManifest, 'invalid customer impact'),
+      customer_impact: score(
+        entry.customer_impact,
+        failManifest,
+        'invalid customer impact',
+      ),
       risk: score(entry.risk, failManifest, 'invalid risk'),
       acquisition_impact: score(
         entry.acquisition_impact,
         failManifest,
-        'invalid acquisition impact'
+        'invalid acquisition impact',
       ),
       effort: score(entry.effort, failManifest, 'invalid effort'),
       dependencies: Object.freeze(dependencies),
       tracking_issue: positiveIssueOrNull(entry.tracking_issue),
-      evidence: Object.freeze(evidence)
+      evidence: Object.freeze(evidence),
     });
   });
 
   detectDependencyProblems(capabilities);
   return Object.freeze({
     schema: MANIFEST_SCHEMA,
-    capabilities: Object.freeze(capabilities)
+    capabilities: Object.freeze(capabilities),
   });
 }
 
 function uniqueStrings(value, label) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 25) failPolicy(label);
+  if (!Array.isArray(value) || value.length === 0 || value.length > 25)
+    failPolicy(label);
   const values = value.map((item) => requiredString(item, failPolicy, label));
   if (new Set(values).size !== values.length) failPolicy(label);
   return values;
@@ -253,43 +298,59 @@ export function validateCommercialReadinessPolicy(value) {
   const defaultBranch = requiredString(
     value.default_branch,
     failPolicy,
-    'invalid default branch'
+    'invalid default branch',
   );
-  if (!/^[A-Za-z0-9._/-]{1,100}$/.test(defaultBranch) || defaultBranch.includes('..')) {
+  if (
+    !/^[A-Za-z0-9._/-]{1,100}$/.test(defaultBranch) ||
+    defaultBranch.includes('..')
+  ) {
     failPolicy();
   }
   const marker = requiredString(
     value.readiness_issue_marker,
     failPolicy,
-    'invalid readiness issue marker'
+    'invalid readiness issue marker',
   );
   if (!/^<!--[\x20-\x7e]{8,200}-->$/.test(marker)) failPolicy();
   const title = requiredString(
     value.readiness_issue_title,
     failPolicy,
-    'invalid readiness issue title'
+    'invalid readiness issue title',
   );
   if (title.length > 120) failPolicy();
   const associations = uniqueStrings(
     value.trusted_author_associations,
-    'invalid author associations'
+    'invalid author associations',
   );
-  if (associations.some((association) => !TRUSTED_AUTHOR_ASSOCIATIONS.has(association))) {
+  if (
+    associations.some(
+      (association) => !TRUSTED_AUTHOR_ASSOCIATIONS.has(association),
+    )
+  ) {
     failPolicy();
   }
-  const workflows = uniqueStrings(value.required_workflows, 'invalid required workflows');
+  const workflows = uniqueStrings(
+    value.required_workflows,
+    'invalid required workflows',
+  );
   for (const required of REQUIRED_SECURITY_WORKFLOWS) {
-    if (!workflows.includes(required)) failPolicy(`required workflow missing: ${required}`);
+    if (!workflows.includes(required))
+      failPolicy(`required workflow missing: ${required}`);
   }
-  const statuses = uniqueStrings(value.required_statuses, 'invalid required statuses');
+  const statuses = uniqueStrings(
+    value.required_statuses,
+    'invalid required statuses',
+  );
   for (const required of REQUIRED_COMMIT_STATUSES) {
-    if (!statuses.includes(required)) failPolicy(`required status missing: ${required}`);
+    if (!statuses.includes(required))
+      failPolicy(`required status missing: ${required}`);
   }
   const retention = value.artifact_retention_days;
   if (!Number.isSafeInteger(retention) || retention < 1 || retention > 7) {
     failPolicy('invalid artifact retention');
   }
-  if (value.merge_method !== 'squash') failPolicy('merge method must be squash');
+  if (value.merge_method !== 'squash')
+    failPolicy('merge method must be squash');
 
   return Object.freeze({
     schema: POLICY_SCHEMA,
@@ -300,7 +361,7 @@ export function validateCommercialReadinessPolicy(value) {
     required_workflows: Object.freeze(workflows),
     required_statuses: Object.freeze(statuses),
     artifact_retention_days: retention,
-    merge_method: 'squash'
+    merge_method: 'squash',
   });
 }
 
@@ -318,7 +379,8 @@ function exactKeys(value, allowed) {
 }
 
 function snapshotString(value, label, max = 300) {
-  if (typeof value !== 'string' || !value.trim() || value.length > max) failSnapshot(label);
+  if (typeof value !== 'string' || !value.trim() || value.length > max)
+    failSnapshot(label);
   if (/[\u0000-\u001f\u007f]/.test(value)) failSnapshot(label);
   return value;
 }
@@ -338,7 +400,7 @@ function validateSnapshotReview(value) {
   return Object.freeze({
     actor: snapshotString(value.actor, 'invalid review actor', 100),
     state: snapshotString(value.state, 'invalid review state', 50),
-    submitted_at: submittedAt
+    submitted_at: submittedAt,
   });
 }
 
@@ -349,11 +411,12 @@ function validateSnapshotWorkflow(value) {
     'conclusion',
     'head_sha',
     'run_attempt',
-    'updated_at'
+    'updated_at',
   ]);
   if (!exactKeys(value, allowed)) failSnapshot('invalid workflow');
   const conclusion = value.conclusion;
-  if (conclusion !== null && typeof conclusion !== 'string') failSnapshot('invalid workflow');
+  if (conclusion !== null && typeof conclusion !== 'string')
+    failSnapshot('invalid workflow');
   const updatedAt = value.updated_at;
   if (updatedAt !== null && !Number.isFinite(Date.parse(updatedAt))) {
     failSnapshot('invalid workflow');
@@ -367,11 +430,12 @@ function validateSnapshotWorkflow(value) {
     conclusion,
     head_sha: (() => {
       const sha = snapshotString(value.head_sha, 'invalid workflow head', 40);
-      if (!SNAPSHOT_SHA_PATTERN.test(sha)) failSnapshot('invalid workflow head');
+      if (!SNAPSHOT_SHA_PATTERN.test(sha))
+        failSnapshot('invalid workflow head');
       return sha.toLowerCase();
     })(),
     run_attempt: value.run_attempt,
-    updated_at: updatedAt
+    updated_at: updatedAt,
   });
 }
 
@@ -383,7 +447,7 @@ function validateSnapshotStatus(value) {
   return Object.freeze({
     context: snapshotString(value.context, 'invalid status context', 150),
     state: snapshotString(value.state, 'invalid status state', 50),
-    sha: sha.toLowerCase()
+    sha: sha.toLowerCase(),
   });
 }
 
@@ -406,19 +470,26 @@ function validateSnapshotPullRequest(value) {
     'workflows',
     'statuses',
     'eligible',
-    'blockers'
+    'blockers',
   ]);
   if (!exactKeys(value, allowed)) failSnapshot('invalid pull request');
-  if (typeof value.draft !== 'boolean' || typeof value.mergeable !== 'boolean') {
+  if (
+    typeof value.draft !== 'boolean' ||
+    typeof value.mergeable !== 'boolean'
+  ) {
     failSnapshot('invalid pull request flags');
   }
   if (!Number.isSafeInteger(value.behind_by) || value.behind_by < -1) {
     failSnapshot('invalid pull request distance');
   }
-  if (!Number.isSafeInteger(value.unresolved_threads) || value.unresolved_threads < 0) {
+  if (
+    !Number.isSafeInteger(value.unresolved_threads) ||
+    value.unresolved_threads < 0
+  ) {
     failSnapshot('invalid review thread count');
   }
-  if (typeof value.eligible !== 'boolean') failSnapshot('invalid merge eligibility');
+  if (typeof value.eligible !== 'boolean')
+    failSnapshot('invalid merge eligibility');
   if (!Array.isArray(value.reviews) || value.reviews.length > 100) {
     failSnapshot('invalid reviews');
   }
@@ -431,14 +502,23 @@ function validateSnapshotPullRequest(value) {
   if (!Array.isArray(value.blockers) || value.blockers.length > 100) {
     failSnapshot('invalid blockers');
   }
-  const headSha = snapshotString(value.head_sha, 'invalid pull request head', 40);
-  if (!SNAPSHOT_SHA_PATTERN.test(headSha)) failSnapshot('invalid pull request head');
+  const headSha = snapshotString(
+    value.head_sha,
+    'invalid pull request head',
+    40,
+  );
+  if (!SNAPSHOT_SHA_PATTERN.test(headSha))
+    failSnapshot('invalid pull request head');
   const repository = snapshotString(
     value.repository,
     'invalid pull request repository',
-    200
+    200,
   );
-  const headRepo = snapshotString(value.head_repo, 'invalid pull request repository', 200);
+  const headRepo = snapshotString(
+    value.head_repo,
+    'invalid pull request repository',
+    200,
+  );
   if (
     !SNAPSHOT_REPOSITORY_PATTERN.test(repository) ||
     !SNAPSHOT_REPOSITORY_PATTERN.test(headRepo)
@@ -446,7 +526,7 @@ function validateSnapshotPullRequest(value) {
     failSnapshot('invalid pull request repository');
   }
   const blockers = value.blockers.map((item) =>
-    snapshotString(item, 'invalid blocker', 200)
+    snapshotString(item, 'invalid blocker', 200),
   );
   return Object.freeze({
     number: snapshotExternalNumber(value.number, 'invalid pull request number'),
@@ -454,7 +534,11 @@ function validateSnapshotPullRequest(value) {
     state: snapshotString(value.state, 'invalid pull request state', 30),
     draft: value.draft,
     mergeable: value.mergeable,
-    mergeable_state: snapshotString(value.mergeable_state, 'invalid mergeable state', 50),
+    mergeable_state: snapshotString(
+      value.mergeable_state,
+      'invalid mergeable state',
+      50,
+    ),
     base_ref: snapshotString(value.base_ref, 'invalid base ref', 150),
     head_sha: headSha.toLowerCase(),
     head_repo: headRepo,
@@ -462,7 +546,7 @@ function validateSnapshotPullRequest(value) {
     author_association: snapshotString(
       value.author_association,
       'invalid author association',
-      50
+      50,
     ),
     behind_by: value.behind_by,
     reviews: Object.freeze(value.reviews.map(validateSnapshotReview)),
@@ -470,7 +554,7 @@ function validateSnapshotPullRequest(value) {
     workflows: Object.freeze(value.workflows.map(validateSnapshotWorkflow)),
     statuses: Object.freeze(value.statuses.map(validateSnapshotStatus)),
     eligible: value.eligible,
-    blockers: Object.freeze(blockers)
+    blockers: Object.freeze(blockers),
   });
 }
 
@@ -485,8 +569,10 @@ function validateSnapshotIssue(value) {
     title: snapshotString(value.title, 'invalid issue title', 300),
     state: snapshotString(value.state, 'invalid issue state', 30),
     labels: Object.freeze(
-      value.labels.map((label) => snapshotString(label, 'invalid issue label', 100))
-    )
+      value.labels.map((label) =>
+        snapshotString(label, 'invalid issue label', 100),
+      ),
+    ),
   });
 }
 
@@ -498,15 +584,23 @@ export function validateGitHubSnapshot(value) {
     'generated_at',
     'truncated',
     'pull_requests',
-    'issues'
+    'issues',
   ]);
-  if (!exactKeys(value, allowed) || value.schema !== SNAPSHOT_SCHEMA) failSnapshot();
-  const repository = snapshotString(value.repository, 'invalid repository', 200);
-  if (!SNAPSHOT_REPOSITORY_PATTERN.test(repository)) failSnapshot('invalid repository');
+  if (!exactKeys(value, allowed) || value.schema !== SNAPSHOT_SCHEMA)
+    failSnapshot();
+  const repository = snapshotString(
+    value.repository,
+    'invalid repository',
+    200,
+  );
+  if (!SNAPSHOT_REPOSITORY_PATTERN.test(repository))
+    failSnapshot('invalid repository');
   const commitSha = snapshotString(value.commit_sha, 'invalid commit SHA', 40);
   if (!SNAPSHOT_SHA_PATTERN.test(commitSha)) failSnapshot('invalid commit SHA');
-  if (!Number.isFinite(Date.parse(value.generated_at))) failSnapshot('invalid timestamp');
-  if (typeof value.truncated !== 'boolean') failSnapshot('invalid truncation flag');
+  if (!Number.isFinite(Date.parse(value.generated_at)))
+    failSnapshot('invalid timestamp');
+  if (typeof value.truncated !== 'boolean')
+    failSnapshot('invalid truncation flag');
   if (!Array.isArray(value.pull_requests) || value.pull_requests.length > 100) {
     failSnapshot('invalid pull requests');
   }
@@ -519,7 +613,9 @@ export function validateGitHubSnapshot(value) {
     commit_sha: commitSha.toLowerCase(),
     generated_at: new Date(value.generated_at).toISOString(),
     truncated: value.truncated,
-    pull_requests: Object.freeze(value.pull_requests.map(validateSnapshotPullRequest)),
-    issues: Object.freeze(value.issues.map(validateSnapshotIssue))
+    pull_requests: Object.freeze(
+      value.pull_requests.map(validateSnapshotPullRequest),
+    ),
+    issues: Object.freeze(value.issues.map(validateSnapshotIssue)),
   });
 }

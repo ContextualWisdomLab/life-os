@@ -22,12 +22,14 @@
 ### Task 1: Strict capability and policy schemas
 
 **Files:**
+
 - Create: `packages/commercial-readiness/src/schema.mjs`
 - Test: `packages/commercial-readiness/src/schema.test.mjs`
 - Create: `product/capabilities.json`
 - Create: `product/commercial-readiness-policy.json`
 
 **Interfaces:**
+
 - Produces: `validateCapabilityManifest(value)`, `validateCommercialReadinessPolicy(value)`, `validateGitHubSnapshot(value)`, `MATURITY_LEVELS`, and `MATURITY_RANK`.
 
 - [x] Write failing tests for valid manifests, malformed IDs, duplicate IDs, unknown dependencies, cycles, evidence-kind confusion, traversal, unsafe probes, weakened policy gates, raw review bodies, and malformed snapshots.
@@ -39,10 +41,12 @@
 ### Task 2: Evidence audit and deterministic gap ledger
 
 **Files:**
+
 - Create: `packages/commercial-readiness/src/audit.mjs`
 - Test: `packages/commercial-readiness/src/audit.test.mjs`
 
 **Interfaces:**
+
 - Consumes: validated capability manifest.
 - Produces: `evaluateCapabilities(manifest, { rootDir, generatedAt, commitSha })` and `life-os.commercial-readiness-report.v1`.
 
@@ -54,10 +58,12 @@
 ### Task 3: Fail-closed PR gate
 
 **Files:**
+
 - Create: `packages/commercial-readiness/src/pr-gate.mjs`
 - Test: `packages/commercial-readiness/src/pr-gate.test.mjs`
 
 **Interfaces:**
+
 - Produces: `evaluatePullRequestForMerge(pr, policy) -> { eligible, blockers }`.
 
 - [x] Write the eligible fixture and one failing fixture for every unsafe state.
@@ -68,12 +74,14 @@
 ### Task 4: Safe rendering and living issue synchronization
 
 **Files:**
+
 - Create: `packages/commercial-readiness/src/render.mjs`
 - Create: `packages/commercial-readiness/src/github-client.mjs`
 - Test: `packages/commercial-readiness/src/render.test.mjs`
 - Test: `packages/commercial-readiness/src/github-client.test.mjs`
 
 **Interfaces:**
+
 - Produces: `sanitizeUntrustedText`, `renderCommercialReadinessIssue`, `GitHubApiClient`, `collectRepositorySnapshot`, `syncReadinessIssue`, `mergeEligiblePullRequests`, and `mergePullRequestThroughApi`.
 
 - [x] Write tests for token redaction, Markdown/HTML escaping, deterministic rendering, fixed API origin, no redirects, response limits, duplicate issue closure, dry-run, head recheck, and head movement.
@@ -84,11 +92,13 @@
 ### Task 5: CLI and defense-in-depth execution boundaries
 
 **Files:**
+
 - Create: `packages/commercial-readiness/src/cli.mjs`
 - Test: `packages/commercial-readiness/src/cli.test.mjs`
 - Create: `packages/commercial-readiness/package.json`
 
 **Interfaces:**
+
 - Commands: `snapshot`, `audit`, `publish`, and `drain`.
 
 - [x] Write tests for bounded argument parsing, unknown/duplicate options, symlink rejection, and oversized JSON.
@@ -99,12 +109,14 @@
 ### Task 6: Hourly workflow and supply-chain contract
 
 **Files:**
+
 - Create: `.github/workflows/commercial-readiness.yml`
 - Test: `packages/commercial-readiness/src/workflow-contract.test.mjs`
 - Modify: `.gitignore`
 - Modify: `package.json`
 
 **Interfaces:**
+
 - Workflow name: `Commercial Readiness`.
 - Schedule: `23 * * * *`.
 

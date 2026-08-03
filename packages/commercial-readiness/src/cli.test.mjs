@@ -17,7 +17,7 @@ describe('parseArguments', () => {
         '--output',
         'out/snapshot.json',
         '--commit',
-        'a'.repeat(40)
+        'a'.repeat(40),
       ]),
       {
         command: 'snapshot',
@@ -25,9 +25,9 @@ describe('parseArguments', () => {
           repository: 'ContextualWisdomLab/life-os',
           policy: 'product/commercial-readiness-policy.json',
           output: 'out/snapshot.json',
-          commit: 'a'.repeat(40)
-        }
-      }
+          commit: 'a'.repeat(40),
+        },
+      },
     );
   });
 
@@ -37,9 +37,12 @@ describe('parseArguments', () => {
       ['snapshot', '--repository', 'o/r', '--repository', 'o/r'],
       ['snapshot', '--repository'],
       ['snapshot', 'unexpected'],
-      ['drain', '--execute']
+      ['drain', '--execute'],
     ]) {
-      assert.throws(() => parseArguments(argv), /Invalid commercial readiness command/);
+      assert.throws(
+        () => parseArguments(argv),
+        /Invalid commercial readiness command/,
+      );
     }
   });
 });
@@ -57,7 +60,13 @@ describe('readJsonFile', () => {
     await writeFile(large, JSON.stringify({ value: 'x'.repeat(2048) }), 'utf8');
 
     assert.deepEqual(await readJsonFile(valid, 1024), { ok: true });
-    await assert.rejects(() => readJsonFile(link, 1024), /JSON input must be a regular file/);
-    await assert.rejects(() => readJsonFile(large, 1024), /JSON input exceeded the size limit/);
+    await assert.rejects(
+      () => readJsonFile(link, 1024),
+      /JSON input must be a regular file/,
+    );
+    await assert.rejects(
+      () => readJsonFile(large, 1024),
+      /JSON input exceeded the size limit/,
+    );
   });
 });

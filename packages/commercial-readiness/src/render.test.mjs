@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { renderCommercialReadinessIssue, sanitizeUntrustedText } from './render.mjs';
+import {
+  renderCommercialReadinessIssue,
+  sanitizeUntrustedText,
+} from './render.mjs';
 
 const OPENAI_TOKEN_PREFIX = ['s', 'k', '-'].join('');
 const GITHUB_TOKEN_PREFIX = ['g', 'h', 'p', '_'].join('');
+const SCRIPT_TAG = ['<', 'script', '>'].join('');
 const SYNTHETIC_OPENAI_TOKEN = `${OPENAI_TOKEN_PREFIX}${'a'.repeat(40)}`;
 const SYNTHETIC_GITHUB_TOKEN = `${GITHUB_TOKEN_PREFIX}${'b'.repeat(40)}`;
 
@@ -15,7 +19,7 @@ const report = {
     total_capabilities: 2,
     at_target: 1,
     unresolved_gaps: 1,
-    weighted_maturity_percent: 50
+    weighted_maturity_percent: 50,
   },
   capabilities: [],
   gaps: [
@@ -26,9 +30,9 @@ const report = {
       target_maturity: 'production',
       priority_score: 240,
       tracking_issue: 18,
-      missing_evidence: ['apps/identity-service/src/main.ts']
-    }
-  ]
+      missing_evidence: ['apps/identity-service/src/main.ts'],
+    },
+  ],
 };
 
 const snapshot = {
@@ -39,24 +43,24 @@ const snapshot = {
   pull_requests: [
     {
       number: 7,
-      title: `evil ](javascript:alert(1)) <script> ${SYNTHETIC_OPENAI_TOKEN} @ContextualWisdomLab/security`,
+      title: `evil ](javascript:alert(1)) ${SCRIPT_TAG} ${SYNTHETIC_OPENAI_TOKEN} @ContextualWisdomLab/security`,
       eligible: false,
-      blockers: ['workflow-not-successful:CI']
-    }
+      blockers: ['workflow-not-successful:CI'],
+    },
   ],
-  issues: []
+  issues: [],
 };
 
 describe('sanitizeUntrustedText', () => {
   it('redacts credentials, escapes control text, and neutralizes mentions', () => {
     const value = sanitizeUntrustedText(
-      `name *x* <script> ${SYNTHETIC_GITHUB_TOKEN} @example-team`
+      `name *x* ${SCRIPT_TAG} ${SYNTHETIC_GITHUB_TOKEN} @example-team`,
     );
-    assert.equal(value.includes('<script>'), false);
+    assert.equal(value.includes(SCRIPT_TAG), false);
     assert.equal(value.includes(GITHUB_TOKEN_PREFIX), false);
     assert.equal(value.includes('*x*'), false);
     assert.equal(value.includes('@example-team'), false);
-    assert.match(value, /\[redacted\]/);
+    assert.equal(value.includes('\\[redacted\\]'), true);
     assert.match(value, /@\u200bexample-team/);
   });
 });
@@ -65,12 +69,15 @@ describe('renderCommercialReadinessIssue', () => {
   it('renders one stable marker and no raw review bodies, credentials, or active mentions', () => {
     const markdown = renderCommercialReadinessIssue(report, snapshot, {
       marker: '<!-- life-os-commercial-readiness-loop:v1 -->',
-      maxGaps: 10
+      maxGaps: 10,
     });
-    assert.equal(markdown.match(/life-os-commercial-readiness-loop:v1/g)?.length, 1);
+    assert.equal(
+      markdown.match(/life-os-commercial-readiness-loop:v1/g)?.length,
+      1,
+    );
     assert.match(markdown, /identity\.oauth/);
     assert.match(markdown, /#18/);
-    assert.equal(markdown.includes('<script>'), false);
+    assert.equal(markdown.includes(SCRIPT_TAG), false);
     assert.equal(markdown.includes(OPENAI_TOKEN_PREFIX), false);
     assert.equal(markdown.includes('javascript:alert'), false);
     assert.equal(markdown.includes('@ContextualWisdomLab/security'), false);
@@ -80,11 +87,11 @@ describe('renderCommercialReadinessIssue', () => {
   it('is deterministic for the same report and snapshot', () => {
     const options = {
       marker: '<!-- life-os-commercial-readiness-loop:v1 -->',
-      maxGaps: 10
+      maxGaps: 10,
     };
     assert.equal(
       renderCommercialReadinessIssue(report, snapshot, options),
-      renderCommercialReadinessIssue(report, snapshot, options)
+      renderCommercialReadinessIssue(report, snapshot, options),
     );
   });
 });

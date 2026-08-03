@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { validateCapabilityManifest, validateCommercialReadinessPolicy } from './schema.mjs';
+import {
+  validateCapabilityManifest,
+  validateCommercialReadinessPolicy,
+} from './schema.mjs';
 
 function capability(overrides = {}) {
   return {
@@ -18,17 +21,17 @@ function capability(overrides = {}) {
         maturity: 'prototype',
         kind: 'implementation',
         mode: 'exists',
-        path: 'apps/identity-service/src/oauth-provider.ts'
-      }
+        path: 'apps/identity-service/src/oauth-provider.ts',
+      },
     ],
-    ...overrides
+    ...overrides,
   };
 }
 
 function manifest(capabilities = [capability()]) {
   return {
     schema: 'life-os.capability-manifest.v1',
-    capabilities
+    capabilities,
   };
 }
 
@@ -45,32 +48,35 @@ describe('validateCapabilityManifest', () => {
     for (const capabilities of [
       [capability({ id: '123' })],
       [capability({ id: 'Identity OAuth' })],
-      [capability(), capability()]
+      [capability(), capability()],
     ]) {
       assert.throws(
         () => validateCapabilityManifest(manifest(capabilities)),
-        /Invalid capability manifest/
+        /Invalid capability manifest/,
       );
     }
   });
 
   it('rejects dependency cycles and unknown dependencies', () => {
-    const first = capability({ id: 'identity.oauth', dependencies: ['identity.session'] });
+    const first = capability({
+      id: 'identity.oauth',
+      dependencies: ['identity.session'],
+    });
     const second = capability({
       id: 'identity.session',
       dependencies: ['identity.oauth'],
-      tracking_issue: null
+      tracking_issue: null,
     });
     assert.throws(
       () => validateCapabilityManifest(manifest([first, second])),
-      /dependency cycle/
+      /dependency cycle/,
     );
     assert.throws(
       () =>
         validateCapabilityManifest(
-          manifest([capability({ dependencies: ['missing.capability'] })])
+          manifest([capability({ dependencies: ['missing.capability'] })]),
         ),
-      /unknown dependency/
+      /unknown dependency/,
     );
   });
 
@@ -80,40 +86,71 @@ describe('validateCapabilityManifest', () => {
         maturity: 'production',
         kind: 'implementation',
         mode: 'exists',
-        path: 'docs/oauth.md'
+        path: 'docs/oauth.md',
       },
       {
         maturity: 'production',
         kind: 'test',
         mode: 'exists',
-        path: 'README.md'
+        path: 'README.md',
       },
       {
         maturity: 'production',
         kind: 'documentation',
         mode: 'exists',
-        path: 'apps/identity-service/src/main.ts'
-      }
+        path: 'apps/identity-service/src/main.ts',
+      },
     ]) {
       assert.throws(
-        () => validateCapabilityManifest(manifest([capability({ evidence: [evidence] })])),
-        /evidence path/
+        () =>
+          validateCapabilityManifest(
+            manifest([capability({ evidence: [evidence] })]),
+          ),
+        /evidence path/,
       );
     }
   });
 
   it('rejects traversal, absolute paths, unsafe probes, and out-of-range scores', () => {
     const invalid = [
-      capability({ evidence: [{ maturity: 'prototype', kind: 'implementation', mode: 'exists', path: '../secret' }] }),
-      capability({ evidence: [{ maturity: 'prototype', kind: 'implementation', mode: 'exists', path: '/etc/passwd' }] }),
-      capability({ evidence: [{ maturity: 'prototype', kind: 'implementation', mode: 'contains', path: 'apps/a.ts', value: '' }] }),
+      capability({
+        evidence: [
+          {
+            maturity: 'prototype',
+            kind: 'implementation',
+            mode: 'exists',
+            path: '../secret',
+          },
+        ],
+      }),
+      capability({
+        evidence: [
+          {
+            maturity: 'prototype',
+            kind: 'implementation',
+            mode: 'exists',
+            path: '/etc/passwd',
+          },
+        ],
+      }),
+      capability({
+        evidence: [
+          {
+            maturity: 'prototype',
+            kind: 'implementation',
+            mode: 'contains',
+            path: 'apps/a.ts',
+            value: '',
+          },
+        ],
+      }),
       capability({ customer_impact: 0 }),
-      capability({ effort: 6 })
+      capability({ effort: 6 }),
     ];
     for (const item of invalid) {
       assert.throws(
         () => validateCapabilityManifest(manifest([item])),
-        /Invalid capability manifest/
+        /Invalid capability manifest/,
       );
     }
   });
@@ -127,10 +164,16 @@ describe('validateCommercialReadinessPolicy', () => {
       readiness_issue_marker: '<!-- life-os-commercial-readiness-loop:v1 -->',
       readiness_issue_title: 'LifeOS commercial readiness',
       trusted_author_associations: ['OWNER', 'MEMBER', 'COLLABORATOR'],
-      required_workflows: ['CI', 'SAST Semgrep', 'Security Scan', 'AppGuardrail', 'Commercial Readiness'],
+      required_workflows: [
+        'CI',
+        'SAST Semgrep',
+        'Security Scan',
+        'AppGuardrail',
+        'Commercial Readiness',
+      ],
       required_statuses: ['CodeRabbit'],
       artifact_retention_days: 7,
-      merge_method: 'squash'
+      merge_method: 'squash',
     });
     assert.equal(policy.default_branch, 'main');
     assert.equal(Object.isFrozen(policy), true);
@@ -143,21 +186,26 @@ describe('validateCommercialReadinessPolicy', () => {
       readiness_issue_marker: '<!-- life-os-commercial-readiness-loop:v1 -->',
       readiness_issue_title: 'LifeOS commercial readiness',
       trusted_author_associations: ['OWNER'],
-      required_workflows: ['CI', 'SAST Semgrep', 'Security Scan', 'AppGuardrail'],
+      required_workflows: [
+        'CI',
+        'SAST Semgrep',
+        'Security Scan',
+        'AppGuardrail',
+      ],
       required_statuses: ['CodeRabbit'],
       artifact_retention_days: 7,
-      merge_method: 'squash'
+      merge_method: 'squash',
     };
     for (const policy of [
       { ...base, required_workflows: ['CI'] },
       { ...base, required_statuses: [] },
       { ...base, artifact_retention_days: 30 },
       { ...base, merge_method: 'merge' },
-      { ...base, readiness_issue_marker: 'not-a-marker' }
+      { ...base, readiness_issue_marker: 'not-a-marker' },
     ]) {
       assert.throws(
         () => validateCommercialReadinessPolicy(policy),
-        /Invalid commercial readiness policy/
+        /Invalid commercial readiness policy/,
       );
     }
   });
@@ -173,12 +221,19 @@ describe('validateGitHubSnapshot', () => {
       generated_at: '2026-08-03T06:00:00.000Z',
       truncated: false,
       pull_requests: [],
-      issues: []
+      issues: [],
     };
-    assert.equal(validateGitHubSnapshot(base).repository, 'ContextualWisdomLab/life-os');
+    assert.equal(
+      validateGitHubSnapshot(base).repository,
+      'ContextualWisdomLab/life-os',
+    );
     assert.throws(
-      () => validateGitHubSnapshot({ ...base, repository: 'https://evil.example/repo' }),
-      /Invalid GitHub snapshot/
+      () =>
+        validateGitHubSnapshot({
+          ...base,
+          repository: 'https://evil.example/repo',
+        }),
+      /Invalid GitHub snapshot/,
     );
     assert.throws(
       () =>
@@ -198,16 +253,23 @@ describe('validateGitHubSnapshot', () => {
               repository: 'ContextualWisdomLab/life-os',
               author_association: 'OWNER',
               behind_by: 0,
-              reviews: [{ actor: 'reviewer', state: 'APPROVED', submitted_at: null, body: 'secret' }],
+              reviews: [
+                {
+                  actor: 'reviewer',
+                  state: 'APPROVED',
+                  submitted_at: null,
+                  body: 'secret',
+                },
+              ],
               unresolved_threads: 0,
               workflows: [],
               statuses: [],
               eligible: true,
-              blockers: []
-            }
-          ]
+              blockers: [],
+            },
+          ],
         }),
-      /Invalid GitHub snapshot/
+      /Invalid GitHub snapshot/,
     );
   });
 });

@@ -9,19 +9,25 @@ import {
   GitHubApiClient,
   mergeEligiblePullRequests,
   mergePullRequestThroughApi,
-  syncReadinessIssue
+  syncReadinessIssue,
 } from './github-client.mjs';
 import { renderCommercialReadinessIssue } from './render.mjs';
 import {
   validateCapabilityManifest,
   validateCommercialReadinessPolicy,
-  validateGitHubSnapshot
+  validateGitHubSnapshot,
 } from './schema.mjs';
 
 const COMMANDS = Object.freeze({
   snapshot: {
-    values: new Set(['repository', 'policy', 'output', 'commit', 'generatedAt']),
-    booleans: new Set()
+    values: new Set([
+      'repository',
+      'policy',
+      'output',
+      'commit',
+      'generatedAt',
+    ]),
+    booleans: new Set(),
   },
   audit: {
     values: new Set([
@@ -30,18 +36,18 @@ const COMMANDS = Object.freeze({
       'policy',
       'root',
       'outputJson',
-      'outputMarkdown'
+      'outputMarkdown',
     ]),
-    booleans: new Set()
+    booleans: new Set(),
   },
   publish: {
     values: new Set(['repository', 'policy', 'report']),
-    booleans: new Set()
+    booleans: new Set(),
   },
   drain: {
     values: new Set(['repository', 'policy', 'output']),
-    booleans: new Set(['dryRun', 'merge'])
-  }
+    booleans: new Set(['dryRun', 'merge']),
+  },
 });
 
 const FLAG_TO_KEY = Object.freeze({
@@ -57,7 +63,7 @@ const FLAG_TO_KEY = Object.freeze({
   '--output-markdown': 'outputMarkdown',
   '--report': 'report',
   '--dry-run': 'dryRun',
-  '--merge': 'merge'
+  '--merge': 'merge',
 });
 
 function invalidCommand() {
@@ -107,7 +113,8 @@ export async function readJsonFile(path, maxBytes = 1024 * 1024) {
   if (metadata.isSymbolicLink() || !metadata.isFile()) {
     throw new Error('JSON input must be a regular file');
   }
-  if (metadata.size > maxBytes) throw new Error('JSON input exceeded the size limit');
+  if (metadata.size > maxBytes)
+    throw new Error('JSON input exceeded the size limit');
   try {
     return JSON.parse(await readFile(path, 'utf8'));
   } catch (error) {
@@ -121,7 +128,8 @@ async function readTextFile(path, maxBytes = 64 * 1024) {
   if (metadata.isSymbolicLink() || !metadata.isFile()) {
     throw new Error('Text input must be a regular file');
   }
-  if (metadata.size > maxBytes) throw new Error('Text input exceeded the size limit');
+  if (metadata.size > maxBytes)
+    throw new Error('Text input exceeded the size limit');
   return await readFile(path, 'utf8');
 }
 
@@ -152,15 +160,19 @@ async function commandSnapshot(options) {
   const policy = await loadPolicy(options.policy);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const snapshot = validateGitHubSnapshot(
-    await collectRepositorySnapshot(githubClientFromEnvironment(), options.repository, {
-      policy,
-      commitSha: options.commit,
-      generatedAt
-    })
+    await collectRepositorySnapshot(
+      githubClientFromEnvironment(),
+      options.repository,
+      {
+        policy,
+        commitSha: options.commit,
+        generatedAt,
+      },
+    ),
   );
   await writeJson(options.output, snapshot);
   console.log(
-    `snapshot: ${snapshot.pull_requests.length} pull request(s), ${snapshot.issues.length} issue(s)`
+    `snapshot: ${snapshot.pull_requests.length} pull request(s), ${snapshot.issues.length} issue(s)`,
   );
 }
 
@@ -171,40 +183,46 @@ async function commandAudit(options) {
     'policy',
     'root',
     'outputJson',
-    'outputMarkdown'
+    'outputMarkdown',
   ]);
   const [manifestValue, snapshotValue, policy] = await Promise.all([
     readJsonFile(options.manifest),
     readJsonFile(options.snapshot),
-    loadPolicy(options.policy)
+    loadPolicy(options.policy),
   ]);
   const manifest = validateCapabilityManifest(manifestValue);
   const snapshot = validateGitHubSnapshot(snapshotValue);
   const report = await evaluateCapabilities(manifest, {
     rootDir: options.root,
     generatedAt: snapshot.generated_at,
-    commitSha: snapshot.commit_sha
+    commitSha: snapshot.commit_sha,
   });
   const markdown = renderCommercialReadinessIssue(report, snapshot, {
     marker: policy.readiness_issue_marker,
-    maxGaps: 20
+    maxGaps: 20,
   });
   await Promise.all([
     writeJson(options.outputJson, report),
-    writeAtomic(options.outputMarkdown, markdown)
+    writeAtomic(options.outputMarkdown, markdown),
   ]);
-  console.log(`audit: ${report.summary.unresolved_gaps} unresolved buyer gap(s)`);
+  console.log(
+    `audit: ${report.summary.unresolved_gaps} unresolved buyer gap(s)`,
+  );
 }
 
 async function commandPublish(options) {
   requireOptions(options, ['repository', 'policy', 'report']);
   const policy = await loadPolicy(options.policy);
   const body = await readTextFile(options.report);
-  const issue = await syncReadinessIssue(githubClientFromEnvironment(), options.repository, {
-    marker: policy.readiness_issue_marker,
-    title: policy.readiness_issue_title,
-    body
-  });
+  const issue = await syncReadinessIssue(
+    githubClientFromEnvironment(),
+    options.repository,
+    {
+      marker: policy.readiness_issue_marker,
+      title: policy.readiness_issue_title,
+      body,
+    },
+  );
   console.log(`readiness issue: #${issue.number}`);
 }
 
@@ -212,7 +230,9 @@ function assertMergeExecutionContext(policy) {
   const event = process.env.GITHUB_EVENT_NAME;
   const ref = process.env.GITHUB_REF;
   if (!['schedule', 'workflow_dispatch'].includes(event)) {
-    throw new Error('Merge mode is restricted to scheduled or manual default-branch runs');
+    throw new Error(
+      'Merge mode is restricted to scheduled or manual default-branch runs',
+    );
   }
   if (ref !== `refs/heads/${policy.default_branch}`) {
     throw new Error('Merge mode is restricted to the protected default branch');
@@ -226,14 +246,15 @@ async function commandDrain(options) {
   if (execute) assertMergeExecutionContext(policy);
   const client = githubClientFromEnvironment();
   const commitSha = process.env.GITHUB_SHA;
-  if (typeof commitSha !== 'string') throw new Error('GitHub commit SHA is required');
+  if (typeof commitSha !== 'string')
+    throw new Error('GitHub commit SHA is required');
   const collectPullRequests = async () => {
     const snapshot = validateGitHubSnapshot(
       await collectRepositorySnapshot(client, options.repository, {
         policy,
         commitSha,
-        generatedAt: new Date().toISOString()
-      })
+        generatedAt: new Date().toISOString(),
+      }),
     );
     return snapshot.pull_requests;
   };
@@ -248,20 +269,20 @@ async function commandDrain(options) {
         options.repository,
         number,
         expectedHeadSha,
-        mergeMethod
-      )
+        mergeMethod,
+      ),
   });
   const payload = {
     schema: 'life-os.pr-drain.v1',
     generated_at: new Date().toISOString(),
     mode: execute ? 'merge' : 'dry-run',
-    results
+    results,
   };
   await writeJson(options.output, payload);
   console.log(
     `drain: ${
       results.filter((item) => item.action === 'merged').length
-    } merged, ${results.filter((item) => item.action === 'blocked').length} blocked`
+    } merged, ${results.filter((item) => item.action === 'blocked').length} blocked`,
   );
 }
 
@@ -277,7 +298,10 @@ async function main(argv = process.argv.slice(2)) {
 const invokedPath = process.argv[1];
 if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
   main().catch((error) => {
-    const message = error instanceof Error ? error.message : 'Commercial readiness loop failed';
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Commercial readiness loop failed';
     console.error(message);
     process.exitCode = 1;
   });

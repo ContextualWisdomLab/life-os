@@ -14,7 +14,9 @@ async function repositoryFile(path) {
 
 describe('commercial readiness workflow contract', () => {
   it('runs hourly at a non-round minute and keeps writes off pull requests', async () => {
-    const workflow = await repositoryFile('.github/workflows/commercial-readiness.yml');
+    const workflow = await repositoryFile(
+      '.github/workflows/commercial-readiness.yml',
+    );
     assert.match(workflow, /cron:\s*["']23 \* \* \* \*["']/);
     assert.match(workflow, /pull_request:/);
     assert.match(workflow, /workflow_dispatch:/);
@@ -23,17 +25,23 @@ describe('commercial readiness workflow contract', () => {
   });
 
   it('isolates scheduled drains from push-triggered publication runs', async () => {
-    const workflow = await repositoryFile('.github/workflows/commercial-readiness.yml');
+    const workflow = await repositoryFile(
+      '.github/workflows/commercial-readiness.yml',
+    );
     assert.match(
       workflow,
-      /group:\s*\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-/
+      /group:\s*\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-/,
     );
     assert.match(workflow, /cancel-in-progress:\s*true/);
   });
 
   it('pins every external action to a full commit SHA and retains evidence for no more than seven days', async () => {
-    const workflow = await repositoryFile('.github/workflows/commercial-readiness.yml');
-    const uses = [...workflow.matchAll(/^\s*uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
+    const workflow = await repositoryFile(
+      '.github/workflows/commercial-readiness.yml',
+    );
+    const uses = [...workflow.matchAll(/^\s*uses:\s*([^\s#]+)/gm)].map(
+      (match) => match[1],
+    );
     assert.ok(uses.length >= 4);
     for (const action of uses) {
       assert.match(action, /@[0-9a-f]{40}$/i, action);
@@ -44,16 +52,20 @@ describe('commercial readiness workflow contract', () => {
   });
 
   it('requires all review and security gates before merge mode can execute', async () => {
-    const policy = JSON.parse(await repositoryFile('product/commercial-readiness-policy.json'));
+    const policy = JSON.parse(
+      await repositoryFile('product/commercial-readiness-policy.json'),
+    );
     assert.deepEqual(policy.required_workflows, [
       'CI',
       'SAST Semgrep',
       'Security Scan',
       'AppGuardrail',
-      'Commercial Readiness'
+      'Commercial Readiness',
     ]);
     assert.deepEqual(policy.required_statuses, ['CodeRabbit']);
-    const workflow = await repositoryFile('.github/workflows/commercial-readiness.yml');
+    const workflow = await repositoryFile(
+      '.github/workflows/commercial-readiness.yml',
+    );
     assert.match(workflow, /drain[\s\S]*--merge/);
     assert.doesNotMatch(workflow, /admin|force-push|--force/);
   });

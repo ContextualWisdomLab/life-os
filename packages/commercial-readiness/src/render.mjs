@@ -5,14 +5,15 @@ const SECRET_PATTERNS = [
   /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g,
   /\b(?:postgres(?:ql)?|mysql|mongodb):\/\/[^\s)]+/gi,
   /\bBearer\s+[A-Za-z0-9._~-]{12,}\b/gi,
-  /(?:javascript|data):[^\s)]+/gi
+  /(?:javascript|data):[^\s)]+/gi,
 ];
 
 export function sanitizeUntrustedText(value, maxLength = 240) {
   let text = String(value ?? '')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .trim();
-  for (const pattern of SECRET_PATTERNS) text = text.replace(pattern, '[redacted]');
+  for (const pattern of SECRET_PATTERNS)
+    text = text.replace(pattern, '[redacted]');
   text = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -25,13 +26,15 @@ export function sanitizeUntrustedText(value, maxLength = 240) {
 }
 
 function issueLink(number) {
-  return Number.isSafeInteger(number) && number > 0 ? `#${number}` : 'untracked';
+  return Number.isSafeInteger(number) && number > 0
+    ? `#${number}`
+    : 'untracked';
 }
 
 export function renderCommercialReadinessIssue(
   report,
   snapshot,
-  { marker, maxGaps = 15 }
+  { marker, maxGaps = 15 },
 ) {
   const lines = [
     marker,
@@ -46,11 +49,13 @@ export function renderCommercialReadinessIssue(
     `- Unresolved buyer gaps: **${report.summary.unresolved_gaps}**`,
     '',
     '## Highest-impact buyer gaps',
-    ''
+    '',
   ];
 
   if (report.gaps.length === 0) {
-    lines.push('No evidence-backed capability gaps remain at the current target levels.');
+    lines.push(
+      'No evidence-backed capability gaps remain at the current target levels.',
+    );
   } else {
     for (const gap of report.gaps.slice(0, maxGaps)) {
       lines.push(
@@ -64,13 +69,15 @@ export function renderCommercialReadinessIssue(
             .map((path) => `\`${sanitizeUntrustedText(path)}\``)
             .join(', ') || 'none recorded'
         }`,
-        ''
+        '',
       );
     }
   }
 
   lines.push('## Pull request drain', '');
-  const pulls = Array.isArray(snapshot.pull_requests) ? snapshot.pull_requests : [];
+  const pulls = Array.isArray(snapshot.pull_requests)
+    ? snapshot.pull_requests
+    : [];
   if (pulls.length === 0) {
     lines.push('No open pull requests.');
   } else {
@@ -85,7 +92,7 @@ export function renderCommercialReadinessIssue(
                   .map((item) => `\`${sanitizeUntrustedText(item)}\``)
                   .join(', ') || '`unknown`'
               }`
-        }`
+        }`,
       );
     }
   }
@@ -95,7 +102,7 @@ export function renderCommercialReadinessIssue(
     '## Operating rule',
     '',
     'The hourly loop may squash-merge only an exact, same-repository head SHA with every required workflow and status successful, no requested changes, no unresolved review thread, and no base drift. It never uses an administrative bypass.',
-    ''
+    '',
   );
   return `${lines.join('\n')}\n`;
 }

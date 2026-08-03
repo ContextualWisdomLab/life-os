@@ -23,22 +23,26 @@ function latestReviewsByActor(reviews) {
 
 function workflowEvidence(pr, requiredName) {
   const named = (Array.isArray(pr.workflows) ? pr.workflows : []).filter(
-    (item) => item?.name === requiredName
+    (item) => item?.name === requiredName,
   );
-  if (named.length === 0) return { blocker: `missing-workflow:${requiredName}` };
+  if (named.length === 0)
+    return { blocker: `missing-workflow:${requiredName}` };
   const matchingHead = named.filter((item) => item.head_sha === pr.head_sha);
   if (matchingHead.length === 0) return { blocker: 'stale-check-evidence' };
   const successful = matchingHead.some(
-    (item) => item.status === 'completed' && item.conclusion === SUCCESS
+    (item) => item.status === 'completed' && item.conclusion === SUCCESS,
   );
-  return successful ? {} : { blocker: `workflow-not-successful:${requiredName}` };
+  return successful
+    ? {}
+    : { blocker: `workflow-not-successful:${requiredName}` };
 }
 
 function statusEvidence(pr, requiredContext) {
   const named = (Array.isArray(pr.statuses) ? pr.statuses : []).filter(
-    (item) => item?.context === requiredContext
+    (item) => item?.context === requiredContext,
   );
-  if (named.length === 0) return { blocker: `missing-status:${requiredContext}` };
+  if (named.length === 0)
+    return { blocker: `missing-status:${requiredContext}` };
   const matchingHead = named.filter((item) => item.sha === pr.head_sha);
   if (matchingHead.length === 0) return { blocker: 'stale-check-evidence' };
   return matchingHead.some((item) => item.state === SUCCESS)

@@ -17,7 +17,7 @@ function ensureInsideRoot(rootDir, relativePath) {
 async function ensureResolvedInsideRoot(rootDir, candidate) {
   const [resolvedRoot, resolvedCandidate] = await Promise.all([
     realpath(resolve(rootDir)),
-    realpath(candidate)
+    realpath(candidate),
   ]);
   if (
     resolvedCandidate !== resolvedRoot &&
@@ -60,9 +60,10 @@ function observedMaturity(evidenceResults) {
     const exact = evidenceResults.filter((item) => item.maturity === maturity);
     if (exact.length === 0) continue;
     const required = evidenceResults.filter(
-      (item) => MATURITY_RANK[item.maturity] <= MATURITY_RANK[maturity]
+      (item) => MATURITY_RANK[item.maturity] <= MATURITY_RANK[maturity],
     );
-    if (required.every((item) => item.status === 'satisfied')) observed = maturity;
+    if (required.every((item) => item.status === 'satisfied'))
+      observed = maturity;
   }
   return observed;
 }
@@ -89,7 +90,7 @@ function transitiveDependents(capabilities, targetId) {
 function gapPriority(capability, observed, dependentCount) {
   const maturityDistance = Math.max(
     0,
-    MATURITY_RANK[capability.target_maturity] - MATURITY_RANK[observed]
+    MATURITY_RANK[capability.target_maturity] - MATURITY_RANK[observed],
   );
   return (
     capability.customer_impact * 20 +
@@ -108,22 +109,25 @@ function missingEvidenceForTarget(capability, evidenceResults) {
       evidenceResults
         .filter(
           (item) =>
-            MATURITY_RANK[item.maturity] <= targetRank && item.status !== 'satisfied'
+            MATURITY_RANK[item.maturity] <= targetRank &&
+            item.status !== 'satisfied',
         )
-        .map((item) => item.path)
-    )
+        .map((item) => item.path),
+    ),
   ].sort();
 }
 
 export async function evaluateCapabilities(
   manifest,
-  { rootDir, generatedAt, commitSha }
+  { rootDir, generatedAt, commitSha },
 ) {
-  if (typeof rootDir !== 'string' || !rootDir) throw new Error('Repository root is required');
+  if (typeof rootDir !== 'string' || !rootDir)
+    throw new Error('Repository root is required');
   if (!Number.isFinite(Date.parse(generatedAt))) {
     throw new Error('Generated timestamp is invalid');
   }
-  if (!COMMIT_SHA_PATTERN.test(commitSha)) throw new Error('Commit SHA is invalid');
+  if (!COMMIT_SHA_PATTERN.test(commitSha))
+    throw new Error('Commit SHA is invalid');
 
   const capabilities = [];
   for (const capability of manifest.capabilities) {
@@ -143,7 +147,7 @@ export async function evaluateCapabilities(
       effort: capability.effort,
       dependencies: [...capability.dependencies],
       tracking_issue: capability.tracking_issue,
-      evidence
+      evidence,
     });
   }
 
@@ -151,26 +155,35 @@ export async function evaluateCapabilities(
     .filter(
       (capability) =>
         MATURITY_RANK[capability.observed_maturity] <
-        MATURITY_RANK[capability.target_maturity]
+        MATURITY_RANK[capability.target_maturity],
     )
     .map((capability) => {
-      const source = manifest.capabilities.find((item) => item.id === capability.id);
-      const dependents = transitiveDependents(manifest.capabilities, capability.id);
+      const source = manifest.capabilities.find(
+        (item) => item.id === capability.id,
+      );
+      const dependents = transitiveDependents(
+        manifest.capabilities,
+        capability.id,
+      );
       return {
         capability_id: capability.id,
         outcome: capability.outcome,
         observed_maturity: capability.observed_maturity,
         target_maturity: capability.target_maturity,
-        priority_score: gapPriority(source, capability.observed_maturity, dependents),
+        priority_score: gapPriority(
+          source,
+          capability.observed_maturity,
+          dependents,
+        ),
         dependent_capabilities: dependents,
         tracking_issue: capability.tracking_issue,
-        missing_evidence: missingEvidenceForTarget(source, capability.evidence)
+        missing_evidence: missingEvidenceForTarget(source, capability.evidence),
       };
     })
     .sort(
       (left, right) =>
         right.priority_score - left.priority_score ||
-        left.capability_id.localeCompare(right.capability_id)
+        left.capability_id.localeCompare(right.capability_id),
     );
 
   let weightedObserved = 0;
@@ -178,7 +191,8 @@ export async function evaluateCapabilities(
   for (const capability of capabilities) {
     const observedRank = MATURITY_RANK[capability.observed_maturity];
     const targetRank = MATURITY_RANK[capability.target_maturity];
-    weightedObserved += Math.min(observedRank, targetRank) * capability.customer_impact;
+    weightedObserved +=
+      Math.min(observedRank, targetRank) * capability.customer_impact;
     weightedTarget += targetRank * capability.customer_impact;
   }
 
@@ -191,9 +205,11 @@ export async function evaluateCapabilities(
       at_target: capabilities.length - gaps.length,
       unresolved_gaps: gaps.length,
       weighted_maturity_percent:
-        weightedTarget === 0 ? 100 : Math.round((weightedObserved / weightedTarget) * 100)
+        weightedTarget === 0
+          ? 100
+          : Math.round((weightedObserved / weightedTarget) * 100),
     },
     capabilities,
-    gaps
+    gaps,
   };
 }

@@ -36,11 +36,13 @@
 ### Task 1: Detector contract verifier
 
 **Files:**
+
 - Create: `packages/appguardrail-contract/package.json`
 - Create: `packages/appguardrail-contract/src/verify-contract.test.mjs`
 - Create: `packages/appguardrail-contract/src/verify-contract.mjs`
 
 **Interfaces:**
+
 - Consumes: a findings JSON envelope and a detector-contract JSON object.
 - Produces: `verifyAppGuardrailContract(findingsEnvelope, contract): void`; throws `Error` with generic diagnostics on invalid evidence.
 - CLI: `node packages/appguardrail-contract/src/verify-contract.mjs <findings-json> <contract-json>`.
@@ -74,9 +76,9 @@ const validEnvelope = {
       rule_id: 'dangerous-cors',
       severity: 'HIGH',
       file: 'tests/appguardrail-fixtures/dangerous-cors.ts',
-      context: 'test'
-    }
-  ]
+      context: 'test',
+    },
+  ],
 };
 
 const validContract = {
@@ -87,9 +89,9 @@ const validContract = {
       rule_id: 'dangerous-cors',
       severity: 'HIGH',
       context: 'test',
-      file: 'tests/appguardrail-fixtures/dangerous-cors.ts'
-    }
-  ]
+      file: 'tests/appguardrail-fixtures/dangerous-cors.ts',
+    },
+  ],
 };
 ```
 
@@ -151,12 +153,14 @@ git commit -m "test: define AppGuardrail detector contract"
 ### Task 2: Repository detector evidence
 
 **Files:**
+
 - Create: `.appguardrail.json`
 - Create: `security/appguardrail-contract.json`
 - Create: `tests/appguardrail-fixtures/dangerous-cors.ts`
 - Create: `docs/security/appguardrail-regressions.md`
 
 **Interfaces:**
+
 - Consumes: AppGuardrail rule `dangerous-cors`.
 - Produces: one non-blocking expected finding in test context and contributor instructions for extending the contract.
 
@@ -230,9 +234,11 @@ git commit -m "test: add AppGuardrail detector regression fixture"
 ### Task 3: Blocking GitHub Actions workflow
 
 **Files:**
+
 - Create: `.github/workflows/appguardrail.yml`
 
 **Interfaces:**
+
 - Consumes: pinned AppGuardrail commit, `.appguardrail.json`, detector contract, verifier CLI.
 - Produces: required workflow result plus `appguardrail-findings.json` and `appguardrail.sarif` evidence.
 
@@ -289,7 +295,7 @@ Run with `set -euo pipefail`, compare `git -C _appguardrail rev-parse HEAD` to t
   id: appguardrail
   continue-on-error: true
   env:
-    APPGUARDRAIL_NO_EMOJI: "1"
+    APPGUARDRAIL_NO_EMOJI: '1'
   run: |
     set -euo pipefail
     python3 "${RUNNER_TEMP}/appguardrail/scanner/cli/appguardrail.py" \
@@ -337,10 +343,12 @@ git commit -m "ci: add blocking AppGuardrail security gate"
 ### Task 4: Repository integration and final verification
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `docs/superpowers/plans/2026-08-03-appguardrail-security-gate.md`
 
 **Interfaces:**
+
 - Consumes: all files from Tasks 1-3.
 - Produces: formatting coverage and recorded validation evidence.
 
