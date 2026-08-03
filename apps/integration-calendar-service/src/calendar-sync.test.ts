@@ -22,6 +22,10 @@ const block = {
   version: 1,
 } as const;
 
+function unfoldIcalendar(value: string): string {
+  return value.replace(/\r\n[ \t]/g, '');
+}
+
 describe('calendar synchronization domain', () => {
   it('renders deterministic UTC VEVENT data with RFC line folding', () => {
     const validated = validateCalendarTimeBlock({
@@ -33,13 +37,14 @@ describe('calendar synchronization domain', () => {
       validated,
       new Date('2026-08-04T00:00:00.000Z'),
     );
+    const unfoldedCalendarData = unfoldIcalendar(calendarData);
 
-    expect(calendarData).toContain(
+    expect(unfoldedCalendarData).toContain(
       `UID:${WORKSPACE_ID}.${BLOCK_ID}@life-os`,
     );
-    expect(calendarData).toContain('DTSTART:20260804T000000Z');
-    expect(calendarData).toContain('DTEND:20260804T010000Z');
-    expect(calendarData).not.toContain('\nMETHOD:');
+    expect(unfoldedCalendarData).toContain('DTSTART:20260804T000000Z');
+    expect(unfoldedCalendarData).toContain('DTEND:20260804T010000Z');
+    expect(unfoldedCalendarData).not.toContain('\nMETHOD:');
     for (const line of calendarData.split('\r\n')) {
       expect(Buffer.byteLength(line, 'utf8')).toBeLessThanOrEqual(75);
     }
