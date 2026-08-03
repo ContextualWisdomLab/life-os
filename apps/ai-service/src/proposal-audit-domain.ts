@@ -229,9 +229,7 @@ function validateProposal(value: unknown): AuditableProposal {
     workspaceId: requireUuidV4(record.workspaceId),
     summary: requireString(record.summary, MAXIMUM_TEXT_LENGTH),
     rationale: Object.freeze(
-      record.rationale.map((item) =>
-        requireString(item, MAXIMUM_TEXT_LENGTH),
-      ),
+      record.rationale.map((item) => requireString(item, MAXIMUM_TEXT_LENGTH)),
     ),
     operations: Object.freeze(record.operations.map(validateOperation)),
     requiresConfirmation: true,
@@ -329,7 +327,9 @@ export function createProposalAuditRecord(input: {
 }
 
 /** Validates persisted proposal evidence and verifies both canonical digests. */
-export function validateProposalAuditRecord(value: unknown): ProposalAuditRecord {
+export function validateProposalAuditRecord(
+  value: unknown,
+): ProposalAuditRecord {
   const record = requireRecord(value);
   requireExactKeys(record, [
     'proposal',
