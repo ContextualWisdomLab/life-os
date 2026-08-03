@@ -1,3 +1,4 @@
+import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
@@ -11,7 +12,11 @@ import {
 const WORKSPACE_ID = '43eab0ee-0f7b-4c7f-9331-b133f2647675';
 const TASK_ID = 'e29c36af-999a-407f-9ca9-cfe194ab51f4';
 const PROPOSAL_ID = 'aedcb1d1-cc60-42c6-9357-ec90821fce1b';
-const SYNTHETIC_CSRF_TOKEN = 'synthetic-test-csrf-token';
+
+interface JsonHttpResponse {
+  statusCode: number;
+  body: unknown;
+}
 
 function userOwnedState(): {
   objective: string;
@@ -33,6 +38,52 @@ function userOwnedState(): {
       },
     ],
   };
+}
+
+function postJson(
+  address: AddressInfo,
+  path: string,
+  workspaceId: string,
+  body: unknown,
+): Promise<JsonHttpResponse> {
+  const payload = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        hostname: '127.0.0.1',
+        port: address.port,
+        path,
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+          'x-workspace-id': workspaceId,
+        },
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer | string) => {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        response.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let parsed: unknown = null;
+          try {
+            parsed = text ? JSON.parse(text) : null;
+          } catch {
+            reject(new Error('HTTP response was not valid JSON'));
+            return;
+          }
+          resolve({
+            statusCode: response.statusCode ?? 0,
+            body: parsed,
+          });
+        });
+      },
+    );
+    request.on('error', reject);
+    request.end(payload);
+  });
 }
 
 describe('AI proposal no-silent-mutation contract', () => {
@@ -97,21 +148,15 @@ describe('AI proposal no-silent-mutation contract', () => {
     await app.listen(0, '127.0.0.1');
     try {
       const address = app.getHttpServer().address() as AddressInfo;
-      const response = await fetch(
-        `http://127.0.0.1:${address.port}/v1/proposals`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-            'x-workspace-id': WORKSPACE_ID,
-          },
-          body: JSON.stringify(state),
-        },
+      const response = await postJson(
+        address,
+        '/v1/proposals',
+        WORKSPACE_ID,
+        state,
       );
 
-      expect(response.status).toBe(201);
-      expect(await response.json()).toMatchObject({
+      expect(response.statusCode).toBe(201);
+      expect(response.body).toMatchObject({
         workspaceId: WORKSPACE_ID,
         requiresConfirmation: true,
         operations: [
@@ -123,19 +168,13 @@ describe('AI proposal no-silent-mutation contract', () => {
       });
       expect(JSON.stringify(state)).toBe(before);
 
-      const unsupportedMutation = await fetch(
-        `http://127.0.0.1:${address.port}/v1/proposals/apply`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-            'x-workspace-id': WORKSPACE_ID,
-          },
-          body: JSON.stringify({ proposalId: PROPOSAL_ID }),
-        },
+      const unsupportedMutation = await postJson(
+        address,
+        '/v1/proposals/apply',
+        WORKSPACE_ID,
+        { proposalId: PROPOSAL_ID },
       );
-      expect(unsupportedMutation.status).toBe(404);
+      expect(unsupportedMutation.statusCode).toBe(404);
     } finally {
       await app.close();
     }
