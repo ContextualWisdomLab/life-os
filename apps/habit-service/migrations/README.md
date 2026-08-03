@@ -8,7 +8,7 @@ Apply Habit SQL files in lexical order to the PostgreSQL database owned by the H
 
 Every persisted entity, workspace, habit reference, event, and idempotency key is constrained to UUIDv4. Composite foreign keys carry `workspace_id` through the ownership path, and duplicate completion commands are identified by `(workspace_id, habit_id, idempotency_key)`.
 
-A database trigger rejects ordinary `UPDATE` and `DELETE` operations on completion events. A future data-rights migration must provide a separately authorized erasure path before production account deletion is enabled; application code must not bypass append-only history through direct SQL.
+Database triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` operations on completion events. The service runtime role must not receive `UPDATE`, `DELETE`, or `TRUNCATE` privileges on `habit.completion_events`. A future data-rights migration must provide a separately authorized erasure path before production account deletion is enabled; application code must not bypass append-only history through direct SQL.
 
 ## Rollback
 
