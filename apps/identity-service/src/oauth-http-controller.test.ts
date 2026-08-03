@@ -5,6 +5,9 @@ import { OAuthCallbackApplication } from './oauth-callback-application';
 import { OAuthHttpApplication } from './oauth-http-application';
 import { OAuthHttpController } from './oauth-http-controller';
 
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 class TestResponse {
   statusCode = 0;
   contentType = '';
@@ -108,7 +111,7 @@ describe('OAuthHttpController', () => {
     expect(response.body).toBeUndefined();
   });
 
-  it('completes callbacks with the exact provider, query, browser cookie, and correlation ID', async () => {
+  it('completes callbacks with the exact provider, query, browser cookie, and valid correlation ID', async () => {
     const completeAuthorization = vi.fn().mockResolvedValue({
       statusCode: 303,
       location: 'https://app.example.test/auth/complete',
@@ -134,6 +137,7 @@ describe('OAuthHttpController', () => {
     );
     expect(response.statusCode).toBe(303);
     expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-correlation-id')).toBe('correlation-value');
     expect(response.headers.get('location')).toBe(
       'https://app.example.test/auth/complete',
     );
@@ -143,12 +147,39 @@ describe('OAuthHttpController', () => {
     expect(response.body).toBeUndefined();
   });
 
-  it('maps callback diagnostics to one credential-free problem response', async () => {
+  it.each([undefined, 'bad\ncorrelation']) (
+    'generates and returns a bounded correlation ID when the request header is %s',
+    async (correlationIdHeader) => {
+      const completeAuthorization = vi.fn().mockResolvedValue({
+        statusCode: 303,
+        location: 'https://app.example.test/auth/complete',
+        setCookie: 'life_os_session=opaque; Secure; HttpOnly',
+      });
+      const instance = controller({}, { completeAuthorization });
+      const response = new TestResponse();
+
+      await instance.callbackGoogle(
+        { code: 'authorization-code', state: 'opaque-state' },
+        'life_os_oauth_browser=browser-binding',
+        correlationIdHeader,
+        response,
+      );
+
+      const generatedCorrelationId = response.headers.get('x-correlation-id');
+      expect(generatedCorrelationId).toMatch(UUID_V4_PATTERN);
+      expect(completeAuthorization).toHaveBeenCalledWith(
+        'google',
+        expect.any(Object),
+        'life_os_oauth_browser=browser-binding',
+        generatedCorrelationId,
+      );
+    },
+  );
+
+  it('maps callback authentication failures to one credential-free problem response', async () => {
     const completeAuthorization = vi
       .fn()
-      .mockRejectedValue(
-        new Error('OAuth callback authentication failed: provider-token'),
-      );
+      .mockRejectedValue(new Error('OAuth callback authentication failed'));
     const instance = controller({}, { completeAuthorization });
     const response = new TestResponse();
 
@@ -156,6 +187,31 @@ describe('OAuthHttpController', () => {
       { error: 'access_denied', state: 'opaque-state' },
       undefined,
       undefined,
+      response,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.contentType).toBe('application/problem+json');
+    expect(response.body).toEqual({
+      type: 'about:blank',
+      title: 'Authorization could not be completed',
+      status: 400,
+      code: 'oauth_callback_failed',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('opaque-state');
+  });
+
+  it('redacts unexpected callback diagnostics behind service unavailability', async () => {
+    const completeAuthorization = vi
+      .fn()
+      .mockRejectedValue(new Error('provider-token-and-upstream-diagnostic'));
+    const instance = controller({}, { completeAuthorization });
+    const response = new TestResponse();
+
+    await instance.callbackGitHub(
+      { code: 'authorization-code', state: 'opaque-state' },
+      undefined,
+      'correlation-value',
       response,
     );
 
