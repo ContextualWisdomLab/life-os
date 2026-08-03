@@ -12,8 +12,8 @@ interface SyntheticOAuthCallbackResponse {
  * Intentionally redirects to callback request input for detector regression.
  */
 export function completeUnsafeOAuthCallbackFixture(
-  request: SyntheticOAuthCallbackRequest,
-  response: SyntheticOAuthCallbackResponse,
+  req: SyntheticOAuthCallbackRequest,
+  res: SyntheticOAuthCallbackResponse,
 ): void {
-  response.redirect(request.query.return_to);
+  res.redirect(req.query.return_to);
 }
