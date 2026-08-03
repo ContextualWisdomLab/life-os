@@ -70,7 +70,9 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
   });
 
   afterEach(async () => {
-    await Promise.all(activeRuntimes.splice(0).map((runtime) => runtime.close()));
+    await Promise.all(
+      activeRuntimes.splice(0).map((runtime) => runtime.close()),
+    );
   });
 
   afterAll(async () => {
@@ -149,10 +151,11 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
     );
     const firstRead = await runtime.service.listTasks(workspaceId, project.id);
     const secondRead = await runtime.service.listTasks(workspaceId, project.id);
+    const uniqueTaskIds = new Set(firstRead.map((task) => task.id));
 
     expect(firstRead).toEqual(secondRead);
     expect(firstRead).toHaveLength(created.length);
-    expect(new Set(firstRead.map((task) => task.id))).toHaveSize(created.length);
+    expect(uniqueTaskIds.size).toBe(created.length);
     expect(new Set(firstRead.map((task) => task.title))).toEqual(
       new Set(created.map((task) => task.title)),
     );
