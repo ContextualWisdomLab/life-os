@@ -2,6 +2,12 @@ import { Controller, Get, Header, Module } from '@nestjs/common';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import { gatewayMetrics } from './observability';
 
+interface TodayResponse {
+  readonly tasks: unknown[];
+  readonly habits: unknown[];
+  readonly message: string;
+}
+
 @Controller()
 class HealthController {
   @Get('health')
@@ -10,7 +16,7 @@ class HealthController {
   }
 
   @Get('today')
-  today(): { tasks: unknown[]; habits: unknown[]; message: string } {
+  today(): TodayResponse {
     return {
       tasks: [],
       habits: [],
