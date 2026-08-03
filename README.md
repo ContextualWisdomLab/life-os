@@ -60,9 +60,11 @@ Default endpoints:
 - Gateway health: `http://localhost:4000/v1/health`
 - Gateway Today composition: `http://localhost:4000/v1/today`
 - Gateway Prometheus metrics: `http://localhost:4000/v1/metrics`
+- Planning-service health: `http://localhost:4102/v1/health`
+- Planning-service Prometheus metrics: `http://localhost:4102/v1/metrics`
 - NATS monitoring: `http://localhost:8222`
 
-The metrics endpoint contains operational data. Production ingress must restrict it to the monitoring network.
+Metrics endpoints contain operational data. Production ingress must restrict them to the monitoring network.
 
 ## Authentication
 
@@ -77,6 +79,7 @@ This is a public repository. It contains synthetic examples only. Personal goals
 - Product and architecture design: `docs/superpowers/specs/2026-08-02-life-os-design.md`
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
+- Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
 
 ## Contributing
 
