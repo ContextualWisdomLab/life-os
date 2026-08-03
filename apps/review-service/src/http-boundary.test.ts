@@ -37,9 +37,7 @@ describe('Review HTTP boundary', () => {
   });
 
   it('maps known failures without leaking exception details', () => {
-    const conflict = toReviewHttpException(
-      new ReviewCompletionConflictError(),
-    );
+    const conflict = toReviewHttpException(new ReviewCompletionConflictError());
     expect(response(conflict)).toEqual({
       type: 'about:blank',
       title: 'Review completion conflicts with immutable evidence',
@@ -54,7 +52,9 @@ describe('Review HTTP boundary', () => {
       response(toReviewHttpException(new ReviewPersistenceError())),
     ).toMatchObject({ status: 503, code: 'persistence_unavailable' });
     expect(
-      JSON.stringify(toReviewHttpException(new Error('database password')).getResponse()),
+      JSON.stringify(
+        toReviewHttpException(new Error('database password')).getResponse(),
+      ),
     ).not.toContain('password');
   });
 });
