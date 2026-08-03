@@ -1,0 +1,67 @@
+name: Format OAuth HTTP boundary
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-oauth-http-boundary-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.head.ref == 'feat/oauth-http-boundary'
+      && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Format OAuth boundary files
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/identity-service/src/oauth-http-boundary.ts \
+            apps/identity-service/src/oauth-http-application.ts \
+            apps/identity-service/src/oauth-http-boundary.test.ts
+          pnpm format:check
+          pnpm --filter @life-os/identity-service typecheck
+          pnpm --filter @life-os/identity-service test
+          git diff --check
+
+      - name: Commit validated formatting
+        run: |
+          set -euo pipefail
+          rm -f pnpm-lock.yaml apps/web/tsconfig.tsbuildinfo
+          git checkout -- apps/web/tsconfig.json apps/web/next-env.d.ts 2>/dev/null || true
+          git config user.name "LifeOS maintenance automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/identity-service/src/oauth-http-boundary.ts \
+            apps/identity-service/src/oauth-http-application.ts \
+            apps/identity-service/src/oauth-http-boundary.test.ts
+          git diff --cached --check
+          git commit -m "style(identity): format OAuth HTTP boundary"
+          git push origin HEAD:feat/oauth-http-boundary
