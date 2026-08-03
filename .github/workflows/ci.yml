@@ -49,17 +49,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Render Planning runtime formatting diff
-        run: |
-          pnpm exec prettier --single-quote --write \
-            apps/planning-service/src/main.ts \
-            apps/planning-service/src/http-boundary.ts \
-            apps/planning-service/src/postgres-planning-repository.integration.test.ts
-          git diff --no-ext-diff --unified=100000 -- \
-            apps/planning-service/src/main.ts \
-            apps/planning-service/src/http-boundary.ts \
-            apps/planning-service/src/postgres-planning-repository.integration.test.ts
-
       - name: Check formatting
         run: pnpm format:check
 
