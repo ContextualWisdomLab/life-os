@@ -36,6 +36,8 @@ describe('versioned plugin contract HTTP boundary', () => {
   });
 
   it('registers a bounded contract and preserves tenant isolation', async () => {
+    // CSRF/XSRF does not apply: this service contract uses no browser cookies,
+    // and NestJS CORS remains disabled so cross-origin browser calls fail closed.
     const registration = await fetch(`${baseUrl}/v1/plugins`, {
       method: 'POST',
       headers: {
@@ -75,6 +77,8 @@ describe('versioned plugin contract HTTP boundary', () => {
   });
 
   it('rejects duplicate identifiers and unsafe callback targets', async () => {
+    // CSRF/XSRF does not apply: this service contract uses no browser cookies,
+    // and NestJS CORS remains disabled so cross-origin browser calls fail closed.
     const duplicate = await fetch(`${baseUrl}/v1/plugins`, {
       method: 'POST',
       headers: {
@@ -88,6 +92,8 @@ describe('versioned plugin contract HTTP boundary', () => {
       error: 'plugin_already_registered',
     });
 
+    // CSRF/XSRF does not apply: this service contract uses no browser cookies,
+    // and NestJS CORS remains disabled so cross-origin browser calls fail closed.
     const unsafe = await fetch(`${baseUrl}/v1/plugins`, {
       method: 'POST',
       headers: {
