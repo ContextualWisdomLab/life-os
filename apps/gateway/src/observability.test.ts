@@ -48,9 +48,7 @@ describe('gateway observability middleware', () => {
     response.finish(503);
 
     expect(next).toHaveBeenCalledOnce();
-    expect(response.headers.get('x-correlation-id')).toBe(
-      VALID_CORRELATION_ID,
-    );
+    expect(response.headers.get('x-correlation-id')).toBe(VALID_CORRELATION_ID);
     expect(metrics.renderPrometheus()).toContain(
       'route="/v1/today",status_class="5xx"} 1',
     );
