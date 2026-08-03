@@ -22,6 +22,7 @@ const ALLOWED_METHODS = new Set([
 const DEFAULT_DURATION_BUCKETS = Object.freeze([0.05, 0.1, 0.25, 0.5, 1, 2, 5]);
 const MAX_DURATION_SECONDS = 3600;
 
+/** Validates and returns a bounded telemetry service identifier. */
 function requireServiceName(value) {
   if (
     typeof value !== 'string' ||
@@ -35,6 +36,7 @@ function requireServiceName(value) {
   return value;
 }
 
+/** Normalizes an allowed HTTP method for metric labels. */
 function requireMethod(value) {
   if (typeof value !== 'string') {
     throw new TypeError('method must be a supported HTTP method');
@@ -46,6 +48,7 @@ function requireMethod(value) {
   return normalized;
 }
 
+/** Validates that a route is a bounded template without concrete identifiers. */
 function requireRouteTemplate(value) {
   if (
     typeof value !== 'string' ||
@@ -77,6 +80,7 @@ function requireRouteTemplate(value) {
   return value;
 }
 
+/** Validates a status code before deriving its bounded status class. */
 function requireStatusCode(value) {
   if (!Number.isSafeInteger(value) || value < 100 || value > 599) {
     throw new TypeError('statusCode must be an HTTP status code');
@@ -84,6 +88,7 @@ function requireStatusCode(value) {
   return value;
 }
 
+/** Validates a finite bounded request duration in seconds. */
 function requireDuration(value) {
   if (
     typeof value !== 'number' ||
@@ -96,6 +101,7 @@ function requireDuration(value) {
   return value;
 }
 
+/** Validates strictly increasing histogram boundaries. */
 function requireBuckets(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 20) {
     throw new TypeError('durationBuckets must contain 1 to 20 values');
@@ -119,6 +125,7 @@ function requireBuckets(value) {
   );
 }
 
+/** Validates the maximum number of in-memory metric series. */
 function requireSeriesLimit(value) {
   if (!Number.isSafeInteger(value) || value < 1 || value > 4096) {
     throw new TypeError('maxSeries must be an integer from 1 to 4096');
@@ -126,6 +133,7 @@ function requireSeriesLimit(value) {
   return value;
 }
 
+/** Validates the monotonic clock dependency used by request timers. */
 function requireClock(value) {
   if (typeof value !== 'function') {
     throw new TypeError('now must be a function');
@@ -133,6 +141,7 @@ function requireClock(value) {
   return value;
 }
 
+/** Escapes a bounded label value for Prometheus text exposition. */
 function escapeLabel(value) {
   return value
     .replaceAll('\\', '\\\\')
@@ -140,30 +149,36 @@ function escapeLabel(value) {
     .replaceAll('"', '\\"');
 }
 
+/** Renders a stable Prometheus label set. */
 function labels(values) {
   return `{${Object.entries(values)
     .map(([key, value]) => `${key}="${escapeLabel(value)}"`)
     .join(',')}}`;
 }
 
+/** Renders finite metric values without avoidable floating-point noise. */
 function metricNumber(value) {
   if (Number.isSafeInteger(value)) return String(value);
   return String(Number(value.toFixed(9)));
 }
 
+/** Maps an HTTP status code to a bounded class such as 2xx. */
 function statusClass(statusCode) {
   return `${Math.floor(statusCode / 100)}xx`;
 }
 
+/** Creates a collision-safe internal key for one metric series. */
 function keyOf(method, route, responseClass) {
   return JSON.stringify([method, route, responseClass]);
 }
 
+/** Restores metric labels from an internal series key. */
 function parseKey(key) {
   const [method, route, responseClass] = JSON.parse(key);
   return { method, route, status_class: responseClass };
 }
 
+/** Preserves a valid UUIDv4 correlation ID or creates a replacement. */
 function normalizeCorrelationId(value, generate = randomUUID) {
   if (typeof value === 'string' && UUID_V4_PATTERN.test(value)) {
     return value.toLowerCase();
@@ -178,7 +193,12 @@ function normalizeCorrelationId(value, generate = randomUUID) {
   return generated.toLowerCase();
 }
 
+/**
+ * Stores bounded HTTP counters, histograms, and an in-flight gauge in memory.
+ * The registry has no ambient state and renders Prometheus text on demand.
+ */
 class PrometheusHttpMetrics {
+  /** Creates a metrics registry with validated cardinality and time bounds. */
   constructor({
     serviceName,
     durationBuckets = DEFAULT_DURATION_BUCKETS,
@@ -193,6 +213,7 @@ class PrometheusHttpMetrics {
     this.inFlight = 0;
   }
 
+  /** Starts a request timer and returns an idempotent completion callback. */
   beginHttpRequest({ method, route }) {
     const normalizedMethod = requireMethod(method);
     const normalizedRoute = requireRouteTemplate(route);
@@ -225,6 +246,7 @@ class PrometheusHttpMetrics {
     };
   }
 
+  /** Records one validated completed request observation. */
   observeHttpRequest({ method, route, statusCode, durationSeconds }) {
     const normalizedMethod = requireMethod(method);
     const normalizedRoute = requireRouteTemplate(route);
@@ -255,6 +277,7 @@ class PrometheusHttpMetrics {
     }
   }
 
+  /** Renders the complete registry in Prometheus text exposition format. */
   renderPrometheus() {
     const output = [
       '# HELP life_os_http_requests_total Completed HTTP requests.',
