@@ -136,8 +136,7 @@ async function beginGitHub(
 describe('OAuthCallbackApplication', () => {
   it('verifies Google, provisions one account, issues one session, audits, and redirects to the fixed origin', async () => {
     let observedGoogleInput:
-      | { code: string; codeVerifier: string; nonce: string }
-      | undefined;
+      { code: string; codeVerifier: string; nonce: string } | undefined;
     const clients = providerClients({
       google: {
         authenticateAuthorizationCode: vi.fn(async (input) => {
