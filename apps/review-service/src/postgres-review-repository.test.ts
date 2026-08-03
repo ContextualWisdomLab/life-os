@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   PostgresReviewRepository,
   ReviewPersistenceError,
@@ -55,41 +55,71 @@ function row(value: ReviewCompletionRecord) {
   };
 }
 
+interface RecordedQuery {
+  text: string;
+  values: readonly unknown[];
+}
+
 class SequentialClient implements ReviewSqlClient {
-  readonly query = vi.fn<
-    <Row>(
-      text: string,
-      values: readonly unknown[],
-    ) => Promise<ReviewSqlQueryResult<Row>>
-  >();
+  readonly calls: RecordedQuery[] = [];
+  private readonly queued: Array<ReviewSqlQueryResult<unknown> | Error> = [];
+
+  enqueueRows(rows: unknown[]): void {
+    this.queued.push({ rows });
+  }
+
+  enqueueError(error: Error): void {
+    this.queued.push(error);
+  }
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[],
+  ): Promise<ReviewSqlQueryResult<Row>> {
+    this.calls.push({ text, values });
+    const next = this.queued.shift();
+    if (next === undefined) {
+      throw new Error('No queued SQL result');
+    }
+    if (next instanceof Error) throw next;
+    return { rows: next.rows as Row[] };
+  }
+}
+
+function firstCall(client: SequentialClient): RecordedQuery {
+  const call = client.calls[0];
+  if (call === undefined) throw new Error('Expected one SQL call');
+  return call;
 }
 
 describe('PostgreSQL guided review repository', () => {
   it('uses parameterized SQL and returns validated inserted evidence', async () => {
     const completion = record();
     const client = new SequentialClient();
-    client.query.mockResolvedValueOnce({ rows: [row(completion)] });
+    client.enqueueRows([row(completion)]);
     const repository = new PostgresReviewRepository(client);
 
     await expect(repository.record(completion)).resolves.toEqual(completion);
-    expect(client.query).toHaveBeenCalledOnce();
-    const [sql, values] = client.query.mock.calls[0];
-    expect(sql).toContain('VALUES\n        ($1, $2, $3');
-    expect(sql).not.toContain(WORKSPACE_ID);
+    expect(client.calls).toHaveLength(1);
+    const { text, values } = firstCall(client);
+    expect(text).toContain('VALUES\n        ($1, $2, $3');
+    expect(text).not.toContain(WORKSPACE_ID);
     expect(values).toContain(WORKSPACE_ID);
   });
 
   it('returns exact immutable replays after a uniqueness conflict', async () => {
     const attempted = record();
-    const persisted = { ...attempted, id: '8073d09a-c36b-42f5-a8c8-2b42ea82d61c' };
+    const persisted = {
+      ...attempted,
+      id: '8073d09a-c36b-42f5-a8c8-2b42ea82d61c',
+    };
     const client = new SequentialClient();
-    client.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [row(persisted)] });
+    client.enqueueRows([]);
+    client.enqueueRows([row(persisted)]);
     const repository = new PostgresReviewRepository(client);
 
     await expect(repository.record(attempted)).resolves.toEqual(persisted);
-    expect(client.query).toHaveBeenCalledTimes(2);
+    expect(client.calls).toHaveLength(2);
   });
 
   it('rejects conflicting idempotency or period reuse', async () => {
@@ -99,9 +129,8 @@ describe('PostgreSQL guided review repository', () => {
       completedAt: '2026-08-03T20:05:00.000Z',
     });
     const client = new SequentialClient();
-    client.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [row(conflict)] });
+    client.enqueueRows([]);
+    client.enqueueRows([row(conflict)]);
     const repository = new PostgresReviewRepository(client);
 
     await expect(repository.record(attempted)).rejects.toBeInstanceOf(
@@ -112,24 +141,24 @@ describe('PostgreSQL guided review repository', () => {
   it('lists only parameterized tenant history with a bounded limit', async () => {
     const completion = record();
     const client = new SequentialClient();
-    client.query.mockResolvedValueOnce({ rows: [row(completion)] });
+    client.enqueueRows([row(completion)]);
     const repository = new PostgresReviewRepository(client);
 
     await expect(repository.list(WORKSPACE_ID, 25)).resolves.toEqual([
       completion,
     ]);
-    expect(client.query).toHaveBeenCalledWith(
-      expect.stringContaining('WHERE workspace_id = $1'),
-      [WORKSPACE_ID, 25],
-    );
+    expect(firstCall(client)).toEqual({
+      text: expect.stringContaining('WHERE workspace_id = $1'),
+      values: [WORKSPACE_ID, 25],
+    });
   });
 
   it('fails closed for malformed rows, impossible limits, and SQL failures', async () => {
     const completion = record();
     const malformedClient = new SequentialClient();
-    malformedClient.query.mockResolvedValueOnce({
-      rows: [{ ...row(completion), payload_digest: 'tampered' }],
-    });
+    malformedClient.enqueueRows([
+      { ...row(completion), payload_digest: 'tampered' },
+    ]);
     await expect(
       new PostgresReviewRepository(malformedClient).list(WORKSPACE_ID, 25),
     ).rejects.toBeInstanceOf(ReviewPersistenceError);
@@ -138,10 +167,10 @@ describe('PostgreSQL guided review repository', () => {
     await expect(
       new PostgresReviewRepository(unusedClient).list(WORKSPACE_ID, 0),
     ).rejects.toBeInstanceOf(ReviewPersistenceError);
-    expect(unusedClient.query).not.toHaveBeenCalled();
+    expect(unusedClient.calls).toHaveLength(0);
 
     const failingClient = new SequentialClient();
-    failingClient.query.mockRejectedValueOnce(new Error('secret database host'));
+    failingClient.enqueueError(new Error('secret database host'));
     await expect(
       new PostgresReviewRepository(failingClient).record(completion),
     ).rejects.toEqual(new ReviewPersistenceError());
