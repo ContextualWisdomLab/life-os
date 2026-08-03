@@ -3,11 +3,17 @@ import { createHash } from 'node:crypto';
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCHEMA_VERSION_PATTERN = /^[a-z][a-z0-9_.-]{0,99}$/;
+const FORBIDDEN_EXPORT_KEY_PATTERN =
+  /(password|secret|token|credential|private.?key|authorization|cookie)/i;
+const FORBIDDEN_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAXIMUM_DOMAIN_RECORDS = 10_000;
 const MAXIMUM_JSON_DEPTH = 20;
 const MAXIMUM_JSON_NODES = 100_000;
 const MAXIMUM_STRING_LENGTH = 100_000;
 const MAXIMUM_PREPARE_TOKEN_LENGTH = 1_000;
+const MAXIMUM_SECTION_BYTES = 1024 * 1024;
+const MAXIMUM_EXPORT_BYTES = 8 * 1024 * 1024;
+const MAXIMUM_TRACKED_DELETION_REQUESTS = 10_000;
 
 /** Every tenant-owned domain that must participate before export or deletion succeeds. */
 export const REQUIRED_DATA_RIGHTS_DOMAINS = Object.freeze([
@@ -18,6 +24,16 @@ export const REQUIRED_DATA_RIGHTS_DOMAINS = Object.freeze([
   'ai_audit',
   'calendar',
   'notification',
+] as const);
+
+const DELETION_COMMIT_DOMAINS = Object.freeze([
+  'planning',
+  'habit',
+  'review',
+  'ai_audit',
+  'calendar',
+  'notification',
+  'identity',
 ] as const);
 
 export type DataRightsDomain = (typeof REQUIRED_DATA_RIGHTS_DOMAINS)[number];
@@ -215,9 +231,15 @@ function validateJsonValue(
     return invalid();
   }
   const source = value as Readonly<Record<string, unknown>>;
-  const result: Record<string, JsonValue> = {};
+  const result = Object.create(null) as Record<string, JsonValue>;
   for (const key of Object.keys(source).sort()) {
-    if (!key || key.length > 200 || /[\u0000]/.test(key)) {
+    if (
+      !key ||
+      key.length > 200 ||
+      /[\u0000]/.test(key) ||
+      FORBIDDEN_OBJECT_KEYS.has(key) ||
+      FORBIDDEN_EXPORT_KEY_PATTERN.test(key)
+    ) {
       return invalid();
     }
     result[key] = validateJsonValue(source[key], depth + 1, budget);
@@ -231,13 +253,14 @@ export function canonicalizeJson(value: unknown): JsonValue {
 }
 
 function canonicalStringify(value: JsonValue): string {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
+  if (value === null) {
+    return 'null';
+  }
+  if (typeof value === 'string') {
     return JSON.stringify(value);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map(canonicalStringify).join(',')}]`;
@@ -255,6 +278,12 @@ function canonicalStringify(value: JsonValue): string {
 
 function digest(value: JsonValue): string {
   return createHash('sha256').update(canonicalStringify(value)).digest('hex');
+}
+
+function requireBoundedJson(value: JsonValue, maximumBytes: number): void {
+  if (Buffer.byteLength(canonicalStringify(value), 'utf8') > maximumBytes) {
+    return invalid();
+  }
 }
 
 function requireParticipantRegistry(
@@ -351,6 +380,7 @@ export class DataRightsCoordinator {
           ) {
             return invalid();
           }
+          const schemaVersion = requireSchemaVersion(participant.schemaVersion);
           const canonicalRecords = records
             .map(canonicalizeJson)
             .sort((left, right) => {
@@ -364,22 +394,20 @@ export class DataRightsCoordinator {
             });
           const sectionContent = canonicalizeJson({
             domain,
-            schemaVersion: requireSchemaVersion(participant.schemaVersion),
+            schemaVersion,
             records: canonicalRecords,
           });
+          requireBoundedJson(sectionContent, MAXIMUM_SECTION_BYTES);
           return Object.freeze({
             domain,
-            schemaVersion: participant.schemaVersion,
+            schemaVersion,
             recordCount: canonicalRecords.length,
             contentDigest: digest(sectionContent),
             records: Object.freeze(canonicalRecords),
           });
         }),
       );
-    } catch (error) {
-      if (error instanceof DataRightsValidationError) {
-        throw error;
-      }
+    } catch {
       throw new DataRightsDependencyError();
     }
     const exportContent = canonicalizeJson({
@@ -393,6 +421,7 @@ export class DataRightsCoordinator {
         records: section.records,
       })),
     });
+    requireBoundedJson(exportContent, MAXIMUM_EXPORT_BYTES);
     return Object.freeze({
       format: 'life-os-portable-data-v1',
       workspaceId,
@@ -412,6 +441,12 @@ export class DataRightsCoordinator {
     const owner = this.requestOwners.get(requestId);
     if (owner && owner !== workspaceId) {
       throw new DataRightsConflictError();
+    }
+    if (
+      !owner &&
+      this.requestOwners.size >= MAXIMUM_TRACKED_DELETION_REQUESTS
+    ) {
+      throw new DataRightsDependencyError();
     }
     this.requestOwners.set(requestId, workspaceId);
     const existing = this.deletionResults.get(requestId);
@@ -450,15 +485,12 @@ export class DataRightsCoordinator {
           validatePreparation(preparation, workspaceId, requestId),
         );
       }
-    } catch (error) {
-      if (error instanceof DataRightsValidationError) {
-        throw error;
-      }
+    } catch {
       throw new DataRightsDependencyError();
     }
 
     const committed: DomainDeletionResult[] = [];
-    for (const domain of REQUIRED_DATA_RIGHTS_DOMAINS) {
+    for (const domain of DELETION_COMMIT_DOMAINS) {
       const participant = this.participants.get(domain) ?? invalid();
       const preparation = preparations.get(domain) ?? invalid();
       try {
@@ -478,7 +510,7 @@ export class DataRightsCoordinator {
           committed.map((result) => result.domain),
         );
         const pendingDomains = Object.freeze(
-          REQUIRED_DATA_RIGHTS_DOMAINS.filter(
+          DELETION_COMMIT_DOMAINS.filter(
             (candidate) => !committedDomains.includes(candidate),
           ),
         );
