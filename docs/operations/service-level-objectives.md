@@ -64,12 +64,10 @@ clamp_min(sum(rate(life_os_http_request_duration_seconds_count{
 
 `infra/observability/alerts.yml` implements the first error-budget gates.
 
-| Alert | Condition | Response |
-| --- | --- | --- |
-| `LifeOsGatewayTargetDown` | Prometheus cannot scrape the gateway for 5 minutes | Page the operator; verify process, network, and metrics-route reachability. |
-| `LifeOsGatewayAvailabilityFastBurn` | 5-minute and 1-hour server-error ratios exceed a 14.4x burn rate | Page immediately; stop risky rollout activity and mitigate user impact. |
-| `LifeOsGatewayAvailabilitySlowBurn` | 30-minute and 6-hour server-error ratios exceed a 6x burn rate | Open an operational incident and assign remediation within the same working period. |
-| `LifeOsGatewayLatencyBudgetBurn` | More than 30% of requests exceed 500 ms for 15 minutes | Investigate saturation and downstream latency; prevent continued budget depletion. |
+- `LifeOsGatewayTargetDown` pages the operator when Prometheus cannot scrape the gateway for five minutes. Verify process, network, and metrics-route reachability.
+- `LifeOsGatewayAvailabilityFastBurn` pages immediately when the five-minute and one-hour server-error ratios exceed a 14.4x burn rate. Stop risky rollout activity and mitigate user impact.
+- `LifeOsGatewayAvailabilitySlowBurn` opens an operational incident when the 30-minute and six-hour server-error ratios exceed a 6x burn rate. Assign remediation within the same working period.
+- `LifeOsGatewayLatencyBudgetBurn` opens an operational incident when more than 30% of requests exceed 500 ms for 15 minutes. Investigate saturation and downstream latency.
 
 A page is actionable only when the operator has access to the deployment, current release identifier, gateway logs, and recent change history. Alert delivery and dashboards remain deployment responsibilities until a reference production stack is added.
 
