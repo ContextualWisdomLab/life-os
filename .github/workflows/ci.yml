@@ -57,6 +57,19 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Upload formatted review sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: formatted-review-sources-${{ github.run_id }}
+          path: |
+            apps/review-service/src/http-boundary.test.ts
+            apps/review-service/src/main.test.ts
+            apps/review-service/src/postgres-review-repository.test.ts
+            apps/review-service/src/review-domain.ts
+            apps/review-service/src/review-service.integration.test.ts
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Typecheck
         run: pnpm typecheck
 
