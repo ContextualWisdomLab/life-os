@@ -7,6 +7,13 @@
       "severity": "HIGH",
       "context": "test",
       "file": "tests/appguardrail-fixtures/dangerous-cors.ts"
+    },
+    {
+      "issue": 18,
+      "rule_id": "node-open-redirect-user-input",
+      "severity": "HIGH",
+      "context": "test",
+      "file": "tests/appguardrail-fixtures/oauth-open-redirect.ts"
     }
   ]
 }
