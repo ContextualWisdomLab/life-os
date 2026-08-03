@@ -115,9 +115,7 @@ function requireTimeout(value: number | undefined): number {
   return timeoutMs;
 }
 
-function requirePolicy(
-  request: OAuthProviderHttpRequest,
-): EndpointPolicy {
+function requirePolicy(request: OAuthProviderHttpRequest): EndpointPolicy {
   if (
     !request ||
     typeof request !== 'object' ||
@@ -151,7 +149,11 @@ function requirePolicy(
 }
 
 function normalizeHeaders(headersValue: object): Record<string, string> {
-  if (!headersValue || typeof headersValue !== 'object' || Array.isArray(headersValue)) {
+  if (
+    !headersValue ||
+    typeof headersValue !== 'object' ||
+    Array.isArray(headersValue)
+  ) {
     return failProviderRequest();
   }
 
