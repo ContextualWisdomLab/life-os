@@ -1,0 +1,51 @@
+name: Format Observability Slice
+
+on:
+  push:
+    branches:
+      - feat/observability-slo-foundation
+    paths:
+      - .github/workflows/format-observability.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/observability-slo-foundation
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Format slice
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/gateway/src/app.module.ts
+          apps/gateway/src/observability.test.ts
+          packages/observability/src/index.cjs
+          docs/operations/service-level-objectives.md
+
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/gateway/src/app.module.ts apps/gateway/src/observability.test.ts packages/observability/src/index.cjs docs/operations/service-level-objectives.md
+          git commit -m "style(observability): apply repository formatter"
+          git push origin HEAD:feat/observability-slo-foundation
