@@ -34,12 +34,13 @@ describe('OAuthTransactionService', () => {
 
     expect(transaction.id).toMatch(UUID_V4_PATTERN);
     expect(transaction.state).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(transaction.codeChallenge).toMatch(/^[A-Za-z0-9_-]{86}$/);
+    expect(transaction.codeChallenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(transaction.codeChallengeMethod).toBe('S256');
     expect(transaction.redirectUri).toBe(GITHUB_REDIRECT_URI);
     expect(transaction).not.toHaveProperty('codeVerifier');
 
     const consumed = service.consume('github', transaction.state, BROWSER_SESSION_ID);
+    expect(consumed.codeVerifier).toMatch(/^[A-Za-z0-9_-]{86}$/);
     expect(sha256Base64Url(consumed.codeVerifier)).toBe(transaction.codeChallenge);
     expect(consumed.redirectUri).toBe(GITHUB_REDIRECT_URI);
   });
