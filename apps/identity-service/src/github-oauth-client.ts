@@ -107,7 +107,8 @@ export class GitHubOAuthClient {
       'GitHub OAuth client secret is invalid',
     );
     this.redirectUri = requireSafeRedirectUri(options.redirectUri);
-    this.httpClient = options.httpClient ?? new BoundedOAuthProviderHttpClient();
+    this.httpClient =
+      options.httpClient ?? new BoundedOAuthProviderHttpClient();
   }
 
   /** Returns only the normalized GitHub identity required for provisioning. */
