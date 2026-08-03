@@ -31,7 +31,9 @@ function request(): ProposalRequest {
   };
 }
 
-function proposal(overrides: Partial<AuditableProposal> = {}): AuditableProposal {
+function proposal(
+  overrides: Partial<AuditableProposal> = {},
+): AuditableProposal {
   return {
     proposalId: PROPOSAL_ID,
     workspaceId: WORKSPACE_ID,
@@ -72,9 +74,9 @@ describe('proposal audit domain', () => {
     expect(Object.isFrozen(first)).toBe(true);
     expect(Object.isFrozen(first.proposal)).toBe(true);
     expect(Object.isFrozen(first.request.context)).toBe(true);
-    expect(
-      computeProposalRequestDigest(WORKSPACE_ID, request()),
-    ).toBe(first.requestDigest);
+    expect(computeProposalRequestDigest(WORKSPACE_ID, request())).toBe(
+      first.requestDigest,
+    );
     expect(
       computeProposalContentDigest(
         proposal(),
