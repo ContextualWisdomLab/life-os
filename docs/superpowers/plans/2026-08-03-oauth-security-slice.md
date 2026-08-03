@@ -1,18 +1,22 @@
-# OAuth Security Slice
+# OAuth Security Hardening Slice
 
 **Issue:** #8  
-**Goal:** Add provider-neutral OAuth transaction verification and secure application-session primitives before implementing Google and GitHub network adapters.
+**Goal:** Harden the existing OAuth transaction, provider-request, token-exchange, and application-session foundation without creating a parallel security implementation.
 
 ## Tasks
 
-- [x] Write failing tests for state, PKCE, binding, expiry, replay prevention, session hashing, rotation, and revocation.
-- [x] Verify the tests fail because the OAuth security module is absent.
+- [x] Review the merged identity and OAuth foundation before extending it.
+- [x] Write failing tests for browser-session binding, redirect binding, runtime provider validation, TTL validation, workspace-scoped sessions, rotation, and idempotent revocation.
+- [x] Verify the hardening tests fail against the existing `auth-security` API and behavior.
 - [x] Generate transaction-specific random state and PKCE verifiers.
 - [x] Derive PKCE challenges using RFC 7636 `S256`.
-- [x] Bind transactions to provider and initiating browser session.
-- [x] Consume successful callbacks once and reject expired transactions.
+- [x] Bind transactions to provider, initiating browser session, and normalized redirect URI.
+- [x] Require the authorization request and token exchange to use the transaction's redirect URI.
+- [x] Consume callbacks once and reject expired or mismatched transactions.
 - [x] Issue opaque session bearer tokens while retaining only SHA-256 digests.
+- [x] Bind sessions to both user and owned workspace.
 - [x] Support session authentication, rotation, expiry, and idempotent revocation.
-- [x] Add PostgreSQL tables and indexes without numeric identifiers.
-- [x] Record encryption-at-rest and cookie-delivery requirements in an ADR.
+- [x] Extend the PostgreSQL schema without numeric identifiers or duplicate migration numbers.
+- [x] Consolidate redirect URI validation and remove the duplicate OAuth security module.
+- [x] Record encryption-at-rest, atomic consumption, and cookie-delivery requirements in an ADR.
 - [ ] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
