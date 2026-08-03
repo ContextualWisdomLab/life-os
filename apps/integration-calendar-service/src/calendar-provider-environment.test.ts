@@ -1,0 +1,32 @@
+import { describe, expect, it } from 'vitest';
+import { CaldavCalendarProvider } from './calendar-sync';
+import { GoogleCalendarProvider } from './google-calendar-provider';
+import { createCalendarProviderFromEnvironment } from './main';
+
+describe('calendar provider environment selection', () => {
+  it('selects only explicitly configured Google or CalDAV adapters', () => {
+    expect(
+      createCalendarProviderFromEnvironment({
+        CALENDAR_PROVIDER: 'google',
+        GOOGLE_CALENDAR_ID: 'primary',
+        GOOGLE_CALENDAR_ACCESS_TOKEN: 'synthetic-access-token',
+      }),
+    ).toBeInstanceOf(GoogleCalendarProvider);
+
+    expect(
+      createCalendarProviderFromEnvironment({
+        CALENDAR_PROVIDER: 'caldav',
+        CALDAV_CALENDAR_URL: 'https://calendar.example.com/users/test/',
+        CALDAV_AUTHORIZATION: 'Bearer synthetic-access-token',
+        CALDAV_ALLOWED_HOSTS: 'calendar.example.com',
+      }),
+    ).toBeInstanceOf(CaldavCalendarProvider);
+
+    expect(() =>
+      createCalendarProviderFromEnvironment({ CALENDAR_PROVIDER: 'unknown' }),
+    ).toThrow('Calendar provider configuration is unsupported');
+    expect(() =>
+      createCalendarProviderFromEnvironment({ CALENDAR_PROVIDER: 'google' }),
+    ).toThrow('Google Calendar provider configuration is incomplete');
+  });
+});
