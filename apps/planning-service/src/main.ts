@@ -4,6 +4,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   Inject,
   Module,
@@ -11,14 +12,22 @@ import {
   Post,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import { requireTitle, toHttpException } from './http-boundary';
+import {
+  planningMetrics,
+  planningObservabilityMiddleware,
+} from './observability';
 import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 
+/** Dependency-injection token for the production planning runtime. */
 export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
+/** Dependency-injection token for the planning domain service. */
 export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
 
+/** Requires the tenant workspace boundary used by every planning operation. */
 function requireWorkspaceId(value: string | undefined): string {
   const workspaceId = value?.trim();
   if (!workspaceId) {
@@ -27,6 +36,7 @@ function requireWorkspaceId(value: string | undefined): string {
   return workspaceId;
 }
 
+/** Exposes tenant-scoped planning operations and operational endpoints. */
 @Controller()
 export class PlanningController {
   constructor(
@@ -34,11 +44,20 @@ export class PlanningController {
     private readonly planningService: PlanningService,
   ) {}
 
+  /** Returns a credential-free liveness response for the planning service. */
   @Get('health')
   health(): { status: 'ok'; service: 'planning-service' } {
     return { status: 'ok', service: 'planning-service' };
   }
 
+  /** Renders bounded planning-service metrics for trusted Prometheus scrapes. */
+  @Get('metrics')
+  @Header('Content-Type', PROMETHEUS_CONTENT_TYPE)
+  metrics(): string {
+    return planningMetrics.renderPrometheus();
+  }
+
+  /** Creates a goal inside the caller's required workspace. */
   @Post('goals')
   async createGoal(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -56,6 +75,7 @@ export class PlanningController {
     }
   }
 
+  /** Lists goals belonging to the caller's required workspace. */
   @Get('goals')
   async listGoals(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -69,6 +89,7 @@ export class PlanningController {
     }
   }
 
+  /** Creates a project below a workspace-owned goal. */
   @Post('goals/:goalId/projects')
   async createProject(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -88,6 +109,7 @@ export class PlanningController {
     }
   }
 
+  /** Lists projects below a workspace-owned goal. */
   @Get('goals/:goalId/projects')
   async listProjects(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -103,6 +125,7 @@ export class PlanningController {
     }
   }
 
+  /** Creates a task below a workspace-owned project. */
   @Post('projects/:projectId/tasks')
   async createTask(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -122,6 +145,7 @@ export class PlanningController {
     }
   }
 
+  /** Lists tasks below a workspace-owned project. */
   @Get('projects/:projectId/tasks')
   async listTasks(
     @Headers('x-workspace-id') workspaceHeader: string | undefined,
@@ -138,6 +162,7 @@ export class PlanningController {
   }
 }
 
+/** Root NestJS module for the production planning-service process. */
 @Module({
   controllers: [PlanningController],
   providers: [
@@ -155,8 +180,10 @@ export class PlanningController {
 })
 export class AppModule {}
 
+/** Boots the instrumented planning service on its configured public port. */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.use(planningObservabilityMiddleware);
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
   await app.listen(
