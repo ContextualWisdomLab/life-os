@@ -62,8 +62,12 @@ describe('OAuth HTTP cookie boundary', () => {
       beta: 'three-four',
     });
     expect(readOpaqueCookie('alpha=one_two', 'alpha')).toBe('one_two');
-    expect(() => parseCookieHeader('alpha=one; alpha=two')).toThrow('Cookie header is invalid');
-    expect(() => parseCookieHeader('alpha="quoted"')).toThrow('Cookie header is invalid');
+    expect(() => parseCookieHeader('alpha=one; alpha=two')).toThrow(
+      'Cookie header is invalid',
+    );
+    expect(() => parseCookieHeader('alpha="quoted"')).toThrow(
+      'Cookie header is invalid',
+    );
     expect(() => parseCookieHeader(`alpha=${'a'.repeat(4097)}`)).toThrow(
       'Cookie header is invalid',
     );
@@ -79,7 +83,11 @@ describe('OAuth HTTP cookie boundary', () => {
 
   it('serializes and clears secure application session cookies', () => {
     expect(
-      serializeApplicationSessionCookie('opaque_session', '2026-08-03T11:00:00.000Z', NOW),
+      serializeApplicationSessionCookie(
+        'opaque_session',
+        '2026-08-03T11:00:00.000Z',
+        NOW,
+      ),
     ).toBe(
       `${APPLICATION_SESSION_COOKIE_NAME}=opaque_session; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=Lax`,
     );
@@ -98,7 +106,9 @@ describe('OAuth HTTP cookie boundary', () => {
 
 describe('OAuth callback query boundary', () => {
   it('accepts one code and state without retaining unrelated provider data', () => {
-    expect(parseOAuthCallbackQuery({ code: 'code_value', state: 'state_value' })).toEqual({
+    expect(
+      parseOAuthCallbackQuery({ code: 'code_value', state: 'state_value' }),
+    ).toEqual({
       outcome: 'authorization_code',
       code: 'code_value',
       state: 'state_value',
@@ -122,10 +132,18 @@ describe('OAuth callback query boundary', () => {
       parseOAuthCallbackQuery({ code: ['one', 'two'], state: 'state_value' }),
     ).toThrow('must appear once');
     expect(() =>
-      parseOAuthCallbackQuery({ code: 'code', error: 'denied', state: 'state' }),
+      parseOAuthCallbackQuery({
+        code: 'code',
+        error: 'denied',
+        state: 'state',
+      }),
     ).toThrow('OAuth callback is invalid');
     expect(() =>
-      parseOAuthCallbackQuery({ code: 'code', state: 'state', return_to: 'https://evil.test' }),
+      parseOAuthCallbackQuery({
+        code: 'code',
+        state: 'state',
+        return_to: 'https://evil.test',
+      }),
     ).toThrow('unsupported parameter');
   });
 });
@@ -133,7 +151,10 @@ describe('OAuth callback query boundary', () => {
 describe('OAuthHttpApplication', () => {
   it('starts Google authorization with PKCE, nonce, fixed redirect, and a new binding cookie', async () => {
     const { application: httpApplication } = application();
-    const response = await httpApplication.beginAuthorization('google', undefined);
+    const response = await httpApplication.beginAuthorization(
+      'google',
+      undefined,
+    );
     const location = new URL(response.location);
 
     expect(response.statusCode).toBe(303);
@@ -144,7 +165,9 @@ describe('OAuthHttpApplication', () => {
       'https://identity.example.com/v1/auth/google/callback',
     );
     expect(location.searchParams.get('code_challenge_method')).toBe('S256');
-    expect(location.searchParams.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(location.searchParams.get('code_challenge')).toMatch(
+      /^[A-Za-z0-9_-]+$/,
+    );
     expect(location.searchParams.get('state')).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(location.searchParams.get('nonce')).toMatch(/^[A-Za-z0-9_-]+$/);
   });
@@ -185,7 +208,9 @@ describe('OAuthHttpApplication', () => {
       statusCode: 204,
       setCookie: clearApplicationSessionCookie(),
     });
-    await expect(sessions.authenticate(issued.token)).rejects.toThrow('Session is invalid');
+    await expect(sessions.authenticate(issued.token)).rejects.toThrow(
+      'Session is invalid',
+    );
     await expect(httpApplication.logout(cookie)).resolves.toEqual({
       statusCode: 204,
       setCookie: clearApplicationSessionCookie(),
@@ -198,22 +223,26 @@ describe('OAuthHttpApplication', () => {
 
   it('uses one configured fixed post-login target and rejects unsafe origins', () => {
     const { application: httpApplication } = application();
-    expect(httpApplication.postLoginRedirect()).toBe('https://life.example.com/auth/complete');
+    expect(httpApplication.postLoginRedirect()).toBe(
+      'https://life.example.com/auth/complete',
+    );
     expect(buildFixedWebRedirect('https://life.example.com')).toBe(
       'https://life.example.com/auth/complete',
     );
     expect(() => buildFixedWebRedirect('http://life.example.com')).toThrow(
       'Configured web origin is invalid',
     );
-    expect(() => buildFixedWebRedirect('https://life.example.com/other')).toThrow(
-      'Configured web origin is invalid',
-    );
+    expect(() =>
+      buildFixedWebRedirect('https://life.example.com/other'),
+    ).toThrow('Configured web origin is invalid');
   });
 });
 
 describe('problemDetails', () => {
   it('creates a stable credential-free RFC 9457-compatible body', () => {
-    expect(problemDetails(401, 'Authentication required', 'session_invalid')).toEqual({
+    expect(
+      problemDetails(401, 'Authentication required', 'session_invalid'),
+    ).toEqual({
       type: 'about:blank',
       title: 'Authentication required',
       status: 401,

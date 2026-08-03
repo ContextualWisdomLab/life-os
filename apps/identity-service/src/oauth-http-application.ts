@@ -22,7 +22,9 @@ export interface OAuthProviderStartConfiguration {
 }
 
 export interface OAuthHttpApplicationConfiguration {
-  providers: Readonly<Record<IdentityProvider, OAuthProviderStartConfiguration>>;
+  providers: Readonly<
+    Record<IdentityProvider, OAuthProviderStartConfiguration>
+  >;
   webOrigin: string;
 }
 
@@ -88,7 +90,10 @@ export class OAuthHttpApplication {
     const browserBinding = existingBrowserSessionId
       ? { browserSessionId: existingBrowserSessionId }
       : createOAuthBrowserBinding();
-    const providerConfiguration = requireProviderConfiguration(provider, this.configuration);
+    const providerConfiguration = requireProviderConfiguration(
+      provider,
+      this.configuration,
+    );
     const transaction = await this.transactions.begin(provider, {
       browserSessionId: browserBinding.browserSessionId,
       redirectUri: providerConfiguration.redirectUri,
@@ -96,8 +101,14 @@ export class OAuthHttpApplication {
 
     return {
       statusCode: 303,
-      location: buildAuthorizationUrl(provider, providerConfiguration, transaction),
-      ...('setCookie' in browserBinding ? { setCookie: browserBinding.setCookie } : {}),
+      location: buildAuthorizationUrl(
+        provider,
+        providerConfiguration,
+        transaction,
+      ),
+      ...('setCookie' in browserBinding
+        ? { setCookie: browserBinding.setCookie }
+        : {}),
     };
   }
 
@@ -107,7 +118,10 @@ export class OAuthHttpApplication {
   async introspectSession(
     cookieHeader: string | undefined,
   ): Promise<SessionIntrospectionResponse> {
-    const token = readOpaqueCookie(cookieHeader, APPLICATION_SESSION_COOKIE_NAME);
+    const token = readOpaqueCookie(
+      cookieHeader,
+      APPLICATION_SESSION_COOKIE_NAME,
+    );
     const session = await this.sessions.authenticate(token ?? '');
     return { statusCode: 200, body: toSessionView(session) };
   }
@@ -116,7 +130,10 @@ export class OAuthHttpApplication {
    * Revokes an existing session when present and always returns an idempotent cookie clear.
    */
   async logout(cookieHeader: string | undefined): Promise<LogoutResponse> {
-    const token = readOpaqueCookie(cookieHeader, APPLICATION_SESSION_COOKIE_NAME);
+    const token = readOpaqueCookie(
+      cookieHeader,
+      APPLICATION_SESSION_COOKIE_NAME,
+    );
     await this.sessions.revoke(token ?? '');
     return {
       statusCode: 204,

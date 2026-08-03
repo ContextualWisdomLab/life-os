@@ -91,7 +91,9 @@ function requirePositiveInteger(value: number, message: string): number {
 /**
  * Parses a bounded Cookie header without decoding or accepting duplicate names.
  */
-export function parseCookieHeader(header: string | undefined): Readonly<Record<string, string>> {
+export function parseCookieHeader(
+  header: string | undefined,
+): Readonly<Record<string, string>> {
   if (header === undefined || header === '') {
     return Object.freeze({});
   }
@@ -111,7 +113,11 @@ export function parseCookieHeader(header: string | undefined): Readonly<Record<s
     }
     const name = requireCookieName(segment.slice(0, separator).trim());
     const value = segment.slice(separator + 1).trim();
-    if (!value || !OPAQUE_COOKIE_VALUE_PATTERN.test(value) || cookies[name] !== undefined) {
+    if (
+      !value ||
+      !OPAQUE_COOKIE_VALUE_PATTERN.test(value) ||
+      cookies[name] !== undefined
+    ) {
       return failInvalidCookie();
     }
     cookies[name] = value;
@@ -122,7 +128,10 @@ export function parseCookieHeader(header: string | undefined): Readonly<Record<s
 /**
  * Returns one opaque cookie value, or undefined when the cookie is absent.
  */
-export function readOpaqueCookie(header: string | undefined, nameValue: string): string | undefined {
+export function readOpaqueCookie(
+  header: string | undefined,
+  nameValue: string,
+): string | undefined {
   const name = requireCookieName(nameValue);
   return parseCookieHeader(header)[name];
 }
@@ -213,10 +222,17 @@ export function serializeApplicationSessionCookie(
   now = new Date(),
 ): string {
   const expiration = Date.parse(expiresAt);
-  if (!Number.isFinite(expiration) || !Number.isFinite(now.getTime()) || expiration <= now.getTime()) {
+  if (
+    !Number.isFinite(expiration) ||
+    !Number.isFinite(now.getTime()) ||
+    expiration <= now.getTime()
+  ) {
     throw new Error('Session expiration is invalid');
   }
-  const maxAgeSeconds = Math.max(1, Math.floor((expiration - now.getTime()) / 1000));
+  const maxAgeSeconds = Math.max(
+    1,
+    Math.floor((expiration - now.getTime()) / 1000),
+  );
   return serializeSecureCookie({
     name: APPLICATION_SESSION_COOKIE_NAME,
     value: token,
@@ -272,7 +288,11 @@ export function toSessionView(session: ActiveSession): {
 /**
  * Produces a stable RFC 9457-compatible problem body without internal details.
  */
-export function problemDetails(status: number, title: string, code: string): ProblemDetails {
+export function problemDetails(
+  status: number,
+  title: string,
+  code: string,
+): ProblemDetails {
   if (!Number.isSafeInteger(status) || status < 400 || status > 599) {
     throw new Error('Problem status is invalid');
   }
