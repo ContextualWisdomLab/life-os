@@ -81,6 +81,12 @@ CalDAV writes use deterministic resource names, `If-None-Match: *` for creation,
 
 `GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables Google Calendar synchronization.
 
+## Backup and recovery
+
+`infra/backup/backup.sh` creates a private PostgreSQL custom-format archive, checksum, and non-secret metadata set. `infra/backup/restore.sh` verifies the selected archive and restores only into a deliberately empty non-system database. The Linux CI contract performs a real dump and restore with pinned PostgreSQL client tools and verifies exact tenant records, non-empty-target refusal, and checksum-corruption refusal.
+
+This logical-dump tier is not point-in-time recovery and does not schedule, encrypt, replicate, or retain backups automatically. Deployment owners must follow the [backup and restore runbook](docs/operations/backup-and-restore.md), establish independent encrypted storage, rehearse recovery, and add WAL archiving when the required recovery point is shorter than the dump interval.
+
 ## Privacy and deployment responsibility
 
 This is a public repository. It contains synthetic examples only. Personal goals, health information, relationship data, credentials, access tokens, private prompts, customer data, and production exports must not be committed.
@@ -93,6 +99,7 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
+- [PostgreSQL backup and restore runbook](docs/operations/backup-and-restore.md)
 - [Upstream privacy notice](docs/legal/privacy.md)
 - [Upstream project terms](docs/legal/terms.md)
 - [Vulnerability reporting](SECURITY.md)
