@@ -27,6 +27,10 @@ const TARGET_DATABASE_URL = `postgresql://${TEST_DATABASE_AUTHORITY}/${TARGET_DA
 const testRoot = mkdtempSync(join(tmpdir(), 'life-os-backup-recovery-'));
 const toolDirectory = join(testRoot, 'bin');
 const backupDirectory = join(testRoot, 'backups');
+const passwdFile = join(testRoot, 'passwd');
+const groupFile = join(testRoot, 'group');
+const testUserId = process.getuid?.() ?? 1_000;
+const testGroupId = process.getgid?.() ?? testUserId;
 const backupScript = resolve(process.cwd(), '../backup/backup.sh');
 const restoreScript = resolve(process.cwd(), '../backup/restore.sh');
 
@@ -37,9 +41,11 @@ function createPostgresClientWrapper(commandName: string): void {
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 exec docker run --rm --network host \\
-  --user "$(id -u):$(id -g)" \\
+  --user "\${BACKUP_RECOVERY_USER_ID}:\${BACKUP_RECOVERY_GROUP_ID}" \\
   --env HOME=/tmp \\
   --env PGDATABASE \\
+  --volume "\${BACKUP_RECOVERY_PASSWD_FILE}:/etc/passwd:ro" \\
+  --volume "\${BACKUP_RECOVERY_GROUP_FILE}:/etc/group:ro" \\
   --volume "\${BACKUP_RECOVERY_MOUNT_ROOT}:\${BACKUP_RECOVERY_MOUNT_ROOT}" \\
   "\${POSTGRES_CLIENT_IMAGE}" ${commandName} "$@"
 `,
@@ -50,7 +56,11 @@ exec docker run --rm --network host \\
 
 const commandEnvironment: NodeJS.ProcessEnv = {
   ...process.env,
+  BACKUP_RECOVERY_GROUP_FILE: groupFile,
+  BACKUP_RECOVERY_GROUP_ID: String(testGroupId),
   BACKUP_RECOVERY_MOUNT_ROOT: testRoot,
+  BACKUP_RECOVERY_PASSWD_FILE: passwdFile,
+  BACKUP_RECOVERY_USER_ID: String(testUserId),
   PATH: `${toolDirectory}${delimiter}${process.env.PATH ?? ''}`,
   POSTGRES_CLIENT_IMAGE,
 };
@@ -102,6 +112,14 @@ describe.skipIf(!linuxOnly)('PostgreSQL backup and restore contract', () => {
   beforeAll(() => {
     mkdirSync(toolDirectory, { recursive: true });
     mkdirSync(backupDirectory, { recursive: true });
+    writeFileSync(
+      passwdFile,
+      `backup-test:x:${testUserId}:${testGroupId}:Backup Test:/tmp:/bin/false\n`,
+      { mode: 0o600 },
+    );
+    writeFileSync(groupFile, `backup-test:x:${testGroupId}:\n`, {
+      mode: 0o600,
+    });
     createPostgresClientWrapper('pg_dump');
     createPostgresClientWrapper('pg_restore');
     createPostgresClientWrapper('psql');
