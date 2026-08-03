@@ -145,4 +145,6 @@ async function bootstrap(): Promise<void> {
   await app.listen(Number(process.env.HABIT_SERVICE_PORT ?? 4103), '0.0.0.0');
 }
 
-void bootstrap();
+if (require.main === module) {
+  void bootstrap();
+}
