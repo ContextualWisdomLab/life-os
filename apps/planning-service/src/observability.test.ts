@@ -98,8 +98,10 @@ describe('planning observability middleware', () => {
     const middleware = createPlanningObservabilityMiddleware(metrics);
     const response = new FakeResponse();
 
-    middleware(request('GET', '/v1/projects/project_key/tasks'), response, () =>
-      undefined,
+    middleware(
+      request('GET', '/v1/projects/project_key/tasks'),
+      response,
+      () => undefined,
     );
     response.close();
     response.finish(200);
