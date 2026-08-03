@@ -50,6 +50,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Render AI formatting diff
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/tsconfig.json \
+            apps/ai-service/src/main.ts \
+            apps/ai-service/src/proposal-service.ts \
+            apps/ai-service/src/proposal-service.test.ts
+          git diff -- \
+            apps/ai-service/tsconfig.json \
+            apps/ai-service/src/main.ts \
+            apps/ai-service/src/proposal-service.ts \
+            apps/ai-service/src/proposal-service.test.ts
+          exit 1
+
       - name: Check formatting
         run: pnpm format:check
 
