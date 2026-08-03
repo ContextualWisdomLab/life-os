@@ -4,6 +4,12 @@ import { resolve } from 'node:path';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OAuthTransactionService, SessionService, type SessionRecord } from './auth-security';
+import { IdentityService } from './identity-domain';
+import {
+  PostgresIdentityRepository,
+  type SqlTransaction,
+  type TransactionalSqlClient,
+} from './postgres-identity-repository';
 import {
   PostgresOAuthTransactionRepository,
   PostgresSessionRepository,
@@ -16,7 +22,7 @@ const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const SECRET_KEY = Buffer.from('44'.repeat(32), 'hex');
 
-class NodePostgresSqlClient implements SqlClient {
+class NodePostgresTransaction implements SqlTransaction {
   constructor(private readonly client: Client) {}
 
   async query<Row>(
@@ -28,6 +34,29 @@ class NodePostgresSqlClient implements SqlClient {
       rows: result.rows as Row[],
       rowCount: result.rowCount,
     };
+  }
+
+  release(): void {
+    // The integration suite owns one dedicated Client for its full lifetime.
+  }
+}
+
+class NodePostgresSqlClient implements SqlClient, TransactionalSqlClient {
+  constructor(private readonly client: Client) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<SqlQueryResult<Row>> {
+    const result = await this.client.query(text, [...values]);
+    return {
+      rows: result.rows as Row[],
+      rowCount: result.rowCount,
+    };
+  }
+
+  async connect(): Promise<SqlTransaction> {
+    return new NodePostgresTransaction(this.client);
   }
 }
 
@@ -44,7 +73,7 @@ function createSecretBox(): AesGcmSecretBox {
 
 describeWithDatabase('PostgreSQL identity security repositories', () => {
   let client: Client;
-  let sqlClient: SqlClient;
+  let sqlClient: NodePostgresSqlClient;
 
   beforeAll(async () => {
     if (!DATABASE_URL) {
@@ -72,6 +101,61 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
       await client.query('DROP SCHEMA IF EXISTS identity CASCADE');
       await client.end();
     }
+  });
+
+  it('persists one account and personal workspace for repeated provider sign-in', async () => {
+    const providerSubject = `github-${randomUUID()}`;
+    const repository = new PostgresIdentityRepository(sqlClient);
+    const service = new IdentityService(repository);
+
+    const first = await service.signInWithExternalIdentity({
+      provider: 'github',
+      providerSubject,
+      displayName: 'Integration Identity',
+    });
+    const repeated = await service.signInWithExternalIdentity({
+      provider: 'github',
+      providerSubject,
+      displayName: 'Ignored Replacement Name',
+    });
+
+    expect(repeated).toEqual(first);
+    const stored = await client.query<{
+      user_id: string;
+      external_identity_id: string;
+      workspace_id: string;
+      display_name: string;
+      workspace_owner_user_id: string;
+    }>(
+      `SELECT
+         users.id AS user_id,
+         external_identities.id AS external_identity_id,
+         workspaces.id AS workspace_id,
+         users.display_name,
+         workspaces.owner_user_id AS workspace_owner_user_id
+       FROM identity.external_identities
+       JOIN identity.users ON identity.users.id = identity.external_identities.user_id
+       JOIN identity.workspaces ON identity.workspaces.owner_user_id = identity.users.id
+       WHERE identity.external_identities.provider = $1
+         AND identity.external_identities.provider_subject = $2`,
+      ['github', providerSubject],
+    );
+    expect(stored.rowCount).toBe(1);
+    expect(stored.rows[0]).toEqual({
+      user_id: first.user.id,
+      external_identity_id: first.externalIdentity.id,
+      workspace_id: first.workspace.id,
+      display_name: 'Integration Identity',
+      workspace_owner_user_id: first.user.id,
+    });
+
+    await expect(
+      client.query(
+        `INSERT INTO identity.users (id, display_name)
+         VALUES ($1, $2)`,
+        ['00000000-0000-1000-8000-000000000000', 'Sequential Identifier'],
+      ),
+    ).rejects.toThrow();
   });
 
   it('persists encrypted OAuth transactions and consumes state exactly once', async () => {
