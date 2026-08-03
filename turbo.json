@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
+    "AI_DATABASE_URL",
     "HABIT_DATABASE_URL",
     "IDENTITY_DATABASE_URL",
     "PLANNING_DATABASE_URL"
