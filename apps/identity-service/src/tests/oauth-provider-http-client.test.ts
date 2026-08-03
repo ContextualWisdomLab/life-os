@@ -149,14 +149,15 @@ describe('BoundedOAuthProviderHttpClient', () => {
     {
       name: 'body on a GET request',
       request: {
-        ...buildGitHubIdentityRequests(
-          syntheticOpaqueValue('github-get-body'),
-        ).user,
+        ...buildGitHubIdentityRequests(syntheticOpaqueValue('github-get-body'))
+          .user,
         body: 'unexpected=true',
       },
     },
   ])('rejects a $name before network access', async ({ request }) => {
-    const fetchFunction: OAuthProviderFetch = vi.fn(async () => jsonResponse({}));
+    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
+      jsonResponse({}),
+    );
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
     await expect(client.execute(request)).rejects.toThrow(
@@ -247,9 +248,9 @@ describe('BoundedOAuthProviderHttpClient', () => {
   });
 
   it('rejects unsafe timeout configuration', () => {
-    expect(
-      () => new BoundedOAuthProviderHttpClient({ timeoutMs: 99 }),
-    ).toThrow('OAuth provider request failed');
+    expect(() => new BoundedOAuthProviderHttpClient({ timeoutMs: 99 })).toThrow(
+      'OAuth provider request failed',
+    );
     expect(
       () => new BoundedOAuthProviderHttpClient({ timeoutMs: 10_001 }),
     ).toThrow('OAuth provider request failed');
