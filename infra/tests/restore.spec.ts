@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -71,10 +72,8 @@ function runPsql(databaseUrl: string, sql: string): string {
 }
 
 function resetDatabase(databaseName: string): void {
-  runPsql(
-    ADMIN_DATABASE_URL,
-    `DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE); CREATE DATABASE ${databaseName};`,
-  );
+  dropDatabase(databaseName);
+  runPsql(ADMIN_DATABASE_URL, `CREATE DATABASE ${databaseName};`);
 }
 
 function dropDatabase(databaseName: string): void {
@@ -100,7 +99,8 @@ const linuxOnly = process.platform === 'linux';
 
 describe.skipIf(!linuxOnly)('PostgreSQL backup and restore contract', () => {
   beforeAll(() => {
-    execFileSync('mkdir', ['-p', toolDirectory, backupDirectory]);
+    mkdirSync(toolDirectory, { recursive: true });
+    mkdirSync(backupDirectory, { recursive: true });
     createPostgresClientWrapper('pg_dump');
     createPostgresClientWrapper('pg_restore');
     createPostgresClientWrapper('psql');
