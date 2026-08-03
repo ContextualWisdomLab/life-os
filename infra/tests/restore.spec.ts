@@ -39,6 +39,7 @@ set -Eeuo pipefail
 exec docker run --rm --network host \\
   --user "$(id -u):$(id -g)" \\
   --env HOME=/tmp \\
+  --env PGDATABASE \\
   --volume "\${BACKUP_RECOVERY_MOUNT_ROOT}:\${BACKUP_RECOVERY_MOUNT_ROOT}" \\
   "\${POSTGRES_CLIENT_IMAGE}" ${commandName} "$@"
 `,
