@@ -21,6 +21,7 @@ import {
   type CalendarSyncResult,
   CalendarValidationError,
 } from './calendar-sync';
+import { GoogleCalendarProvider } from './google-calendar-provider';
 
 export const CALENDAR_SYNC_SERVICE = Symbol('CALENDAR_SYNC_SERVICE');
 
@@ -66,7 +67,11 @@ export class CalendarSyncController {
       return await this.calendarSyncService.sync(workspaceId, body);
     } catch (error) {
       if (error instanceof CalendarValidationError) {
-        throw problem(400, 'Calendar synchronization input is invalid', 'invalid_request');
+        throw problem(
+          400,
+          'Calendar synchronization input is invalid',
+          'invalid_request',
+        );
       }
       if (error instanceof CalendarConflictError) {
         throw problem(
@@ -107,10 +112,23 @@ export class CalendarAppModule {
   }
 }
 
-/** Creates the production CalDAV adapter from secret-backed environment values. */
+/** Creates the configured production adapter from secret-backed values. */
 export function createCalendarProviderFromEnvironment(
   environment: NodeJS.ProcessEnv,
 ): CalendarProvider {
+  const providerName = environment.CALENDAR_PROVIDER ?? 'caldav';
+  if (providerName === 'google') {
+    const calendarId = environment.GOOGLE_CALENDAR_ID;
+    const accessToken = environment.GOOGLE_CALENDAR_ACCESS_TOKEN;
+    if (!calendarId || !accessToken) {
+      throw new Error('Google Calendar provider configuration is incomplete');
+    }
+    return new GoogleCalendarProvider({ calendarId, accessToken });
+  }
+  if (providerName !== 'caldav') {
+    throw new Error('Calendar provider configuration is unsupported');
+  }
+
   const calendarUrl = environment.CALDAV_CALENDAR_URL;
   const authorization = environment.CALDAV_AUTHORIZATION;
   const allowedHosts = (environment.CALDAV_ALLOWED_HOSTS ?? '')
