@@ -19,9 +19,7 @@ const MAXIMUM_PROVIDER_RESPONSE_BYTES = 64 * 1_024;
 
 /** Minimal provider transport required by the GitHub OAuth client. */
 export interface OAuthProviderRequestExecutor {
-  execute(
-    request: OAuthProviderHttpRequest,
-  ): Promise<OAuthProviderHttpResult>;
+  execute(request: OAuthProviderHttpRequest): Promise<OAuthProviderHttpResult>;
 }
 
 /** Construction options for the fixed-endpoint GitHub OAuth client. */
@@ -109,8 +107,7 @@ export class GitHubOAuthClient {
       'GitHub OAuth client secret is invalid',
     );
     this.redirectUri = requireSafeRedirectUri(options.redirectUri);
-    this.httpClient =
-      options.httpClient ?? new BoundedOAuthProviderHttpClient();
+    this.httpClient = options.httpClient ?? new BoundedOAuthProviderHttpClient();
   }
 
   /** Returns only the normalized GitHub identity required for provisioning. */
