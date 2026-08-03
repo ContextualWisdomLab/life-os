@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Headers,
-  Inject,
-  Post,
-  Res,
-} from '@nestjs/common';
+import { Controller, Get, Headers, Inject, Post, Res } from '@nestjs/common';
 import type { IdentityProvider } from './identity-domain';
 import { problemDetails } from './oauth-http-boundary';
 import { OAuthHttpApplication } from './oauth-http-application';

@@ -66,9 +66,7 @@ describe('createIdentityRuntime', () => {
       ),
     ).toThrow('must use PostgreSQL');
     expect(() =>
-      createIdentityRuntime(
-        environment({ IDENTITY_OAUTH_KEYS: '{not-json' }),
-      ),
+      createIdentityRuntime(environment({ IDENTITY_OAUTH_KEYS: '{not-json' })),
     ).toThrow('key configuration is invalid');
     expect(() =>
       createIdentityRuntime(
@@ -85,9 +83,7 @@ describe('createIdentityRuntime', () => {
       ),
     ).toThrow('Current encryption key version is not configured');
     expect(() =>
-      createIdentityRuntime(
-        environment({ IDENTITY_DATABASE_POOL_MAX: '33' }),
-      ),
+      createIdentityRuntime(environment({ IDENTITY_DATABASE_POOL_MAX: '33' })),
     ).toThrow('pool size is invalid');
   });
 });

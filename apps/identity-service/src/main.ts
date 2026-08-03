@@ -1,10 +1,7 @@
 import 'reflect-metadata';
 import { Controller, Get, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import {
-  createIdentityRuntime,
-  IdentityRuntime,
-} from './identity-runtime';
+import { createIdentityRuntime, IdentityRuntime } from './identity-runtime';
 import {
   OAUTH_HTTP_APPLICATION,
   OAuthHttpController,
@@ -39,7 +36,10 @@ class AppModule {}
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
-  await app.listen(Number(process.env.IDENTITY_SERVICE_PORT ?? 4101), '0.0.0.0');
+  await app.listen(
+    Number(process.env.IDENTITY_SERVICE_PORT ?? 4101),
+    '0.0.0.0',
+  );
 }
 
 void bootstrap();

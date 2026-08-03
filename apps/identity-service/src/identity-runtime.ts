@@ -1,9 +1,6 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolConfig } from 'pg';
-import {
-  OAuthTransactionService,
-  SessionService,
-} from './auth-security';
+import { OAuthTransactionService, SessionService } from './auth-security';
 import { OAuthHttpApplication } from './oauth-http-application';
 import {
   PostgresOAuthTransactionRepository,
@@ -65,11 +62,7 @@ function requireBoundedInteger(
     return defaultValue;
   }
   const parsed = Number(value);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < minimum ||
-    parsed > maximum
-  ) {
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
     throw new Error(message);
   }
   return parsed;
@@ -116,9 +109,7 @@ function parseSecretKeys(value: string): Readonly<Record<string, Buffer>> {
   );
 }
 
-function createPoolConfiguration(
-  environment: RuntimeEnvironment,
-): PoolConfig {
+function createPoolConfiguration(environment: RuntimeEnvironment): PoolConfig {
   return {
     connectionString: requireDatabaseUrl(
       requireConfiguration(environment, 'IDENTITY_DATABASE_URL'),
@@ -191,9 +182,7 @@ export function createIdentityRuntime(
   const transactions = new OAuthTransactionService(
     new PostgresOAuthTransactionRepository(sqlClient, secretBox),
   );
-  const sessions = new SessionService(
-    new PostgresSessionRepository(sqlClient),
-  );
+  const sessions = new SessionService(new PostgresSessionRepository(sqlClient));
   const application = new OAuthHttpApplication(transactions, sessions, {
     providers: {
       google: {
