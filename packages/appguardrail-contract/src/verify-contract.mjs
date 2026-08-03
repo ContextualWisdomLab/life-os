@@ -35,7 +35,7 @@ function validateFinding(value) {
     rule_id: requireString(value.rule_id, INVALID_FINDINGS),
     severity: requireString(value.severity, INVALID_FINDINGS),
     context: requireString(value.context, INVALID_FINDINGS),
-    file: requireString(value.file, INVALID_FINDINGS)
+    file: requireString(value.file, INVALID_FINDINGS),
   };
 }
 
@@ -51,12 +51,18 @@ function validateExpectedFinding(value) {
     rule_id: requireString(value.rule_id, INVALID_CONTRACT),
     severity: requireString(value.severity, INVALID_CONTRACT),
     context: requireString(value.context, INVALID_CONTRACT),
-    file: requireString(value.file, INVALID_CONTRACT)
+    file: requireString(value.file, INVALID_CONTRACT),
   };
 }
 
 function findingKey(value) {
-  return [value.issue, value.rule_id, value.severity, value.context, value.file].join('|');
+  return [
+    value.issue,
+    value.rule_id,
+    value.severity,
+    value.context,
+    value.file,
+  ].join('|');
 }
 
 function isExactMatch(finding, expected) {
@@ -86,7 +92,9 @@ export function verifyAppGuardrailContract(findingsEnvelope, detectorContract) {
   }
 
   const findings = findingsEnvelope.findings.map(validateFinding);
-  const expectedFindings = detectorContract.expected_findings.map(validateExpectedFinding);
+  const expectedFindings = detectorContract.expected_findings.map(
+    validateExpectedFinding,
+  );
   const contractKeys = new Set();
 
   for (const expected of expectedFindings) {
@@ -113,12 +121,14 @@ async function readJson(path) {
 async function runCli() {
   const [, , findingsPath, contractPath, ...unexpectedArguments] = process.argv;
   if (!findingsPath || !contractPath || unexpectedArguments.length > 0) {
-    throw new Error('Usage: verify-contract.mjs <findings-json> <contract-json>');
+    throw new Error(
+      'Usage: verify-contract.mjs <findings-json> <contract-json>',
+    );
   }
 
   const [findingsEnvelope, detectorContract] = await Promise.all([
     readJson(findingsPath),
-    readJson(contractPath)
+    readJson(contractPath),
   ]);
   verifyAppGuardrailContract(findingsEnvelope, detectorContract);
 }
@@ -126,7 +136,10 @@ async function runCli() {
 const invokedPath = process.argv[1];
 if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {
   runCli().catch((error) => {
-    const message = error instanceof Error ? error.message : 'AppGuardrail contract verification failed';
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'AppGuardrail contract verification failed';
     console.error(message);
     process.exitCode = 1;
   });
