@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "lint": "tsc --noEmit && prettier --single-quote --check package.json tsconfig.json src/**/*.ts",
+    "lint": "tsc --noEmit && prettier --single-quote --check package.json tsconfig.json \"src/**/*.ts\"",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
