@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { IdentityService, InMemoryIdentityRepository } from './identity-domain';
+import {
+  IdentityService,
+  InMemoryIdentityRepository,
+  type IdentityProvider,
+} from './identity-domain';
 
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe('IdentityService', () => {
-  it('provisions one user and one personal workspace for a new external identity', () => {
+  it('provisions one user and one personal workspace for a new external identity', async () => {
     const service = new IdentityService(new InMemoryIdentityRepository());
 
-    const account = service.signInWithExternalIdentity({
+    const account = await service.signInWithExternalIdentity({
       provider: 'github',
       providerSubject: '8172694',
       displayName: 'Example User',
@@ -19,7 +23,7 @@ describe('IdentityService', () => {
     expect(account.workspace.ownerUserId).toBe(account.user.id);
   });
 
-  it('reuses the same internal account for repeated sign-in', () => {
+  it('reuses the same internal account for repeated sign-in', async () => {
     const service = new IdentityService(new InMemoryIdentityRepository());
     const input = {
       provider: 'google' as const,
@@ -27,15 +31,31 @@ describe('IdentityService', () => {
       displayName: 'Example User',
     };
 
-    const first = service.signInWithExternalIdentity(input);
-    const second = service.signInWithExternalIdentity(input);
+    const first = await service.signInWithExternalIdentity(input);
+    const second = await service.signInWithExternalIdentity(input);
 
     expect(second).toEqual(first);
   });
 
-  it('keeps provider subjects separate from internal identifiers', () => {
+  it('returns one account when first sign-ins race', async () => {
     const service = new IdentityService(new InMemoryIdentityRepository());
-    const account = service.signInWithExternalIdentity({
+    const input = {
+      provider: 'github' as const,
+      providerSubject: 'concurrent-subject',
+      displayName: 'Concurrent User',
+    };
+
+    const [first, second] = await Promise.all([
+      service.signInWithExternalIdentity(input),
+      service.signInWithExternalIdentity(input),
+    ]);
+
+    expect(second).toEqual(first);
+  });
+
+  it('keeps provider subjects separate from internal identifiers', async () => {
+    const service = new IdentityService(new InMemoryIdentityRepository());
+    const account = await service.signInWithExternalIdentity({
       provider: 'github',
       providerSubject: '123456',
       displayName: 'Example User',
@@ -45,15 +65,31 @@ describe('IdentityService', () => {
     expect(account.externalIdentity.providerSubject).toBe('123456');
   });
 
-  it('rejects an empty provider subject', () => {
+  it('rejects unsupported providers and empty required attributes', async () => {
     const service = new IdentityService(new InMemoryIdentityRepository());
 
-    expect(() =>
+    await expect(
+      service.signInWithExternalIdentity({
+        provider: 'gitlab' as IdentityProvider,
+        providerSubject: 'subject',
+        displayName: 'Example User',
+      }),
+    ).rejects.toThrowError('Unsupported identity provider');
+
+    await expect(
       service.signInWithExternalIdentity({
         provider: 'google',
         providerSubject: '   ',
         displayName: 'Example User',
       }),
-    ).toThrowError('Provider subject is required');
+    ).rejects.toThrowError('Provider subject is required');
+
+    await expect(
+      service.signInWithExternalIdentity({
+        provider: 'google',
+        providerSubject: 'subject',
+        displayName: '   ',
+      }),
+    ).rejects.toThrowError('Display name is required');
   });
 });
