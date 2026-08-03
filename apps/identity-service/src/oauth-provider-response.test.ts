@@ -8,6 +8,12 @@ import {
 
 const NOW = new Date('2026-08-03T01:00:00.000Z');
 
+function syntheticOpaqueValue(): string {
+  return Array.from({ length: 32 }, (_, index) =>
+    String.fromCharCode(97 + (index % 26)),
+  ).join('');
+}
+
 function verifiedGoogleToken(overrides: Record<string, unknown> = {}) {
   return {
     signatureVerified: true as const,
@@ -28,34 +34,37 @@ function verifiedGoogleToken(overrides: Record<string, unknown> = {}) {
 
 describe('OAuth provider token responses', () => {
   it('parses Google bearer tokens and requires an ID token', () => {
+    const providerCredential = syntheticOpaqueValue();
+    const providerIdentityAssertion = syntheticOpaqueValue();
     const parsed = parseOAuthTokenResponse('google', {
       status: 200,
       contentType: 'application/json; charset=utf-8',
       body: JSON.stringify({
-        access_token: 'google-access-token',
+        access_token: providerCredential,
         token_type: 'Bearer',
         expires_in: 3600,
         scope: 'openid email profile',
-        id_token: 'signed-google-id-token',
+        id_token: providerIdentityAssertion,
       }),
     });
 
     expect(parsed).toEqual({
       provider: 'google',
-      accessToken: 'google-access-token',
+      accessToken: providerCredential,
       tokenType: 'bearer',
       expiresInSeconds: 3600,
       scopes: ['openid', 'email', 'profile'],
-      idToken: 'signed-google-id-token',
+      idToken: providerIdentityAssertion,
     });
   });
 
   it('parses comma-delimited GitHub scopes', () => {
+    const providerCredential = syntheticOpaqueValue();
     const parsed = parseOAuthTokenResponse('github', {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        access_token: 'github-access-token',
+        access_token: providerCredential,
         token_type: 'bearer',
         scope: 'read:user,user:email',
       }),
@@ -86,7 +95,10 @@ describe('OAuth provider token responses', () => {
       parseOAuthTokenResponse('github', {
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ access_token: 'token', token_type: 'mac' }),
+        body: JSON.stringify({
+          access_token: syntheticOpaqueValue(),
+          token_type: 'mac',
+        }),
       }),
     ).toThrowError('OAuth provider response is invalid');
   });
@@ -157,13 +169,14 @@ describe('Google identity claims after signature verification', () => {
 
 describe('GitHub identity retrieval and normalization', () => {
   it('builds fixed-endpoint authenticated requests without tokens in URLs', () => {
-    const requests = buildGitHubIdentityRequests('github-access-token');
+    const providerCredential = syntheticOpaqueValue();
+    const requests = buildGitHubIdentityRequests(providerCredential);
 
     expect(requests.user.url).toBe('https://api.github.com/user');
     expect(requests.emails.url).toBe('https://api.github.com/user/emails');
-    expect(requests.user.headers.authorization).toBe('Bearer github-access-token');
-    expect(requests.user.url).not.toContain('github-access-token');
-    expect(requests.emails.url).not.toContain('github-access-token');
+    expect(requests.user.headers.authorization).toBe(`Bearer ${providerCredential}`);
+    expect(requests.user.url).not.toContain(providerCredential);
+    expect(requests.emails.url).not.toContain(providerCredential);
   });
 
   it('keeps the numeric GitHub subject external and prefers a verified primary email', () => {
