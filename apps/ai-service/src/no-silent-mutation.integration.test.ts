@@ -1,4 +1,7 @@
+import type { AddressInfo } from 'node:net';
+import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
+import { AiAppModule } from './main';
 import {
   type ProposalModel,
   ProposalService,
@@ -84,5 +87,54 @@ describe('AI proposal no-silent-mutation contract', () => {
       TypeError,
     );
     expect(JSON.stringify(state)).toBe(before);
+  });
+
+  it('exercises the production HTTP module without exposing a mutation route', async () => {
+    const state = userOwnedState();
+    const before = JSON.stringify(state);
+    const app = await NestFactory.create(AiAppModule, { logger: false });
+    await app.listen(0, '127.0.0.1');
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/v1/proposals`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-workspace-id': WORKSPACE_ID,
+          },
+          body: JSON.stringify(state),
+        },
+      );
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({
+        workspaceId: WORKSPACE_ID,
+        requiresConfirmation: true,
+        operations: [
+          {
+            kind: 'prioritize_item',
+            targetId: TASK_ID,
+          },
+        ],
+      });
+      expect(JSON.stringify(state)).toBe(before);
+
+      const unsupportedMutation = await fetch(
+        `http://127.0.0.1:${address.port}/v1/proposals/apply`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-workspace-id': WORKSPACE_ID,
+          },
+          body: JSON.stringify({ proposalId: PROPOSAL_ID }),
+        },
+      );
+      expect(unsupportedMutation.status).toBe(404);
+    } finally {
+      await app.close();
+    }
   });
 });
