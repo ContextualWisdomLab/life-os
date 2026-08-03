@@ -1,4 +1,4 @@
-name: Apply commercial readiness review fixes
+name: Prepare commercial readiness review fixes
 
 on:
   pull_request:
@@ -6,14 +6,14 @@ on:
     types: [opened, reopened, synchronize]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: apply-commercial-readiness-review-fixes-${{ github.event.pull_request.number }}
+  group: prepare-commercial-readiness-review-fixes-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  apply:
+  prepare:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository
       && github.event.pull_request.head.ref == 'feat/commercial-readiness-loop'
@@ -41,8 +41,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -127,9 +126,6 @@ jobs:
               workflow_path.write_text(workflow_text, encoding='utf-8')
           elif new_permissions not in workflow_text:
               raise SystemExit('commercial-readiness.yml: drain permissions changed')
-
-          Path('.github/workflows/finalize-commercial-readiness-fixes.yml').unlink()
-          Path('.github/workflows/run-finalizer-on-pr.yml').unlink(missing_ok=True)
           PY
 
       - name: Format CI-governed files only
@@ -149,7 +145,7 @@ jobs:
               ['git', 'diff', '--name-only'], text=True
           ).splitlines()
           for path in changed:
-              if path not in allowed and not path.startswith('.github/workflows/'):
+              if path not in allowed:
                   subprocess.run(['git', 'checkout', '--', path], check=True)
           PY
 
@@ -164,12 +160,26 @@ jobs:
           docker compose config --quiet
           git diff --check
 
-      - name: Commit validated fixes
+      - name: Remove generated build state
         run: |
           set -euo pipefail
-          git config user.name "LifeOS maintenance automation"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all
-          git diff --cached --check
-          git commit -m "fix: apply commercial readiness review fixes"
-          git push origin HEAD:feat/commercial-readiness-loop
+          git checkout -- apps/web/tsconfig.json 2>/dev/null || true
+          rm -f apps/web/tsconfig.tsbuildinfo pnpm-lock.yaml
+          git diff --check
+
+      - name: Package validated files
+        run: |
+          set -euo pipefail
+          git diff --name-only > review-fixes-files.txt
+          test -s review-fixes-files.txt
+          tar -czf review-fixes-files.tar.gz -T review-fixes-files.txt
+
+      - name: Upload validated files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: commercial-readiness-review-fixes-${{ github.event.pull_request.head.sha }}
+          path: |
+            review-fixes-files.tar.gz
+            review-fixes-files.txt
+          if-no-files-found: error
+          retention-days: 1
