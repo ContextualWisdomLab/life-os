@@ -1,0 +1,71 @@
+name: Data Rights Hardening Once
+
+on:
+  push:
+    branches: [feat/data-rights-orchestration]
+    paths: [.github/workflows/data-rights-hardening-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/data-rights-orchestration
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply reviewed data-rights hardening
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('apps/data-rights-service/src/data-rights.ts')
+          text = path.read_text()
+          old_guard = "if (typeof value !== 'object' || value === null) {"
+          new_guard = "if (typeof value !== 'object') {"
+          if old_guard not in text:
+            raise SystemExit('review guard target not found')
+          text = text.replace(old_guard, new_guard, 1)
+
+          old_sort = '''.sort((left, right) =>
+                        canonicalStringify(left).localeCompare(canonicalStringify(right)),
+                      );'''
+          new_sort = '''.sort((left, right) => {
+                        const leftValue = canonicalStringify(left);
+                        const rightValue = canonicalStringify(right);
+                        return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+                      });'''
+          if old_sort not in text:
+            raise SystemExit('deterministic sort target not found')
+          text = text.replace(old_sort, new_sort, 1)
+          path.write_text(text)
+
+      - name: Format and validate service
+        run: |
+          pnpm exec prettier --write apps/data-rights-service/src/data-rights.ts
+          pnpm --filter @life-os/data-rights-service typecheck
+          pnpm --filter @life-os/data-rights-service test
+
+      - name: Remove one-time workflow and commit
+        run: |
+          rm .github/workflows/data-rights-hardening-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/data-rights-service/src/data-rights.ts .github/workflows/data-rights-hardening-once.yml
+          git commit -m "fix(data-rights): harden canonical validation"
+          git push origin HEAD:feat/data-rights-orchestration
