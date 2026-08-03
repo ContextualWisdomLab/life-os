@@ -1,16 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const EXISTING_ACTION_ID = '3b237d04-e84c-4ac4-933d-7f179865e1a0';
 
-async function clearBrowserState(page: Parameters<typeof test>[0]['page']) {
+async function clearBrowserState(page: Page): Promise<void> {
   await page.goto('/onboarding');
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
 }
 
-async function seedExistingPriority(
-  page: Parameters<typeof test>[0]['page'],
-): Promise<string> {
+async function seedExistingPriority(page: Page): Promise<string> {
   return await page.evaluate((actionId) => {
     const now = new Date();
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
