@@ -7,6 +7,7 @@ global:
 
 rule_files:
   - alerts.yml
+  - planning-alerts.yml
 
 scrape_configs:
   - job_name: life-os-gateway
@@ -16,5 +17,15 @@ scrape_configs:
     static_configs:
       - targets:
           - gateway:4000
+        labels:
+          environment: reference
+
+  - job_name: life-os-planning-service
+    honor_labels: false
+    scheme: http
+    metrics_path: /v1/metrics
+    static_configs:
+      - targets:
+          - planning-service:4102
         labels:
           environment: reference
