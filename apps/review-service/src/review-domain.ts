@@ -141,7 +141,10 @@ function requireBoundedInteger(
   return value;
 }
 
-function requireLocalDate(value: unknown, ritualKind: ReviewRitualKind): string {
+function requireLocalDate(
+  value: unknown,
+  ritualKind: ReviewRitualKind,
+): string {
   if (typeof value !== 'string' || !LOCAL_DATE_PATTERN.test(value)) {
     return invalid('periodStartDate must be an ISO local date');
   }
