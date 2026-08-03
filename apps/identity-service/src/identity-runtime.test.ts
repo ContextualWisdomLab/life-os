@@ -5,6 +5,7 @@ const KEY = Buffer.alloc(32, 7).toString('base64');
 const DATABASE_PROTOCOL = ['post', 'gresql'].join('');
 const DATABASE_USER = ['iden', 'tity'].join('');
 const DATABASE_PASSWORD = ['test', 'credential'].join('-');
+const CLIENT_CREDENTIAL = ['test', 'client', 'credential'].join('-');
 const DATABASE_URL = [
   DATABASE_PROTOCOL,
   '://',
@@ -22,9 +23,11 @@ function environment(
     IDENTITY_OAUTH_KEY_VERSION: 'version_one',
     IDENTITY_OAUTH_KEYS: JSON.stringify({ version_one: KEY }),
     IDENTITY_GOOGLE_CLIENT_ID: 'google-client',
+    IDENTITY_GOOGLE_CLIENT_SECRET: CLIENT_CREDENTIAL,
     IDENTITY_GOOGLE_REDIRECT_URI:
       'https://identity.example.test/v1/auth/google/callback',
     IDENTITY_GITHUB_CLIENT_ID: 'github-client',
+    IDENTITY_GITHUB_CLIENT_SECRET: CLIENT_CREDENTIAL,
     IDENTITY_GITHUB_REDIRECT_URI:
       'https://identity.example.test/v1/auth/github/callback',
     LIFE_OS_WEB_ORIGIN: 'https://app.example.test',
@@ -38,6 +41,7 @@ describe('createIdentityRuntime', () => {
     expect(runtime.application.postLoginRedirect()).toBe(
       'https://app.example.test/auth/complete',
     );
+    expect(runtime.callbackApplication).toBeDefined();
     await runtime.close();
     await runtime.close();
   });
@@ -47,8 +51,10 @@ describe('createIdentityRuntime', () => {
     ['IDENTITY_OAUTH_KEY_VERSION', undefined],
     ['IDENTITY_OAUTH_KEYS', undefined],
     ['IDENTITY_GOOGLE_CLIENT_ID', undefined],
+    ['IDENTITY_GOOGLE_CLIENT_SECRET', undefined],
     ['IDENTITY_GOOGLE_REDIRECT_URI', undefined],
     ['IDENTITY_GITHUB_CLIENT_ID', undefined],
+    ['IDENTITY_GITHUB_CLIENT_SECRET', undefined],
     ['IDENTITY_GITHUB_REDIRECT_URI', undefined],
     ['LIFE_OS_WEB_ORIGIN', undefined],
   ])('fails startup when %s is missing', (name, value) => {
