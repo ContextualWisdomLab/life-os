@@ -1,0 +1,12 @@
+{
+  "schema": "life-os.appguardrail-contract.v1",
+  "expected_findings": [
+    {
+      "issue": 16,
+      "rule_id": "dangerous-cors",
+      "severity": "HIGH",
+      "context": "test",
+      "file": "tests/appguardrail-fixtures/dangerous-cors.ts"
+    }
+  ]
+}
