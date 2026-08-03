@@ -19,7 +19,7 @@ The source of truth is the Prometheus exposition at `GET /v1/metrics`, scraped b
 
 **Objective:** at least **99.9%** of completed user-facing gateway requests succeed over a rolling 30-day window.
 
-A request is good when its response status class is not `5xx`. A request is total when it reaches the gateway and completes on a route other than `/v1/health` or `/v1/metrics`. Client failures (`4xx`) remain in the denominator and are treated as available because the gateway produced a bounded response; separate product telemetry must detect unusable client flows.
+A request is good when its response status class is not `5xx`. A request is total when it reaches the gateway and completes on a route other than `/v1/health` or `/v1/metrics`. Client failures (`4xx`) remain in the denominator and are treated as available because the gateway produced a bounded response; separate product telemetry must detect unusable client flows. Responses closed before normal completion are finalized as synthetic status `499` so they cannot leak the in-flight gauge.
 
 ```promql
 1 - (
@@ -60,21 +60,35 @@ clamp_min(sum(rate(life_os_http_request_duration_seconds_count{
 }[30d])), 0.000001)
 ```
 
+```promql
+sum(rate(life_os_http_request_duration_seconds_bucket{
+  service="life-os-gateway",
+  route!~"/v1/(health|metrics)",
+  le="2"
+}[30d]))
+/
+clamp_min(sum(rate(life_os_http_request_duration_seconds_count{
+  service="life-os-gateway",
+  route!~"/v1/(health|metrics)"
+}[30d])), 0.000001)
+```
+
 ## Alert policy
 
 `infra/observability/alerts.yml` implements the first error-budget gates.
 
-- `LifeOsGatewayTargetDown` pages the operator when Prometheus cannot scrape the gateway for five minutes. Verify process, network, and metrics-route reachability.
+- `LifeOsGatewayTargetDown` pages the operator when the gateway reports down or disappears from service discovery for five minutes. Verify process, discovery, network, and metrics-route reachability.
 - `LifeOsGatewayAvailabilityFastBurn` pages immediately when the five-minute and one-hour server-error ratios exceed a 14.4x burn rate. Stop risky rollout activity and mitigate user impact.
 - `LifeOsGatewayAvailabilitySlowBurn` opens an operational incident when the 30-minute and six-hour server-error ratios exceed a 6x burn rate. Assign remediation within the same working period.
 - `LifeOsGatewayLatencyBudgetBurn` opens an operational incident when more than 30% of requests exceed 500 ms for 15 minutes. Investigate saturation and downstream latency.
+- `LifeOsGatewayTailLatencyBudgetBurn` opens an operational incident when more than 6% of requests exceed 2 seconds for 15 minutes. Investigate tail latency before the 99% objective exhausts its budget.
 
 A page is actionable only when the operator has access to the deployment, current release identifier, gateway logs, and recent change history. Alert delivery and dashboards remain deployment responsibilities until a reference production stack is added.
 
 ## Incident and error-budget policy
 
 1. Confirm the alert from raw Prometheus data and check whether the metrics target itself is failing.
-2. Use the response `x-correlation-id` to locate matching credential-free application logs. Correlation propagation into every downstream service is a required follow-up and must not be assumed before it is implemented.
+2. Capture the response `x-correlation-id` from an affected client as incident evidence. This slice exposes the identifier only in the response header and does not yet emit correlated application logs or propagate it downstream; do not assume log lookup is available.
 3. Mitigate user impact first through rollback, traffic reduction, or dependency isolation; preserve evidence for diagnosis.
 4. Record the start, detection, mitigation, recovery, affected routes, release identifier, and consumed error budget.
 5. When the rolling availability budget is exhausted, freeze reliability-risking feature releases until the responsible failure mode is corrected and verified. Security fixes and changes that reduce user impact may proceed with explicit review.
