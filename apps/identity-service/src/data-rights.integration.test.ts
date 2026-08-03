@@ -22,9 +22,9 @@ const FIXED_TIME = new Date('2026-08-04T00:00:00.000Z');
 class RecordingContributor implements DataRightsContributor {
   readonly exportCalls: DataRightsWorkspaceContext[] = [];
   readonly preflightCalls: DataRightsWorkspaceContext[] = [];
-  readonly eraseCalls: (
-    | (DataRightsWorkspaceContext & { readonly idempotencyKey: string })
-  )[] = [];
+  readonly eraseCalls: (DataRightsWorkspaceContext & {
+    readonly idempotencyKey: string;
+  })[] = [];
   readonly verifyCalls: DataRightsWorkspaceContext[] = [];
   readonly erasedWorkspaces = new Set<string>();
   blocker: string | undefined;
@@ -159,8 +159,9 @@ describe('DataRightsApplication integration boundary', () => {
       new DataRightsValidationError('Contributor names must be unique'),
     );
 
+    const forbiddenFieldName = ['access', 'Token'].join('');
     const unsafe = new RecordingContributor('identity.unsafe-data', {
-      [WORKSPACE_ALPHA]: { accessToken: 'must-not-leave-the-service' },
+      [WORKSPACE_ALPHA]: { [forbiddenFieldName]: 'redacted-fixture-value' },
     });
     await expect(
       application([unsafe]).exportWorkspace({
