@@ -11,6 +11,7 @@ import {
 const WORKSPACE_ID = '43eab0ee-0f7b-4c7f-9331-b133f2647675';
 const TASK_ID = 'e29c36af-999a-407f-9ca9-cfe194ab51f4';
 const PROPOSAL_ID = 'aedcb1d1-cc60-42c6-9357-ec90821fce1b';
+const SYNTHETIC_CSRF_TOKEN = 'synthetic-test-csrf-token';
 
 function userOwnedState(): {
   objective: string;
@@ -102,6 +103,7 @@ describe('AI proposal no-silent-mutation contract', () => {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
+            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
             'x-workspace-id': WORKSPACE_ID,
           },
           body: JSON.stringify(state),
@@ -127,6 +129,7 @@ describe('AI proposal no-silent-mutation contract', () => {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
+            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
             'x-workspace-id': WORKSPACE_ID,
           },
           body: JSON.stringify({ proposalId: PROPOSAL_ID }),
