@@ -82,6 +82,34 @@ jobs:
             appguardrail-findings.json \
             security/appguardrail-contract.json
 
+      - name: Redact finding snippets from retained evidence
+        id: redact_evidence
+        if: always() && hashFiles('appguardrail-findings.json') != ''
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          evidence_path = Path("appguardrail-findings.json")
+          evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+          if evidence.get("schema") != "appguardrail.findings.v1":
+              raise SystemExit("Invalid AppGuardrail evidence schema")
+          findings = evidence.get("findings")
+          if not isinstance(findings, list):
+              raise SystemExit("Invalid AppGuardrail findings collection")
+          for finding in findings:
+              if not isinstance(finding, dict):
+                  raise SystemExit("Invalid AppGuardrail finding")
+              if "snippet" in finding:
+                  finding["snippet"] = "[redacted by LifeOS CI]"
+          evidence_path.write_text(
+              json.dumps(evidence, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
       - name: Upload AppGuardrail SARIF to code scanning
         if: >-
           always()
@@ -93,7 +121,10 @@ jobs:
           sarif_file: appguardrail.sarif
 
       - name: Upload AppGuardrail evidence
-        if: always()
+        if: >-
+          always()
+          && steps.redact_evidence.outcome == 'success'
+          && hashFiles('appguardrail.sarif') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: appguardrail-evidence
@@ -101,6 +132,7 @@ jobs:
             appguardrail-findings.json
             appguardrail.sarif
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
 
       - name: Enforce AppGuardrail gate
@@ -108,6 +140,7 @@ jobs:
         env:
           SCAN_OUTCOME: ${{ steps.appguardrail.outcome }}
           CONTRACT_OUTCOME: ${{ steps.detector_contract.outcome }}
+          REDACTION_OUTCOME: ${{ steps.redact_evidence.outcome }}
         run: |
           set -euo pipefail
           if [ "$SCAN_OUTCOME" != "success" ]; then
@@ -116,6 +149,10 @@ jobs:
           fi
           if [ "$CONTRACT_OUTCOME" != "success" ]; then
             echo "::error::AppGuardrail detector contract verification failed."
+            exit 1
+          fi
+          if [ "$REDACTION_OUTCOME" != "success" ]; then
+            echo "::error::AppGuardrail evidence redaction failed."
             exit 1
           fi
           if [ ! -s appguardrail-findings.json ] || [ ! -s appguardrail.sarif ]; then
