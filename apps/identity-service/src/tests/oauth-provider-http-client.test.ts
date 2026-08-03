@@ -64,19 +64,23 @@ afterEach(() => {
 
 describe('BoundedOAuthProviderHttpClient', () => {
   it('executes an exact token request without redirects or ambient credentials', async () => {
+    let capturedInit: RequestInit | undefined;
     const fetchFunction: OAuthProviderFetch = vi.fn(async (_input, init) => {
-      expect(init.method).toBe('POST');
-      expect(init.redirect).toBe('error');
-      expect(init.credentials).toBe('omit');
-      expect(init.cache).toBe('no-store');
-      expect(init.referrerPolicy).toBe('no-referrer');
-      expect(init.signal).toBeInstanceOf(AbortSignal);
+      capturedInit = init;
       return jsonResponse({ token_type: 'bearer' });
     });
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
     const result = await client.execute(googleTokenRequest());
 
+    expect(capturedInit).toMatchObject({
+      method: 'POST',
+      redirect: 'error',
+      credentials: 'omit',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+    });
+    expect(capturedInit?.signal).toBeInstanceOf(AbortSignal);
     expect(fetchFunction).toHaveBeenCalledOnce();
     expect(fetchFunction).toHaveBeenCalledWith(
       'https://oauth2.googleapis.com/token',
@@ -119,17 +123,19 @@ describe('BoundedOAuthProviderHttpClient', () => {
     {
       name: 'query-bearing endpoint',
       request: {
+        ...buildGitHubIdentityRequests(
+          syntheticOpaqueValue('github-query-endpoint'),
+        ).user,
         url: 'https://api.github.com/user?target=https://example.test',
-        method: 'GET' as const,
-        headers: {},
       },
     },
     {
       name: 'unapproved endpoint',
       request: {
+        ...buildGitHubIdentityRequests(
+          syntheticOpaqueValue('github-unapproved-endpoint'),
+        ).user,
         url: 'https://api.github.com/repos/example/private',
-        method: 'GET' as const,
-        headers: {},
       },
     },
     {
@@ -166,8 +172,8 @@ describe('BoundedOAuthProviderHttpClient', () => {
     expect(fetchFunction).not.toHaveBeenCalled();
   });
 
-  it('rejects redirects, non-JSON responses, and oversized response streams generically', async () => {
-    const responses = [
+  it('rejects redirect status responses generically', async () => {
+    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
       new Response('', {
         status: 302,
         headers: {
@@ -175,30 +181,48 @@ describe('BoundedOAuthProviderHttpClient', () => {
           'content-type': 'application/json',
         },
       }),
-      new Response('<html>upstream failure</html>', {
-        status: 502,
-        headers: { 'content-type': 'text/html' },
-      }),
-      jsonResponse({ value: 'x'.repeat(64 * 1024) }),
-    ];
-    const fetchFunction: OAuthProviderFetch = vi.fn(async () => {
-      const response = responses.shift();
-      if (!response) {
-        throw new Error('unexpected test request');
-      }
-      return response;
-    });
+    );
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
     await expect(client.execute(googleTokenRequest())).rejects.toThrow(
       'OAuth provider request failed',
     );
+  });
+
+  it('rejects non-JSON provider responses generically', async () => {
+    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
+      new Response('<html>upstream failure</html>', {
+        status: 502,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
+
     await expect(client.execute(googleTokenRequest())).rejects.toThrow(
       'OAuth provider request failed',
     );
+  });
+
+  it('rejects and cancels oversized provider response streams generically', async () => {
+    const cancel = vi.fn();
+    const responseBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024 + 1));
+      },
+      cancel,
+    });
+    const fetchFunction: OAuthProviderFetch = vi.fn(async () =>
+      new Response(responseBody, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
+
     await expect(client.execute(googleTokenRequest())).rejects.toThrow(
       'OAuth provider request failed',
     );
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it('aborts an upstream request at the configured deadline', async () => {
@@ -242,17 +266,46 @@ describe('BoundedOAuthProviderHttpClient', () => {
     });
     const client = new BoundedOAuthProviderHttpClient({ fetchFunction });
 
-    await expect(client.execute(request)).rejects.toEqual(
-      new Error('OAuth provider request failed'),
-    );
+    const error = await client
+      .execute(request)
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    const providerError = error as Error;
+    expect(providerError.message).toBe('OAuth provider request failed');
+    expect(providerError.cause).toBeUndefined();
+    expect(
+      JSON.stringify({
+        name: providerError.name,
+        message: providerError.message,
+        cause: providerError.cause,
+        stack: providerError.stack,
+      }),
+    ).not.toContain(providerCredential);
   });
 
-  it('rejects unsafe timeout configuration', () => {
-    expect(() => new BoundedOAuthProviderHttpClient({ timeoutMs: 99 })).toThrow(
-      'OAuth provider request failed',
-    );
+  it('accepts timeout boundaries and rejects unsafe timeout configuration', () => {
+    const fetchFunction: OAuthProviderFetch = vi.fn(async () => jsonResponse({}));
+
     expect(
-      () => new BoundedOAuthProviderHttpClient({ timeoutMs: 10_001 }),
-    ).toThrow('OAuth provider request failed');
+      () =>
+        new BoundedOAuthProviderHttpClient({
+          fetchFunction,
+          timeoutMs: 100,
+        }),
+    ).not.toThrow();
+    expect(
+      () =>
+        new BoundedOAuthProviderHttpClient({
+          fetchFunction,
+          timeoutMs: 10_000,
+        }),
+    ).not.toThrow();
+    for (const timeoutMs of [99, 100.5, 10_001]) {
+      expect(
+        () =>
+          new BoundedOAuthProviderHttpClient({ fetchFunction, timeoutMs }),
+      ).toThrow('OAuth provider request failed');
+    }
   });
 });
