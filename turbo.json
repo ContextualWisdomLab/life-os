@@ -1,5 +1,10 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "HABIT_DATABASE_URL",
+    "IDENTITY_DATABASE_URL",
+    "PLANNING_DATABASE_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
