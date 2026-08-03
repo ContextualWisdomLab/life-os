@@ -1,0 +1,98 @@
+groups:
+  - name: life-os-gateway-slo
+    interval: 30s
+    rules:
+      - alert: LifeOsGatewayTargetDown
+        expr: |
+          (up{job="life-os-gateway"} == 0)
+          or
+          absent(up{job="life-os-gateway"})
+        for: 5m
+        labels:
+          severity: page
+          service: life-os-gateway
+        annotations:
+          summary: LifeOS gateway metrics target is unavailable
+          description: The gateway has been down or absent from service discovery for five minutes.
+
+      - alert: LifeOsGatewayAvailabilityFastBurn
+        expr: |
+          (
+            sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)",status_class="5xx"}[5m]))
+            /
+            clamp_min(sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)"}[5m])), 0.000001)
+          ) > 0.0144
+          and
+          (
+            sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)",status_class="5xx"}[1h]))
+            /
+            clamp_min(sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)"}[1h])), 0.000001)
+          ) > 0.0144
+        for: 2m
+        labels:
+          severity: page
+          service: life-os-gateway
+          slo: availability
+        annotations:
+          summary: LifeOS gateway availability error budget is burning rapidly
+          description: Both the five-minute and one-hour error ratios exceed the 14.4x burn threshold for the 99.9% availability objective.
+
+      - alert: LifeOsGatewayAvailabilitySlowBurn
+        expr: |
+          (
+            sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)",status_class="5xx"}[30m]))
+            /
+            clamp_min(sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)"}[30m])), 0.000001)
+          ) > 0.006
+          and
+          (
+            sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)",status_class="5xx"}[6h]))
+            /
+            clamp_min(sum(rate(life_os_http_requests_total{service="life-os-gateway",route!~"/v1/(health|metrics)"}[6h])), 0.000001)
+          ) > 0.006
+        for: 15m
+        labels:
+          severity: ticket
+          service: life-os-gateway
+          slo: availability
+        annotations:
+          summary: LifeOS gateway availability error budget is burning persistently
+          description: Both the 30-minute and six-hour error ratios exceed the 6x burn threshold for the 99.9% availability objective.
+
+      - alert: LifeOsGatewayLatencyBudgetBurn
+        expr: |
+          (
+            1 -
+            (
+              sum(rate(life_os_http_request_duration_seconds_bucket{service="life-os-gateway",route!~"/v1/(health|metrics)",le="0.5"}[30m]))
+              /
+              clamp_min(sum(rate(life_os_http_request_duration_seconds_count{service="life-os-gateway",route!~"/v1/(health|metrics)"}[30m])), 0.000001)
+            )
+          ) > 0.3
+        for: 15m
+        labels:
+          severity: ticket
+          service: life-os-gateway
+          slo: latency
+        annotations:
+          summary: LifeOS gateway latency error budget is burning
+          description: More than 30% of user-facing requests have exceeded 500 ms for 15 minutes, consuming the 95% latency objective at greater than 6x burn.
+
+      - alert: LifeOsGatewayTailLatencyBudgetBurn
+        expr: |
+          (
+            1 -
+            (
+              sum(rate(life_os_http_request_duration_seconds_bucket{service="life-os-gateway",route!~"/v1/(health|metrics)",le="2"}[30m]))
+              /
+              clamp_min(sum(rate(life_os_http_request_duration_seconds_count{service="life-os-gateway",route!~"/v1/(health|metrics)"}[30m])), 0.000001)
+            )
+          ) > 0.01
+        for: 15m
+        labels:
+          severity: ticket
+          service: life-os-gateway
+          slo: tail-latency
+        annotations:
+          summary: LifeOS gateway tail-latency objective is violated
+          description: More than 1% of user-facing requests have exceeded 2 seconds for 15 minutes, violating the 99% tail-latency objective.
