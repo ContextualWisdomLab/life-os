@@ -16,7 +16,13 @@ Database triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` operations on comple
 
 A duplicate completion command is recovered only when PostgreSQL reports the named idempotency constraint. The persisted scheduled date and completion timestamp must match the replay payload; conflicting reuse is rejected. Other driver or transport failures are converted to a credential-free `HabitPersistenceError` rather than exposing connection details.
 
-CI applies the migration to the disposable PostgreSQL service through `HABIT_DATABASE_URL` and exercises restart durability, tenant isolation, concurrent duplicate serialization, conflicting replay rejection, stable ordering, and append-only `UPDATE`, `DELETE`, and `TRUNCATE` enforcement.
+## Runtime configuration
+
+The production NestJS module requires `HABIT_DATABASE_URL` using the `postgres:` or `postgresql:` scheme. Optional bounded settings are `HABIT_DATABASE_POOL_MAX` (`1`–`32`, default `10`), `HABIT_DATABASE_CONNECT_TIMEOUT_MS` (`100`–`30000`, default `5000`), and `HABIT_DATABASE_IDLE_TIMEOUT_MS` (`1000`–`300000`, default `30000`). The pool identifies itself as `life-os-habit-service` and is closed exactly once through NestJS shutdown hooks.
+
+The versioned API accepts tenant ownership only from `x-workspace-id` and exposes habit creation/listing, occurrence generation, idempotent completion commands, and completion history below `/v1`. Validation and persistence failures return bounded problem details without SQL, connection strings, or credentials.
+
+CI applies the migration to the disposable PostgreSQL service through `HABIT_DATABASE_URL` and exercises restart durability, tenant isolation, concurrent duplicate serialization, HTTP lifecycle behavior, conflicting replay rejection, stable ordering, and append-only `UPDATE`, `DELETE`, and `TRUNCATE` enforcement.
 
 ## Rollback
 
