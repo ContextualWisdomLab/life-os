@@ -71,10 +71,7 @@ export class InMemoryPlanningRepository implements PlanningRepository {
     );
   }
 
-  async listProjects(
-    workspaceId: string,
-    goalId: string,
-  ): Promise<Project[]> {
+  async listProjects(workspaceId: string, goalId: string): Promise<Project[]> {
     return [...this.projects.values()].filter(
       (project) =>
         project.workspaceId === workspaceId && project.goalId === goalId,
@@ -112,7 +109,10 @@ function createOpaqueId(): string {
 export class PlanningService {
   constructor(private readonly repository: PlanningRepository) {}
 
-  async createGoal(workspaceId: string, input: { title: string }): Promise<Goal> {
+  async createGoal(
+    workspaceId: string,
+    input: { title: string },
+  ): Promise<Goal> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const goal: Goal = {
       id: createOpaqueId(),
