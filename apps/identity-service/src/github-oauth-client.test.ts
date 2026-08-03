@@ -165,7 +165,10 @@ describe('GitHubOAuthClient', () => {
   });
 
   it.each([
-    ['token rejection', async () => jsonResult({ error: 'invalid_grant' }, 401)],
+    [
+      'token rejection',
+      async () => jsonResult({ error: 'invalid_grant' }, 401),
+    ],
     [
       'malformed user response',
       async (request: OAuthProviderHttpRequest) =>
