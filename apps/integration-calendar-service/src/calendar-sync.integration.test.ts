@@ -61,6 +61,10 @@ function timeBlock(providerEtag?: string): Record<string, unknown> {
   return providerEtag ? { ...base, providerEtag } : base;
 }
 
+function unfoldIcalendar(value: string): string {
+  return value.replace(/\r\n[ \t]/g, '');
+}
+
 async function postSync(
   port: number,
   workspaceId: string,
@@ -141,13 +145,16 @@ describe('calendar synchronization HTTP boundary', () => {
 
       const storedResources = Array.from(provider.resources.values());
       expect(storedResources).toHaveLength(2);
-      expect(storedResources[0]?.calendarData).toContain(
+      const primaryCalendarData = unfoldIcalendar(
+        storedResources[0]?.calendarData ?? '',
+      );
+      expect(primaryCalendarData).toContain(
         'SUMMARY:Plan\\, review\\; next\\nstep',
       );
-      expect(storedResources[0]?.calendarData).toContain(
+      expect(primaryCalendarData).toContain(
         `UID:${WORKSPACE_ID}.${BLOCK_ID}@life-os`,
       );
-      expect(storedResources[0]?.calendarData).not.toContain('authorization');
+      expect(primaryCalendarData).not.toContain('authorization');
       expect(provider.methods.every((method) => method === 'PUT')).toBe(true);
 
       const unsupportedDelete = await fetch(
