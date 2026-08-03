@@ -157,9 +157,7 @@ describe('PostgresPlanningRepository', () => {
     ]);
 
     expect(client.calls[0]?.text).toContain('WHERE workspace_id = $1');
-    expect(client.calls[0]?.text).toContain(
-      'ORDER BY created_at ASC, id ASC',
-    );
+    expect(client.calls[0]?.text).toContain('ORDER BY created_at ASC, id ASC');
     expect(client.calls[0]?.values).toEqual([WORKSPACE_ID]);
     expect(client.calls[1]?.text).toContain('JOIN planning.goals');
     expect(client.calls[1]?.values).toEqual([WORKSPACE_ID, GOAL_ID]);
