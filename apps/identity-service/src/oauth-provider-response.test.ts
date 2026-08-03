@@ -108,7 +108,7 @@ describe('Google identity claims after signature verification', () => {
     });
   });
 
-  it('rejects unsigned, expired, nonce-mismatched, and ambiguous-audience claims', () => {
+  it('rejects unsigned, malformed, expired, nonce-mismatched, and ambiguous claims', () => {
     expect(() =>
       validateVerifiedGoogleIdentity(
         { signatureVerified: false as never, claims: verifiedGoogleToken().claims },
@@ -118,9 +118,24 @@ describe('Google identity claims after signature verification', () => {
 
     expect(() =>
       validateVerifiedGoogleIdentity(
+        { signatureVerified: true, claims: null as never },
+        { clientId: 'google-client-id', nonce: 'expected-nonce', now: NOW },
+      ),
+    ).toThrowError('Google ID token is invalid');
+
+    expect(() =>
+      validateVerifiedGoogleIdentity(
         verifiedGoogleToken({ exp: Math.floor(NOW.getTime() / 1000) - 301 }),
         { clientId: 'google-client-id', nonce: 'expected-nonce', now: NOW },
       ),
+    ).toThrowError('Google ID token is invalid');
+
+    expect(() =>
+      validateVerifiedGoogleIdentity(verifiedGoogleToken({ iat: undefined }), {
+        clientId: 'google-client-id',
+        nonce: 'expected-nonce',
+        now: NOW,
+      }),
     ).toThrowError('Google ID token is invalid');
 
     expect(() =>
