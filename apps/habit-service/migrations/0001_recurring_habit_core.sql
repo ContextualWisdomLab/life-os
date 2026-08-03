@@ -96,4 +96,9 @@ BEFORE UPDATE OR DELETE ON habit.completion_events
 FOR EACH ROW
 EXECUTE FUNCTION habit.reject_completion_mutation();
 
+CREATE TRIGGER completion_events_reject_truncate
+BEFORE TRUNCATE ON habit.completion_events
+FOR EACH STATEMENT
+EXECUTE FUNCTION habit.reject_completion_mutation();
+
 COMMIT;
