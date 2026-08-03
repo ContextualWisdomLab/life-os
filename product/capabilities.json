@@ -1,0 +1,345 @@
+{
+  "schema": "life-os.capability-manifest.v1",
+  "capabilities": [
+    {
+      "id": "platform.msa-foundation",
+      "outcome": "Contributors can build, test, and run the bounded services from one reproducible repository.",
+      "target_maturity": "production",
+      "customer_impact": 3,
+      "risk": 4,
+      "acquisition_impact": 5,
+      "effort": 2,
+      "dependencies": [],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "package.json" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "compose.yaml" },
+        { "maturity": "production", "kind": "workflow", "mode": "exists", "path": ".github/workflows/ci.yml" }
+      ]
+    },
+    {
+      "id": "security.appguardrail-gate",
+      "outcome": "Every change is blocked when AppGuardrail finds a deploy-blocking application vulnerability.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 2,
+      "dependencies": ["platform.msa-foundation"],
+      "tracking_issue": 16,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": ".appguardrail.json" },
+        { "maturity": "usable", "kind": "workflow", "mode": "exists", "path": ".github/workflows/appguardrail.yml" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "packages/appguardrail-contract/src/verify-contract.test.mjs" }
+      ]
+    },
+    {
+      "id": "automation.commercial-readiness-loop",
+      "outcome": "An hourly evidence loop exposes buyer-visible gaps and drains only fully reviewed, fully passing pull requests.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 3,
+      "dependencies": ["platform.msa-foundation", "security.appguardrail-gate"],
+      "tracking_issue": 19,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "packages/commercial-readiness/src/audit.mjs" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "product/capabilities.json" },
+        { "maturity": "usable", "kind": "workflow", "mode": "exists", "path": ".github/workflows/commercial-readiness.yml" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "packages/commercial-readiness/src/pr-gate.test.mjs" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "packages/commercial-readiness/src/workflow-contract.test.mjs" }
+      ]
+    },
+    {
+      "id": "identity.oauth-session",
+      "outcome": "A user can sign in with Google or GitHub and receive a secure, revocable, workspace-scoped browser session.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["platform.msa-foundation", "security.appguardrail-gate"],
+      "tracking_issue": 18,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/identity-service/src/oauth-provider.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "contains", "path": "apps/identity-service/src/main.ts", "value": "auth/google/start" },
+        { "maturity": "usable", "kind": "implementation", "mode": "contains", "path": "apps/identity-service/src/main.ts", "value": "auth/github/callback" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/identity-service/src/oauth-http.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "planning.durable-data",
+      "outcome": "Goals, projects, milestones, and tasks remain tenant-safe and survive process restarts.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["platform.msa-foundation", "identity.oauth-session"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/planning-service/src/planning-domain.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/planning-service/src/postgres-planning-repository.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "not_contains", "path": "apps/planning-service/src/main.ts", "value": "InMemoryPlanningRepository" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/planning-service/src/postgres-planning-repository.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "habit.recurring-core",
+      "outcome": "Users can define recurring habits, see generated occurrences, and retain immutable completion history.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 3,
+      "acquisition_impact": 4,
+      "effort": 4,
+      "dependencies": ["identity.oauth-session"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/habit-service/src/main.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "contains", "path": "apps/habit-service/src/main.ts", "value": "@Post('habits')" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/habit-service/src/habit-service.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "review.guided-loop",
+      "outcome": "Users can complete daily planning, shutdown, and weekly review rituals using durable progress evidence.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 3,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["planning.durable-data", "habit.recurring-core"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/review-service/src/main.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "contains", "path": "apps/review-service/src/main.ts", "value": "weekly-review" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/review-service/src/review-service.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "today.action-loop",
+      "outcome": "The Today experience turns goals into realistic priorities, scheduled work, and completed actions.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 3,
+      "acquisition_impact": 5,
+      "effort": 5,
+      "dependencies": ["identity.oauth-session", "planning.durable-data", "habit.recurring-core"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/web/app/page.tsx" },
+        { "maturity": "usable", "kind": "implementation", "mode": "not_contains", "path": "apps/web/app/page.tsx", "value": "No tasks yet" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/web/e2e/today-flow.spec.ts" }
+      ]
+    },
+    {
+      "id": "onboarding.first-run",
+      "outcome": "A new user reaches a useful first plan without reading documentation or configuring infrastructure.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 2,
+      "acquisition_impact": 5,
+      "effort": 3,
+      "dependencies": ["identity.oauth-session", "today.action-loop"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/web/app/onboarding/page.tsx" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/web/app/onboarding/onboarding-flow.tsx" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/web/e2e/onboarding.spec.ts" }
+      ]
+    },
+    {
+      "id": "calendar.time-blocking",
+      "outcome": "Users can place work on a calendar and synchronize commitments without duplicate or destructive updates.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 4,
+      "acquisition_impact": 5,
+      "effort": 5,
+      "dependencies": ["identity.oauth-session", "planning.durable-data"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/integration-calendar-service/src/main.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "contains", "path": "apps/integration-calendar-service/src/main.ts", "value": "google" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/integration-calendar-service/src/calendar-sync.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "capture.search",
+      "outcome": "Users can capture an item in seconds and retrieve any goal, project, task, or habit reliably.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 2,
+      "acquisition_impact": 4,
+      "effort": 3,
+      "dependencies": ["planning.durable-data"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/web/app/components/quick-capture.tsx" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/planning-service/src/search.ts" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/web/e2e/quick-capture-search.spec.ts" }
+      ]
+    },
+    {
+      "id": "notifications.reminders",
+      "outcome": "Users receive bounded, timezone-correct reminders without duplicates or notification fatigue.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 3,
+      "acquisition_impact": 4,
+      "effort": 4,
+      "dependencies": ["planning.durable-data", "habit.recurring-core"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/notification-service/src/main.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/notification-service/src/reminder-scheduler.ts" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/notification-service/src/reminder-scheduler.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "mobile.pwa",
+      "outcome": "The product installs cleanly and remains usable across phone, tablet, and desktop form factors.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 2,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["today.action-loop"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/web/app/manifest.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/web/public/sw.js" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/web/e2e/mobile-pwa.spec.ts" }
+      ]
+    },
+    {
+      "id": "accessibility.localization",
+      "outcome": "Keyboard, screen-reader, reduced-motion, Korean, and English users can complete core workflows.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 3,
+      "acquisition_impact": 4,
+      "effort": 4,
+      "dependencies": ["today.action-loop"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/web/messages/en.json" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/web/messages/ko.json" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/web/e2e/accessibility.spec.ts" }
+      ]
+    },
+    {
+      "id": "data.portability-rights",
+      "outcome": "Users can export all authored data and complete deletion without leaving inaccessible tenant records.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["identity.oauth-session", "planning.durable-data", "habit.recurring-core", "review.guided-loop"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/identity-service/src/data-rights.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "contains", "path": "apps/identity-service/src/data-rights.ts", "value": "export" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/identity-service/src/data-rights.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "observability.slo",
+      "outcome": "Operators can detect user-impacting failures, trace requests, and enforce explicit service objectives.",
+      "target_maturity": "production",
+      "customer_impact": 3,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["platform.msa-foundation"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "packages/observability/package.json" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "infra/observability/prometheus.yml" },
+        { "maturity": "production", "kind": "documentation", "mode": "exists", "path": "docs/operations/service-level-objectives.md" }
+      ]
+    },
+    {
+      "id": "operations.backup-recovery",
+      "outcome": "Operators can restore tenant data through a rehearsed, measurable disaster-recovery procedure.",
+      "target_maturity": "production",
+      "customer_impact": 3,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 4,
+      "dependencies": ["identity.oauth-session", "planning.durable-data", "observability.slo"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "documentation", "mode": "exists", "path": "docs/operations/backup-and-restore.md" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "infra/backup/backup.sh" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "infra/tests/restore.spec.ts" }
+      ]
+    },
+    {
+      "id": "legal.open-source-readiness",
+      "outcome": "Users, contributors, operators, and acquirers can determine the license, privacy terms, and contribution obligations.",
+      "target_maturity": "production",
+      "customer_impact": 3,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 2,
+      "dependencies": ["platform.msa-foundation"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "documentation", "mode": "exists", "path": "LICENSE" },
+        { "maturity": "usable", "kind": "documentation", "mode": "exists", "path": "docs/legal/privacy.md" },
+        { "maturity": "production", "kind": "documentation", "mode": "exists", "path": "docs/legal/terms.md" }
+      ]
+    },
+    {
+      "id": "deployment.production-reference",
+      "outcome": "A buyer or operator can deploy a hardened reference environment with repeatable migrations and rollback guidance.",
+      "target_maturity": "production",
+      "customer_impact": 3,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 5,
+      "dependencies": ["platform.msa-foundation", "security.appguardrail-gate", "observability.slo", "operations.backup-recovery"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "infra/kubernetes/base/kustomization.yaml" },
+        { "maturity": "usable", "kind": "documentation", "mode": "exists", "path": "docs/operations/production-deployment.md" },
+        { "maturity": "production", "kind": "workflow", "mode": "exists", "path": ".github/workflows/deploy.yml" }
+      ]
+    },
+    {
+      "id": "integrations.plugin-surface",
+      "outcome": "Third parties can integrate without direct database access through versioned APIs, webhooks, plugins, or MCP tools.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 4,
+      "acquisition_impact": 5,
+      "effort": 5,
+      "dependencies": ["identity.oauth-session", "planning.durable-data"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "packages/plugin-sdk/package.json" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/integration-service/src/main.ts" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/integration-service/src/plugin-contract.integration.test.ts" }
+      ]
+    },
+    {
+      "id": "ai.auditable-proposals",
+      "outcome": "AI planning and coaching produce explainable proposals that cannot silently mutate user-owned data.",
+      "target_maturity": "production",
+      "customer_impact": 5,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 5,
+      "dependencies": ["identity.oauth-session", "planning.durable-data", "review.guided-loop"],
+      "tracking_issue": null,
+      "evidence": [
+        { "maturity": "prototype", "kind": "implementation", "mode": "exists", "path": "apps/ai-service/src/main.ts" },
+        { "maturity": "usable", "kind": "implementation", "mode": "exists", "path": "apps/ai-service/src/proposal-service.ts" },
+        { "maturity": "production", "kind": "test", "mode": "exists", "path": "apps/ai-service/src/no-silent-mutation.integration.test.ts" }
+      ]
+    }
+  ]
+}
