@@ -8,10 +8,7 @@ import {
   OAuthTransactionService,
   SessionService,
 } from './auth-security';
-import {
-  IdentityService,
-  InMemoryIdentityRepository,
-} from './identity-domain';
+import { IdentityService, InMemoryIdentityRepository } from './identity-domain';
 import {
   OAuthCallbackApplication,
   type OAuthCallbackAuditEvent,
@@ -222,11 +219,10 @@ describe('OAuth HTTP integration', () => {
       'life_os_session=deleted; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax',
     );
 
-    const repeatedLogout = await request(
-      harness.baseUrl,
-      '/v1/auth/logout',
-      { method: 'POST', headers: { cookie: sessionCookie } },
-    );
+    const repeatedLogout = await request(harness.baseUrl, '/v1/auth/logout', {
+      method: 'POST',
+      headers: { cookie: sessionCookie },
+    });
     expect(repeatedLogout.status).toBe(204);
 
     const revokedSession = await request(harness.baseUrl, '/v1/session', {
