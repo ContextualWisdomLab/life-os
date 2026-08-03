@@ -7,7 +7,7 @@ const EXPECTED_FINDING = Object.freeze({
   rule_id: 'dangerous-cors',
   severity: 'HIGH',
   context: 'test',
-  file: 'tests/appguardrail-fixtures/dangerous-cors.ts'
+  file: 'tests/appguardrail-fixtures/dangerous-cors.ts',
 });
 
 function findingsEnvelope(overrides = {}) {
@@ -18,10 +18,10 @@ function findingsEnvelope(overrides = {}) {
         rule_id: EXPECTED_FINDING.rule_id,
         severity: EXPECTED_FINDING.severity,
         context: EXPECTED_FINDING.context,
-        file: EXPECTED_FINDING.file
-      }
+        file: EXPECTED_FINDING.file,
+      },
     ],
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -29,14 +29,14 @@ function detectorContract(overrides = {}) {
   return {
     schema: 'life-os.appguardrail-contract.v1',
     expected_findings: [{ ...EXPECTED_FINDING }],
-    ...overrides
+    ...overrides,
   };
 }
 
 describe('verifyAppGuardrailContract', () => {
   it('accepts an exact expected AppGuardrail detection', () => {
     assert.doesNotThrow(() =>
-      verifyAppGuardrailContract(findingsEnvelope(), detectorContract())
+      verifyAppGuardrailContract(findingsEnvelope(), detectorContract()),
     );
   });
 
@@ -45,11 +45,11 @@ describe('verifyAppGuardrailContract', () => {
       { schema: 'unknown', findings: [] },
       { schema: 'appguardrail.findings.v1', findings: {} },
       null,
-      []
+      [],
     ]) {
       assert.throws(
         () => verifyAppGuardrailContract(envelope, detectorContract()),
-        new Error('Invalid AppGuardrail findings envelope')
+        new Error('Invalid AppGuardrail findings envelope'),
       );
     }
   });
@@ -59,11 +59,11 @@ describe('verifyAppGuardrailContract', () => {
       { schema: 'unknown', expected_findings: [] },
       { schema: 'life-os.appguardrail-contract.v1', expected_findings: {} },
       null,
-      []
+      [],
     ]) {
       assert.throws(
         () => verifyAppGuardrailContract(findingsEnvelope(), contract),
-        new Error('Invalid AppGuardrail detector contract')
+        new Error('Invalid AppGuardrail detector contract'),
       );
     }
   });
@@ -73,9 +73,9 @@ describe('verifyAppGuardrailContract', () => {
       () =>
         verifyAppGuardrailContract(
           findingsEnvelope({ findings: [] }),
-          detectorContract()
+          detectorContract(),
         ),
-      new Error('Expected AppGuardrail detection is missing')
+      new Error('Expected AppGuardrail detection is missing'),
     );
   });
 
@@ -84,7 +84,7 @@ describe('verifyAppGuardrailContract', () => {
       { severity: 'WARNING' },
       { context: 'app-code' },
       { file: 'apps/gateway/src/main.ts' },
-      { rule_id: 'other-rule' }
+      { rule_id: 'other-rule' },
     ];
 
     for (const mismatch of mismatches) {
@@ -93,15 +93,15 @@ describe('verifyAppGuardrailContract', () => {
         severity: EXPECTED_FINDING.severity,
         context: EXPECTED_FINDING.context,
         file: EXPECTED_FINDING.file,
-        ...mismatch
+        ...mismatch,
       };
       assert.throws(
         () =>
           verifyAppGuardrailContract(
             findingsEnvelope({ findings: [finding] }),
-            detectorContract()
+            detectorContract(),
           ),
-        new Error('Expected AppGuardrail detection is missing')
+        new Error('Expected AppGuardrail detection is missing'),
       );
     }
   });
@@ -114,11 +114,11 @@ describe('verifyAppGuardrailContract', () => {
           detectorContract({
             expected_findings: [
               { ...EXPECTED_FINDING },
-              { ...EXPECTED_FINDING }
-            ]
-          })
+              { ...EXPECTED_FINDING },
+            ],
+          }),
         ),
-      new Error('Duplicate AppGuardrail detector contract entry')
+      new Error('Duplicate AppGuardrail detector contract entry'),
     );
   });
 
@@ -132,7 +132,7 @@ describe('verifyAppGuardrailContract', () => {
       { ...EXPECTED_FINDING, severity: null },
       { ...EXPECTED_FINDING, context: '' },
       { ...EXPECTED_FINDING, file: 42 },
-      null
+      null,
     ];
 
     for (const entry of invalidEntries) {
@@ -140,9 +140,9 @@ describe('verifyAppGuardrailContract', () => {
         () =>
           verifyAppGuardrailContract(
             findingsEnvelope(),
-            detectorContract({ expected_findings: [entry] })
+            detectorContract({ expected_findings: [entry] }),
           ),
-        new Error('Invalid AppGuardrail detector contract')
+        new Error('Invalid AppGuardrail detector contract'),
       );
     }
   });
@@ -150,10 +150,30 @@ describe('verifyAppGuardrailContract', () => {
   it('rejects malformed finding entries without exposing their contents', () => {
     const invalidFindings = [
       null,
-      { rule_id: '', severity: 'HIGH', context: 'test', file: 'fixture.ts' },
-      { rule_id: 'dangerous-cors', severity: 7, context: 'test', file: 'fixture.ts' },
-      { rule_id: 'dangerous-cors', severity: 'HIGH', context: [], file: 'fixture.ts' },
-      { rule_id: 'dangerous-cors', severity: 'HIGH', context: 'test', file: null }
+      {
+        rule_id: '',
+        severity: 'HIGH',
+        context: 'test',
+        file: 'fixture.ts',
+      },
+      {
+        rule_id: 'dangerous-cors',
+        severity: 7,
+        context: 'test',
+        file: 'fixture.ts',
+      },
+      {
+        rule_id: 'dangerous-cors',
+        severity: 'HIGH',
+        context: [],
+        file: 'fixture.ts',
+      },
+      {
+        rule_id: 'dangerous-cors',
+        severity: 'HIGH',
+        context: 'test',
+        file: null,
+      },
     ];
 
     for (const finding of invalidFindings) {
@@ -161,9 +181,9 @@ describe('verifyAppGuardrailContract', () => {
         () =>
           verifyAppGuardrailContract(
             findingsEnvelope({ findings: [finding] }),
-            detectorContract()
+            detectorContract(),
           ),
-        new Error('Invalid AppGuardrail findings envelope')
+        new Error('Invalid AppGuardrail findings envelope'),
       );
     }
   });
