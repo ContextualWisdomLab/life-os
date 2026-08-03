@@ -6,10 +6,12 @@ import type {
   IsoWeekday,
 } from './habit-domain';
 
+/** Minimal query result contract used by the Habit PostgreSQL adapter. */
 export interface HabitSqlQueryResult<Row> {
   rows: Row[];
 }
 
+/** Parameterized SQL client boundary used by the Habit repository. */
 export interface HabitSqlClient {
   query<Row>(
     text: string,
@@ -51,13 +53,15 @@ const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const IDEMPOTENCY_CONSTRAINT = 'completion_events_idempotency_unique';
 
+/** Safe public failure for malformed rows and database transport errors. */
 export class HabitPersistenceError extends Error {
   constructor() {
-    super('Persisted habit data is invalid');
+    super('Habit persistence operation failed');
     this.name = 'HabitPersistenceError';
   }
 }
 
+/** Signals that one idempotency key was reused with a different payload. */
 export class HabitIdempotencyConflictError extends Error {
   constructor() {
     super('Idempotency key reused with a different completion payload');
@@ -336,13 +340,25 @@ function ensureReplayMatches(
   }
 }
 
+/** Parameterized, tenant-scoped PostgreSQL Habit repository. */
 export class PostgresHabitRepository implements HabitRepository {
   constructor(private readonly client: HabitSqlClient) {}
+
+  private async query<Row>(
+    text: string,
+    values: readonly unknown[],
+  ): Promise<HabitSqlQueryResult<Row>> {
+    try {
+      return await this.client.query<Row>(text, values);
+    } catch {
+      throw new HabitPersistenceError();
+    }
+  }
 
   async saveHabit(habit: Habit): Promise<void> {
     const safe = validateHabit(habit);
     const recurrence = recurrenceValues(safe.recurrence);
-    await this.client.query(
+    await this.query(
       `INSERT INTO habit.habit_definitions
         (id, workspace_id, title, timezone_name, recurrence_kind,
          recurrence_interval, weekday_mask, starts_on, created_at)
@@ -367,7 +383,7 @@ export class PostgresHabitRepository implements HabitRepository {
   ): Promise<Habit | undefined> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safeHabitId = requireUuidV4(habitId);
-    const result = await this.client.query<HabitRow>(
+    const result = await this.query<HabitRow>(
       `SELECT id, workspace_id, title, timezone_name, recurrence_kind,
               recurrence_interval, weekday_mask, starts_on, created_at
        FROM habit.habit_definitions
@@ -381,7 +397,7 @@ export class PostgresHabitRepository implements HabitRepository {
 
   async listHabits(workspaceId: string): Promise<Habit[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
-    const result = await this.client.query<HabitRow>(
+    const result = await this.query<HabitRow>(
       `SELECT id, workspace_id, title, timezone_name, recurrence_kind,
               recurrence_interval, weekday_mask, starts_on, created_at
        FROM habit.habit_definitions
@@ -422,11 +438,11 @@ export class PostgresHabitRepository implements HabitRepository {
       );
     } catch (error) {
       if (!isIdempotencyUniqueViolation(error)) {
-        throw error;
+        throw new HabitPersistenceError();
       }
     }
 
-    const replay = await this.client.query<CompletionRow>(
+    const replay = await this.query<CompletionRow>(
       `SELECT id, workspace_id, habit_id, scheduled_local_date,
               completed_at, idempotency_key, recorded_at
        FROM habit.completion_events
@@ -452,7 +468,7 @@ export class PostgresHabitRepository implements HabitRepository {
   ): Promise<HabitCompletionEvent[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safeHabitId = requireUuidV4(habitId);
-    const result = await this.client.query<CompletionRow>(
+    const result = await this.query<CompletionRow>(
       `SELECT id, workspace_id, habit_id, scheduled_local_date,
               completed_at, idempotency_key, recorded_at
        FROM habit.completion_events
