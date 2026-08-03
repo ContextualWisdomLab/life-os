@@ -28,6 +28,44 @@ function requireText(value: string, message: string): string {
   return normalized;
 }
 
+function requireIdentityProvider(value: IdentityProvider): IdentityProvider {
+  if (value !== 'google' && value !== 'github') {
+    throw new Error('Unsupported identity provider');
+  }
+  return value;
+}
+
+function requireRedirectUri(value: string): string {
+  const normalized = requireText(value, 'Redirect URI is required');
+  let parsed: URL;
+
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error('Redirect URI is invalid');
+  }
+
+  if (parsed.hash) {
+    throw new Error('Redirect URI must not contain a fragment');
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error('Redirect URI must not contain credentials');
+  }
+
+  const isLoopback =
+    parsed.hostname === 'localhost' ||
+    parsed.hostname === '127.0.0.1' ||
+    parsed.hostname === '[::1]' ||
+    parsed.hostname === '::1';
+
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isLoopback)) {
+    throw new Error('Redirect URI must use HTTPS');
+  }
+
+  return normalized;
+}
+
 function addMilliseconds(value: Date, milliseconds: number): Date {
   return new Date(value.getTime() + milliseconds);
 }
@@ -98,8 +136,9 @@ export class OAuthTransactionService {
     browserSessionId: string;
     redirectUri: string;
   }): OAuthAuthorizationRequest {
+    const provider = requireIdentityProvider(input.provider);
     const browserSessionId = requireOpaqueIdentifier(input.browserSessionId);
-    const redirectUri = requireText(input.redirectUri, 'Redirect URI is required');
+    const redirectUri = requireRedirectUri(input.redirectUri);
     const createdAt = this.now();
     const expiresAt = addMilliseconds(createdAt, this.ttlMs);
     const state = createOpaqueToken();
@@ -108,7 +147,7 @@ export class OAuthTransactionService {
     this.repository.save({
       id: randomUUID(),
       stateHash: sha256Base64Url(state),
-      provider: input.provider,
+      provider,
       browserSessionHash: sha256Base64Url(browserSessionId),
       codeVerifier,
       redirectUri,
@@ -129,6 +168,7 @@ export class OAuthTransactionService {
     browserSessionId: string;
     state: string;
   }): VerifiedOAuthCallback {
+    const provider = requireIdentityProvider(input.provider);
     const state = requireText(input.state, 'OAuth state is required');
     const browserSessionId = requireOpaqueIdentifier(input.browserSessionId);
     const stateHash = sha256Base64Url(state);
@@ -139,7 +179,7 @@ export class OAuthTransactionService {
     }
 
     if (
-      transaction.provider !== input.provider ||
+      transaction.provider !== provider ||
       transaction.browserSessionHash !== sha256Base64Url(browserSessionId)
     ) {
       throw new Error('OAuth transaction binding mismatch');
@@ -197,12 +237,6 @@ export class InMemorySessionRepository implements SessionRepository {
     if (session && !session.revokedAt) {
       this.sessions.set(tokenHash, { ...session, revokedAt });
     }
-  }
-
-  containsRawToken(token: string): boolean {
-    return [...this.sessions.entries()].some(
-      ([key, session]) => key === token || Object.values(session).includes(token),
-    );
   }
 }
 
