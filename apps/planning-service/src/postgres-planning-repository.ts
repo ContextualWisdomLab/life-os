@@ -71,10 +71,7 @@ function requireTimestamp(value: unknown): string {
     }
     return value.toISOString();
   }
-  if (
-    typeof value !== 'string' ||
-    !RFC_3339_TIMESTAMP_PATTERN.test(value)
-  ) {
+  if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
     return invalidRow();
   }
   const parsed = new Date(value);
@@ -212,13 +209,7 @@ export class PostgresPlanningRepository implements PlanningRepository {
       `INSERT INTO planning.projects
         (id, workspace_id, goal_id, title, created_at)
        VALUES ($1, $2, $3, $4, $5)`,
-      [
-        safe.id,
-        safe.workspaceId,
-        safe.goalId,
-        safe.title,
-        safe.createdAt,
-      ],
+      [safe.id, safe.workspaceId, safe.goalId, safe.title, safe.createdAt],
     );
   }
 
@@ -239,10 +230,7 @@ export class PostgresPlanningRepository implements PlanningRepository {
     );
   }
 
-  async findGoal(
-    workspaceId: string,
-    id: string,
-  ): Promise<Goal | undefined> {
+  async findGoal(workspaceId: string, id: string): Promise<Goal | undefined> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safeId = requireUuidV4(id);
     const result = await this.client.query<GoalRow>(
@@ -280,7 +268,9 @@ export class PostgresPlanningRepository implements PlanningRepository {
       [safeWorkspaceId, safeId],
     );
     const row = oneOrUndefined(result.rows);
-    return row ? parseProject(row, safeWorkspaceId, undefined, safeId) : undefined;
+    return row
+      ? parseProject(row, safeWorkspaceId, undefined, safeId)
+      : undefined;
   }
 
   async listGoals(workspaceId: string): Promise<Goal[]> {
@@ -295,10 +285,7 @@ export class PostgresPlanningRepository implements PlanningRepository {
     return result.rows.map((row) => parseGoal(row, safeWorkspaceId));
   }
 
-  async listProjects(
-    workspaceId: string,
-    goalId: string,
-  ): Promise<Project[]> {
+  async listProjects(workspaceId: string, goalId: string): Promise<Project[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safeGoalId = requireUuidV4(goalId);
     const result = await this.client.query<ProjectRow>(
@@ -323,10 +310,7 @@ export class PostgresPlanningRepository implements PlanningRepository {
     );
   }
 
-  async listTasks(
-    workspaceId: string,
-    projectId: string,
-  ): Promise<Task[]> {
+  async listTasks(workspaceId: string, projectId: string): Promise<Task[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safeProjectId = requireUuidV4(projectId);
     const result = await this.client.query<TaskRow>(
