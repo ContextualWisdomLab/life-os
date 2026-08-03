@@ -9,6 +9,6 @@
     "build": "node --check src/index.cjs",
     "lint": "node --check src/index.cjs && node --check src/index.test.cjs",
     "test": "node --test src/index.test.cjs",
-    "typecheck": "node --check src/index.cjs && node --check src/index.test.cjs"
+    "typecheck": "node --check src/index.cjs && node --check src/index.test.cjs && tsc --noEmit --allowJs --checkJs --module commonjs --target es2022 src/index.d.ts src/index.cjs"
   }
 }
