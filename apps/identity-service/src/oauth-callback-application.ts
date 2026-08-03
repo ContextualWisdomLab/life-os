@@ -1,7 +1,4 @@
-import type {
-  ActiveSession,
-  ConsumedOAuthTransaction,
-} from './auth-security';
+import type { ActiveSession, ConsumedOAuthTransaction } from './auth-security';
 import type {
   IdentityProvider,
   MaybePromise,
