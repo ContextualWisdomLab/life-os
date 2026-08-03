@@ -96,8 +96,28 @@ export class DataRightsDependencyError extends Error {
   }
 }
 
+interface MutableBudget {
+  remainingBytes: number;
+  remainingRecords: number;
+}
+
 function invalid(): never {
   throw new DataRightsValidationError();
+}
+
+function consumeBytes(budget: MutableBudget, amount: number): void {
+  if (!Number.isSafeInteger(amount) || amount < 0 || amount > budget.remainingBytes) {
+    invalid();
+  }
+  budget.remainingBytes -= amount;
+}
+
+function consumeRecord(budget: MutableBudget, bytes: number): void {
+  if (budget.remainingRecords <= 0) {
+    invalid();
+  }
+  budget.remainingRecords -= 1;
+  consumeBytes(budget, bytes);
 }
 
 function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
@@ -182,16 +202,34 @@ function requireDigest(value: unknown): string {
   return normalized;
 }
 
-function normalizeJson(value: unknown, depth = 0): JsonValue {
+function canonicalPrimitive(value: JsonPrimitive): string {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) {
+    return invalid();
+  }
+  return serialized;
+}
+
+function normalizeJson(
+  value: unknown,
+  depth = 0,
+  budget?: MutableBudget,
+): JsonValue {
   if (depth > MAXIMUM_JSON_DEPTH) {
     return invalid();
   }
   if (value === null || typeof value === 'boolean') {
+    if (budget) {
+      consumeBytes(budget, Buffer.byteLength(canonicalPrimitive(value)));
+    }
     return value;
   }
   if (typeof value === 'string') {
     if (value.length > MAXIMUM_JSON_STRING_LENGTH) {
       return invalid();
+    }
+    if (budget) {
+      consumeBytes(budget, Buffer.byteLength(canonicalPrimitive(value)));
     }
     return value;
   }
@@ -199,32 +237,46 @@ function normalizeJson(value: unknown, depth = 0): JsonValue {
     if (!Number.isFinite(value)) {
       return invalid();
     }
+    if (budget) {
+      consumeBytes(budget, Buffer.byteLength(canonicalPrimitive(value)));
+    }
     return value;
   }
   if (Array.isArray(value)) {
     if (value.length > MAXIMUM_JSON_ARRAY_ITEMS) {
       return invalid();
     }
-    return Object.freeze(value.map((item) => normalizeJson(item, depth + 1)));
+    if (budget) {
+      consumeBytes(budget, 2 + Math.max(0, value.length - 1));
+    }
+    return Object.freeze(
+      value.map((item) => normalizeJson(item, depth + 1, budget)),
+    );
   }
   const record = requireRecord(value);
   const keys = Object.keys(record).sort();
   if (keys.length > MAXIMUM_JSON_OBJECT_KEYS) {
     return invalid();
   }
+  if (budget) {
+    consumeBytes(budget, 2 + Math.max(0, keys.length - 1));
+  }
   const normalized: Record<string, JsonValue> = {};
   for (const key of keys) {
     if (!key || key.length > 256) {
       return invalid();
     }
-    normalized[key] = normalizeJson(record[key], depth + 1);
+    if (budget) {
+      consumeBytes(budget, Buffer.byteLength(JSON.stringify(key)) + 1);
+    }
+    normalized[key] = normalizeJson(record[key], depth + 1, budget);
   }
   return Object.freeze(normalized);
 }
 
 function canonicalJson(value: JsonValue): string {
   if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value);
+    return canonicalPrimitive(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
@@ -232,7 +284,10 @@ function canonicalJson(value: JsonValue): string {
   const record = value as Readonly<Record<string, JsonValue>>;
   return `{${Object.keys(record)
     .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key] as JsonValue)}`)
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${canonicalJson(record[key] as JsonValue)}`,
+    )
     .join(',')}}`;
 }
 
@@ -240,10 +295,17 @@ function digestJson(value: JsonValue): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
-function normalizeDataRecord(value: unknown): WorkspaceDataRecord {
+function normalizeDataRecord(
+  value: unknown,
+  aggregateBudget?: MutableBudget,
+): WorkspaceDataRecord {
   const record = requireRecord(value);
   requireExactKeys(record, ['id', 'kind', 'data']);
-  const data = normalizeJson(record.data);
+  const recordBudget: MutableBudget = {
+    remainingBytes: MAXIMUM_RECORD_BYTES,
+    remainingRecords: 1,
+  };
+  const data = normalizeJson(record.data, 0, recordBudget);
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     return invalid();
   }
@@ -252,8 +314,9 @@ function normalizeDataRecord(value: unknown): WorkspaceDataRecord {
     kind: requireRecordKind(record.kind),
     data: data as Readonly<Record<string, JsonValue>>,
   });
-  if (Buffer.byteLength(canonicalJson(normalized.data)) > MAXIMUM_RECORD_BYTES) {
-    return invalid();
+  const recordBytes = MAXIMUM_RECORD_BYTES - recordBudget.remainingBytes;
+  if (aggregateBudget) {
+    consumeRecord(aggregateBudget, recordBytes);
   }
   return normalized;
 }
@@ -283,6 +346,7 @@ function normalizeSourceSnapshot(
   value: unknown,
   expectedSourceId: string,
   expectedWorkspaceId: string,
+  aggregateBudget?: MutableBudget,
 ): WorkspaceDataSourceSnapshot {
   const record = requireRecord(value);
   requireExactKeys(record, [
@@ -303,10 +367,12 @@ function normalizeSourceSnapshot(
   if (record.records.length > MAXIMUM_RECORDS_PER_SOURCE) {
     return invalid();
   }
-  const records = record.records.map(normalizeDataRecord).sort((left, right) => {
-    const byKind = left.kind.localeCompare(right.kind);
-    return byKind === 0 ? left.id.localeCompare(right.id) : byKind;
-  });
+  const records = record.records
+    .map((item) => normalizeDataRecord(item, aggregateBudget))
+    .sort((left, right) => {
+      const byKind = left.kind.localeCompare(right.kind);
+      return byKind === 0 ? left.id.localeCompare(right.id) : byKind;
+    });
   const identities = new Set<string>();
   for (const item of records) {
     const identity = `${item.kind}:${item.id}`;
@@ -363,6 +429,31 @@ function readinessEvidence(
   });
 }
 
+function requireBoundedSourceCollection(value: unknown): readonly unknown[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAXIMUM_SOURCES
+  ) {
+    return invalid();
+  }
+  let totalRecords = 0;
+  for (const source of value) {
+    const sourceRecord = requireRecord(source);
+    if (!Array.isArray(sourceRecord.records)) {
+      return invalid();
+    }
+    totalRecords += sourceRecord.records.length;
+    if (
+      sourceRecord.records.length > MAXIMUM_RECORDS_PER_SOURCE ||
+      totalRecords > MAXIMUM_TOTAL_RECORDS
+    ) {
+      return invalid();
+    }
+  }
+  return value;
+}
+
 /**
  * Coordinates deterministic exports and erasure-readiness inspection without
  * exposing a destructive source capability.
@@ -383,7 +474,9 @@ export class WorkspaceDataRightsCoordinator {
       identifiers.add(source.sourceId);
     }
     this.sources = Object.freeze(
-      normalized.sort((left, right) => left.sourceId.localeCompare(right.sourceId)),
+      normalized.sort((left, right) =>
+        left.sourceId.localeCompare(right.sourceId),
+      ),
     );
   }
 
@@ -391,6 +484,10 @@ export class WorkspaceDataRightsCoordinator {
     workspaceId: string,
   ): Promise<readonly WorkspaceDataSourceSnapshot[]> {
     const workspace = requireUuidV4(workspaceId);
+    const aggregateBudget: MutableBudget = {
+      remainingBytes: MAXIMUM_EXPORT_BYTES,
+      remainingRecords: MAXIMUM_TOTAL_RECORDS,
+    };
     const snapshots = await Promise.all(
       this.sources.map(async (source) => {
         let raw: unknown;
@@ -399,16 +496,14 @@ export class WorkspaceDataRightsCoordinator {
         } catch {
           throw new DataRightsDependencyError();
         }
-        return normalizeSourceSnapshot(raw, source.sourceId, workspace);
+        return normalizeSourceSnapshot(
+          raw,
+          source.sourceId,
+          workspace,
+          aggregateBudget,
+        );
       }),
     );
-    const totalRecords = snapshots.reduce(
-      (total, snapshot) => total + snapshot.records.length,
-      0,
-    );
-    if (totalRecords > MAXIMUM_TOTAL_RECORDS) {
-      return invalid();
-    }
     return Object.freeze(snapshots);
   }
 
@@ -483,16 +578,19 @@ export function verifyWorkspaceDataExport(value: unknown): WorkspaceDataExport {
   }
   const workspaceId = requireUuidV4(record.workspaceId);
   const generatedAt = requireInstant(record.generatedAt);
-  if (!Array.isArray(record.sources) || record.sources.length === 0) {
-    return invalid();
-  }
-  const sources = record.sources
+  const rawSources = requireBoundedSourceCollection(record.sources);
+  const aggregateBudget: MutableBudget = {
+    remainingBytes: MAXIMUM_EXPORT_BYTES,
+    remainingRecords: MAXIMUM_TOTAL_RECORDS,
+  };
+  const sources = rawSources
     .map((source) => {
       const sourceRecord = requireRecord(source);
       return normalizeSourceSnapshot(
         sourceRecord,
         requireSourceId(sourceRecord.sourceId),
         workspaceId,
+        aggregateBudget,
       );
     })
     .sort((left, right) => left.sourceId.localeCompare(right.sourceId));
@@ -504,6 +602,9 @@ export function verifyWorkspaceDataExport(value: unknown): WorkspaceDataExport {
     sourceIds.add(source.sourceId);
   }
   const evidence = exportEvidence(workspaceId, generatedAt, sources);
+  if (Buffer.byteLength(canonicalJson(evidence)) > MAXIMUM_EXPORT_BYTES) {
+    return invalid();
+  }
   const digest = requireDigest(record.digest);
   if (digestJson(evidence) !== digest) {
     return invalid();
