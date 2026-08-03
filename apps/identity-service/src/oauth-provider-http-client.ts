@@ -275,6 +275,11 @@ async function readBoundedBody(response: Response): Promise<string> {
     body += decoder.decode();
     return body;
   } catch {
+    try {
+      await reader.cancel();
+    } catch {
+      // The standardized provider failure remains authoritative.
+    }
     return failProviderRequest();
   } finally {
     reader.releaseLock();
@@ -290,7 +295,12 @@ export class BoundedOAuthProviderHttpClient {
   private readonly timeoutMs: number;
 
   constructor(options: OAuthProviderHttpClientOptions = {}) {
-    this.fetchFunction = options.fetchFunction ?? globalThis.fetch;
+    const defaultFetch =
+      typeof globalThis.fetch === 'function'
+        ? (globalThis.fetch.bind(globalThis) as OAuthProviderFetch)
+        : undefined;
+    this.fetchFunction =
+      options.fetchFunction ?? defaultFetch ?? failProviderRequest();
     this.timeoutMs = requireTimeout(options.timeoutMs);
   }
 
