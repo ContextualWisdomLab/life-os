@@ -8,12 +8,19 @@ import {
 
 const NOW = new Date('2026-08-03T01:00:00.000Z');
 
-function syntheticOpaqueValue(): string {
-  return Array.from({ length: 32 }, (_, index) =>
+/**
+ * Builds a deterministic, non-secret OAuth fixture value for the requested role.
+ */
+function syntheticOpaqueValue(variant: string): string {
+  const baseValue = Array.from({ length: 32 }, (_, index) =>
     String.fromCharCode(97 + (index % 26)),
   ).join('');
+  return `${baseValue}-${variant}`;
 }
 
+/**
+ * Builds a signature-verified Google token fixture with optional claim overrides.
+ */
 function verifiedGoogleToken(overrides: Record<string, unknown> = {}) {
   return {
     signatureVerified: true as const,
@@ -34,8 +41,8 @@ function verifiedGoogleToken(overrides: Record<string, unknown> = {}) {
 
 describe('OAuth provider token responses', () => {
   it('parses Google bearer tokens and requires an ID token', () => {
-    const providerCredential = syntheticOpaqueValue();
-    const providerIdentityAssertion = syntheticOpaqueValue();
+    const providerCredential = syntheticOpaqueValue('google-access');
+    const providerIdentityAssertion = syntheticOpaqueValue('google-id');
     const parsed = parseOAuthTokenResponse('google', {
       status: 200,
       contentType: 'application/json; charset=utf-8',
@@ -59,7 +66,7 @@ describe('OAuth provider token responses', () => {
   });
 
   it('parses comma-delimited GitHub scopes', () => {
-    const providerCredential = syntheticOpaqueValue();
+    const providerCredential = syntheticOpaqueValue('github-access');
     const parsed = parseOAuthTokenResponse('github', {
       status: 200,
       contentType: 'application/json',
@@ -96,7 +103,7 @@ describe('OAuth provider token responses', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          access_token: syntheticOpaqueValue(),
+          access_token: syntheticOpaqueValue('unsupported-token-type'),
           token_type: 'mac',
         }),
       }),
@@ -169,7 +176,7 @@ describe('Google identity claims after signature verification', () => {
 
 describe('GitHub identity retrieval and normalization', () => {
   it('builds fixed-endpoint authenticated requests without tokens in URLs', () => {
-    const providerCredential = syntheticOpaqueValue();
+    const providerCredential = syntheticOpaqueValue('github-request');
     const requests = buildGitHubIdentityRequests(providerCredential);
 
     expect(requests.user.url).toBe('https://api.github.com/user');
