@@ -19,4 +19,4 @@
 - [x] Extend the PostgreSQL schema without numeric identifiers or duplicate migration numbers.
 - [x] Consolidate redirect URI validation and remove the duplicate OAuth security module.
 - [x] Record encryption-at-rest, atomic consumption, and cookie-delivery requirements in an ADR.
-- [ ] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
+- [x] Run CI, SAST, Security Scan, and review feedback; fix all actionable findings.
