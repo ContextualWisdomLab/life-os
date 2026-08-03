@@ -51,8 +51,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Check formatting
-        run: pnpm format:check
+      - name: Print canonical data-rights formatting
+        run: |
+          pnpm exec prettier --single-quote --write apps/identity-service/src/data-rights.ts
+          git diff -- apps/identity-service/src/data-rights.ts
+          exit 1
 
       - name: Lint
         run: pnpm lint
