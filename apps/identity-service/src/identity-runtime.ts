@@ -10,6 +10,7 @@ import {
   type OAuthCallbackAuditSink,
 } from './oauth-callback-application';
 import { OAuthHttpApplication } from './oauth-http-application';
+import { BoundedOAuthProviderHttpClient } from './oauth-provider-http-client';
 import {
   PostgresIdentityRepository,
   type SqlTransaction,
@@ -28,6 +29,9 @@ const KEY_VERSION_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,31}$/;
 const ENCODED_KEY_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+export type OAuthCallbackAuditWriter = (
+  line: string,
+) => void | Promise<void>;
 
 class NodePostgresSqlTransaction implements SqlTransaction {
   constructor(private readonly client: PoolClient) {}
@@ -67,11 +71,34 @@ class NodePostgresSqlClient implements TransactionalSqlClient {
   }
 }
 
-class StructuredOAuthCallbackAuditSink implements OAuthCallbackAuditSink {
-  record(event: OAuthCallbackAuditEvent): void {
-    process.stdout.write(
-      `${JSON.stringify({ eventType: 'oauth_callback', ...event })}\n`,
-    );
+function defaultAuditWriter(line: string): void {
+  process.stdout.write(`${line}\n`);
+}
+
+/** Writes a projected credential-free callback audit event as one JSON line. */
+export class JsonLineOAuthCallbackAuditSink
+  implements OAuthCallbackAuditSink
+{
+  constructor(
+    private readonly writer: OAuthCallbackAuditWriter = defaultAuditWriter,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async record(event: OAuthCallbackAuditEvent): Promise<void> {
+    const occurredAt = this.now();
+    if (!Number.isFinite(occurredAt.getTime())) {
+      throw new Error('OAuth callback audit clock is invalid');
+    }
+    const line = JSON.stringify({
+      eventType: 'identity.oauth_callback',
+      occurredAt: occurredAt.toISOString(),
+      provider: event.provider,
+      outcome: event.outcome,
+      correlationId: event.correlationId,
+      ...(event.userId ? { userId: event.userId } : {}),
+      ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
+    });
+    await this.writer(line);
   }
 }
 
@@ -221,6 +248,39 @@ export function createIdentityRuntime(
     currentKeyVersion,
     keys,
   });
+  const googleClientId = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_CLIENT_ID',
+  );
+  const googleClientSecret = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_CLIENT_SECRET',
+  );
+  const googleRedirectUri = requireConfiguration(
+    environment,
+    'IDENTITY_GOOGLE_REDIRECT_URI',
+  );
+  const githubClientId = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_CLIENT_ID',
+  );
+  const githubClientSecret = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_CLIENT_SECRET',
+  );
+  const githubRedirectUri = requireConfiguration(
+    environment,
+    'IDENTITY_GITHUB_REDIRECT_URI',
+  );
+  const webOrigin = requireConfiguration(environment, 'LIFE_OS_WEB_ORIGIN');
+  const providerRequestTimeoutMs = requireBoundedInteger(
+    environment.IDENTITY_PROVIDER_REQUEST_TIMEOUT_MS,
+    5_000,
+    100,
+    10_000,
+    'Identity provider request timeout is invalid',
+  );
+
   const pool = new Pool(createPoolConfiguration(environment));
   const sqlClient = new NodePostgresSqlClient(pool);
   const transactions = new OAuthTransactionService(
@@ -230,33 +290,21 @@ export function createIdentityRuntime(
   const identities = new IdentityService(
     new PostgresIdentityRepository(sqlClient),
   );
-  const webOrigin = requireConfiguration(environment, 'LIFE_OS_WEB_ORIGIN');
-  const googleRedirectUri = requireConfiguration(
-    environment,
-    'IDENTITY_GOOGLE_REDIRECT_URI',
-  );
-  const githubRedirectUri = requireConfiguration(
-    environment,
-    'IDENTITY_GITHUB_REDIRECT_URI',
-  );
   const application = new OAuthHttpApplication(transactions, sessions, {
     providers: {
       google: {
-        clientId: requireConfiguration(
-          environment,
-          'IDENTITY_GOOGLE_CLIENT_ID',
-        ),
+        clientId: googleClientId,
         redirectUri: googleRedirectUri,
       },
       github: {
-        clientId: requireConfiguration(
-          environment,
-          'IDENTITY_GITHUB_CLIENT_ID',
-        ),
+        clientId: githubClientId,
         redirectUri: githubRedirectUri,
       },
     },
     webOrigin,
+  });
+  const providerHttpClient = new BoundedOAuthProviderHttpClient({
+    timeoutMs: providerRequestTimeoutMs,
   });
   const callbackApplication = new OAuthCallbackApplication(
     transactions,
@@ -264,29 +312,19 @@ export function createIdentityRuntime(
     sessions,
     {
       google: new GoogleOidcClient({
-        clientId: requireConfiguration(
-          environment,
-          'IDENTITY_GOOGLE_CLIENT_ID',
-        ),
-        clientSecret: requireConfiguration(
-          environment,
-          'IDENTITY_GOOGLE_CLIENT_SECRET',
-        ),
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
         redirectUri: googleRedirectUri,
+        requestTimeoutMs: providerRequestTimeoutMs,
       }),
       github: new GitHubOAuthClient({
-        clientId: requireConfiguration(
-          environment,
-          'IDENTITY_GITHUB_CLIENT_ID',
-        ),
-        clientSecret: requireConfiguration(
-          environment,
-          'IDENTITY_GITHUB_CLIENT_SECRET',
-        ),
+        clientId: githubClientId,
+        clientSecret: githubClientSecret,
         redirectUri: githubRedirectUri,
+        httpClient: providerHttpClient,
       }),
     },
-    new StructuredOAuthCallbackAuditSink(),
+    new JsonLineOAuthCallbackAuditSink(),
     { webOrigin },
   );
   return new IdentityRuntime(pool, application, callbackApplication);
