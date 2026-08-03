@@ -48,8 +48,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Check formatting
-        run: pnpm format:check
+      - name: Print formatting diff
+        run: |
+          pnpm exec prettier --single-quote --write apps/identity-service/src/oauth-http.integration.test.ts
+          git diff --no-ext-diff -- apps/identity-service/src/oauth-http.integration.test.ts
+          exit 1
 
       - name: Lint
         run: pnpm lint
