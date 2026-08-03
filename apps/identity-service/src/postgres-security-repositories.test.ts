@@ -28,6 +28,18 @@ class RecordingSqlClient implements SqlClient {
   }
 }
 
+function requireCall(
+  client: RecordingSqlClient,
+  index = 0,
+): { text: string; values: readonly unknown[] } {
+  const call = client.calls[index];
+  expect(call).toBeDefined();
+  if (!call) {
+    throw new Error(`Expected SQL call at index ${index}`);
+  }
+  return call;
+}
+
 function createSecretBox(): AesGcmSecretBox {
   return new AesGcmSecretBox({
     currentKeyVersion: 'v1',
@@ -72,7 +84,7 @@ describe('PostgresOAuthTransactionRepository', () => {
     await repository.save(transaction);
 
     expect(client.calls).toHaveLength(1);
-    const call = client.calls[0];
+    const call = requireCall(client);
     expect(call.text).toContain('INSERT INTO identity.oauth_transactions');
     expect(call.text).toContain('$1');
     expect(call.text).not.toContain(transaction.codeVerifier);
@@ -127,10 +139,11 @@ describe('PostgresOAuthTransactionRepository', () => {
       ...transaction,
       consumedAt: '2026-08-03T00:01:00.000Z',
     });
-    expect(client.calls[0].text).toContain('UPDATE identity.oauth_transactions');
-    expect(client.calls[0].text).toContain('consumed_at IS NULL');
-    expect(client.calls[0].text).toContain('expires_at >');
-    expect(client.calls[0].text).toContain('RETURNING');
+    const call = requireCall(client);
+    expect(call.text).toContain('UPDATE identity.oauth_transactions');
+    expect(call.text).toContain('consumed_at IS NULL');
+    expect(call.text).toContain('expires_at >');
+    expect(call.text).toContain('RETURNING');
   });
 
   it('returns undefined when no active transaction can be consumed', async () => {
@@ -139,7 +152,12 @@ describe('PostgresOAuthTransactionRepository', () => {
     const repository = new PostgresOAuthTransactionRepository(client, createSecretBox());
 
     await expect(
-      repository.consumeByStateHash('github', 'a'.repeat(64), 'b'.repeat(64), new Date().toISOString()),
+      repository.consumeByStateHash(
+        'github',
+        'a'.repeat(64),
+        'b'.repeat(64),
+        new Date().toISOString(),
+      ),
     ).resolves.toBeUndefined();
   });
 
@@ -151,8 +169,9 @@ describe('PostgresOAuthTransactionRepository', () => {
     await expect(
       repository.deleteExpiredOrConsumedBefore('2026-08-03T00:00:00.000Z'),
     ).resolves.toBe(7);
-    expect(client.calls[0].text).toContain('DELETE FROM identity.oauth_transactions');
-    expect(client.calls[0].values).toEqual(['2026-08-03T00:00:00.000Z']);
+    const call = requireCall(client);
+    expect(call.text).toContain('DELETE FROM identity.oauth_transactions');
+    expect(call.values).toEqual(['2026-08-03T00:00:00.000Z']);
   });
 });
 
@@ -163,9 +182,10 @@ describe('PostgresSessionRepository', () => {
     const session = sessionFixture();
 
     await repository.save(session);
-    expect(client.calls[0].text).toContain('INSERT INTO identity.sessions');
-    expect(client.calls[0].text).not.toContain(session.tokenHash);
-    expect(client.calls[0].values).toContain(session.workspaceId);
+    const saveCall = requireCall(client);
+    expect(saveCall.text).toContain('INSERT INTO identity.sessions');
+    expect(saveCall.text).not.toContain(session.tokenHash);
+    expect(saveCall.values).toContain(session.workspaceId);
 
     client.enqueue({
       rowCount: 1,
@@ -198,7 +218,7 @@ describe('PostgresSessionRepository', () => {
     await expect(
       repository.revokeByTokenHash('d'.repeat(64), '2026-08-03T00:02:00.000Z'),
     ).resolves.toBe(false);
-    expect(client.calls[0].text).toContain('revoked_at IS NULL');
+    expect(requireCall(client).text).toContain('revoked_at IS NULL');
   });
 
   it('deletes expired sessions and old revoked sessions', async () => {
@@ -207,7 +227,8 @@ describe('PostgresSessionRepository', () => {
     const repository = new PostgresSessionRepository(client);
 
     await expect(repository.deleteInactiveBefore('2026-08-03T00:00:00.000Z')).resolves.toBe(3);
-    expect(client.calls[0].text).toContain('DELETE FROM identity.sessions');
-    expect(client.calls[0].values).toEqual(['2026-08-03T00:00:00.000Z']);
+    const call = requireCall(client);
+    expect(call.text).toContain('DELETE FROM identity.sessions');
+    expect(call.values).toEqual(['2026-08-03T00:00:00.000Z']);
   });
 });
