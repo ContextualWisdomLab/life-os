@@ -1,0 +1,156 @@
+name: Apply OAuth review fixes
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-oauth-review-fixes-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.head.ref == 'feat/oauth-http-boundary'
+      && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Apply review fixes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_value, old, new):
+              path = Path(path_value)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one replacement, found {count}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          boundary = 'apps/identity-service/src/oauth-http-boundary.ts'
+          replace_once(
+              boundary,
+              "const OPAQUE_COOKIE_VALUE_PATTERN = /^[A-Za-z0-9_-]+$/;\nconst CALLBACK_QUERY_KEYS = new Set([",
+              "const OPAQUE_COOKIE_VALUE_PATTERN = /^[A-Za-z0-9_-]+$/;\nconst RFC6265_COOKIE_VALUE_PATTERN =\n  /^[\\x21\\x23-\\x2b\\x2d-\\x3a\\x3c-\\x5b\\x5d-\\x7e]*$/;\nconst COOKIE_PATH_PATTERN = /^\\/[\\x20-\\x3a\\x3c-\\x7e]*$/;\nconst CALLBACK_QUERY_KEYS = new Set([",
+          )
+          replace_once(
+              boundary,
+              "  const cookies: Record<string, string> = {};",
+              "  const cookies: Record<string, string> = Object.create(null);",
+          )
+          replace_once(
+              boundary,
+              "      cookies[name] !== undefined",
+              "      Object.prototype.hasOwnProperty.call(cookies, name)",
+          )
+          replace_once(
+              boundary,
+              "export function readOpaqueCookie(\n  header: string | undefined,\n  nameValue: string,\n): string | undefined {\n  const name = requireCookieName(nameValue);\n  return parseCookieHeader(header)[name];\n}",
+              "export function readOpaqueCookie(\n  header: string | undefined,\n  nameValue: string,\n): string | undefined {\n  const name = requireCookieName(nameValue);\n  if (header === undefined || header === '') {\n    return undefined;\n  }\n  if (\n    typeof header !== 'string' ||\n    Buffer.byteLength(header, 'utf8') > COOKIE_HEADER_LIMIT_BYTES ||\n    /[\\r\\n\\u0000]/.test(header)\n  ) {\n    return failInvalidCookie();\n  }\n\n  let targetValue: string | undefined;\n  for (const segment of header.split(';')) {\n    const separator = segment.indexOf('=');\n    if (separator <= 0) {\n      return failInvalidCookie();\n    }\n    const segmentName = requireCookieName(segment.slice(0, separator).trim());\n    const value = segment.slice(separator + 1).trim();\n    if (!RFC6265_COOKIE_VALUE_PATTERN.test(value)) {\n      return failInvalidCookie();\n    }\n    if (segmentName !== name) {\n      continue;\n    }\n    if (\n      !value ||\n      !OPAQUE_COOKIE_VALUE_PATTERN.test(value) ||\n      targetValue !== undefined\n    ) {\n      return failInvalidCookie();\n    }\n    targetValue = value;\n  }\n  return targetValue;\n}",
+          )
+          replace_once(
+              boundary,
+              "  if (!path.startsWith('/') || /[;\\r\\n]/.test(path)) {",
+              "  if (!COOKIE_PATH_PATTERN.test(path)) {",
+          )
+
+          application = 'apps/identity-service/src/oauth-http-application.ts'
+          replace_once(
+              application,
+              "  const providerConfiguration = configuration.providers[provider];\n  const clientId = providerConfiguration.clientId.trim();",
+              "  const providerConfiguration = configuration.providers[provider];\n  if (!providerConfiguration) {\n    throw new Error('OAuth provider is not supported');\n  }\n  const clientId = providerConfiguration.clientId.trim();",
+          )
+
+          tests = 'apps/identity-service/src/oauth-http-boundary.test.ts'
+          replace_once(
+              tests,
+              "    expect(readOpaqueCookie('alpha=one_two', 'alpha')).toBe('one_two');\n    expect(() => parseCookieHeader('alpha=one; alpha=two')).toThrow(",
+              "    expect(readOpaqueCookie('alpha=one_two', 'alpha')).toBe('one_two');\n    expect(\n      readOpaqueCookie(\n        `AWSALB=route%2Fabc; ${APPLICATION_SESSION_COOKIE_NAME}=opaque_session; cf_clearance=token.with.dots; gateway=a=b`,\n        APPLICATION_SESSION_COOKIE_NAME,\n      ),\n    ).toBe('opaque_session');\n    const prototypeNamedCookies = parseCookieHeader(\n      'constructor=one; __proto__=two; toString=three',\n    );\n    expect(prototypeNamedCookies.constructor).toBe('one');\n    expect(prototypeNamedCookies.__proto__).toBe('two');\n    expect(prototypeNamedCookies.toString).toBe('three');\n    expect(() =>\n      readOpaqueCookie(\n        `${APPLICATION_SESSION_COOKIE_NAME}=token.with.dot`,\n        APPLICATION_SESSION_COOKIE_NAME,\n      ),\n    ).toThrow('Cookie header is invalid');\n    expect(() => parseCookieHeader('alpha=one; alpha=two')).toThrow(",
+          )
+          replace_once(
+              tests,
+              "    expect(() =>\n      serializeSecureCookie({\n        name: APPLICATION_SESSION_COOKIE_NAME,\n        value: 'not allowed',\n        maxAgeSeconds: 10,\n      }),\n    ).toThrow('Cookie value is invalid');",
+              "    expect(() =>\n      serializeSecureCookie({\n        name: APPLICATION_SESSION_COOKIE_NAME,\n        value: 'not allowed',\n        maxAgeSeconds: 10,\n      }),\n    ).toThrow('Cookie value is invalid');\n    expect(() =>\n      serializeSecureCookie({\n        name: APPLICATION_SESSION_COOKIE_NAME,\n        value: 'opaque_session',\n        maxAgeSeconds: 10,\n        path: '/safe\\tpath',\n      }),\n    ).toThrow('Cookie path is invalid');",
+          )
+          replace_once(
+              tests,
+              "      `${OAUTH_BROWSER_COOKIE_NAME}=existing_binding`,",
+              "      `cf_clearance=token.with.dots; ${OAUTH_BROWSER_COOKIE_NAME}=existing_binding; gateway=a=b`,",
+          )
+          replace_once(
+              tests,
+              "  it('introspects a server-backed session without returning its bearer token', async () => {",
+              "  it('rejects unsupported providers with a handled domain error', async () => {\n    const { application: httpApplication } = application();\n    await expect(\n      httpApplication.beginAuthorization('microsoft' as never, undefined),\n    ).rejects.toThrow('OAuth provider is not supported');\n  });\n\n  it('introspects a server-backed session without returning its bearer token', async () => {",
+          )
+          PY
+
+      - name: Install dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Format and validate
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/identity-service/src/oauth-http-boundary.ts \
+            apps/identity-service/src/oauth-http-application.ts \
+            apps/identity-service/src/oauth-http-boundary.test.ts
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          docker compose config --quiet
+          git diff --check
+
+      - name: Commit validated fixes
+        run: |
+          set -euo pipefail
+          rm -f apps/web/tsconfig.tsbuildinfo
+          git checkout -- apps/web/tsconfig.json apps/web/next-env.d.ts 2>/dev/null || true
+          git config user.name "LifeOS maintenance automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/identity-service/src/oauth-http-boundary.ts \
+            apps/identity-service/src/oauth-http-application.ts \
+            apps/identity-service/src/oauth-http-boundary.test.ts
+          git diff --cached --check
+          git commit -m "fix(identity): harden OAuth cookie boundary"
+          git push origin HEAD:feat/oauth-http-boundary
