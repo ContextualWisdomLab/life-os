@@ -178,7 +178,10 @@ describeWithPostgres('PostgreSQL proposal audit repository integration', () => {
       restartedRepository.listProposals(workspaceId),
     ).resolves.toEqual([first, second]);
     await expect(
-      restartedRepository.findProposal(workspaceId, privateRecord.proposal.proposalId),
+      restartedRepository.findProposal(
+        workspaceId,
+        privateRecord.proposal.proposalId,
+      ),
     ).resolves.toBeUndefined();
     await restartedPool.end();
   });
