@@ -25,14 +25,14 @@ export interface Task {
 }
 
 export interface PlanningRepository {
-  saveGoal(goal: Goal): void;
-  saveProject(project: Project): void;
-  saveTask(task: Task): void;
-  findGoal(workspaceId: string, id: string): Goal | undefined;
-  findProject(workspaceId: string, id: string): Project | undefined;
-  listGoals(workspaceId: string): Goal[];
-  listProjects(workspaceId: string, goalId: string): Project[];
-  listTasks(workspaceId: string, projectId: string): Task[];
+  saveGoal(goal: Goal): Promise<void>;
+  saveProject(project: Project): Promise<void>;
+  saveTask(task: Task): Promise<void>;
+  findGoal(workspaceId: string, id: string): Promise<Goal | undefined>;
+  findProject(workspaceId: string, id: string): Promise<Project | undefined>;
+  listGoals(workspaceId: string): Promise<Goal[]>;
+  listProjects(workspaceId: string, goalId: string): Promise<Project[]>;
+  listTasks(workspaceId: string, projectId: string): Promise<Task[]>;
 }
 
 export class InMemoryPlanningRepository implements PlanningRepository {
@@ -40,41 +40,54 @@ export class InMemoryPlanningRepository implements PlanningRepository {
   private readonly projects = new Map<string, Project>();
   private readonly tasks = new Map<string, Task>();
 
-  saveGoal(goal: Goal): void {
+  async saveGoal(goal: Goal): Promise<void> {
     this.goals.set(goal.id, goal);
   }
 
-  saveProject(project: Project): void {
+  async saveProject(project: Project): Promise<void> {
     this.projects.set(project.id, project);
   }
 
-  saveTask(task: Task): void {
+  async saveTask(task: Task): Promise<void> {
     this.tasks.set(task.id, task);
   }
 
-  findGoal(workspaceId: string, id: string): Goal | undefined {
+  async findGoal(workspaceId: string, id: string): Promise<Goal | undefined> {
     const goal = this.goals.get(id);
     return goal?.workspaceId === workspaceId ? goal : undefined;
   }
 
-  findProject(workspaceId: string, id: string): Project | undefined {
+  async findProject(
+    workspaceId: string,
+    id: string,
+  ): Promise<Project | undefined> {
     const project = this.projects.get(id);
     return project?.workspaceId === workspaceId ? project : undefined;
   }
 
-  listGoals(workspaceId: string): Goal[] {
-    return [...this.goals.values()].filter((goal) => goal.workspaceId === workspaceId);
-  }
-
-  listProjects(workspaceId: string, goalId: string): Project[] {
-    return [...this.projects.values()].filter(
-      (project) => project.workspaceId === workspaceId && project.goalId === goalId,
+  async listGoals(workspaceId: string): Promise<Goal[]> {
+    return [...this.goals.values()].filter(
+      (goal) => goal.workspaceId === workspaceId,
     );
   }
 
-  listTasks(workspaceId: string, projectId: string): Task[] {
+  async listProjects(
+    workspaceId: string,
+    goalId: string,
+  ): Promise<Project[]> {
+    return [...this.projects.values()].filter(
+      (project) =>
+        project.workspaceId === workspaceId && project.goalId === goalId,
+    );
+  }
+
+  async listTasks(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<Task[]> {
     return [...this.tasks.values()].filter(
-      (task) => task.workspaceId === workspaceId && task.projectId === projectId,
+      (task) =>
+        task.workspaceId === workspaceId && task.projectId === projectId,
     );
   }
 }
@@ -102,7 +115,10 @@ function createOpaqueId(): string {
 export class PlanningService {
   constructor(private readonly repository: PlanningRepository) {}
 
-  createGoal(workspaceId: string, input: { title: string }): Goal {
+  async createGoal(
+    workspaceId: string,
+    input: { title: string },
+  ): Promise<Goal> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const goal: Goal = {
       id: createOpaqueId(),
@@ -110,14 +126,17 @@ export class PlanningService {
       title: normalizeTitle(input.title),
       createdAt: new Date().toISOString(),
     };
-    this.repository.saveGoal(goal);
+    await this.repository.saveGoal(goal);
     return goal;
   }
 
-  createProject(workspaceId: string, input: { goalId: string; title: string }): Project {
+  async createProject(
+    workspaceId: string,
+    input: { goalId: string; title: string },
+  ): Promise<Project> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const safeGoalId = requireOpaqueId(input.goalId);
-    if (!this.repository.findGoal(safeWorkspaceId, safeGoalId)) {
+    if (!(await this.repository.findGoal(safeWorkspaceId, safeGoalId))) {
       throw new Error('Goal not found');
     }
     const project: Project = {
@@ -127,14 +146,17 @@ export class PlanningService {
       title: normalizeTitle(input.title),
       createdAt: new Date().toISOString(),
     };
-    this.repository.saveProject(project);
+    await this.repository.saveProject(project);
     return project;
   }
 
-  createTask(workspaceId: string, input: { projectId: string; title: string }): Task {
+  async createTask(
+    workspaceId: string,
+    input: { projectId: string; title: string },
+  ): Promise<Task> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const safeProjectId = requireOpaqueId(input.projectId);
-    if (!this.repository.findProject(safeWorkspaceId, safeProjectId)) {
+    if (!(await this.repository.findProject(safeWorkspaceId, safeProjectId))) {
       throw new Error('Project not found');
     }
     const task: Task = {
@@ -145,19 +167,31 @@ export class PlanningService {
       status: 'todo',
       createdAt: new Date().toISOString(),
     };
-    this.repository.saveTask(task);
+    await this.repository.saveTask(task);
     return task;
   }
 
-  listGoals(workspaceId: string): Goal[] {
-    return this.repository.listGoals(requireOpaqueId(workspaceId));
+  async listGoals(workspaceId: string): Promise<Goal[]> {
+    return await this.repository.listGoals(requireOpaqueId(workspaceId));
   }
 
-  listProjects(workspaceId: string, goalId: string): Project[] {
-    return this.repository.listProjects(requireOpaqueId(workspaceId), requireOpaqueId(goalId));
+  async listProjects(
+    workspaceId: string,
+    goalId: string,
+  ): Promise<Project[]> {
+    return await this.repository.listProjects(
+      requireOpaqueId(workspaceId),
+      requireOpaqueId(goalId),
+    );
   }
 
-  listTasks(workspaceId: string, projectId: string): Task[] {
-    return this.repository.listTasks(requireOpaqueId(workspaceId), requireOpaqueId(projectId));
+  async listTasks(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<Task[]> {
+    return await this.repository.listTasks(
+      requireOpaqueId(workspaceId),
+      requireOpaqueId(projectId),
+    );
   }
 }
