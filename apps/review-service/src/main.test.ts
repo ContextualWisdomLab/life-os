@@ -57,10 +57,7 @@ describe('Review controller', () => {
       controller.completeDailyPlanning(WORKSPACE_ID, body()),
     ).resolves.toMatchObject({ ritualKind: 'daily-planning' });
     await expect(
-      controller.completeDailyShutdown(
-        WORKSPACE_ID,
-        body(),
-      ),
+      controller.completeDailyShutdown(WORKSPACE_ID, body()),
     ).resolves.toMatchObject({ ritualKind: 'daily-shutdown' });
     await expect(
       controller.completeWeeklyReview(WORKSPACE_ID, body()),
