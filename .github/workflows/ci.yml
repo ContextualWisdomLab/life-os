@@ -51,6 +51,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Render proposal audit formatting diff
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/proposal-audit-domain.ts \
+            apps/ai-service/src/proposal-audit-domain.test.ts \
+            apps/ai-service/src/postgres-proposal-audit-repository.ts \
+            apps/ai-service/src/postgres-proposal-audit-repository.test.ts
+          git diff -- \
+            apps/ai-service/src/proposal-audit-domain.ts \
+            apps/ai-service/src/proposal-audit-domain.test.ts \
+            apps/ai-service/src/postgres-proposal-audit-repository.ts \
+            apps/ai-service/src/postgres-proposal-audit-repository.test.ts
+          exit 1
+
       - name: Check formatting
         run: pnpm format:check
 
