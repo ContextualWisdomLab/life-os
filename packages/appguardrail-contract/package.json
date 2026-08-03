@@ -1,0 +1,12 @@
+{
+  "name": "@life-os/appguardrail-contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check src/verify-contract.mjs",
+    "lint": "node --check src/verify-contract.mjs && node --check src/verify-contract.test.mjs",
+    "test": "node --test src/verify-contract.test.mjs",
+    "typecheck": "node --check src/verify-contract.mjs && node --check src/verify-contract.test.mjs"
+  }
+}

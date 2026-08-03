@@ -8,6 +8,8 @@ coverage/
 .env.*
 !.env.example
 *.log
+appguardrail-findings.json
+appguardrail.sarif
 .DS_Store
 .idea/
 .vscode/

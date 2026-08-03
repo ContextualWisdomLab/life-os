@@ -12,7 +12,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "format:check": "prettier --check README.md package.json turbo.json tsconfig.base.json pnpm-workspace.yaml compose.yaml .github/workflows/ci.yml",
+    "format:check": "prettier --check .prettierrc.json README.md package.json turbo.json tsconfig.base.json pnpm-workspace.yaml compose.yaml .appguardrail.json .github/workflows/ci.yml .github/workflows/appguardrail.yml security/appguardrail-contract.json packages/appguardrail-contract/package.json packages/appguardrail-contract/src/verify-contract.mjs packages/appguardrail-contract/src/verify-contract.test.mjs tests/appguardrail-fixtures/dangerous-cors.ts docs/security/appguardrail-regressions.md docs/superpowers/specs/2026-08-03-appguardrail-security-gate-design.md",
     "format": "prettier --write ."
   },
   "devDependencies": {
