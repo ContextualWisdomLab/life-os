@@ -1,0 +1,17 @@
+{
+  "schema": "life-os.commercial-readiness-policy.v1",
+  "default_branch": "main",
+  "readiness_issue_marker": "<!-- life-os-commercial-readiness-loop:v1 -->",
+  "readiness_issue_title": "LifeOS commercial readiness",
+  "trusted_author_associations": ["OWNER", "MEMBER", "COLLABORATOR"],
+  "required_workflows": [
+    "CI",
+    "SAST Semgrep",
+    "Security Scan",
+    "AppGuardrail",
+    "Commercial Readiness"
+  ],
+  "required_statuses": ["CodeRabbit"],
+  "artifact_retention_days": 7,
+  "merge_method": "squash"
+}

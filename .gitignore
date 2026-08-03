@@ -10,6 +10,7 @@ coverage/
 *.log
 appguardrail-findings.json
 appguardrail.sarif
+commercial-readiness-evidence/
 .DS_Store
 .idea/
 .vscode/

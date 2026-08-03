@@ -1,0 +1,169 @@
+name: Commercial Readiness
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EVIDENCE_DIR: commercial-readiness-evidence
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      issues: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Collect bounded GitHub evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          node packages/commercial-readiness/src/cli.mjs snapshot \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --commit "$GITHUB_SHA" \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --output "$EVIDENCE_DIR/github-snapshot.json"
+
+      - name: Audit product capabilities and buyer gaps
+        run: |
+          set -euo pipefail
+          node packages/commercial-readiness/src/cli.mjs audit \
+            --manifest product/capabilities.json \
+            --snapshot "$EVIDENCE_DIR/github-snapshot.json" \
+            --policy product/commercial-readiness-policy.json \
+            --root . \
+            --output-json "$EVIDENCE_DIR/commercial-readiness.json" \
+            --output-markdown "$EVIDENCE_DIR/commercial-readiness.md"
+
+      - name: Dry-run pull request drain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node packages/commercial-readiness/src/cli.mjs drain \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --dry-run \
+            --output "$EVIDENCE_DIR/pr-drain-dry-run.json"
+
+      - name: Upload commercial readiness evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: commercial-readiness-evidence-${{ github.run_id }}
+          path: commercial-readiness-evidence/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: >-
+      github.event_name != 'pull_request'
+      && github.ref == 'refs/heads/main'
+    needs: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Download commercial readiness evidence
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: commercial-readiness-evidence-${{ github.run_id }}
+          path: commercial-readiness-evidence/
+
+      - name: Update the living readiness issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node packages/commercial-readiness/src/cli.mjs publish \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --report "$EVIDENCE_DIR/commercial-readiness.md"
+
+  drain:
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
+    needs: [audit, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      # GitHub's merge endpoint requires Contents: write; other scopes stay read-only.
+      contents: write
+      issues: read
+      statuses: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Recheck and squash-merge eligible pull requests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          node packages/commercial-readiness/src/cli.mjs drain \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --merge \
+            --output "$EVIDENCE_DIR/pr-drain.json"
+
+      - name: Upload pull request drain evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: commercial-readiness-pr-drain-${{ github.run_id }}
+          path: commercial-readiness-evidence/pr-drain.json
+          if-no-files-found: error
+          retention-days: 7

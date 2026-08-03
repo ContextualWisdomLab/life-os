@@ -1,0 +1,12 @@
+{
+  "name": "@life-os/commercial-readiness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check src/cli.mjs && node --check src/github-client.mjs",
+    "lint": "node --check src/schema.mjs && node --check src/audit.mjs && node --check src/pr-gate.mjs && node --check src/render.mjs && node --check src/github-client.mjs && node --check src/cli.mjs",
+    "test": "node --test src/*.test.mjs",
+    "typecheck": "node --check src/schema.mjs && node --check src/audit.mjs && node --check src/pr-gate.mjs && node --check src/render.mjs && node --check src/github-client.mjs && node --check src/cli.mjs"
+  }
+}
