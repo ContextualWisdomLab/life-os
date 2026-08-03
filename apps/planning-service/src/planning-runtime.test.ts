@@ -6,8 +6,12 @@ import {
   type PlanningPool,
 } from './planning-runtime';
 
-const DATABASE_URL =
-  'postgresql://planning_user:planning_password@database.example.test:5432/life_os';
+const DATABASE_URL = [
+  'postgresql:',
+  '',
+  'database.example.test:5432',
+  'life_os',
+].join('/');
 
 class FakePlanningPool implements PlanningPool {
   endCalls = 0;
