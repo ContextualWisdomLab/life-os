@@ -8,7 +8,7 @@ Apply AI service SQL files in lexical order to the PostgreSQL database owned by 
 
 The audit schema stores only validated proposal requests, model identity, inert proposed operations, explanatory rationale, canonical SHA-256 digests, timestamps, and explicit user decisions. It has no foreign key, repository dependency, database privilege, or command surface for planning, calendar, habit, identity, notification, or other user-owned state mutation.
 
-Every proposal, workspace, decision, actor, and idempotency identifier is constrained to UUIDv4. Repository entry points reject malformed or non-string runtime identifiers before issuing SQL. Decision ownership carries `(proposal_id, workspace_id, proposal_content_digest)` through a composite foreign key so an accept/reject event cannot silently target another tenant or a stale proposal revision.
+Every proposal, workspace, decision, actor, and idempotency identifier is constrained to UUIDv4. Decision ownership carries `(proposal_id, workspace_id, proposal_content_digest)` through a composite foreign key so an accept/reject event cannot silently target another tenant or a stale proposal revision.
 
 ## Integrity and idempotency
 
