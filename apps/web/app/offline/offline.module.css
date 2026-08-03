@@ -1,0 +1,69 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 7vw, 80px);
+}
+
+.card {
+  width: min(620px, 100%);
+  padding: clamp(28px, 6vw, 56px);
+  border: 1px solid #d8dfd7;
+  border-radius: 24px;
+  background: white;
+  box-shadow: 0 28px 70px rgba(30, 55, 38, 0.1);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 52px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 1.15rem;
+}
+
+.brand span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #17382c;
+  color: #f1c967;
+  font-weight: 900;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #6b776e;
+  font-size: 0.73rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.card h1 {
+  margin: 0;
+  font-size: clamp(2.6rem, 8vw, 5rem);
+  line-height: 0.96;
+  letter-spacing: -0.06em;
+}
+
+.card p:not(.eyebrow) {
+  margin: 24px 0 0;
+  color: #5d685f;
+  line-height: 1.7;
+}
+
+.retry {
+  display: inline-flex;
+  margin-top: 30px;
+  border-radius: 12px;
+  padding: 13px 18px;
+  background: #17382c;
+  color: white;
+  font-weight: 850;
+  text-decoration: none;
+}
