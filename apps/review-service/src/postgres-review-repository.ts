@@ -217,11 +217,19 @@ export class PostgresReviewRepository implements ReviewRepository {
         safe.periodStartDate,
       ],
     );
-    const persisted = parseRow(exactlyOne(conflicts.rows), safe.workspaceId);
-    if (!sameImmutableEvidence(persisted, safe)) {
-      throw new ReviewCompletionConflictError();
+    if (conflicts.rows.length === 0 || conflicts.rows.length > 2) {
+      persistenceFailure();
     }
-    return persisted;
+    const persistedRecords = conflicts.rows.map((row) =>
+      parseRow(row, safe.workspaceId),
+    );
+    if (
+      persistedRecords.length === 1 &&
+      sameImmutableEvidence(exactlyOne(persistedRecords), safe)
+    ) {
+      return exactlyOne(persistedRecords);
+    }
+    throw new ReviewCompletionConflictError();
   }
 
   async list(
