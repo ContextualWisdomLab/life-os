@@ -50,7 +50,7 @@ function createClient(execute: OAuthProviderRequestExecutor['execute']) {
 }
 
 describe('GitHubOAuthClient', () => {
-  it('exchanges the code at fixed endpoints and returns only a normalized identity', async () => {
+  it('returns a normalized identity from fixed GitHub endpoints', async () => {
     const requests: OAuthProviderHttpRequest[] = [];
     const execute = vi.fn(async (request: OAuthProviderHttpRequest) => {
       requests.push(request);
@@ -85,9 +85,10 @@ describe('GitHubOAuthClient', () => {
       throw new Error('unexpected endpoint');
     });
 
-    const identity = await createClient(
-      execute,
-    ).authenticateAuthorizationCode(AUTHORIZATION_CODE, transaction());
+    const identity = await createClient(execute).authenticateAuthorizationCode(
+      AUTHORIZATION_CODE,
+      transaction(),
+    );
 
     expect(identity).toEqual({
       provider: 'github',
@@ -127,7 +128,7 @@ describe('GitHubOAuthClient', () => {
     expect(requests[2]?.headers).toEqual(requests[1]?.headers);
   });
 
-  it('preserves a numeric GitHub subject supplied as a string and omits unverified email', async () => {
+  it('keeps large string subjects and omits unverified email', async () => {
     const execute = vi.fn(async (request: OAuthProviderHttpRequest) => {
       if (request.method === 'POST') {
         return jsonResult({
@@ -164,10 +165,7 @@ describe('GitHubOAuthClient', () => {
   });
 
   it.each([
-    [
-      'token rejection',
-      async () => jsonResult({ error: 'invalid_grant' }, 401),
-    ],
+    ['token rejection', async () => jsonResult({ error: 'invalid_grant' }, 401)],
     [
       'malformed user response',
       async (request: OAuthProviderHttpRequest) =>
@@ -201,7 +199,7 @@ describe('GitHubOAuthClient', () => {
     ).rejects.toThrow('GitHub OAuth authentication failed');
   });
 
-  it('redacts transaction, provider, and transport diagnostics from failures', async () => {
+  it('redacts transaction and transport diagnostics', async () => {
     const providerDiagnostic = 'upstream-body-with-sensitive-detail';
     const execute = vi.fn(async () => {
       throw new Error(providerDiagnostic);
