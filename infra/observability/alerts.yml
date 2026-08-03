@@ -3,14 +3,17 @@ groups:
     interval: 30s
     rules:
       - alert: LifeOsGatewayTargetDown
-        expr: up{job="life-os-gateway"} == 0
+        expr: |
+          (up{job="life-os-gateway"} == 0)
+          or
+          absent(up{job="life-os-gateway"})
         for: 5m
         labels:
           severity: page
           service: life-os-gateway
         annotations:
           summary: LifeOS gateway metrics target is unavailable
-          description: The gateway has not been scrapeable for five minutes.
+          description: The gateway has been down or absent from service discovery for five minutes.
 
       - alert: LifeOsGatewayAvailabilityFastBurn
         expr: |
@@ -74,3 +77,22 @@ groups:
         annotations:
           summary: LifeOS gateway latency error budget is burning
           description: More than 30% of user-facing requests have exceeded 500 ms for 15 minutes, consuming the 95% latency objective at greater than 6x burn.
+
+      - alert: LifeOsGatewayTailLatencyBudgetBurn
+        expr: |
+          (
+            1 -
+            (
+              sum(rate(life_os_http_request_duration_seconds_bucket{service="life-os-gateway",route!~"/v1/(health|metrics)",le="2"}[30m]))
+              /
+              clamp_min(sum(rate(life_os_http_request_duration_seconds_count{service="life-os-gateway",route!~"/v1/(health|metrics)"}[30m])), 0.000001)
+            )
+          ) > 0.06
+        for: 15m
+        labels:
+          severity: ticket
+          service: life-os-gateway
+          slo: tail-latency
+        annotations:
+          summary: LifeOS gateway tail-latency error budget is burning
+          description: More than 6% of user-facing requests have exceeded 2 seconds for 15 minutes, consuming the 99% tail-latency objective at greater than 6x burn.
