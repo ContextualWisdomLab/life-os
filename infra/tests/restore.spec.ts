@@ -36,29 +36,26 @@ const restoreScript = resolve(process.cwd(), '../backup/restore.sh');
 
 function createPostgresClientWrapper(commandName: string): void {
   const wrapperPath = join(toolDirectory, commandName);
-  const defaultDatabaseUrl =
-    commandName === 'pg_dump' ? SOURCE_DATABASE_URL : TARGET_DATABASE_URL;
   writeFileSync(
     wrapperPath,
     `#!/usr/bin/env bash
 set -Eeuo pipefail
 
-client_env_file="$(mktemp "\${BACKUP_RECOVERY_MOUNT_ROOT}/.postgres-client-env.XXXXXX")"
-cleanup() {
-  rm -f -- "\${client_env_file}"
-}
-trap cleanup EXIT INT TERM
-chmod 600 -- "\${client_env_file}"
-printf 'PGDATABASE=%s\\n' '${defaultDatabaseUrl}' >"\${client_env_file}"
+command_arguments=("$@")
+if [[ -n "\${PGDATABASE:-}" ]]; then
+  [[ "\${PGDATABASE}" != *$'\\n'* && "\${PGDATABASE}" != *$'\\r'* ]] || exit 64
+  command_arguments=(--dbname "\${PGDATABASE}" "\${command_arguments[@]}")
+fi
 
+# The rehearsal database uses synthetic CI credentials. Production scripts retain
+# their secret-backed PGDATABASE boundary and never add it to process arguments.
 docker run --rm --network host \\
   --user "\${BACKUP_RECOVERY_USER_ID}:\${BACKUP_RECOVERY_GROUP_ID}" \\
   --env HOME=/tmp \\
-  --env-file "\${client_env_file}" \\
   --volume "\${BACKUP_RECOVERY_PASSWD_FILE}:/etc/passwd:ro" \\
   --volume "\${BACKUP_RECOVERY_GROUP_FILE}:/etc/group:ro" \\
   --volume "\${BACKUP_RECOVERY_MOUNT_ROOT}:\${BACKUP_RECOVERY_MOUNT_ROOT}" \\
-  "\${POSTGRES_CLIENT_IMAGE}" ${commandName} "$@"
+  "\${POSTGRES_CLIENT_IMAGE}" ${commandName} "\${command_arguments[@]}"
 `,
     { mode: 0o700 },
   );
