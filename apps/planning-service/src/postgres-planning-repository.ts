@@ -56,7 +56,8 @@ function requireUuidV4(value: unknown, message: string): string {
 }
 
 function requireTimestamp(value: unknown, message: string): string {
-  const timestamp = value instanceof Date ? value : new Date(requireString(value, message));
+  const timestamp =
+    value instanceof Date ? value : new Date(requireString(value, message));
   if (!Number.isFinite(timestamp.getTime())) {
     throw new Error(message);
   }
@@ -80,10 +81,7 @@ function mapGoalRow(row: GoalRow): Goal {
 }
 
 function mapProjectRow(row: ProjectRow): Project {
-  const workspaceId = requireUuidV4(
-    row.workspace_id,
-    INVALID_STORED_PROJECT,
-  );
+  const workspaceId = requireUuidV4(row.workspace_id, INVALID_STORED_PROJECT);
   const goalWorkspaceId = requireUuidV4(
     row.goal_workspace_id,
     INVALID_STORED_PROJECT,
@@ -261,10 +259,7 @@ export class PostgresPlanningRepository implements PlanningRepository {
     return result.rows.map(mapGoalRow);
   }
 
-  async listProjects(
-    workspaceId: string,
-    goalId: string,
-  ): Promise<Project[]> {
+  async listProjects(workspaceId: string, goalId: string): Promise<Project[]> {
     const result = await this.database.query<ProjectRow>(
       `SELECT
          projects.id,
