@@ -120,17 +120,40 @@ jobs:
         with:
           sarif_file: appguardrail.sarif
 
+      - name: Stage available AppGuardrail evidence
+        id: stage_evidence
+        if: always()
+        continue-on-error: true
+        env:
+          REDACTION_OUTCOME: ${{ steps.redact_evidence.outcome }}
+        run: |
+          set -euo pipefail
+          evidence_dir="${RUNNER_TEMP}/appguardrail-evidence"
+          rm -rf "$evidence_dir"
+          mkdir -p "$evidence_dir"
+
+          if [ "$REDACTION_OUTCOME" = "success" ] && [ -s appguardrail-findings.json ]; then
+            cp appguardrail-findings.json "$evidence_dir/"
+          fi
+          if [ -s appguardrail.sarif ]; then
+            cp appguardrail.sarif "$evidence_dir/"
+          fi
+
+          if find "$evidence_dir" -type f -print -quit | grep -q .; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload AppGuardrail evidence
         if: >-
           always()
-          && steps.redact_evidence.outcome == 'success'
-          && hashFiles('appguardrail.sarif') != ''
+          && steps.stage_evidence.outcome == 'success'
+          && steps.stage_evidence.outputs.available == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: appguardrail-evidence
-          path: |
-            appguardrail-findings.json
-            appguardrail.sarif
+          path: ${{ runner.temp }}/appguardrail-evidence/
           if-no-files-found: error
           overwrite: true
           retention-days: 7
