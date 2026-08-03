@@ -5,7 +5,6 @@ const INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
 const MAXIMUM_ACTIONS = 50;
 const MAXIMUM_TITLE_LENGTH = 160;
-const MAXIMUM_STORAGE_BYTES = 128 * 1024;
 const MINIMUM_DURATION_MINUTES = 15;
 const MAXIMUM_DURATION_MINUTES = 240;
 const MINUTES_PER_DAY = 24 * 60;
@@ -194,7 +193,10 @@ function normalizeAction(value: unknown): TodayAction {
   if ((startMinute === null) !== (durationMinutes === null)) {
     return invalid();
   }
-  if (startMinute !== null && startMinute + (durationMinutes ?? 0) > MINUTES_PER_DAY) {
+  if (
+    startMinute !== null &&
+    startMinute + (durationMinutes ?? 0) > MINUTES_PER_DAY
+  ) {
     return invalid();
   }
   if (
@@ -236,6 +238,7 @@ function assertDraftInvariants(actions: readonly TodayAction[]): void {
       priorities.add(action.priority);
     }
   }
+
   const scheduled = actions
     .filter(
       (action) =>
@@ -243,9 +246,10 @@ function assertDraftInvariants(actions: readonly TodayAction[]): void {
         action.startMinute !== null &&
         action.durationMinutes !== null,
     )
-    .sort((left, right) =>
-      (left.startMinute ?? 0) - (right.startMinute ?? 0) ||
-      left.id.localeCompare(right.id),
+    .sort(
+      (left, right) =>
+        (left.startMinute ?? 0) - (right.startMinute ?? 0) ||
+        left.id.localeCompare(right.id),
     );
   for (let index = 1; index < scheduled.length; index += 1) {
     const previous = scheduled[index - 1];
@@ -291,32 +295,6 @@ export function parseTodayDraft(value: unknown, expectedDate: string): TodayDraf
   });
 }
 
-export function parseStoredTodayDraft(
-  serialized: string | null,
-  expectedDate: string,
-): TodayDraft {
-  if (serialized === null) {
-    return createEmptyTodayDraft(expectedDate);
-  }
-  if (Buffer.byteLength(serialized, 'utf8') > MAXIMUM_STORAGE_BYTES) {
-    return createEmptyTodayDraft(expectedDate);
-  }
-  try {
-    return parseTodayDraft(JSON.parse(serialized) as unknown, expectedDate);
-  } catch {
-    return createEmptyTodayDraft(expectedDate);
-  }
-}
-
-export function serializeTodayDraft(draft: TodayDraft): string {
-  const normalized = parseTodayDraft(draft, draft.date);
-  const serialized = JSON.stringify(normalized);
-  if (Buffer.byteLength(serialized, 'utf8') > MAXIMUM_STORAGE_BYTES) {
-    return invalid();
-  }
-  return serialized;
-}
-
 function replaceAction(
   draft: TodayDraft,
   id: string,
@@ -341,7 +319,11 @@ function replaceAction(
 
 export function addTodayAction(
   draft: TodayDraft,
-  input: { readonly id: string; readonly title: string; readonly createdAt: string },
+  input: {
+    readonly id: string;
+    readonly title: string;
+    readonly createdAt: string;
+  },
 ): TodayDraft {
   const safeDraft = parseTodayDraft(draft, draft.date);
   if (safeDraft.actions.length >= MAXIMUM_ACTIONS) {
@@ -364,7 +346,8 @@ export function addTodayAction(
 
 export function toggleTodayPriority(draft: TodayDraft, id: string): TodayDraft {
   const safeDraft = parseTodayDraft(draft, draft.date);
-  const action = safeDraft.actions.find((candidate) => candidate.id === id);
+  const safeId = requireUuidV4(id);
+  const action = safeDraft.actions.find((candidate) => candidate.id === safeId);
   if (!action || action.status === 'done') {
     return invalid();
   }
@@ -374,7 +357,7 @@ export function toggleTodayPriority(draft: TodayDraft, id: string): TodayDraft {
     ),
   );
   if (action.priority !== null) {
-    return replaceAction(safeDraft, id, (candidate) =>
+    return replaceAction(safeDraft, safeId, (candidate) =>
       Object.freeze({
         ...candidate,
         priority: null,
@@ -389,7 +372,7 @@ export function toggleTodayPriority(draft: TodayDraft, id: string): TodayDraft {
   if (nextPriority === undefined) {
     throw new TodayPriorityLimitError();
   }
-  return replaceAction(safeDraft, id, (candidate) =>
+  return replaceAction(safeDraft, safeId, (candidate) =>
     Object.freeze({ ...candidate, priority: nextPriority }),
   );
 }
@@ -418,9 +401,16 @@ export function scheduleTodayAction(
 }
 
 export function clearTodaySchedule(draft: TodayDraft, id: string): TodayDraft {
-  return replaceAction(draft, id, (action) =>
-    Object.freeze({ ...action, startMinute: null, durationMinutes: null }),
-  );
+  return replaceAction(draft, id, (action) => {
+    if (action.status !== 'open') {
+      return invalid();
+    }
+    return Object.freeze({
+      ...action,
+      startMinute: null,
+      durationMinutes: null,
+    });
+  });
 }
 
 export function toggleTodayCompletion(
@@ -428,10 +418,13 @@ export function toggleTodayCompletion(
   id: string,
   completedAt: string,
 ): TodayDraft {
-  const timestamp = requireInstant(completedAt);
   return replaceAction(draft, id, (action) =>
     action.status === 'open'
-      ? Object.freeze({ ...action, status: 'done', completedAt: timestamp })
+      ? Object.freeze({
+          ...action,
+          status: 'done',
+          completedAt: requireInstant(completedAt),
+        })
       : Object.freeze({ ...action, status: 'open', completedAt: null }),
   );
 }
