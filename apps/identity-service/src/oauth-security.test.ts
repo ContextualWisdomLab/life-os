@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { IdentityProvider } from './identity-domain';
 import {
   InMemoryOAuthTransactionRepository,
   InMemorySessionRepository,
@@ -116,6 +117,56 @@ describe('OAuthTransactionService', () => {
       }),
     ).toThrowError('OAuth transaction expired');
   });
+
+  it('rejects unsupported provider values at runtime', () => {
+    const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository(), {
+      now: () => NOW,
+    });
+
+    expect(() =>
+      service.beginAuthorization({
+        provider: 'gitlab' as IdentityProvider,
+        browserSessionId: 'browser-session-a',
+        redirectUri: 'https://life.example/auth/gitlab/callback',
+      }),
+    ).toThrowError('Unsupported identity provider');
+  });
+
+  it('requires a secure redirect URI and rejects fragments', () => {
+    const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository(), {
+      now: () => NOW,
+    });
+
+    expect(() =>
+      service.beginAuthorization({
+        provider: 'github',
+        browserSessionId: 'browser-session-a',
+        redirectUri: 'http://life.example/auth/github/callback',
+      }),
+    ).toThrowError('Redirect URI must use HTTPS');
+
+    expect(() =>
+      service.beginAuthorization({
+        provider: 'github',
+        browserSessionId: 'browser-session-a',
+        redirectUri: 'https://life.example/auth/github/callback#fragment',
+      }),
+    ).toThrowError('Redirect URI must not contain a fragment');
+  });
+
+  it('permits loopback HTTP redirect URIs for local development', () => {
+    const service = new OAuthTransactionService(new InMemoryOAuthTransactionRepository(), {
+      now: () => NOW,
+    });
+
+    const authorization = service.beginAuthorization({
+      provider: 'github',
+      browserSessionId: 'browser-session-a',
+      redirectUri: 'http://127.0.0.1:4000/auth/github/callback',
+    });
+
+    expect(authorization.codeChallengeMethod).toBe('S256');
+  });
 });
 
 describe('SessionService', () => {
@@ -133,7 +184,9 @@ describe('SessionService', () => {
     expect(issued.token).not.toMatch(/^\d+$/);
     expect(issued.session.id).toMatch(UUID_V4_PATTERN);
     expect(issued.session.tokenHash).toBe(sha256Base64Url(issued.token));
-    expect(repository.containsRawToken(issued.token)).toBe(false);
+    expect(JSON.stringify(repository.findByTokenHash(issued.session.tokenHash))).not.toContain(
+      issued.token,
+    );
     expect(service.authenticate(issued.token)).toEqual(issued.session);
   });
 
