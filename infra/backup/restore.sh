@@ -16,6 +16,8 @@ require_command() {
 [[ -n "${BACKUP_ARCHIVE:-}" ]] || fail 'backup_archive_missing'
 [[ "${LIFEOS_RESTORE_CONFIRMATION:-}" == 'restore-empty-database' ]] ||
   fail 'restore_confirmation_missing'
+[[ "${BACKUP_ARCHIVE}" != *$'\n'* && "${BACKUP_ARCHIVE}" != *$'\r'* ]] ||
+  fail 'backup_archive_invalid'
 [[ -f "${BACKUP_ARCHIVE}" && ! -L "${BACKUP_ARCHIVE}" ]] ||
   fail 'backup_archive_invalid'
 
@@ -46,8 +48,7 @@ actual_digest="$(sha256sum "${BACKUP_ARCHIVE}" | awk '{print $1}')"
 pg_restore --list "${BACKUP_ARCHIVE}" >/dev/null || fail 'backup_archive_unreadable'
 
 target_database="$({
-  psql \
-    --dbname="${DATABASE_URL}" \
+  PGDATABASE="${DATABASE_URL}" psql \
     --no-psqlrc \
     --tuples-only \
     --no-align \
@@ -62,8 +63,7 @@ case "${target_database}" in
 esac
 
 user_relation_count="$({
-  psql \
-    --dbname="${DATABASE_URL}" \
+  PGDATABASE="${DATABASE_URL}" psql \
     --no-psqlrc \
     --tuples-only \
     --no-align \
@@ -74,8 +74,7 @@ user_relation_count="$({
 [[ "${user_relation_count}" == '0' ]] || fail 'target_database_not_empty'
 
 started_at="$(date +%s)"
-pg_restore \
-  --dbname="${DATABASE_URL}" \
+PGDATABASE="${DATABASE_URL}" pg_restore \
   --exit-on-error \
   --single-transaction \
   --no-owner \
