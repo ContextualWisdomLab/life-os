@@ -13,8 +13,8 @@ Persist recurring habit definitions and append-only completion history through a
 5. Align habit and completion-history ordering with the deterministic migration indexes.
 6. Insert completion events without mutation and recover exact retries only after the named idempotency constraint reports a unique violation.
 7. Reject an idempotency-key replay when its scheduled date or completion timestamp differs from the original persisted payload.
-8. Preserve unrelated database errors rather than misclassifying them as idempotent retries.
-9. Cover SQL binding, recurrence encoding and decoding, malformed rows, cross-tenant data, missing and duplicate lookups, new completions, exact retries, conflicting retries, unrelated database errors, and completion ordering.
+8. Convert unrelated database and transport failures into a credential-free persistence error rather than leaking driver details or misclassifying them as idempotent retries.
+9. Cover SQL binding, recurrence encoding and decoding, malformed rows, cross-tenant data, missing and duplicate lookups, new completions, exact retries, conflicting retries, safe database errors, and completion ordering.
 10. Execute the Habit migration against the CI PostgreSQL service and prove restart durability, tenant isolation, concurrent duplicate serialization, conflicting replay rejection, and database-enforced append-only history.
 
 ## Deferred slices
