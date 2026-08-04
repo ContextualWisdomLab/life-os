@@ -31,6 +31,12 @@ function signedHeaders(
   };
 }
 
+/** Changes a significant base64url character so the decoded digest must differ. */
+function forgeSignature(signature: string): string {
+  const replacement = signature.startsWith('A') ? 'B' : 'A';
+  return `${replacement}${signature.slice(1)}`;
+}
+
 /** Sends one bounded proposal request with an explicitly selected header set. */
 function postProposal(
   headers: Readonly<Record<string, string>>,
@@ -136,10 +142,9 @@ describe('AI signed gateway HTTP boundary', () => {
     );
     const authentic = signedHeaders(workspaceId, actorId);
     const signature = authentic['x-life-os-context-signature'];
-    const replacement = signature.endsWith('A') ? 'B' : 'A';
     const forged = await postProposal({
       ...authentic,
-      'x-life-os-context-signature': `${signature.slice(0, -1)}${replacement}`,
+      'x-life-os-context-signature': forgeSignature(signature),
     });
 
     expect(stale).toMatchObject({
