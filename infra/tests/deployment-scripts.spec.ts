@@ -13,7 +13,11 @@ import { describe, expect, it } from 'vitest';
 const repositoryRoot = resolve(process.cwd(), '../..');
 const kubernetesRoot = resolve(repositoryRoot, 'infra/kubernetes');
 
-function python(script: string, arguments_: string[], environment: NodeJS.ProcessEnv) {
+function python(
+  script: string,
+  arguments_: string[],
+  environment: NodeJS.ProcessEnv,
+) {
   return spawnSync('python', [resolve(kubernetesRoot, script), ...arguments_], {
     cwd: repositoryRoot,
     encoding: 'utf8',
