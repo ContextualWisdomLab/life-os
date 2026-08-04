@@ -128,9 +128,7 @@ export function rankPlanningSearchCandidates(
       rank: matchRank(normalizeSearchText(candidate.title), input),
     }))
     .filter(
-      (
-        entry,
-      ): entry is { candidate: PlanningSearchCandidate; rank: number } =>
+      (entry): entry is { candidate: PlanningSearchCandidate; rank: number } =>
         entry.rank !== undefined,
     )
     .sort((left, right) => {
