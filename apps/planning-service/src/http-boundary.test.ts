@@ -204,17 +204,14 @@ describe('planning HTTP boundary', () => {
   it.each([
     'Identifier must be an opaque non-numeric string',
     'Planning search request is invalid',
-  ])(
-    'maps allowlisted validation failure %s to a bad request',
-    (message) => {
-      expect(responseOf(toHttpException(new Error(message)))).toEqual({
-        type: 'about:blank',
-        title: 'Planning request is invalid',
-        status: 400,
-        code: 'invalid_request',
-      });
-    },
-  );
+  ])('maps allowlisted validation failure %s to a bad request', (message) => {
+    expect(responseOf(toHttpException(new Error(message)))).toEqual({
+      type: 'about:blank',
+      title: 'Planning request is invalid',
+      status: 400,
+      code: 'invalid_request',
+    });
+  });
 
   it('passes through an existing HTTP exception unchanged', () => {
     const existing = new HttpException('existing', 429);
