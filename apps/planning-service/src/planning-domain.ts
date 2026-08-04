@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
-  normalizeSearchText,
+  matchesPlanningSearchTokens,
   rankPlanningSearchCandidates,
   requirePlanningSearchInput,
   type PlanningSearchCandidate,
@@ -131,9 +131,7 @@ export class InMemoryPlanningRepository implements PlanningRepository {
     return candidates.filter(
       (candidate) =>
         candidate.workspaceId === workspaceId &&
-        input.tokens.every((token) =>
-          normalizeSearchText(candidate.title).includes(token),
-        ),
+        matchesPlanningSearchTokens(candidate.title, input),
     );
   }
 }
