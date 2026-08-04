@@ -91,6 +91,11 @@ jobs:
           git push origin HEAD:feat/notification-postgres-inbox
 
   validate:
+    needs: document_notification
+    if: >-
+      always() &&
+      (needs.document_notification.result == 'success' ||
+       needs.document_notification.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
