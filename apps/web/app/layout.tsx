@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ServiceWorkerRegistration } from './service-worker-registration';
+import './design-tokens.css';
 import './styles.css';
 
 export const metadata: Metadata = {

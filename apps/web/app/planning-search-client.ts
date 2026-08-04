@@ -138,7 +138,9 @@ export function requireServiceOrigin(value: string | undefined): string {
 export function requireGatewaySecret(value: string | undefined): string {
   if (
     typeof value !== 'string' ||
-    Buffer.byteLength(value, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
+    Buffer.byteLength(value, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES ||
+    Buffer.byteLength(value, 'utf8') > 4096 ||
+    /[\r\n\u0000]/.test(value)
   ) {
     throw new Error('Gateway context secret is invalid');
   }
@@ -230,6 +232,53 @@ export function parsePlanningSearchResults(
   return value.map(parseResult);
 }
 
+/** Reads a response stream while enforcing the byte limit before buffering it. */
+async function readBoundedText(response: Response): Promise<string> {
+  const declaredLength = response.headers.get('content-length');
+  if (
+    declaredLength !== null &&
+    (!/^\d+$/.test(declaredLength) ||
+      Number(declaredLength) > MAXIMUM_RESPONSE_BYTES)
+  ) {
+    throw new Error('Upstream response is invalid');
+  }
+  if (!response.body) {
+    throw new Error('Upstream response is invalid');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let byteLength = 0;
+  let body = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      byteLength += chunk.value.byteLength;
+      if (byteLength > MAXIMUM_RESPONSE_BYTES) {
+        await reader.cancel('Upstream response exceeds byte limit');
+        throw new Error('Upstream response is invalid');
+      }
+      body += decoder.decode(chunk.value, { stream: true });
+    }
+    body += decoder.decode();
+  } catch {
+    try {
+      await reader.cancel('Upstream response is invalid');
+    } catch {
+      // Cancellation is best-effort after a malformed or failed stream.
+    }
+    throw new Error('Upstream response is invalid');
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!body) {
+    throw new Error('Upstream response is invalid');
+  }
+  return body;
+}
+
 /** Reads JSON only from allowed media types and within a fixed byte budget. */
 async function readBoundedJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type')?.split(';', 1)[0];
@@ -239,10 +288,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   ) {
     throw new Error('Upstream response is invalid');
   }
-  const body = await response.text();
-  if (!body || Buffer.byteLength(body, 'utf8') > MAXIMUM_RESPONSE_BYTES) {
-    throw new Error('Upstream response is invalid');
-  }
+  const body = await readBoundedText(response);
   try {
     return JSON.parse(body) as unknown;
   } catch {
