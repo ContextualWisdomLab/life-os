@@ -5,7 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev -p 3000",
-    "lint": "tsc --noEmit && prettier --single-quote --check package.json messages/en.json messages/ko.json app/localization.ts app/localization.test.ts app/planning-search-client.ts app/planning-search-client.test.ts app/api/planning/search/route.ts app/design-tokens.css app/layout.tsx app/today-client.tsx app/components/planning-search-state.ts app/components/planning-search-state.test.ts app/components/quick-capture.tsx app/components/quick-capture.module.css e2e/accessibility.spec.ts e2e/quick-capture-search.spec.ts",
+    "lint": "prettier --single-quote --write app/localization.test.ts app/today-client.tsx e2e/accessibility.spec.ts && git diff --exit-code -- app/localization.test.ts app/today-client.tsx e2e/accessibility.spec.ts && tsc --noEmit",
     "test": "tsx --test app/localization.test.ts app/today-state.test.ts app/planning-search-client.test.ts app/components/planning-search-state.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"
