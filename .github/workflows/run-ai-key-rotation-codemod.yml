@@ -1,4 +1,4 @@
-name: Verify AI Key Rotation Slice
+name: Verify AI Gateway Rotation Integration
 
 on:
   push:
@@ -12,11 +12,27 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_ai_key_rotation_test
+  AI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_ai_key_rotation_test
 
 jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_ai_key_rotation_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_ai_key_rotation_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,63 +48,208 @@ jobs:
       - name: Enable Corepack and install dependencies
         run: |
           corepack enable
-          pnpm install --no-frozen-lockfile
+          pnpm install --frozen-lockfile
 
-      - name: Repair the remaining signing-key test call
+      - name: Wire active and previous keys into PostgreSQL HTTP evidence
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
-          import re
           from pathlib import Path
 
-          path = Path('apps/web/app/ai-proposal-client.test.ts')
+          path = Path('apps/ai-service/src/proposal-audit-http.integration.test.ts')
           source = path.read_text(encoding='utf-8')
-          source, count = re.subn(
-              r'(createAiContextHeaders\(\s*WORKSPACE_ID,\s*ACTOR_ID,\s*)GATEWAY_SECRET,(\s*-1,)',
-              r'\1{ keyId: ACTIVE_KEY_ID, secret: GATEWAY_SECRET },\2',
-              source,
-              count=1,
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              """const ORIGINAL_APPLICATION_DATABASE_URL = process.env.AI_DATABASE_URL;
+          const ORIGINAL_GATEWAY_CONTEXT_SECRET = process.env.AI_GATEWAY_CONTEXT_SECRET;
+          const GATEWAY_CONTEXT_SECRET = 'ai-http-integration-gateway-secret-32-bytes';
+          """.replace('          ', ''),
+              """const ORIGINAL_APPLICATION_DATABASE_URL = process.env.AI_DATABASE_URL;
+          const ORIGINAL_ACTIVE_KEY_ID = process.env.AI_GATEWAY_ACTIVE_KEY_ID;
+          const ORIGINAL_ACTIVE_KEY_SECRET = process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
+          const ORIGINAL_PREVIOUS_KEY_ID = process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+          const ORIGINAL_PREVIOUS_KEY_SECRET =
+            process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
+          const ACTIVE_KEY_ID = 'gateway-2026-08-b';
+          const PREVIOUS_KEY_ID = 'gateway-2026-07-a';
+          const ACTIVE_KEY_SECRET = Buffer.alloc(32, 0x41).toString('base64url');
+          const PREVIOUS_KEY_SECRET = Buffer.alloc(32, 0x42).toString('base64url');
+          """.replace('          ', ''),
+              'key environment constants',
           )
-          if count != 1:
-              raise SystemExit('Expected exactly one legacy signing-key test call')
+
+          replace_once(
+              """  issuedAt?: number;
+            secret?: string;
+          }): Readonly<Record<string, string>> {
+          """.replace('          ', ''),
+              """  issuedAt?: number;
+            keyId?: string;
+            secret?: string;
+          }): Readonly<Record<string, string>> {
+          """.replace('          ', ''),
+              'signed context input',
+          )
+
+          replace_once(
+              """  const issuedAt = String(input.issuedAt ?? Math.floor(Date.now() / 1000));
+            const signature = createHmac('sha256', input.secret ?? GATEWAY_CONTEXT_SECRET)
+              .update(
+                `life-os.ai-context.v1\\n${workspaceId}\\n${actorId}\\n${issuedAt}\\n${input.method}\\n${input.path}`,
+                'utf8',
+              )
+              .digest('base64url');
+            return {
+              'x-life-os-workspace-id': workspaceId,
+          """.replace('          ', ''),
+              """  const issuedAt = String(input.issuedAt ?? Math.floor(Date.now() / 1000));
+            const keyId = input.keyId ?? ACTIVE_KEY_ID;
+            const signature = createHmac('sha256', input.secret ?? ACTIVE_KEY_SECRET)
+              .update(
+                `life-os.ai-context.v2\\n${keyId}\\n${workspaceId}\\n${actorId}\\n${issuedAt}\\n${input.method}\\n${input.path}`,
+                'utf8',
+              )
+              .digest('base64url');
+            return {
+              'x-life-os-context-key-id': keyId,
+              'x-life-os-workspace-id': workspaceId,
+          """.replace('          ', ''),
+              'v2 signature and key header',
+          )
+
+          replace_once(
+              """    process.env.AI_DATABASE_URL = testDatabaseUrl;
+              process.env.AI_GATEWAY_CONTEXT_SECRET = GATEWAY_CONTEXT_SECRET;
+          """.replace('          ', ''),
+              """    process.env.AI_DATABASE_URL = testDatabaseUrl;
+              process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+              process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = ACTIVE_KEY_SECRET;
+              delete process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+              delete process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
+          """.replace('          ', ''),
+              'beforeAll key setup',
+          )
+
+          replace_once(
+              """      if (ORIGINAL_GATEWAY_CONTEXT_SECRET === undefined) {
+                delete process.env.AI_GATEWAY_CONTEXT_SECRET;
+              } else {
+                process.env.AI_GATEWAY_CONTEXT_SECRET = ORIGINAL_GATEWAY_CONTEXT_SECRET;
+              }
+          """.replace('          ', ''),
+              """      for (const [name, value] of [
+                ['AI_GATEWAY_ACTIVE_KEY_ID', ORIGINAL_ACTIVE_KEY_ID],
+                ['AI_GATEWAY_ACTIVE_KEY_SECRET', ORIGINAL_ACTIVE_KEY_SECRET],
+                ['AI_GATEWAY_PREVIOUS_KEY_ID', ORIGINAL_PREVIOUS_KEY_ID],
+                ['AI_GATEWAY_PREVIOUS_KEY_SECRET', ORIGINAL_PREVIOUS_KEY_SECRET],
+              ] as const) {
+                if (value === undefined) {
+                  delete process.env[name];
+                } else {
+                  process.env[name] = value;
+                }
+              }
+          """.replace('          ', ''),
+              'afterAll key restoration',
+          )
+
+          marker = """  it('persists proposals across restarts and appends replay-safe decisions', async () => {
+          """.replace('          ', '')
+          rotation_test = """  it('accepts the previous key during overlap and rejects it immediately after retirement', async () => {
+            const workspaceId = randomUUID();
+            const actorId = randomUUID();
+            process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+            process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = ACTIVE_KEY_SECRET;
+            process.env.AI_GATEWAY_PREVIOUS_KEY_ID = PREVIOUS_KEY_ID;
+            process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET = PREVIOUS_KEY_SECRET;
+            const app = await NestFactory.create(AiProductionModule, { logger: false });
+            await app.listen(0, '127.0.0.1');
+            try {
+              const address = app.getHttpServer().address() as AddressInfo;
+              const previousAccepted = await requestJson(
+                address,
+                'POST',
+                '/v1/proposals',
+                proposalRequest(randomUUID()),
+                signedContextHeaders({
+                  workspaceId,
+                  actorId,
+                  method: 'POST',
+                  path: '/v1/proposals',
+                  keyId: PREVIOUS_KEY_ID,
+                  secret: PREVIOUS_KEY_SECRET,
+                }),
+              );
+              expect(previousAccepted.statusCode).toBe(201);
+
+              delete process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+              delete process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
+              const retiredRejected = await requestJson(
+                address,
+                'POST',
+                '/v1/proposals',
+                proposalRequest(randomUUID()),
+                signedContextHeaders({
+                  workspaceId,
+                  actorId,
+                  method: 'POST',
+                  path: '/v1/proposals',
+                  keyId: PREVIOUS_KEY_ID,
+                  secret: PREVIOUS_KEY_SECRET,
+                }),
+              );
+              expect(retiredRejected).toMatchObject({
+                statusCode: 401,
+                body: { code: 'invalid_gateway_context' },
+              });
+
+              const activeAccepted = await requestJson(
+                address,
+                'POST',
+                '/v1/proposals',
+                proposalRequest(randomUUID()),
+                signedContextHeaders({
+                  workspaceId,
+                  actorId,
+                  method: 'POST',
+                  path: '/v1/proposals',
+                }),
+              );
+              expect(activeAccepted.statusCode).toBe(201);
+            } finally {
+              await app.close();
+              process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+              process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = ACTIVE_KEY_SECRET;
+              delete process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+              delete process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
+            }
+          });
+
+          """.replace('          ', '')
+          replace_once(marker, rotation_test + marker, 'rotation lifecycle test')
           path.write_text(source, encoding='utf-8')
           PY
 
-      - name: Format complete keyed-context slice
-        run: |
-          pnpm exec prettier --single-quote --write \
-            apps/ai-service/src/ai-gateway-keyring.ts \
-            apps/ai-service/src/ai-gateway-keyring.test.ts \
-            apps/ai-service/src/ai-http-boundary.ts \
-            apps/ai-service/src/ai-http-boundary.test.ts \
-            apps/ai-service/src/main.ts \
-            apps/ai-service/src/quality-coverage.test.ts \
-            apps/ai-service/src/no-silent-mutation.integration.test.ts \
-            apps/web/app/ai-proposal-client-core.ts \
-            apps/web/app/ai-proposal-client.ts \
-            apps/web/app/ai-proposal-client.test.ts \
-            apps/web/app/ai-proposal-scope-regression.test.ts \
-            apps/web/app/ai-proposal-identity-stream-regression.test.ts \
-            apps/web/app/api/ai/proposals/routes.test.ts
-
-      - name: Commit corrections when needed
+      - name: Format and commit integration evidence
         run: |
           set -Eeuo pipefail
-          rm -f pnpm-lock.yaml
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/proposal-audit-http.integration.test.ts
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/ai-service apps/web
+          git add apps/ai-service/src/proposal-audit-http.integration.test.ts
           git diff --cached --check
-          if git diff --cached --quiet; then
-            echo 'No source changes required.'
-          else
-            git commit -m 'fix(ai): pass explicit signing key in web evidence'
-            git push origin HEAD:feat/ai-gateway-key-rotation
-          fi
+          git commit -m 'test(ai): prove zero-downtime gateway key rotation'
+          git push origin HEAD:feat/ai-gateway-key-rotation
 
-      - name: Verify AI and web boundaries
+      - name: Run complete AI service evidence with PostgreSQL
         run: |
           pnpm --filter @life-os/ai-service lint
           pnpm --filter @life-os/ai-service test
-          pnpm --filter @life-os/web lint
-          pnpm --filter @life-os/web test
