@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const SEARCH_PATH = '**/api/planning/search**';
 
-async function resetLocalDraft(page: Parameters<typeof test.beforeEach>[0]['page']) {
+async function resetLocalDraft(page: Page): Promise<void> {
   await page.goto('/');
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
