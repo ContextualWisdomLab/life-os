@@ -24,8 +24,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-/** Reads one small identity response clone without buffering beyond its limit. */
-async function readBoundedIdentityJson(response: Response): Promise<unknown> {
+/** Bounded identity response payload that can be safely replayed to the core. */
+interface BoundedIdentityPayload {
+  readonly value: unknown;
+  readonly text: string;
+}
+
+/** Reads one identity response exactly once without unbounded stream tee buffering. */
+async function readBoundedIdentityJson(
+  response: Response,
+): Promise<BoundedIdentityPayload> {
   const mediaType = response.headers.get('content-type')?.split(';', 1)[0];
   if (mediaType !== 'application/json') {
     throw new Error('Identity session response is invalid');
@@ -71,10 +79,25 @@ async function readBoundedIdentityJson(response: Response): Promise<unknown> {
     throw new Error('Identity session response is invalid');
   }
   try {
-    return JSON.parse(text) as unknown;
+    return Object.freeze({ value: JSON.parse(text) as unknown, text });
   } catch {
     throw new Error('Identity session response is invalid');
   }
+}
+
+/** Reconstructs one already bounded identity response for the transport core. */
+function replayIdentityResponse(
+  response: Response,
+  payload: BoundedIdentityPayload,
+): Response {
+  return new Response(payload.text, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: {
+      'content-type': 'application/json',
+      'content-length': String(Buffer.byteLength(payload.text, 'utf8')),
+    },
+  });
 }
 
 /** Creates the local credential-free failure used for scope mismatches. */
@@ -209,11 +232,12 @@ export async function handleAiProposalRequest(
       identityObserved = true;
       if (response.status === 200) {
         try {
-          principal = parseAiSessionPrincipal(
-            await readBoundedIdentityJson(response.clone()),
-          );
+          const payload = await readBoundedIdentityJson(response);
+          principal = parseAiSessionPrincipal(payload.value);
+          return replayIdentityResponse(response, payload);
         } catch {
           principal = undefined;
+          return new Response(null, { status: 502 });
         }
       }
     }
