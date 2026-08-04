@@ -248,7 +248,9 @@ export class PlanningService {
       safeWorkspaceId,
       input,
     );
-    if (candidates.some((candidate) => candidate.workspaceId !== safeWorkspaceId)) {
+    if (
+      candidates.some((candidate) => candidate.workspaceId !== safeWorkspaceId)
+    ) {
       throw new Error('Planning search crossed workspace boundary');
     }
     return rankPlanningSearchCandidates(candidates, input);
