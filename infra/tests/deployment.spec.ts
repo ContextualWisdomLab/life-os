@@ -84,7 +84,7 @@ describe('production Kubernetes reference contract', () => {
     expect(occurrenceCount(workloads, /topologySpreadConstraints:/g)).toBe(2);
   });
 
-  it('fails closed until both application images are replaced by immutable digests', () => {
+  it('fails closed until both application images are replaced by approved immutable digests', () => {
     const zeroDigest = '0'.repeat(64);
     expect(workloads).toContain(
       `ghcr.io/contextualwisdomlab/life-os-web@sha256:${zeroDigest}`,
@@ -93,7 +93,13 @@ describe('production Kubernetes reference contract', () => {
       `ghcr.io/contextualwisdomlab/life-os-gateway@sha256:${zeroDigest}`,
     );
     expect(workflow).toContain(
-      'image reference must use a registry path and sha256 digest',
+      'image reference must use the approved LifeOS GHCR path and sha256 digest',
+    );
+    expect(workflow).toContain(
+      'ghcr\\.io/contextualwisdomlab/life-os-web@sha256:[0-9a-f]{64}',
+    );
+    expect(workflow).toContain(
+      'ghcr\\.io/contextualwisdomlab/life-os-gateway@sha256:[0-9a-f]{64}',
     );
     expect(workflow).toContain('zero image digest is not deployable');
     expect(workflow).toContain(
@@ -154,7 +160,9 @@ describe('production Kubernetes reference contract', () => {
     expect(migrationRunner).toContain(
       'migration_error=incomplete_migration_requires_reconciliation',
     );
-    expect(migrationRunner).toContain("migration_status IN ('applying', 'applied')");
+    expect(migrationRunner).toContain(
+      "migration_status IN ('applying', 'applied')",
+    );
     expect(migrationRunner).toContain('LIFE_OS_MIGRATION_CONFIRMATION');
     expect(migrationRunner).toContain('PGDATABASE="${database_url}" psql');
     expect(migrationRunner).not.toContain('--dbname "${database_url}"');
