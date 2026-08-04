@@ -10,13 +10,15 @@ const ACTOR_ID = '22222222-2222-4222-8222-222222222222';
 const SESSION_ID = '33333333-3333-4333-8333-333333333333';
 const PROPOSAL_ID = '44444444-4444-4444-8444-444444444444';
 const TASK_ID = '55555555-5555-4555-8555-555555555555';
+const ACTIVE_KEY_ID = 'gateway-2026-08-a';
 const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
   IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
   AI_SERVICE_ORIGIN: 'http://ai-service:4105',
-  AI_GATEWAY_CONTEXT_SECRET: GATEWAY_SECRET,
+  AI_GATEWAY_ACTIVE_KEY_ID: ACTIVE_KEY_ID,
+  AI_GATEWAY_ACTIVE_KEY_SECRET: GATEWAY_SECRET,
 };
 
 /** Creates one bounded JSON response for deterministic dependency simulation. */

@@ -5,7 +5,9 @@ import {
   createAiContextHeaders,
   handleAiProposalRequest,
   parseAiSessionPrincipal,
+  requireAiGatewayKeyId,
   requireAiGatewaySecret,
+  requireAiGatewaySigningKey,
   requireAiServiceOrigin,
   type AiProposalFetch,
   type AiProposalRoute,
@@ -18,13 +20,15 @@ const PROPOSAL_ID = '44444444-4444-4444-8444-444444444444';
 const TASK_ID = '55555555-5555-4555-8555-555555555555';
 const DECISION_ID = '66666666-6666-4666-8666-666666666666';
 const IDEMPOTENCY_KEY = '77777777-7777-4777-8777-777777777777';
+const ACTIVE_KEY_ID = 'gateway-2026-08-a';
 const GATEWAY_SECRET = Buffer.alloc(32, 7).toString('base64url');
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
   IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
   AI_SERVICE_ORIGIN: 'http://ai-service:4105',
-  AI_GATEWAY_CONTEXT_SECRET: GATEWAY_SECRET,
+  AI_GATEWAY_ACTIVE_KEY_ID: ACTIVE_KEY_ID,
+  AI_GATEWAY_ACTIVE_KEY_SECRET: GATEWAY_SECRET,
 };
 
 const proposalRequest = {
@@ -141,7 +145,7 @@ function browserRequest(
 function expectedSignature(method: string, path: string): string {
   return createHmac('sha256', GATEWAY_SECRET)
     .update(
-      `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${NOW_SECONDS}\n${method}\n${path}`,
+      `life-os.ai-context.v2\n${ACTIVE_KEY_ID}\n${WORKSPACE_ID}\n${ACTOR_ID}\n${NOW_SECONDS}\n${method}\n${path}`,
       'utf8',
     )
     .digest('base64url');
@@ -203,6 +207,7 @@ describe('authenticated AI proposal BFF', () => {
     assert.equal(aiHeaders.get('authorization'), null);
     assert.equal(aiHeaders.get('x-workspace-id'), null);
     assert.equal(aiHeaders.get('x-actor-id'), null);
+    assert.equal(aiHeaders.get('x-life-os-context-key-id'), ACTIVE_KEY_ID);
     assert.equal(aiHeaders.get('x-life-os-workspace-id'), WORKSPACE_ID);
     assert.equal(aiHeaders.get('x-life-os-actor-id'), ACTOR_ID);
     assert.equal(
@@ -488,7 +493,7 @@ describe('authenticated AI proposal BFF', () => {
       fetcher: AiProposalFetch;
     }> = [
       {
-        environment: { ...environment, AI_GATEWAY_CONTEXT_SECRET: 'short' },
+        environment: { ...environment, AI_GATEWAY_ACTIVE_KEY_SECRET: 'short' },
         fetcher: async () => sessionResponse(),
       },
       {
@@ -570,7 +575,12 @@ describe('AI proposal BFF helpers', () => {
       requireAiServiceOrigin('https://ai.example.test'),
       'https://ai.example.test',
     );
+    assert.equal(requireAiGatewayKeyId(ACTIVE_KEY_ID), ACTIVE_KEY_ID);
     assert.equal(requireAiGatewaySecret(GATEWAY_SECRET), GATEWAY_SECRET);
+    assert.deepEqual(requireAiGatewaySigningKey(environment), {
+      keyId: ACTIVE_KEY_ID,
+      secret: GATEWAY_SECRET,
+    });
     assert.deepEqual(
       parseAiSessionPrincipal({
         sessionId: SESSION_ID,
@@ -584,11 +594,12 @@ describe('AI proposal BFF helpers', () => {
     const headers = createAiContextHeaders(
       WORKSPACE_ID,
       ACTOR_ID,
-      GATEWAY_SECRET,
+      { keyId: ACTIVE_KEY_ID, secret: GATEWAY_SECRET },
       NOW_SECONDS,
       'POST',
       `/v1/proposals/${PROPOSAL_ID}/decisions`,
     );
+    assert.equal(headers['x-life-os-context-key-id'], ACTIVE_KEY_ID);
     assert.equal(headers['x-life-os-workspace-id'], WORKSPACE_ID);
     assert.equal(headers['x-life-os-actor-id'], ACTOR_ID);
     assert.equal(headers['x-life-os-context-issued-at'], String(NOW_SECONDS));
@@ -610,6 +621,12 @@ describe('AI proposal BFF helpers', () => {
       assert.throws(
         () => requireAiServiceOrigin(origin),
         new Error('AI service origin is invalid'),
+      );
+    }
+    for (const keyId of ['', '-leading', 'white space', 'a'.repeat(65)]) {
+      assert.throws(
+        () => requireAiGatewayKeyId(keyId),
+        new Error('AI gateway context key identifier is invalid'),
       );
     }
     for (const secret of [

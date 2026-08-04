@@ -14,6 +14,7 @@ const PROPOSAL_ID = '44444444-4444-4444-8444-444444444444';
 const TASK_ID = '55555555-5555-4555-8555-555555555555';
 const DECISION_ID = '66666666-6666-4666-8666-666666666666';
 const IDEMPOTENCY_KEY = '77777777-7777-4777-8777-777777777777';
+const ACTIVE_KEY_ID = 'gateway-2026-08-a';
 const SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
 
 const proposalRequest = {
@@ -99,11 +100,13 @@ describe('AI proposal Next.js route handlers', () => {
     const originalFetch = globalThis.fetch;
     const originalIdentityOrigin = process.env.IDENTITY_SERVICE_ORIGIN;
     const originalAiOrigin = process.env.AI_SERVICE_ORIGIN;
-    const originalSecret = process.env.AI_GATEWAY_CONTEXT_SECRET;
+    const originalKeyId = process.env.AI_GATEWAY_ACTIVE_KEY_ID;
+    const originalSecret = process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
     const aiCalls: Array<{ method: string; path: string }> = [];
     process.env.IDENTITY_SERVICE_ORIGIN = 'http://identity-service:4101';
     process.env.AI_SERVICE_ORIGIN = 'http://ai-service:4105';
-    process.env.AI_GATEWAY_CONTEXT_SECRET = SECRET;
+    process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+    process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = SECRET;
     globalThis.fetch = async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === '/v1/session') {
@@ -204,10 +207,15 @@ describe('AI proposal Next.js route handlers', () => {
       } else {
         process.env.AI_SERVICE_ORIGIN = originalAiOrigin;
       }
-      if (originalSecret === undefined) {
-        delete process.env.AI_GATEWAY_CONTEXT_SECRET;
+      if (originalKeyId === undefined) {
+        delete process.env.AI_GATEWAY_ACTIVE_KEY_ID;
       } else {
-        process.env.AI_GATEWAY_CONTEXT_SECRET = originalSecret;
+        process.env.AI_GATEWAY_ACTIVE_KEY_ID = originalKeyId;
+      }
+      if (originalSecret === undefined) {
+        delete process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
+      } else {
+        process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = originalSecret;
       }
     }
   });

@@ -15,13 +15,15 @@ const PROPOSAL_ID = '66666666-6666-4666-8666-666666666666';
 const TASK_ID = '77777777-7777-4777-8777-777777777777';
 const DECISION_ID = '88888888-8888-4888-8888-888888888888';
 const IDEMPOTENCY_KEY = '99999999-9999-4999-8999-999999999999';
+const ACTIVE_KEY_ID = 'gateway-2026-08-a';
 const SECRET = 'authenticated-ai-scope-regression-secret';
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
   IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
   AI_SERVICE_ORIGIN: 'http://ai-service:4105',
-  AI_GATEWAY_CONTEXT_SECRET: SECRET,
+  AI_GATEWAY_ACTIVE_KEY_ID: ACTIVE_KEY_ID,
+  AI_GATEWAY_ACTIVE_KEY_SECRET: SECRET,
 };
 
 /** Creates one bounded JSON response for deterministic dependency simulation. */

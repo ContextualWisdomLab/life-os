@@ -2,20 +2,30 @@ import {
   createAiContextHeaders,
   handleAiProposalRequest as handleAiProposalRequestCore,
   parseAiSessionPrincipal,
+  requireAiGatewayKeyId,
   requireAiGatewaySecret,
+  requireAiGatewaySigningKey,
   requireAiServiceOrigin,
   type AiProposalFetch,
   type AiProposalRoute,
+  type AiGatewaySigningKey,
   type AiSessionPrincipal,
 } from './ai-proposal-client-core';
 
 export {
   createAiContextHeaders,
   parseAiSessionPrincipal,
+  requireAiGatewayKeyId,
   requireAiGatewaySecret,
+  requireAiGatewaySigningKey,
   requireAiServiceOrigin,
 };
-export type { AiProposalFetch, AiProposalRoute, AiSessionPrincipal };
+export type {
+  AiGatewaySigningKey,
+  AiProposalFetch,
+  AiProposalRoute,
+  AiSessionPrincipal,
+};
 
 const MAXIMUM_IDENTITY_RESPONSE_BYTES = 32 * 1024;
 

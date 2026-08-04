@@ -14,6 +14,7 @@ const WORKSPACE_ID = '43eab0ee-0f7b-4c7f-9331-b133f2647675';
 const ACTOR_ID = 'd19b6077-2baa-4f84-97f6-c138b1d6ba34';
 const TASK_ID = 'e29c36af-999a-407f-9ca9-cfe194ab51f4';
 const PROPOSAL_ID = 'aedcb1d1-cc60-42c6-9357-ec90821fce1b';
+const GATEWAY_KEY_ID = 'gateway-2026-08-a';
 const GATEWAY_SECRET = Buffer.alloc(32, 7).toString('base64url');
 
 interface JsonHttpResponse {
@@ -48,11 +49,12 @@ function signedContextHeaders(path: string): Readonly<Record<string, string>> {
   const issuedAt = String(Math.floor(Date.now() / 1000));
   const signature = createHmac('sha256', GATEWAY_SECRET)
     .update(
-      `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\nPOST\n${path}`,
+      `life-os.ai-context.v2\n${GATEWAY_KEY_ID}\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\nPOST\n${path}`,
       'utf8',
     )
     .digest('base64url');
   return {
+    'x-life-os-context-key-id': GATEWAY_KEY_ID,
     'x-life-os-workspace-id': WORKSPACE_ID,
     'x-life-os-actor-id': ACTOR_ID,
     'x-life-os-context-issued-at': issuedAt,
@@ -163,8 +165,10 @@ describe('AI proposal no-silent-mutation contract', () => {
   it('exercises the authenticated HTTP module without exposing a mutation route', async () => {
     const state = userOwnedState();
     const before = JSON.stringify(state);
-    const originalSecret = process.env.AI_GATEWAY_CONTEXT_SECRET;
-    process.env.AI_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
+    const originalKeyId = process.env.AI_GATEWAY_ACTIVE_KEY_ID;
+    const originalSecret = process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
+    process.env.AI_GATEWAY_ACTIVE_KEY_ID = GATEWAY_KEY_ID;
+    process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = GATEWAY_SECRET;
     const app = await NestFactory.create(AiAppModule, { logger: false });
     await app.listen(0, '127.0.0.1');
     try {
@@ -192,10 +196,15 @@ describe('AI proposal no-silent-mutation contract', () => {
       expect(unsupportedMutation.statusCode).toBe(404);
     } finally {
       await app.close();
-      if (originalSecret === undefined) {
-        delete process.env.AI_GATEWAY_CONTEXT_SECRET;
+      if (originalKeyId === undefined) {
+        delete process.env.AI_GATEWAY_ACTIVE_KEY_ID;
       } else {
-        process.env.AI_GATEWAY_CONTEXT_SECRET = originalSecret;
+        process.env.AI_GATEWAY_ACTIVE_KEY_ID = originalKeyId;
+      }
+      if (originalSecret === undefined) {
+        delete process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
+      } else {
+        process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = originalSecret;
       }
     }
   });
