@@ -266,7 +266,10 @@ function parseBrowserQuery(
   if (queryValues.length !== 1 || limitValues.length > 1) {
     return undefined;
   }
-  const query = queryValues[0]?.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+  const query = queryValues[0]
+    ?.normalize('NFKC')
+    .trim()
+    .replace(/\s+/gu, ' ');
   if (
     !query ||
     codePointLength(query) < 2 ||
