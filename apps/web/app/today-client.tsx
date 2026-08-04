@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { QuickCapture } from './components/quick-capture';
 import {
+  chooseSupportedLocale,
+  formatMessage,
+  getMessageCatalog,
+  resolveSupportedLocale,
+  type MessageKey,
+  type SupportedLocale,
+} from './localization';
+import {
   addTodayAction,
   clearTodaySchedule,
   createEmptyTodayDraft,
@@ -18,7 +26,8 @@ import {
 } from './today-state';
 import { parseStoredTodayDraft, serializeTodayDraft } from './today-storage';
 
-const STORAGE_KEY = 'life-os.today-draft.v1';
+const DRAFT_STORAGE_KEY = 'life-os.today-draft.v1';
+const LOCALE_STORAGE_KEY = 'life-os.locale.v1';
 const DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
 function localDate(): string {
@@ -26,9 +35,9 @@ function localDate(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-function scheduleLabel(action: TodayAction): string {
+function scheduleLabel(action: TodayAction, notScheduled: string): string {
   if (action.startMinute === null || action.durationMinutes === null) {
-    return 'Not scheduled';
+    return notScheduled;
   }
   const endMinute = action.startMinute + action.durationMinutes;
   const end = endMinute === 24 * 60 ? '24:00' : formatMinuteOfDay(endMinute);
@@ -41,18 +50,33 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   const [draft, setDraft] = useState<TodayDraft>(() =>
     createEmptyTodayDraft(initialDate),
   );
-  const [message, setMessage] = useState('');
+  const [messageKey, setMessageKey] = useState<MessageKey | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [locale, setLocale] = useState<SupportedLocale>('en');
+  const messages = getMessageCatalog(locale);
+
+  useEffect(() => {
+    let savedLocale: string | null = null;
+    try {
+      savedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    } catch {
+      setMessageKey('storageUnavailable');
+    }
+    const resolvedLocale = chooseSupportedLocale(
+      savedLocale,
+      navigator.languages,
+    );
+    setLocale(resolvedLocale);
+    document.documentElement.lang = resolvedLocale;
+  }, []);
 
   useEffect(() => {
     const browserDate = localDate();
     let serialized: string | null = null;
     try {
-      serialized = window.localStorage.getItem(STORAGE_KEY);
+      serialized = window.localStorage.getItem(DRAFT_STORAGE_KEY);
     } catch {
-      setMessage(
-        'Browser storage is unavailable. This tab remains usable, but changes will not survive a reload.',
-      );
+      setMessageKey('storageUnavailable');
     }
     setDate(browserDate);
     setDraft(parseStoredTodayDraft(serialized, browserDate));
@@ -62,11 +86,12 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, serializeTodayDraft(draft));
-    } catch {
-      setMessage(
-        'The local draft could not be saved. This tab remains usable, but changes may not survive a reload.',
+      window.localStorage.setItem(
+        DRAFT_STORAGE_KEY,
+        serializeTodayDraft(draft),
       );
+    } catch {
+      setMessageKey('storageSaveUnavailable');
     }
   }, [draft, hydrated]);
 
@@ -82,20 +107,32 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   );
   const completed = draft.actions.filter((action) => action.status === 'done');
 
-  function update(operation: () => TodayDraft, success = ''): boolean {
+  function changeLocale(value: string): void {
+    const nextLocale = resolveSupportedLocale(value) ?? 'en';
+    setLocale(nextLocale);
+    document.documentElement.lang = nextLocale;
+    try {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
+    } catch {
+      setMessageKey('storageSaveUnavailable');
+    }
+  }
+
+  function update(
+    operation: () => TodayDraft,
+    successKey: MessageKey | null = null,
+  ): boolean {
     try {
       setDraft(operation());
-      setMessage(success);
+      setMessageKey(successKey);
       return true;
     } catch (error) {
       if (error instanceof TodayPriorityLimitError) {
-        setMessage(
-          'Three priorities are already committed. Release one first.',
-        );
+        setMessageKey('priorityLimitError');
       } else if (error instanceof TodayScheduleConflictError) {
-        setMessage('That time overlaps another open priority.');
+        setMessageKey('scheduleConflictError');
       } else {
-        setMessage('That change could not be applied safely.');
+        setMessageKey('changeFailedError');
       }
       return false;
     }
@@ -104,7 +141,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   function capture(actionTitle: string): boolean {
     const title = actionTitle.trim();
     if (!title) {
-      setMessage('Enter an action before adding it.');
+      setMessageKey('captureEmptyError');
       return false;
     }
     return update(
@@ -114,7 +151,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
           title,
           createdAt: new Date().toISOString(),
         }),
-      'Action captured locally. Commit it only when it belongs in today’s top three.',
+      'captureSuccess',
     );
   }
 
@@ -124,65 +161,77 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     duration: number,
   ): void {
     if (!start) {
-      update(() => clearTodaySchedule(draft, action.id), 'Schedule cleared.');
+      update(() => clearTodaySchedule(draft, action.id), 'scheduleCleared');
       return;
     }
     update(
       () =>
         scheduleTodayAction(draft, action.id, parseTimeInput(start), duration),
-      'Time block saved locally.',
+      'scheduleSaved',
     );
   }
 
   return (
     <div className="today-shell">
-      <aside className="today-sidebar" aria-label="LifeOS navigation">
+      <aside className="today-sidebar" aria-label={messages.lifeOsNavigation}>
         <a className="today-brand" href="#today">
           <span aria-hidden="true">L</span>
           <strong>LifeOS</strong>
         </a>
-        <nav aria-label="Primary navigation">
+        <nav aria-label={messages.primaryNavigation}>
           <a className="active" href="#today" aria-current="page">
-            Today
+            {messages.todayNavigation}
           </a>
-          <a href="#backlog">Backlog</a>
-          <a href="#completed">Completed</a>
+          <a href="#backlog">{messages.backlogNavigation}</a>
+          <a href="#completed">{messages.completedNavigation}</a>
         </nav>
+        <label className="locale-control">
+          <span>{messages.languageLabel}</span>
+          <select
+            aria-label={messages.languageLabel}
+            onChange={(event) => changeLocale(event.target.value)}
+            value={locale}
+          >
+            <option value="en">{messages.languageEnglish}</option>
+            <option value="ko">{messages.languageKorean}</option>
+          </select>
+        </label>
         <p className="local-note">
-          <strong>Local draft</strong>
-          <span>Saved in this browser until workspace sync is connected.</span>
+          <strong>{messages.localDraftTitle}</strong>
+          <span>{messages.localDraftDescription}</span>
         </p>
       </aside>
 
       <main className="today-main" id="today">
         <header className="today-header">
           <div>
-            <p className="eyebrow">Today · {date}</p>
-            <h1>Make today believable.</h1>
-            <p className="lede">
-              Capture what is pulling at your attention, commit to no more than
-              three priorities, and give each one an honest place on the clock.
+            <p className="eyebrow">
+              {formatMessage(messages, 'todayDate', { date })}
             </p>
+            <h1>{messages.todayHeading}</h1>
+            <p className="lede">{messages.todayDescription}</p>
           </div>
           <div
             className="progress-card"
-            aria-label={`${completed.length} actions completed`}
+            aria-label={formatMessage(messages, 'completedCountLabel', {
+              count: completed.length,
+            })}
           >
             <strong>{completed.length}</strong>
-            <span>finished</span>
+            <span>{messages.finishedLabel}</span>
           </div>
         </header>
 
-        <QuickCapture onCapture={capture} />
+        <QuickCapture locale={locale} messages={messages} onCapture={capture} />
         <p className="sr-status" aria-live="polite">
-          {message}
+          {messageKey ? messages[messageKey] : ''}
         </p>
 
         <section aria-labelledby="priority-heading">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Commitment</p>
-              <h2 id="priority-heading">Your three priorities</h2>
+              <p className="eyebrow">{messages.commitmentEyebrow}</p>
+              <h2 id="priority-heading">{messages.prioritiesHeading}</h2>
             </div>
             <span className="capacity-pill">{priorities.length} / 3</span>
           </div>
@@ -190,11 +239,8 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
             <div className="empty-state">
               <span aria-hidden="true">01</span>
               <div>
-                <h3>No priorities yet</h3>
-                <p>
-                  Capture actions, then commit only the three that make today
-                  successful.
-                </p>
+                <h3>{messages.noPrioritiesHeading}</h3>
+                <p>{messages.noPrioritiesDescription}</p>
               </div>
             </div>
           ) : (
@@ -211,7 +257,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                     <div className="priority-row">
                       <div>
                         <h3>{action.title}</h3>
-                        <p>{scheduleLabel(action)}</p>
+                        <p>{scheduleLabel(action, messages.notScheduled)}</p>
                       </div>
                       <button
                         type="button"
@@ -224,19 +270,23 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                                 new Date().toISOString(),
                               ),
                             action.status === 'done'
-                              ? 'Action reopened.'
-                              : 'Action completed.',
+                              ? 'actionReopened'
+                              : 'actionCompleted',
                           )
                         }
                       >
-                        {action.status === 'done' ? 'Reopen' : 'Complete'}
+                        {action.status === 'done'
+                          ? messages.reopenAction
+                          : messages.completeAction}
                       </button>
                     </div>
                     <div className="schedule-controls">
                       <label>
-                        Start
+                        {messages.startLabel}
                         <input
-                          aria-label={`Start time for ${action.title}`}
+                          aria-label={formatMessage(messages, 'startTimeFor', {
+                            title: action.title,
+                          })}
                           disabled={action.status === 'done'}
                           onChange={(event) =>
                             schedule(
@@ -255,9 +305,11 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                         />
                       </label>
                       <label>
-                        Duration
+                        {messages.durationLabel}
                         <select
-                          aria-label={`Duration for ${action.title}`}
+                          aria-label={formatMessage(messages, 'durationFor', {
+                            title: action.title,
+                          })}
                           disabled={action.status === 'done'}
                           onChange={(event) =>
                             action.startMinute === null
@@ -272,7 +324,9 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                         >
                           {DURATIONS.map((minutes) => (
                             <option key={minutes} value={minutes}>
-                              {minutes} min
+                              {formatMessage(messages, 'durationMinutes', {
+                                minutes,
+                              })}
                             </option>
                           ))}
                         </select>
@@ -283,11 +337,11 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                         onClick={() =>
                           update(
                             () => toggleTodayPriority(draft, action.id),
-                            'Priority returned to backlog.',
+                            'priorityReleased',
                           )
                         }
                       >
-                        Release priority
+                        {messages.releasePriority}
                       </button>
                     </div>
                   </div>
@@ -305,15 +359,13 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
           >
             <div className="section-heading compact">
               <div>
-                <p className="eyebrow">Uncommitted</p>
-                <h2 id="backlog-heading">Backlog</h2>
+                <p className="eyebrow">{messages.uncommittedEyebrow}</p>
+                <h2 id="backlog-heading">{messages.backlogHeading}</h2>
               </div>
               <span>{backlog.length}</span>
             </div>
             {backlog.length === 0 ? (
-              <p className="quiet-empty">
-                Nothing waiting. Capture ideas without promising them.
-              </p>
+              <p className="quiet-empty">{messages.backlogEmpty}</p>
             ) : (
               <ul className="backlog-list">
                 {backlog.map((action) => (
@@ -325,11 +377,11 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                       onClick={() =>
                         update(
                           () => toggleTodayPriority(draft, action.id),
-                          'Priority committed.',
+                          'priorityCommitted',
                         )
                       }
                     >
-                      Make priority
+                      {messages.makePriority}
                     </button>
                   </li>
                 ))}
@@ -343,15 +395,13 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
           >
             <div className="section-heading compact">
               <div>
-                <p className="eyebrow">Evidence</p>
-                <h2 id="completed-heading">Completed</h2>
+                <p className="eyebrow">{messages.evidenceEyebrow}</p>
+                <h2 id="completed-heading">{messages.completedHeading}</h2>
               </div>
               <span>{completed.length}</span>
             </div>
             {completed.length === 0 ? (
-              <p className="quiet-empty">
-                Finished actions remain visible here.
-              </p>
+              <p className="quiet-empty">{messages.completedEmpty}</p>
             ) : (
               <ul className="completed-list">
                 {completed.map((action) => (
@@ -359,7 +409,9 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                     <span aria-hidden="true">✓</span>
                     <div>
                       <strong>{action.title}</strong>
-                      <small>{scheduleLabel(action)}</small>
+                      <small>
+                        {scheduleLabel(action, messages.notScheduled)}
+                      </small>
                     </div>
                     <button
                       className="text-button"
@@ -372,11 +424,11 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                               action.id,
                               new Date().toISOString(),
                             ),
-                          'Action reopened.',
+                          'actionReopened',
                         )
                       }
                     >
-                      Reopen
+                      {messages.reopenAction}
                     </button>
                   </li>
                 ))}
