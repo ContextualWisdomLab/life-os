@@ -1,0 +1,116 @@
+name: AI gateway types repair
+
+on:
+  push:
+    branches: [feat/ai-authenticated-gateway-context]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-gateway-types-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/ai-authenticated-gateway-context
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Apply exact-optional-property repairs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          core_path = Path('apps/web/app/ai-proposal-client-core.ts')
+          core = core_path.read_text(encoding='utf-8')
+          old = """  const cookie = requireCookie(request);
+          if (method === 'GET') return { method, path, cookie };
+          const bodyValue = await readBrowserJson(request);
+          const body =
+            route.kind === 'collection'
+              ? parseProposalRequest(bodyValue)
+              : parseDecisionRequest(bodyValue);
+          return { method, path, body, cookie };
+          """
+          new = """  const cookie = requireCookie(request);
+          if (method === 'GET') {
+            return cookie === undefined ? { method, path } : { method, path, cookie };
+          }
+          const bodyValue = await readBrowserJson(request);
+          const body =
+            route.kind === 'collection'
+              ? parseProposalRequest(bodyValue)
+              : parseDecisionRequest(bodyValue);
+          return cookie === undefined
+            ? { method, path, body }
+            : { method, path, body, cookie };
+          """
+          if old not in core:
+              raise SystemExit('AI proposal client parseBrowserRequest pattern not found')
+          core_path.write_text(core.replace(old, new, 1), encoding='utf-8')
+
+          for filename in (
+              'apps/web/app/ai-proposal-client.test.ts',
+              'apps/web/app/ai-proposal-scope-regression.test.ts',
+              'apps/web/app/api/ai/proposals/routes.test.ts',
+          ):
+              path = Path(filename)
+              text = path.read_text(encoding='utf-8')
+              old_body = "    body: payload,\n  });"
+              new_body = "    ...(payload === undefined ? {} : { body: payload }),\n  });"
+              if old_body not in text:
+                  raise SystemExit(f'RequestInit body pattern not found in {filename}')
+              path.write_text(text.replace(old_body, new_body, 1), encoding='utf-8')
+          PY
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install verification toolchain
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Format and verify web boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/web/app/ai-proposal-client-core.ts \
+            apps/web/app/ai-proposal-client.test.ts \
+            apps/web/app/ai-proposal-scope-regression.test.ts \
+            apps/web/app/api/ai/proposals/routes.test.ts
+          pnpm --filter @life-os/web lint
+
+      - name: Commit non-workflow type repair
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f pnpm-lock.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/web/app/ai-proposal-client-core.ts \
+            apps/web/app/ai-proposal-client.test.ts \
+            apps/web/app/ai-proposal-scope-regression.test.ts \
+            apps/web/app/api/ai/proposals/routes.test.ts
+          git diff --cached --check
+          git commit -m "fix(web): omit undefined AI request properties"
+          authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
+            push origin HEAD:feat/ai-authenticated-gateway-context
