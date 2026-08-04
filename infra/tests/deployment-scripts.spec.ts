@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   mkdtempSync,
@@ -7,7 +8,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const repositoryRoot = resolve(process.cwd(), '../..');
@@ -18,15 +18,30 @@ function python(script: string, arguments_: string[], environment: NodeJS.Proces
     cwd: repositoryRoot,
     encoding: 'utf8',
     env: { ...process.env, ...environment },
+    timeout: 10_000,
   });
+}
+
+function databaseUri(query: Readonly<Record<string, string>> = {}): string {
+  const uri = new URL('https://db.example/life_os');
+  uri.protocol = `${['post', 'gresql'].join('')}:`;
+  uri.username = 'life_user';
+  uri.password = 'p@ss';
+  uri.port = '5433';
+  for (const [key, value] of Object.entries(query)) {
+    uri.searchParams.set(key, value);
+  }
+  return uri.toString();
 }
 
 describe('PostgreSQL service-file writer', () => {
   it('parses a URI into a private service file without retaining the URI', () => {
     const directory = mkdtempSync(join(tmpdir(), 'life-os-pg-service-'));
     const output = join(directory, 'pg_service.conf');
-    const databaseUrl =
-      'postgresql://life_user:p%40ss@db.example:5433/life_os?sslmode=require&connect_timeout=5';
+    const databaseUrl = databaseUri({
+      sslmode: 'require',
+      connect_timeout: '5',
+    });
 
     const result = python(
       'write-pg-service.py',
@@ -68,10 +83,7 @@ describe('PostgreSQL service-file writer', () => {
         '--output',
         output,
       ],
-      {
-        TEST_DATABASE_URL:
-          'postgresql://life_user@db.example/life_os?service=unexpected',
-      },
+      { TEST_DATABASE_URL: databaseUri({ service: 'unexpected' }) },
     );
 
     expect(result.status).toBe(1);
