@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node --check render-production-overlay.mjs && node --check validate-rendered-manifest.mjs && node --check create-provenance.mjs",
-    "lint": "node --check render-production-overlay.mjs && node --check validate-rendered-manifest.mjs && node --check create-provenance.mjs && node --check deployment-contract.test.mjs",
-    "test": "node --experimental-test-coverage --test --test-coverage-include=render-production-overlay.mjs --test-coverage-include=validate-rendered-manifest.mjs --test-coverage-include=create-provenance.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 deployment-contract.test.mjs",
-    "typecheck": "node --check render-production-overlay.mjs && node --check validate-rendered-manifest.mjs && node --check create-provenance.mjs && node --check deployment-contract.test.mjs"
+    "lint": "node --check render-production-overlay.mjs && node --check validate-rendered-manifest.mjs && node --check create-provenance.mjs && node --check tests/deployment-contract.test.mjs",
+    "test": "node --experimental-test-coverage --test --test-coverage-include=render-production-overlay.mjs --test-coverage-include=validate-rendered-manifest.mjs --test-coverage-include=create-provenance.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 tests/deployment-contract.test.mjs",
+    "typecheck": "node --check render-production-overlay.mjs && node --check validate-rendered-manifest.mjs && node --check create-provenance.mjs && node --check tests/deployment-contract.test.mjs"
   }
 }
