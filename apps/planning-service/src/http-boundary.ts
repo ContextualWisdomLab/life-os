@@ -10,6 +10,7 @@ export interface PlanningProblemDetails {
 const VALIDATION_MESSAGES = new Set([
   'Title is required',
   'Identifier must be an opaque non-numeric string',
+  'Planning search request is invalid',
 ]);
 
 function problemException(
