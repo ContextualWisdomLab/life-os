@@ -119,6 +119,9 @@ describe('PlanningService', () => {
       projectId: project.id,
       title: 'Draft the launch plan',
     });
+    await service.createGoal('workspace-a', {
+      title: 'Launch planning',
+    });
 
     await expect(service.search('workspace-a', 'launch plan')).resolves.toEqual(
       [
