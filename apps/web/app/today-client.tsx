@@ -1,6 +1,7 @@
 'use client';
 
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { QuickCapture } from './components/quick-capture';
 import {
   addTodayAction,
   clearTodaySchedule,
@@ -20,11 +21,13 @@ import { parseStoredTodayDraft, serializeTodayDraft } from './today-storage';
 const STORAGE_KEY = 'life-os.today-draft.v1';
 const DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
+/** Returns the browser-local calendar date without relying on UTC conversion. */
 function localDate(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+/** Renders one local action's optional time block for the Today workspace. */
 function scheduleLabel(action: TodayAction): string {
   if (action.startMinute === null || action.durationMinutes === null) {
     return 'Not scheduled';
@@ -34,13 +37,13 @@ function scheduleLabel(action: TodayAction): string {
   return `${formatMinuteOfDay(action.startMinute)}–${end}`;
 }
 
+/** Renders the browser-local Today workspace and durable planning search surface. */
 export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   const initialDate = generatedAt.slice(0, 10);
   const [date, setDate] = useState(initialDate);
   const [draft, setDraft] = useState<TodayDraft>(() =>
     createEmptyTodayDraft(initialDate),
   );
-  const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [hydrated, setHydrated] = useState(false);
 
@@ -84,6 +87,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   );
   const completed = draft.actions.filter((action) => action.status === 'done');
 
+  /** Applies one immutable Today-state change and maps closed domain errors. */
   function update(operation: () => TodayDraft, success = ''): boolean {
     try {
       setDraft(operation());
@@ -101,26 +105,25 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     }
   }
 
-  function capture(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    if (!title.trim()) {
+  /** Captures one explicitly local action without implying durable synchronization. */
+  function capture(actionTitle: string): boolean {
+    const title = actionTitle.trim();
+    if (!title) {
       setMessage('Enter an action before adding it.');
-      return;
+      return false;
     }
-    const added = update(
+    return update(
       () =>
         addTodayAction(draft, {
           id: globalThis.crypto.randomUUID(),
           title,
           createdAt: new Date().toISOString(),
         }),
-      'Action captured. Commit it only when it belongs in today’s top three.',
+      'Action captured locally. Commit it only when it belongs in today’s top three.',
     );
-    if (added) {
-      setTitle('');
-    }
   }
 
+  /** Applies or clears a conflict-checked local time block. */
   function schedule(
     action: TodayAction,
     start: string,
@@ -181,24 +184,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
           </div>
         </header>
 
-        <form
-          className="capture-bar"
-          onSubmit={capture}
-          aria-label="Capture an action"
-        >
-          <label htmlFor="capture-title">What needs your attention?</label>
-          <div>
-            <input
-              id="capture-title"
-              maxLength={160}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Write the next visible action…"
-              value={title}
-            />
-            <button type="submit">Capture</button>
-          </div>
-          <small>{title.length}/160 · Enter adds this to the backlog.</small>
-        </form>
+        <QuickCapture onCapture={capture} />
         <p className="sr-status" aria-live="polite">
           {message}
         </p>
