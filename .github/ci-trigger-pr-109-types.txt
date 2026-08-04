@@ -1,0 +1,1 @@
+Retrigger exact-head validation after exact optional property repair.
