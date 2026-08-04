@@ -54,6 +54,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
 
           path = Path('apps/ai-service/src/proposal-audit-http.integration.test.ts')
@@ -137,14 +138,7 @@ jobs:
               'beforeAll key setup',
           )
 
-          replace_once(
-              """      if (ORIGINAL_GATEWAY_CONTEXT_SECRET === undefined) {
-                delete process.env.AI_GATEWAY_CONTEXT_SECRET;
-              } else {
-                process.env.AI_GATEWAY_CONTEXT_SECRET = ORIGINAL_GATEWAY_CONTEXT_SECRET;
-              }
-          """.replace('          ', ''),
-              """      for (const [name, value] of [
+          restoration = """for (const [name, value] of [
                 ['AI_GATEWAY_ACTIVE_KEY_ID', ORIGINAL_ACTIVE_KEY_ID],
                 ['AI_GATEWAY_ACTIVE_KEY_SECRET', ORIGINAL_ACTIVE_KEY_SECRET],
                 ['AI_GATEWAY_PREVIOUS_KEY_ID', ORIGINAL_PREVIOUS_KEY_ID],
@@ -155,10 +149,17 @@ jobs:
                 } else {
                   process.env[name] = value;
                 }
-              }
-          """.replace('          ', ''),
-              'afterAll key restoration',
+              }"""
+          source, restoration_count = re.subn(
+              r"if \(ORIGINAL_GATEWAY_CONTEXT_SECRET === undefined\) \{\s*delete process\.env\.AI_GATEWAY_CONTEXT_SECRET;\s*\} else \{\s*process\.env\.AI_GATEWAY_CONTEXT_SECRET =\s*ORIGINAL_GATEWAY_CONTEXT_SECRET;\s*\}",
+              restoration,
+              source,
+              count=1,
           )
+          if restoration_count != 1:
+              raise SystemExit(
+                  f'afterAll key restoration: expected one match, found {restoration_count}'
+              )
 
           marker = """  it('persists proposals across restarts and appends replay-safe decisions', async () => {
           """.replace('          ', '')
