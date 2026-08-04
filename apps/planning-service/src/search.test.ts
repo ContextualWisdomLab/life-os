@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   escapeLikePattern,
+  matchesPlanningSearchTokens,
   normalizeSearchText,
   rankPlanningSearchCandidates,
   requirePlanningSearchInput,
+  tokenizeSearchText,
   type PlanningSearchCandidate,
 } from './search';
 
@@ -41,11 +43,22 @@ const CANDIDATES: PlanningSearchCandidate[] = [
     status: 'done',
     createdAt: '2026-08-05T01:00:00.000Z',
   },
+  {
+    entityType: 'goal',
+    id: '66666666-6666-4666-8666-666666666666',
+    workspaceId: '11111111-1111-4111-8111-111111111111',
+    title: 'Launch planning',
+    createdAt: '2026-08-07T01:00:00.000Z',
+  },
 ];
 
 describe('planning search request validation', () => {
   it('normalizes Unicode compatibility forms and repeated whitespace', () => {
     expect(normalizeSearchText('  ＬＡＵＮＣＨ\tPlan  ')).toBe('launch plan');
+    expect(tokenizeSearchText('  ＬＡＵＮＣＨ—Plan  ')).toEqual([
+      'launch',
+      'plan',
+    ]);
     expect(requirePlanningSearchInput('  ＬＡＵＮＣＨ\tPlan  ', '3')).toEqual({
       normalizedQuery: 'launch plan',
       tokens: ['launch', 'plan'],
@@ -62,6 +75,7 @@ describe('planning search request validation', () => {
     [undefined, undefined],
     ['', undefined],
     ['a', undefined],
+    ['---', undefined],
     ['1234', undefined],
     ['word '.repeat(9), undefined],
     ['x'.repeat(121), undefined],
@@ -116,6 +130,20 @@ describe('planning search ranking', () => {
         createdAt: '2026-08-05T01:00:00.000Z',
       },
     ]);
+  });
+
+  it('matches complete tokens instead of character substrings', () => {
+    const input = requirePlanningSearchInput('launch plan');
+
+    expect(matchesPlanningSearchTokens('Launch planning', input)).toBe(false);
+    expect(matchesPlanningSearchTokens('Launch-plan evidence', input)).toBe(
+      true,
+    );
+    expect(
+      rankPlanningSearchCandidates(CANDIDATES, input).some(
+        (result) => result.title === 'Launch planning',
+      ),
+    ).toBe(false);
   });
 
   it('removes workspace ownership data and applies the requested limit', () => {
