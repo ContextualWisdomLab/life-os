@@ -1,0 +1,135 @@
+name: Format Planning Search Slice
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/format-planning-search.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-planning-search-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/planning-search-capture
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Harden ownership lookup and register formatting evidence
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          search_path = Path('apps/planning-service/src/search.ts')
+          search_source = search_path.read_text(encoding='utf-8')
+          search_source = search_source.replace(
+              "if (!(entityType in ENTITY_ORDER)) {",
+              "if (!Object.prototype.hasOwnProperty.call(ENTITY_ORDER, entityType)) {",
+          )
+          search_path.write_text(search_source, encoding='utf-8')
+
+          maintained_paths = (
+              'CHANGELOG.md',
+              '.env.example',
+              'docs/superpowers/specs/2026-08-04-planning-search-design.md',
+              'docs/superpowers/plans/2026-08-04-planning-search-capture.md',
+              'apps/planning-service/src/search.ts',
+              'apps/planning-service/src/search.test.ts',
+              'apps/planning-service/src/postgres-planning-search-repository.ts',
+              'apps/planning-service/src/postgres-planning-search-repository.test.ts',
+              'apps/planning-service/src/postgres-planning-repository.integration.test.ts',
+              'apps/planning-service/src/planning-runtime.ts',
+              'apps/planning-service/src/http-boundary.ts',
+              'apps/planning-service/src/main.ts',
+              'apps/web/package.json',
+              'apps/web/app/design-tokens.css',
+              'apps/web/app/layout.tsx',
+              'apps/web/app/planning-search-client.ts',
+              'apps/web/app/planning-search-client.test.ts',
+              'apps/web/app/api/planning/search/route.ts',
+              'apps/web/app/components/quick-capture.tsx',
+              'apps/web/app/components/quick-capture.module.css',
+              'apps/web/app/today-client.tsx',
+              'apps/web/e2e/today-flow.spec.ts',
+              'apps/web/e2e/quick-capture-search.spec.ts',
+          )
+          package_path = Path('package.json')
+          package = json.loads(package_path.read_text(encoding='utf-8'))
+          command = package['scripts']['format:check']
+          for maintained_path in maintained_paths:
+              token = f' {maintained_path}'
+              if token not in command:
+                  command += token
+          package['scripts']['format:check'] = command
+          package_path.write_text(
+              json.dumps(package, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Format the complete slice
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --write \
+            CHANGELOG.md \
+            .env.example \
+            package.json \
+            docs/superpowers/specs/2026-08-04-planning-search-design.md \
+            docs/superpowers/plans/2026-08-04-planning-search-capture.md \
+            apps/planning-service/src/search.ts \
+            apps/planning-service/src/search.test.ts \
+            apps/planning-service/src/postgres-planning-search-repository.ts \
+            apps/planning-service/src/postgres-planning-search-repository.test.ts \
+            apps/planning-service/src/postgres-planning-repository.integration.test.ts \
+            apps/planning-service/src/planning-runtime.ts \
+            apps/planning-service/src/http-boundary.ts \
+            apps/planning-service/src/main.ts \
+            apps/web/package.json \
+            apps/web/app/design-tokens.css \
+            apps/web/app/layout.tsx \
+            apps/web/app/planning-search-client.ts \
+            apps/web/app/planning-search-client.test.ts \
+            apps/web/app/api/planning/search/route.ts \
+            apps/web/app/components/quick-capture.tsx \
+            apps/web/app/components/quick-capture.module.css \
+            apps/web/app/today-client.tsx \
+            apps/web/e2e/today-flow.spec.ts \
+            apps/web/e2e/quick-capture-search.spec.ts
+          pnpm format:check
+
+      - name: Commit formatted slice and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/format-planning-search.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'chore: format and register planning search slice'
+          git push origin HEAD:feat/planning-search-capture
