@@ -97,6 +97,12 @@ This slice deliberately has no plugin installation, secret persistence, outbound
 
 This logical-dump tier is not point-in-time recovery and does not schedule, encrypt, replicate, or retain backups automatically. Deployment owners must follow the [backup and restore runbook](docs/operations/backup-and-restore.md), establish independent encrypted storage, rehearse recovery, and add WAL archiving when the required recovery point is shorter than the dump interval.
 
+## Production reference deployment
+
+`infra/kubernetes` contains a provider-neutral Kustomize reference for the current web and gateway edge workloads. It encodes a Restricted Pod Security namespace, non-root and read-only containers, probes, resource bounds, rolling updates, disruption budgets, topology spread, ClusterIP services, disabled service-account token automount, and default-deny network policy. The committed image digests and public origin are deliberately non-deployable sentinels.
+
+The manual deployment workflow accepts only digest-pinned images and an exact HTTPS web origin, renders and validates the reviewed overlay, optionally applies forward-only migrations, uses the protected GitHub `production` environment, performs a server-side dry-run and diff, waits for rollout, and restores prior workload revisions on failure. It does not provision a cluster, database, NATS, ingress, TLS, DNS, image pipeline, or secret manager. Operators must follow the [production deployment runbook](docs/operations/production-deployment.md) and preserve those explicit ownership boundaries.
+
 ## Privacy and deployment responsibility
 
 This is a public repository. It contains synthetic examples only. Personal goals, health information, relationship data, credentials, access tokens, private prompts, customer data, and production exports must not be committed.
@@ -111,6 +117,7 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
 - [Plugin contract surface plan](docs/superpowers/plans/2026-08-04-plugin-contract-surface.md)
 - [PostgreSQL backup and restore runbook](docs/operations/backup-and-restore.md)
+- [Production Kubernetes deployment runbook](docs/operations/production-deployment.md)
 - [Upstream privacy notice](docs/legal/privacy.md)
 - [Upstream project terms](docs/legal/terms.md)
 - [Vulnerability reporting](SECURITY.md)
