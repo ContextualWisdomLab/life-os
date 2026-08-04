@@ -386,6 +386,26 @@ describe('PostgresReminderRepository', () => {
     }
   });
 
+  it('preserves PostgreSQL date values at a positive-offset boundary', async () => {
+    const previousTimeZone = process.env.TZ;
+    process.env.TZ = 'Asia/Seoul';
+    try {
+      const client = new RecordingSqlClient([
+        [outcomeRow({ delivery_local_date: new Date(2026, 7, 4) })],
+      ]);
+
+      await expect(
+        new PostgresReminderRepository(client).listOutcomes(workspaceId, 10),
+      ).resolves.toMatchObject([{ deliveryLocalDate: '2026-08-04' }]);
+    } finally {
+      if (previousTimeZone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTimeZone;
+      }
+    }
+  });
+
   it('rejects invalid limits, dates, identifiers, lease values, and SQL failures', async () => {
     expect(
       () => new PostgresReminderRepository(new RecordingSqlClient([]), 29),

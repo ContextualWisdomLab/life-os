@@ -1,8 +1,10 @@
+import { Logger } from '@nestjs/common';
 import type { PoolConfig } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createNotificationPoolConfiguration,
   createNotificationRuntime,
+  registerNotificationPoolErrorHandler,
   type NotificationPool,
 } from './notification-runtime';
 
@@ -34,6 +36,31 @@ class FakeNotificationPool implements NotificationPool {
 }
 
 describe('Notification runtime', () => {
+  it('handles idle pool errors with one fixed credential-free record', () => {
+    let errorListener: ((error: Error) => void) | undefined;
+    const source = {
+      on(event: 'error', listener: (error: Error) => void): void {
+        expect(event).toBe('error');
+        errorListener = listener;
+      },
+    };
+    const logger = vi
+      .spyOn(Logger, 'error')
+      .mockImplementation(() => undefined);
+
+    registerNotificationPoolErrorHandler(source);
+    errorListener?.(
+      new Error('postgresql://administrator:secret@database.example.test'),
+    );
+
+    expect(logger).toHaveBeenCalledWith(
+      'Notification PostgreSQL pool reported an idle client error',
+      'NotificationRuntime',
+    );
+    expect(JSON.stringify(logger.mock.calls)).not.toContain('secret');
+    logger.mockRestore();
+  });
+
   it('builds a bounded PostgreSQL pool configuration', () => {
     expect(
       createNotificationPoolConfiguration({
@@ -140,6 +167,15 @@ describe('Notification runtime', () => {
       ),
     ).toThrowError('Notification reminder batch size is invalid');
     expect(poolFactoryCalls).toBe(0);
+  });
+
+  it('constructs and closes the production pool without opening a connection', async () => {
+    const runtime = createNotificationRuntime({
+      NOTIFICATION_DATABASE_URL: DATABASE_URL,
+    });
+
+    await runtime.close();
+    await runtime.close();
   });
 
   it('shares one pool across adapters and closes it exactly once', async () => {

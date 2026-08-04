@@ -177,7 +177,13 @@ function requireNullableTimestamp(value: unknown): string | null {
 
 function requireLocalDate(value: unknown): string {
   const candidate =
-    value instanceof Date ? value.toISOString().slice(0, 10) : value;
+    value instanceof Date
+      ? [
+          String(value.getFullYear()).padStart(4, '0'),
+          String(value.getMonth() + 1).padStart(2, '0'),
+          String(value.getDate()).padStart(2, '0'),
+        ].join('-')
+      : value;
   if (typeof candidate !== 'string' || !LOCAL_DATE_PATTERN.test(candidate)) {
     return persistenceFailure();
   }

@@ -124,26 +124,14 @@ describe('reminder boundary validation', () => {
       },
       'invalid_quiet_hours',
     ],
-    [
-      { ...reminder(), maxPerLocalDay: 0 },
-      'invalid_daily_limit',
-    ],
-    [
-      { ...reminder(), maxPerLocalDay: 1.5 },
-      'invalid_daily_limit',
-    ],
+    [{ ...reminder(), maxPerLocalDay: 0 }, 'invalid_daily_limit'],
+    [{ ...reminder(), maxPerLocalDay: 1.5 }, 'invalid_daily_limit'],
     [
       { ...reminder(), maxPerLocalDay: MAX_DAILY_REMINDERS + 1 },
       'invalid_daily_limit',
     ],
-    [
-      { ...reminder(), deliveryAttempt: -1 },
-      'invalid_delivery_attempt',
-    ],
-    [
-      { ...reminder(), deliveryAttempt: 1.5 },
-      'invalid_delivery_attempt',
-    ],
+    [{ ...reminder(), deliveryAttempt: -1 }, 'invalid_delivery_attempt'],
+    [{ ...reminder(), deliveryAttempt: 1.5 }, 'invalid_delivery_attempt'],
     [
       { ...reminder(), deliveryAttempt: MAX_DELIVERY_ATTEMPTS + 1 },
       'invalid_delivery_attempt',
@@ -193,8 +181,7 @@ describe('scheduler options and defensive failures', () => {
       () => new ReminderScheduler(new NoopRepository(), new NoopGateway(), 0),
     ).toThrow(RangeError);
     expect(
-      () =>
-        new ReminderScheduler(new NoopRepository(), new NoopGateway(), 1.5),
+      () => new ReminderScheduler(new NoopRepository(), new NoopGateway(), 1.5),
     ).toThrow(RangeError);
     expect(
       () => new ReminderScheduler(new NoopRepository(), new NoopGateway(), 101),
@@ -225,19 +212,17 @@ describe('scheduler options and defensive failures', () => {
   });
 
   it('fails closed when the platform omits required zoned-clock parts', async () => {
-    const formatter = vi
-      .spyOn(Intl, 'DateTimeFormat')
-      .mockImplementation(
-        () =>
-          ({
-            format: () => 'valid',
-            formatToParts: () => [
-              { type: 'year', value: '2026' },
-              { type: 'month', value: '08' },
-              { type: 'day', value: '04' },
-            ],
-          }) as Intl.DateTimeFormat,
-      );
+    const formatter = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
+      () =>
+        ({
+          format: () => 'valid',
+          formatToParts: () => [
+            { type: 'year', value: '2026' },
+            { type: 'month', value: '08' },
+            { type: 'day', value: '04' },
+          ],
+        }) as Intl.DateTimeFormat,
+    );
     try {
       await expect(
         new ReminderScheduler(
@@ -251,21 +236,19 @@ describe('scheduler options and defensive failures', () => {
   });
 
   it('keeps policy search bounded when local time never exits quiet hours', async () => {
-    const formatter = vi
-      .spyOn(Intl, 'DateTimeFormat')
-      .mockImplementation(
-        () =>
-          ({
-            format: () => 'valid',
-            formatToParts: () => [
-              { type: 'year', value: '2026' },
-              { type: 'month', value: '08' },
-              { type: 'day', value: '04' },
-              { type: 'hour', value: '23' },
-              { type: 'minute', value: '00' },
-            ],
-          }) as Intl.DateTimeFormat,
-      );
+    const formatter = vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
+      () =>
+        ({
+          format: () => 'valid',
+          formatToParts: () => [
+            { type: 'year', value: '2026' },
+            { type: 'month', value: '08' },
+            { type: 'day', value: '04' },
+            { type: 'hour', value: '23' },
+            { type: 'minute', value: '00' },
+          ],
+        }) as Intl.DateTimeFormat,
+    );
     try {
       await expect(
         new ReminderScheduler(

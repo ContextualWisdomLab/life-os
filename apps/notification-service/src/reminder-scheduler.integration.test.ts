@@ -147,6 +147,65 @@ class InMemoryReminderRepository implements ReminderRepository {
   }
 }
 
+type PersistenceOperation = 'defer' | 'fail' | 'markDelivered';
+
+class FailOnceReminderRepository extends InMemoryReminderRepository {
+  private failureAvailable = true;
+
+  constructor(
+    records: readonly unknown[],
+    private readonly operation: PersistenceOperation,
+  ) {
+    super(records);
+  }
+
+  private consumeFailure(operation: PersistenceOperation): boolean {
+    if (this.failureAvailable && this.operation === operation) {
+      this.failureAvailable = false;
+      return true;
+    }
+    return false;
+  }
+
+  override async markDelivered(
+    value: ReminderOccurrence,
+    deliveredAt: string,
+    claimKey: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (this.consumeFailure('markDelivered')) {
+      throw new Error('persistence unavailable');
+    }
+    await super.markDelivered(value, deliveredAt, claimKey, idempotencyKey);
+  }
+
+  override async defer(
+    value: ReminderOccurrence,
+    nextAttemptAt: string,
+    reason: 'quiet_hours' | 'daily_limit',
+    claimKey: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (this.consumeFailure('defer')) {
+      throw new Error('persistence unavailable');
+    }
+    await super.defer(value, nextAttemptAt, reason, claimKey, idempotencyKey);
+  }
+
+  override async fail(
+    value: ReminderOccurrence,
+    retryAt: string | null,
+    reason: 'delivery_failed' | 'attempt_limit',
+    claimKey: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (this.consumeFailure('fail')) {
+      throw new Error('persistence unavailable');
+    }
+    await super.fail(value, retryAt, reason, claimKey, idempotencyKey);
+  }
+}
+
 class RecordingGateway implements ReminderDeliveryGateway {
   readonly messages: ReminderDelivery[] = [];
   shouldFail = false;
@@ -312,6 +371,67 @@ describe('bounded reminder scheduling integration', () => {
       at: null,
       reason: 'attempt_limit',
     });
+  });
+
+  it('isolates transition persistence failures and continues the batch', async () => {
+    const secondReminderId = 'ee09fe10-2602-4d6c-b52a-e58cbf55ea41';
+    const deliveredRepository = new FailOnceReminderRepository(
+      [
+        reminder({ quietHours: null }),
+        reminder({ id: secondReminderId, quietHours: null }),
+      ],
+      'markDelivered',
+    );
+    const deliveredReport = await new ReminderScheduler(
+      deliveredRepository,
+      new RecordingGateway(),
+    ).run(new Date('2026-08-04T12:00:00.000Z'));
+    expect(deliveredReport).toMatchObject({
+      scanned: 2,
+      delivered: 1,
+      persistenceFailures: 1,
+    });
+
+    const deferredRepository = new FailOnceReminderRepository(
+      [
+        reminder({
+          quietHours: { startMinute: 20 * 60, endMinute: 22 * 60 },
+        }),
+      ],
+      'defer',
+    );
+    await expect(
+      new ReminderScheduler(deferredRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ deferred: 0, persistenceFailures: 1 });
+
+    const terminalRepository = new FailOnceReminderRepository(
+      [
+        reminder({
+          quietHours: null,
+          deliveryAttempt: MAX_DELIVERY_ATTEMPTS,
+        }),
+      ],
+      'fail',
+    );
+    await expect(
+      new ReminderScheduler(terminalRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ failed: 0, persistenceFailures: 1 });
+
+    const retryRepository = new FailOnceReminderRepository(
+      [reminder({ quietHours: null })],
+      'fail',
+    );
+    const failingGateway = new RecordingGateway();
+    failingGateway.shouldFail = true;
+    await expect(
+      new ReminderScheduler(retryRepository, failingGateway).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ failed: 0, persistenceFailures: 1 });
   });
 
   it('bounds untrusted repository output and reports invalid future records', async () => {

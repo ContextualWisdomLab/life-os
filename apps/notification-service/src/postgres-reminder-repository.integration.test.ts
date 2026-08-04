@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createNotificationRuntime } from './notification-runtime';
 import {
   NotificationPersistenceError,
   NotificationReplayConflictError,
@@ -265,6 +266,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
       delivered: 1,
       deferred: 0,
       failed: 0,
+      persistenceFailures: 0,
       duplicateClaims: 0,
       invalid: 0,
     });
@@ -485,6 +487,25 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
         }),
       ]),
     );
+  });
+
+  it('composes the production runtime through one owned pool', async () => {
+    const workspaceId = randomUUID();
+    const runtime = createNotificationRuntime({
+      NOTIFICATION_DATABASE_URL: requireDatabaseUrl(),
+      NOTIFICATION_DATABASE_POOL_MAX: '2',
+      NOTIFICATION_CLAIM_LEASE_SECONDS: '30',
+      NOTIFICATION_REMINDER_BATCH_SIZE: '10',
+    });
+    try {
+      await runtime.repository.schedule(occurrence(workspaceId));
+      await expect(
+        runtime.repository.listReminders(workspaceId, 10),
+      ).resolves.toHaveLength(1);
+    } finally {
+      await runtime.close();
+      await runtime.close();
+    }
   });
 
   it('enforces immutable outcome history for update, delete, and truncate', async () => {

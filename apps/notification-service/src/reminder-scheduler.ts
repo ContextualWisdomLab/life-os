@@ -106,6 +106,7 @@ export interface ReminderRunReport {
   readonly delivered: number;
   readonly deferred: number;
   readonly failed: number;
+  readonly persistenceFailures: number;
   readonly duplicateClaims: number;
   readonly invalid: number;
 }
@@ -344,6 +345,7 @@ export class ReminderScheduler {
     let delivered = 0;
     let deferred = 0;
     let failed = 0;
+    let persistenceFailures = 0;
     let duplicateClaims = 0;
     let invalid = 0;
 
@@ -378,14 +380,24 @@ export class ReminderScheduler {
         quietHours !== null &&
         isWithinQuietHours(clock.minuteOfDay, quietHours)
       ) {
-        await this.repository.defer(
-          reminder,
-          nextAllowedInstant(now, reminder.timeZone, quietHours, false),
-          'quiet_hours',
-          claimKey,
-          deliveryKey,
+        const nextAttemptAt = nextAllowedInstant(
+          now,
+          reminder.timeZone,
+          quietHours,
+          false,
         );
-        deferred += 1;
+        try {
+          await this.repository.defer(
+            reminder,
+            nextAttemptAt,
+            'quiet_hours',
+            claimKey,
+            deliveryKey,
+          );
+          deferred += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
         continue;
       }
 
@@ -394,26 +406,40 @@ export class ReminderScheduler {
         clock.localDate,
       );
       if (deliveredToday >= reminder.maxPerLocalDay) {
-        await this.repository.defer(
-          reminder,
-          nextAllowedInstant(now, reminder.timeZone, quietHours, true),
-          'daily_limit',
-          claimKey,
-          deliveryKey,
+        const nextAttemptAt = nextAllowedInstant(
+          now,
+          reminder.timeZone,
+          quietHours,
+          true,
         );
-        deferred += 1;
+        try {
+          await this.repository.defer(
+            reminder,
+            nextAttemptAt,
+            'daily_limit',
+            claimKey,
+            deliveryKey,
+          );
+          deferred += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
         continue;
       }
 
       if (reminder.deliveryAttempt >= MAX_DELIVERY_ATTEMPTS) {
-        await this.repository.fail(
-          reminder,
-          null,
-          'attempt_limit',
-          claimKey,
-          deliveryKey,
-        );
-        failed += 1;
+        try {
+          await this.repository.fail(
+            reminder,
+            null,
+            'attempt_limit',
+            claimKey,
+            deliveryKey,
+          );
+          failed += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
         continue;
       }
 
@@ -427,23 +453,31 @@ export class ReminderScheduler {
           idempotencyKey: deliveryKey,
         });
       } catch {
-        await this.repository.fail(
+        try {
+          await this.repository.fail(
+            reminder,
+            retryInstant(now, reminder.deliveryAttempt),
+            'delivery_failed',
+            claimKey,
+            deliveryKey,
+          );
+          failed += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
+        continue;
+      }
+      try {
+        await this.repository.markDelivered(
           reminder,
-          retryInstant(now, reminder.deliveryAttempt),
-          'delivery_failed',
+          now.toISOString(),
           claimKey,
           deliveryKey,
         );
-        failed += 1;
-        continue;
+        delivered += 1;
+      } catch {
+        persistenceFailures += 1;
       }
-      await this.repository.markDelivered(
-        reminder,
-        now.toISOString(),
-        claimKey,
-        deliveryKey,
-      );
-      delivered += 1;
     }
 
     return {
@@ -451,6 +485,7 @@ export class ReminderScheduler {
       delivered,
       deferred,
       failed,
+      persistenceFailures,
       duplicateClaims,
       invalid,
     };

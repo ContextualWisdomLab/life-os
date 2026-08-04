@@ -1,4 +1,4 @@
-import type { OnApplicationShutdown } from '@nestjs/common';
+import { Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolConfig } from 'pg';
 import {
   PostgresInAppDeliveryGateway,
@@ -13,6 +13,39 @@ const DEFAULT_CLAIM_LEASE_SECONDS = 300;
 const DEFAULT_REMINDER_BATCH_SIZE = 50;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+
+/** Minimal event boundary needed to observe idle PostgreSQL client failures. */
+export interface NotificationPoolErrorSource {
+  /** Subscribes to unexpected idle-client failures emitted by the pool. */
+  on(event: 'error', listener: (error: Error) => void): unknown;
+}
+
+/** Credential-free error logger used by the pool error boundary. */
+export type NotificationPoolErrorLogger = (
+  message: string,
+  context: string,
+) => void;
+
+const NOTIFICATION_POOL_ERROR_MESSAGE =
+  'Notification PostgreSQL pool reported an idle client error';
+
+/** Emits one fixed error record without serializing the database error. */
+function defaultNotificationPoolErrorLogger(
+  message: string,
+  context: string,
+): void {
+  Logger.error(message, context);
+}
+
+/** Registers a sanitized listener before the PostgreSQL pool can be used. */
+export function registerNotificationPoolErrorHandler(
+  pool: NotificationPoolErrorSource,
+  logError: NotificationPoolErrorLogger = defaultNotificationPoolErrorLogger,
+): void {
+  pool.on('error', () => {
+    logError(NOTIFICATION_POOL_ERROR_MESSAGE, 'NotificationRuntime');
+  });
+}
 
 /** PostgreSQL pool boundary owned by the notification service runtime. */
 export interface NotificationPool {
@@ -130,7 +163,9 @@ export function createNotificationPoolConfiguration(
 }
 
 function defaultPoolFactory(configuration: PoolConfig): NotificationPool {
-  return new NodePostgresNotificationPool(new Pool(configuration));
+  const pool = new Pool(configuration);
+  registerNotificationPoolErrorHandler(pool);
+  return new NodePostgresNotificationPool(pool);
 }
 
 /** Owns one pool and the composed durable notification scheduler. */
