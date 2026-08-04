@@ -66,13 +66,27 @@ jobs:
           pnpm --filter @life-os/notification-service test
           pnpm --filter @life-os/notification-service build
 
-      - name: Commit reviewed repair
+      - name: Commit reviewed repair and remove temporary automation
         run: |
           set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path('.github/workflows/ci.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          start = workflow.index('  repair_notification:\n')
+          end = workflow.index('  validate:\n', start)
+          workflow_path.write_text(
+              workflow[:start] + workflow[end:],
+              encoding='utf-8',
+          )
+          PY
           rm -f pnpm-lock.yaml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/scripts/repair_notification_persistence.py
           git add \
+            .github/workflows/ci.yml \
             apps/notification-service/package.json \
             apps/notification-service/src/main.ts \
             apps/notification-service/src/reminder-scheduler.ts \
@@ -86,9 +100,6 @@ jobs:
             apps/notification-service/src/notification-runtime.test.ts \
             docs/operations/notification-persistence.md \
             docs/superpowers/specs/2026-08-04-notification-postgres-inbox-design.md
-          if git diff --cached --quiet; then
-            exit 0
-          fi
           git diff --cached --check
           git commit -m "fix(notification): fence expiring reminder claims"
           git push origin HEAD:feat/notification-postgres-inbox
