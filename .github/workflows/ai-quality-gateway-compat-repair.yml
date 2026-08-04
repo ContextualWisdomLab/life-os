@@ -1,0 +1,310 @@
+name: AI quality gateway compatibility repair
+
+on:
+  push:
+    branches:
+      - feat/ai-authenticated-gateway-context
+
+permissions: {}
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout review branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/ai-authenticated-gateway-context
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reconcile quality evidence with signed gateway controllers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ai-service/src/quality-coverage.test.ts')
+          text = path.read_text(encoding='utf-8')
+          import_anchor = "import { HttpException, Logger } from '@nestjs/common';\n"
+          if "from 'node:crypto'" not in text:
+              text = text.replace(
+                  import_anchor,
+                  "import { createHmac } from 'node:crypto';\n" + import_anchor,
+                  1,
+              )
+
+          start = text.index("describe('AI controllers and bootstrap error contracts', () => {")
+          marker = "  it('validates service ports and boots through an injected application', async () => {"
+          end = text.index(marker, start)
+          replacement = r'''const AI_GATEWAY_CONTEXT_SECRET = Buffer.alloc(32, 7).toString('base64url');
+
+/** Creates one fresh signed controller header tuple for an exact method and path. */
+function trustedControllerHeaders(
+  method: 'GET' | 'POST',
+  path: string,
+): readonly [string, string, string, string] {
+  process.env.AI_GATEWAY_CONTEXT_SECRET = AI_GATEWAY_CONTEXT_SECRET;
+  const issuedAt = String(Math.floor(Date.now() / 1_000));
+  const signature = createHmac('sha256', AI_GATEWAY_CONTEXT_SECRET)
+    .update(
+      `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\n${method}\n${path}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return [WORKSPACE_ID, ACTOR_ID, issuedAt, signature];
+}
+
+describe('AI controllers and bootstrap error contracts', () => {
+  it('covers health, successful generation, and all generation failures', async () => {
+    const generated = proposal();
+    const generator = {
+      generateProposal: vi.fn().mockResolvedValue(generated),
+    };
+    const controller = new AiProposalController(generator);
+    expect(controller.health()).toEqual({
+      status: 'ok',
+      service: 'ai-service',
+    });
+    await expect(
+      controller.createProposal(
+        ...trustedControllerHeaders('POST', '/v1/proposals'),
+        request(),
+      ),
+    ).resolves.toEqual(generated);
+
+    const missingWorkspaceHeaders = trustedControllerHeaders(
+      'POST',
+      '/v1/proposals',
+    );
+    await expectProblem(
+      controller.createProposal(
+        undefined,
+        missingWorkspaceHeaders[1],
+        missingWorkspaceHeaders[2],
+        missingWorkspaceHeaders[3],
+        request(),
+      ),
+      401,
+      'invalid_gateway_context',
+    );
+    await expectProblem(
+      controller.createProposal(
+        ...trustedControllerHeaders('POST', '/v1/proposals'),
+        null,
+      ),
+      400,
+      'invalid_request',
+    );
+    for (const [error, status, code] of [
+      [new ProposalAuditValidationError(), 400, 'invalid_request'],
+      [new ProposalAuditPersistenceError(), 503, 'audit_unavailable'],
+      [new Error('secret'), 503, 'proposal_unavailable'],
+      ['secret', 503, 'proposal_unavailable'],
+    ] as const) {
+      await expectProblem(
+        new AiProposalController({
+          async generateProposal(): Promise<AuditableProposal> {
+            throw error;
+          },
+        }).createProposal(
+          ...trustedControllerHeaders('POST', '/v1/proposals'),
+          request(),
+        ),
+        status,
+        code,
+      );
+    }
+  });
+
+  it('covers successful audit calls and missing trusted headers', async () => {
+    const audit = auditRecord();
+    const event = decisionEvent();
+    const application = {
+      listProposals: vi.fn().mockResolvedValue([audit]),
+      findProposal: vi.fn().mockResolvedValue(audit),
+      listDecisions: vi.fn().mockResolvedValue([event]),
+      appendDecision: vi.fn().mockResolvedValue(event),
+    } as unknown as ProposalAuditApplication;
+    const controller = new AiProposalAuditController(application);
+
+    await expect(
+      controller.listProposals(
+        ...trustedControllerHeaders('GET', '/v1/proposals'),
+      ),
+    ).resolves.toEqual([audit]);
+    await expect(
+      controller.findProposal(
+        ...trustedControllerHeaders('GET', `/v1/proposals/${PROPOSAL_ID}`),
+        PROPOSAL_ID,
+      ),
+    ).resolves.toEqual(audit);
+    await expect(
+      controller.listDecisions(
+        ...trustedControllerHeaders(
+          'GET',
+          `/v1/proposals/${PROPOSAL_ID}/decisions`,
+        ),
+        PROPOSAL_ID,
+      ),
+    ).resolves.toEqual([event]);
+    await expect(
+      controller.appendDecision(
+        ...trustedControllerHeaders(
+          'POST',
+          `/v1/proposals/${PROPOSAL_ID}/decisions`,
+        ),
+        PROPOSAL_ID,
+        {
+          expectedContentDigest: audit.contentDigest,
+          idempotencyKey: IDEMPOTENCY_KEY,
+          decision: 'accepted',
+          decidedAt: '2026-08-04T00:00:02Z',
+        },
+      ),
+    ).resolves.toEqual(event);
+
+    const listHeaders = trustedControllerHeaders('GET', '/v1/proposals');
+    await expectProblem(
+      controller.listProposals(
+        undefined,
+        listHeaders[1],
+        listHeaders[2],
+        listHeaders[3],
+      ),
+      401,
+      'invalid_gateway_context',
+    );
+    const proposalHeaders = trustedControllerHeaders(
+      'GET',
+      `/v1/proposals/${PROPOSAL_ID}`,
+    );
+    await expectProblem(
+      controller.findProposal(
+        undefined,
+        proposalHeaders[1],
+        proposalHeaders[2],
+        proposalHeaders[3],
+        PROPOSAL_ID,
+      ),
+      401,
+      'invalid_gateway_context',
+    );
+    const decisionListHeaders = trustedControllerHeaders(
+      'GET',
+      `/v1/proposals/${PROPOSAL_ID}/decisions`,
+    );
+    await expectProblem(
+      controller.listDecisions(
+        undefined,
+        decisionListHeaders[1],
+        decisionListHeaders[2],
+        decisionListHeaders[3],
+        PROPOSAL_ID,
+      ),
+      401,
+      'invalid_gateway_context',
+    );
+    const decisionAppendHeaders = trustedControllerHeaders(
+      'POST',
+      `/v1/proposals/${PROPOSAL_ID}/decisions`,
+    );
+    await expectProblem(
+      controller.appendDecision(
+        undefined,
+        decisionAppendHeaders[1],
+        decisionAppendHeaders[2],
+        decisionAppendHeaders[3],
+        PROPOSAL_ID,
+        {},
+      ),
+      401,
+      'invalid_gateway_context',
+    );
+    await expectProblem(
+      controller.appendDecision(
+        decisionAppendHeaders[0],
+        undefined,
+        decisionAppendHeaders[2],
+        decisionAppendHeaders[3],
+        PROPOSAL_ID,
+        {},
+      ),
+      401,
+      'invalid_gateway_context',
+    );
+  });
+
+  it('maps every audit application failure without credential details', async () => {
+    const logger = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const cases: Array<[unknown, number, string]> = [
+      [new ProposalValidationError(), 400, 'invalid_request'],
+      [new ProposalAuditValidationError(), 400, 'invalid_request'],
+      [new ProposalAuditNotFoundError(), 404, 'proposal_not_found'],
+      [new ProposalDigestMismatchError(), 409, 'stale_proposal'],
+      [new ProposalDecisionConflictError(), 409, 'idempotency_conflict'],
+      [new ProposalAuditPersistenceError(), 503, 'audit_unavailable'],
+      [new Error('password=secret'), 503, 'audit_unavailable'],
+      ['password=secret', 503, 'audit_unavailable'],
+    ];
+    for (const [error, status, code] of cases) {
+      await expectProblem(
+        new AiProposalAuditController(throwingApplication(error)).listProposals(
+          ...trustedControllerHeaders('GET', '/v1/proposals'),
+        ),
+        status,
+        code,
+      );
+    }
+    const loggedOutput = logger.mock.calls
+      .flat()
+      .flatMap((value) =>
+        value instanceof Error
+          ? [value.name, value.message, value.stack ?? '']
+          : [typeof value === 'string' ? value : JSON.stringify(value)],
+      )
+      .join('\n');
+    expect(loggedOutput).not.toContain('password=secret');
+    logger.mockRestore();
+  });
+
+'''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Format and verify AI quality evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --single-quote --write apps/ai-service/src/quality-coverage.test.ts
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+
+      - name: Commit non-workflow compatibility repair
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ai-service/src/quality-coverage.test.ts
+          git diff --cached --check
+          git commit -m 'test(ai): cover signed gateway controller contracts'
+          authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
+            push origin HEAD:feat/ai-authenticated-gateway-context
