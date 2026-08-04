@@ -81,9 +81,7 @@ jobs:
           pnpm exec prettier --single-quote --write \
             apps/ai-service/src/quality-coverage.test.ts \
             apps/ai-service/src/ai-http-boundary.test.ts \
-            apps/ai-service/src/ai-runtime-default-pool.test.ts \
-            apps/ai-service/src/main-module-providers.test.ts \
-            apps/ai-service/src/proposal-audit-defaults.test.ts
+            apps/ai-service/src/runtime-wiring-coverage.test.ts
           pnpm --filter @life-os/ai-service lint
           pnpm --filter @life-os/ai-service test
 
@@ -100,9 +98,7 @@ jobs:
           git add \
             apps/ai-service/src/quality-coverage.test.ts \
             apps/ai-service/src/ai-http-boundary.test.ts \
-            apps/ai-service/src/ai-runtime-default-pool.test.ts \
-            apps/ai-service/src/main-module-providers.test.ts \
-            apps/ai-service/src/proposal-audit-defaults.test.ts \
+            apps/ai-service/src/runtime-wiring-coverage.test.ts \
             .github/workflows/ci.yml
           git diff --cached --check
           git commit -m 'test(ai): close assurance coverage gaps'
