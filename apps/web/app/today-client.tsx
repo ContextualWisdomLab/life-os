@@ -1,6 +1,7 @@
 'use client';
 
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { QuickCapture } from './components/quick-capture';
 import {
   addTodayAction,
   clearTodaySchedule,
@@ -40,7 +41,6 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
   const [draft, setDraft] = useState<TodayDraft>(() =>
     createEmptyTodayDraft(initialDate),
   );
-  const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [hydrated, setHydrated] = useState(false);
 
@@ -74,9 +74,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     () =>
       draft.actions
         .filter((action) => action.priority !== null)
-        .sort((left, right) =>
-          (left.priority ?? 0) - (right.priority ?? 0),
-        ),
+        .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0)),
     [draft.actions],
   );
   const backlog = draft.actions.filter(
@@ -91,7 +89,9 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
       return true;
     } catch (error) {
       if (error instanceof TodayPriorityLimitError) {
-        setMessage('Three priorities are already committed. Release one first.');
+        setMessage(
+          'Three priorities are already committed. Release one first.',
+        );
       } else if (error instanceof TodayScheduleConflictError) {
         setMessage('That time overlaps another open priority.');
       } else {
@@ -101,24 +101,21 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     }
   }
 
-  function capture(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    if (!title.trim()) {
+  function capture(actionTitle: string): boolean {
+    const title = actionTitle.trim();
+    if (!title) {
       setMessage('Enter an action before adding it.');
-      return;
+      return false;
     }
-    const added = update(
+    return update(
       () =>
         addTodayAction(draft, {
           id: globalThis.crypto.randomUUID(),
           title,
           createdAt: new Date().toISOString(),
         }),
-      'Action captured. Commit it only when it belongs in today’s top three.',
+      'Action captured locally. Commit it only when it belongs in today’s top three.',
     );
-    if (added) {
-      setTitle('');
-    }
   }
 
   function schedule(
@@ -132,12 +129,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     }
     update(
       () =>
-        scheduleTodayAction(
-          draft,
-          action.id,
-          parseTimeInput(start),
-          duration,
-        ),
+        scheduleTodayAction(draft, action.id, parseTimeInput(start), duration),
       'Time block saved locally.',
     );
   }
@@ -181,24 +173,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
           </div>
         </header>
 
-        <form
-          className="capture-bar"
-          onSubmit={capture}
-          aria-label="Capture an action"
-        >
-          <label htmlFor="capture-title">What needs your attention?</label>
-          <div>
-            <input
-              id="capture-title"
-              maxLength={160}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Write the next visible action…"
-              value={title}
-            />
-            <button type="submit">Capture</button>
-          </div>
-          <small>{title.length}/160 · Enter adds this to the backlog.</small>
-        </form>
+        <QuickCapture onCapture={capture} />
         <p className="sr-status" aria-live="polite">
           {message}
         </p>
