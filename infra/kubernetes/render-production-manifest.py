@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ZERO_DIGEST = "0" * 64
+KUSTOMIZE_TIMEOUT_SECONDS = 60
 WEB_IMAGE_SENTINEL = (
     "ghcr.io/contextualwisdomlab/life-os-web@sha256:" + ZERO_DIGEST
 )
@@ -129,6 +130,7 @@ def render_manifest(
         check=True,
         capture_output=True,
         text=True,
+        timeout=KUSTOMIZE_TIMEOUT_SECONDS,
     )
     rendered = completed.stdout
     if ZERO_DIGEST in rendered or WEB_ORIGIN_SENTINEL in rendered:
@@ -161,7 +163,12 @@ def main() -> int:
             web_origin=os.environ.get("WEB_ORIGIN", ""),
             kubectl_binary=arguments.kubectl,
         )
-    except (OSError, RenderContractError, subprocess.CalledProcessError) as error:
+    except (
+        OSError,
+        RenderContractError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ) as error:
         print(f"render_error={error}", file=os.sys.stderr)
         return 1
     return 0
