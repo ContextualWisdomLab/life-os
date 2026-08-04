@@ -8,22 +8,41 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AiProductionModule } from './main';
 
-const DATABASE_URL = process.env.AI_DATABASE_URL;
-const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
+const TEST_DATABASE_URL = process.env.AI_TEST_DATABASE_URL;
+const ORIGINAL_APPLICATION_DATABASE_URL = process.env.AI_DATABASE_URL;
+const describeWithPostgres = TEST_DATABASE_URL ? describe : describe.skip;
 let administrativePool: Pool;
 
+/** Bounded JSON response returned by the local integration-test server. */
 interface JsonHttpResponse {
   statusCode: number;
   body: unknown;
 }
 
-function requireDatabaseUrl(): string {
-  if (!DATABASE_URL) {
-    throw new Error('AI_DATABASE_URL is required for integration tests');
+/** Requires an explicitly disposable PostgreSQL database whose name contains test. */
+function requireTestDatabaseUrl(): string {
+  if (!TEST_DATABASE_URL) {
+    throw new Error('AI_TEST_DATABASE_URL is required for integration tests');
   }
-  return DATABASE_URL;
+  let parsed: URL;
+  try {
+    parsed = new URL(TEST_DATABASE_URL);
+  } catch {
+    throw new Error('AI_TEST_DATABASE_URL is invalid');
+  }
+  const databaseName = parsed.pathname.slice(1);
+  if (
+    (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') ||
+    !/test/iu.test(databaseName)
+  ) {
+    throw new Error(
+      'AI integration tests require a disposable PostgreSQL test database',
+    );
+  }
+  return TEST_DATABASE_URL;
 }
 
+/** Applies the append-only proposal-audit schema to the disposable test database. */
 async function applyMigration(pool: Pool): Promise<void> {
   const sql = await readFile(
     resolve(__dirname, '../migrations/0001_proposal_audit.sql'),
@@ -32,6 +51,7 @@ async function applyMigration(pool: Pool): Promise<void> {
   await pool.query(sql);
 }
 
+/** Sends one bounded JSON request to the local production module. */
 function requestJson(
   address: AddressInfo,
   method: 'GET' | 'POST',
@@ -83,6 +103,7 @@ function requestJson(
   });
 }
 
+/** Creates one valid inert proposal request for the supplied task identifier. */
 function proposalRequest(taskId: string): {
   objective: string;
   context: Array<{
@@ -107,8 +128,10 @@ function proposalRequest(taskId: string): {
 
 describeWithPostgres('AI production proposal audit HTTP API', () => {
   beforeAll(async () => {
+    const testDatabaseUrl = requireTestDatabaseUrl();
+    process.env.AI_DATABASE_URL = testDatabaseUrl;
     administrativePool = new Pool({
-      connectionString: requireDatabaseUrl(),
+      connectionString: testDatabaseUrl,
       application_name: 'life-os-ai-http-integration-admin',
       max: 4,
     });
@@ -117,8 +140,16 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
   });
 
   afterAll(async () => {
-    await administrativePool.query('DROP SCHEMA IF EXISTS ai CASCADE');
-    await administrativePool.end();
+    try {
+      await administrativePool.query('DROP SCHEMA IF EXISTS ai CASCADE');
+      await administrativePool.end();
+    } finally {
+      if (ORIGINAL_APPLICATION_DATABASE_URL === undefined) {
+        delete process.env.AI_DATABASE_URL;
+      } else {
+        process.env.AI_DATABASE_URL = ORIGINAL_APPLICATION_DATABASE_URL;
+      }
+    }
   });
 
   it('persists proposals across restarts and appends replay-safe decisions', async () => {
@@ -194,10 +225,10 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
           proposal: { proposalId: string };
         }>
       )[0];
-      expect(audit?.proposal.proposalId).toBe(proposalId);
       if (!audit) {
         throw new Error('Expected persisted proposal audit evidence');
       }
+      expect(audit.proposal.proposalId).toBe(proposalId);
 
       const decisionBody = {
         expectedContentDigest: audit.contentDigest,
