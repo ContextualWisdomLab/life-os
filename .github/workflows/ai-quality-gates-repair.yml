@@ -41,6 +41,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Apply reviewed quality-gate implementation
+        run: python3 .github/scripts/complete_ai_quality_gates.py
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -51,6 +54,21 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Format reviewed sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/package.json \
+            apps/ai-service/vitest.config.ts \
+            "apps/ai-service/src/**/*.ts" \
+            package.json \
+            product/capabilities.json \
+            CHANGELOG.md \
+            docs/operations/ai-proposal-audit-assurance.md \
+            docs/superpowers/specs/2026-08-04-ai-service-quality-gates-design.md \
+            docs/superpowers/plans/2026-08-04-ai-service-quality-gates.md
 
       - name: Run AI service quality gates
         run: pnpm --filter @life-os/ai-service test
