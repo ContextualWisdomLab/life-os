@@ -176,6 +176,9 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
       projectId: project.id,
       title: 'Draft launch plan evidence',
     });
+    await runtime.service.createGoal(workspaceId, {
+      title: 'Launch planning',
+    });
     await runtime.service.createGoal(otherWorkspaceId, {
       title: 'Launch plan',
     });
@@ -206,7 +209,7 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
       },
     ]);
     await expect(
-      runtime.service.search(workspaceId, 'launch', 2),
+      runtime.service.search(workspaceId, 'launch plan', 2),
     ).resolves.toEqual([
       {
         entityType: 'goal',
