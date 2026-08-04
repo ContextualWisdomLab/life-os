@@ -27,9 +27,7 @@ describe('production Kubernetes reference contract', () => {
   const serviceWriter = read(`${kubernetesRoot}/write-pg-service.py`);
   const migrationRunner = read(`${kubernetesRoot}/run-migrations.sh`);
   const trivyConfig = read('trivy.yaml');
-  const trustedRegistryData = read(
-    'infra/trivy-data/trusted-registries.yaml',
-  );
+  const trustedRegistryData = read('infra/trivy-data/trusted-registries.yaml');
 
   it('composes one production overlay from the reviewed base', () => {
     expect(base).toContain('kind: Kustomization');
@@ -111,7 +109,9 @@ describe('production Kubernetes reference contract', () => {
     expect(imageLines.every((line) => approvedImage.test(line))).toBe(true);
     expect(workloads).not.toContain('trivy:ignore:KSV-0125');
     expect(existsSync(resolve(repositoryRoot, '.trivyignore'))).toBe(false);
-    expect(existsSync(resolve(repositoryRoot, '.trivyignore.yaml'))).toBe(false);
+    expect(existsSync(resolve(repositoryRoot, '.trivyignore.yaml'))).toBe(
+      false,
+    );
   });
 
   it('denies ambient access while permitting bounded internal data paths', () => {
@@ -152,7 +152,9 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('WEB_PRIOR_REVISION');
     expect(workflow).toContain('GATEWAY_PRIOR_REVISION');
     expect(workflow).toContain('--to-revision="${prior_revision}"');
-    expect(workflow).toContain('kubectl delete "deployment/${deployment_name}"');
+    expect(workflow).toContain(
+      'kubectl delete "deployment/${deployment_name}"',
+    );
     expect(workflow).toContain('recovery_failed=0');
     expect(workflow).toContain(
       'Rollout and automatic workload-state recovery both failed.',
