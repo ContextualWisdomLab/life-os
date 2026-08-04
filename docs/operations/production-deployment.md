@@ -36,6 +36,8 @@ Create a JSON object whose keys are the exact service names and whose values are
 
 The complete set is enforced by the renderer. Tags, missing digests, duplicate keys, extra services, uppercase digest text, whitespace, and credential-bearing URLs are rejected.
 
+The reusable base uses scanner-recognized Docker Hub aliases only as non-production Kustomize image keys. The generated overlay always replaces every alias with the operator-supplied immutable reference, so the actual production registry may be GHCR or another approved OCI registry. A rendered bundle that retains a base alias or mutable tag fails validation.
+
 Render locally:
 
 ```bash
