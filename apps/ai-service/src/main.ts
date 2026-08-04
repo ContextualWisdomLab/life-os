@@ -85,12 +85,7 @@ function trustedContext(
   method: 'GET' | 'POST',
   path: string,
 ): TrustedAiContext {
-  return requireTrustedAiContext(
-    headers,
-    process.env.AI_GATEWAY_CONTEXT_SECRET,
-    method,
-    path,
-  );
+  return requireTrustedAiContext(headers, process.env, method, path);
 }
 
 /** Maps proposal-audit failures to stable credential-free HTTP problems. */
@@ -125,14 +120,15 @@ function mapAuditError(error: unknown): never {
   throw problem(503, 'Proposal audit is unavailable', 'audit_unavailable');
 }
 
-/** Converts the four signed headers into the framework-neutral verifier input. */
+/** Converts the five signed headers into the framework-neutral verifier input. */
 function contextHeaders(
+  keyId: unknown,
   workspaceId: unknown,
   actorId: unknown,
   issuedAt: unknown,
   signature: unknown,
 ): TrustedAiContextHeaders {
-  return { workspaceId, actorId, issuedAt, signature };
+  return { keyId, workspaceId, actorId, issuedAt, signature };
 }
 
 /** Exposes health and inert proposal generation. */
@@ -153,6 +149,7 @@ export class AiProposalController {
   /** Generates and persists one inert proposal for the authenticated workspace. */
   @Post('v1/proposals')
   async createProposal(
+    @Headers('x-life-os-context-key-id') keyId: unknown,
     @Headers('x-life-os-workspace-id') workspaceId: unknown,
     @Headers('x-life-os-actor-id') actorId: unknown,
     @Headers('x-life-os-context-issued-at') issuedAt: unknown,
@@ -161,7 +158,7 @@ export class AiProposalController {
   ): Promise<AuditableProposal> {
     try {
       const context = trustedContext(
-        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        contextHeaders(keyId, workspaceId, actorId, issuedAt, signature),
         'POST',
         '/v1/proposals',
       );
@@ -205,6 +202,7 @@ export class AiProposalAuditController {
   /** Lists deterministic proposal evidence for the authenticated workspace. */
   @Get('v1/proposals')
   async listProposals(
+    @Headers('x-life-os-context-key-id') keyId: unknown,
     @Headers('x-life-os-workspace-id') workspaceId: unknown,
     @Headers('x-life-os-actor-id') actorId: unknown,
     @Headers('x-life-os-context-issued-at') issuedAt: unknown,
@@ -212,7 +210,7 @@ export class AiProposalAuditController {
   ): Promise<ProposalAuditRecord[]> {
     try {
       const context = trustedContext(
-        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        contextHeaders(keyId, workspaceId, actorId, issuedAt, signature),
         'GET',
         '/v1/proposals',
       );
@@ -225,6 +223,7 @@ export class AiProposalAuditController {
   /** Returns one immutable proposal revision within the authenticated workspace. */
   @Get('v1/proposals/:proposalId')
   async findProposal(
+    @Headers('x-life-os-context-key-id') keyId: unknown,
     @Headers('x-life-os-workspace-id') workspaceId: unknown,
     @Headers('x-life-os-actor-id') actorId: unknown,
     @Headers('x-life-os-context-issued-at') issuedAt: unknown,
@@ -234,7 +233,7 @@ export class AiProposalAuditController {
     try {
       const path = `/v1/proposals/${proposalId}`;
       const context = trustedContext(
-        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        contextHeaders(keyId, workspaceId, actorId, issuedAt, signature),
         'GET',
         path,
       );
@@ -250,6 +249,7 @@ export class AiProposalAuditController {
   /** Lists append-only decisions for one authenticated workspace proposal. */
   @Get('v1/proposals/:proposalId/decisions')
   async listDecisions(
+    @Headers('x-life-os-context-key-id') keyId: unknown,
     @Headers('x-life-os-workspace-id') workspaceId: unknown,
     @Headers('x-life-os-actor-id') actorId: unknown,
     @Headers('x-life-os-context-issued-at') issuedAt: unknown,
@@ -259,7 +259,7 @@ export class AiProposalAuditController {
     try {
       const path = `/v1/proposals/${proposalId}/decisions`;
       const context = trustedContext(
-        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        contextHeaders(keyId, workspaceId, actorId, issuedAt, signature),
         'GET',
         path,
       );
@@ -275,6 +275,7 @@ export class AiProposalAuditController {
   /** Appends an explicit authenticated-actor decision without executing operations. */
   @Post('v1/proposals/:proposalId/decisions')
   async appendDecision(
+    @Headers('x-life-os-context-key-id') keyId: unknown,
     @Headers('x-life-os-workspace-id') workspaceId: unknown,
     @Headers('x-life-os-actor-id') actorId: unknown,
     @Headers('x-life-os-context-issued-at') issuedAt: unknown,
@@ -285,7 +286,7 @@ export class AiProposalAuditController {
     try {
       const path = `/v1/proposals/${proposalId}/decisions`;
       const context = trustedContext(
-        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        contextHeaders(keyId, workspaceId, actorId, issuedAt, signature),
         'POST',
         path,
       );
@@ -324,7 +325,6 @@ export class AiAppModule {}
     },
     {
       provide: PROPOSAL_SERVICE,
-      // Expose only ProposalGenerator while reusing the shared audit application.
       useFactory: (runtime: AiRuntime): ProposalGenerator =>
         runtime.application,
       inject: [AI_RUNTIME],
