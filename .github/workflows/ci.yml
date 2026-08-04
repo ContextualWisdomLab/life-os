@@ -16,7 +16,7 @@ jobs:
       github.head_ref == 'feat/ai-authenticated-gateway-context' &&
       github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Repair deterministic test evidence
+      - name: Repair deterministic security evidence
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -38,20 +38,38 @@ jobs:
           quality = quality_path.read_text(encoding='utf-8')
           old_secret = "const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';"
           new_secret = "const GATEWAY_SECRET = Buffer.alloc(32, 0x51).toString('base64url');"
-          if quality.count(old_secret) != 1:
-              raise SystemExit(f'expected one hardcoded fixture, found {quality.count(old_secret)}')
-          quality_path.write_text(quality.replace(old_secret, new_secret, 1), encoding='utf-8')
+          if old_secret in quality:
+              quality = quality.replace(old_secret, new_secret, 1)
+          elif new_secret not in quality:
+              raise SystemExit('gateway fixture pattern mismatch')
+
+          weak_assertion = "    expect(JSON.stringify(logger.mock.calls)).not.toContain('password=secret');\n"
+          strong_marker = 'const loggedOutput = logger.mock.calls'
+          if weak_assertion in quality:
+              strong_assertion = """    const loggedOutput = logger.mock.calls
+                .flat()
+                .flatMap((value) =>
+                  value instanceof Error
+                    ? [value.name, value.message, value.stack ?? '']
+                    : [typeof value === 'string' ? value : JSON.stringify(value)],
+                )
+                .join('\\n');
+              expect(loggedOutput).not.toContain('password=secret');
+          """.replace('                ', '      ').replace('                  ', '        ').replace('                    ', '          ').replace('              ', '    ')
+              quality = quality.replace(weak_assertion, strong_assertion, 1)
+          elif strong_marker not in quality:
+              raise SystemExit('redaction assertion pattern mismatch')
+          quality_path.write_text(quality, encoding='utf-8')
 
           boundary_test_path = Path('apps/ai-service/src/ai-http-boundary.test.ts')
           boundary_test = boundary_test_path.read_text(encoding='utf-8')
           old_index = 'alphabet.indexOf(canonical[canonical.length - 1]);'
           new_index = 'alphabet.indexOf(canonical[canonical.length - 1]!);'
-          if boundary_test.count(old_index) != 1:
-              raise SystemExit(f'expected one signature index, found {boundary_test.count(old_index)}')
-          boundary_test_path.write_text(
-              boundary_test.replace(old_index, new_index, 1),
-              encoding='utf-8',
-          )
+          if old_index in boundary_test:
+              boundary_test = boundary_test.replace(old_index, new_index, 1)
+          elif new_index not in boundary_test:
+              raise SystemExit('signature index pattern mismatch')
+          boundary_test_path.write_text(boundary_test, encoding='utf-8')
           PY
 
       - name: Verify AI service
@@ -81,7 +99,7 @@ jobs:
             apps/ai-service/src/ai-http-boundary.test.ts \
             .github/workflows/ci.yml
           git diff --cached --check
-          git commit -m 'test(ai): derive gateway fixtures without hardcoded keys'
+          git commit -m 'test(ai): harden gateway assurance fixtures'
           authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
             push origin HEAD:feat/ai-authenticated-gateway-context
