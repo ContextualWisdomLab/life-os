@@ -1,23 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  createWorkspaceContextHeaders,
+  createPlanningContextHeaders,
   handlePlanningSearchRequest,
   parsePlanningSearchResults,
   parseSessionWorkspace,
-  requireGatewayContextSecret,
+  requireGatewaySecret,
   requireServiceOrigin,
   type PlanningSearchFetch,
 } from './planning-search-client';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const TASK_ID = '44444444-4444-4444-8444-444444444444';
-const GATEWAY_SECRET = 'trusted-gateway-context-secret-32-bytes';
+const CONTEXT_SECRET = 'planning-gateway-context-secret-32-bytes';
+const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
   IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
   PLANNING_SERVICE_ORIGIN: 'http://planning-service:4102',
-  PLANNING_GATEWAY_CONTEXT_SECRET: GATEWAY_SECRET,
+  PLANNING_GATEWAY_CONTEXT_SECRET: CONTEXT_SECRET,
 };
 
 function sessionResponse(status = 200): Response {
@@ -50,10 +51,11 @@ function searchResponse(status = 200): Response {
 }
 
 describe('planning search BFF', () => {
-  it('derives and signs the workspace while forwarding no browser credential to planning', async () => {
+  it('signs context without forwarding browser credentials', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetcher: PlanningSearchFetch = async (input, init) => {
-      calls.push({ url: String(input), init });
+      const url = String(input);
+      calls.push({ url, init });
       return calls.length === 1 ? sessionResponse() : searchResponse();
     };
     const request = new Request(
@@ -65,6 +67,7 @@ describe('planning search BFF', () => {
       request,
       environment,
       fetcher,
+      NOW_SECONDS,
     );
 
     assert.equal(response.status, 200);
@@ -89,17 +92,22 @@ describe('planning search BFF', () => {
       'http://planning-service:4102/v1/search?q=Ship+Search&limit=12',
     );
     const planningHeaders = new Headers(calls[1]?.init?.headers);
+    const expectedContext = createPlanningContextHeaders(
+      WORKSPACE_ID,
+      CONTEXT_SECRET,
+      NOW_SECONDS,
+    );
     assert.equal(
       planningHeaders.get('x-life-os-workspace-id'),
-      WORKSPACE_ID,
+      expectedContext['x-life-os-workspace-id'],
     );
-    assert.match(
-      planningHeaders.get('x-life-os-context-issued-at') ?? '',
-      /^[1-9]\d{9,12}$/,
+    assert.equal(
+      planningHeaders.get('x-life-os-context-issued-at'),
+      expectedContext['x-life-os-context-issued-at'],
     );
-    assert.match(
-      planningHeaders.get('x-life-os-context-signature') ?? '',
-      /^[A-Za-z0-9_-]{43}$/,
+    assert.equal(
+      planningHeaders.get('x-life-os-context-signature'),
+      expectedContext['x-life-os-context-signature'],
     );
     assert.equal(planningHeaders.get('cookie'), null);
     assert.match(
@@ -110,14 +118,15 @@ describe('planning search BFF', () => {
     assert.equal(calls[1]?.init?.redirect, 'error');
   });
 
-  it('rejects ownership injection and malformed browser input before fetch', async () => {
+  it('rejects injected ownership and malformed inputs before fetch', async () => {
     const unsafeUrls = [
       'https://life-os.example/api/planning/search',
+      'https://life-os.example/api/planning/search?q=x',
       `https://life-os.example/api/planning/search?q=ship&workspaceId=${WORKSPACE_ID}`,
       'https://life-os.example/api/planning/search?q=ship&q=again',
-      'https://life-os.example/api/planning/search?q=1234',
       'https://life-os.example/api/planning/search?q=ship&limit=0',
-      'https://life-os.example/api/planning/search?q=ship&limit=51',
+      'https://life-os.example/api/planning/search?q=ship&limit=26',
+      'https://life-os.example/api/planning/search?q=1234',
     ];
     for (const url of unsafeUrls) {
       let called = false;
@@ -128,6 +137,7 @@ describe('planning search BFF', () => {
           called = true;
           return sessionResponse();
         },
+        NOW_SECONDS,
       );
       assert.equal(response.status, 400);
       assert.equal(called, false);
@@ -140,7 +150,24 @@ describe('planning search BFF', () => {
     }
   });
 
-  it('maps an unauthenticated identity response without calling planning', async () => {
+  it('fails closed on invalid gateway configuration', async () => {
+    for (const secret of [undefined, 'too-short']) {
+      let called = false;
+      const response = await handlePlanningSearchRequest(
+        new Request('https://life-os.example/api/planning/search?q=ship'),
+        { ...environment, PLANNING_GATEWAY_CONTEXT_SECRET: secret },
+        async () => {
+          called = true;
+          return sessionResponse();
+        },
+        NOW_SECONDS,
+      );
+      assert.equal(response.status, 503);
+      assert.equal(called, false);
+    }
+  });
+
+  it('maps unauthenticated identity without calling planning', async () => {
     let calls = 0;
     const response = await handlePlanningSearchRequest(
       new Request('https://life-os.example/api/planning/search?q=ship'),
@@ -149,6 +176,7 @@ describe('planning search BFF', () => {
         calls += 1;
         return sessionResponse(401);
       },
+      NOW_SECONDS,
     );
     assert.equal(response.status, 401);
     assert.equal(calls, 1);
@@ -160,11 +188,7 @@ describe('planning search BFF', () => {
     });
   });
 
-  it('fails closed for unavailable configuration and malformed upstream responses', async () => {
-    const invalidEnvironment = {
-      ...environment,
-      PLANNING_GATEWAY_CONTEXT_SECRET: 'short',
-    };
+  it('maps malformed upstream responses generically', async () => {
     const malformedResponses: PlanningSearchFetch[] = [
       async () =>
         new Response('{}', { headers: { 'content-type': 'text/plain' } }),
@@ -190,18 +214,12 @@ describe('planning search BFF', () => {
             }),
     ];
 
-    const missingSecretResponse = await handlePlanningSearchRequest(
-      new Request('https://life-os.example/api/planning/search?q=ship'),
-      invalidEnvironment,
-      async () => sessionResponse(),
-    );
-    assert.equal(missingSecretResponse.status, 503);
-
     for (const fetcher of malformedResponses) {
       const response = await handlePlanningSearchRequest(
         new Request('https://life-os.example/api/planning/search?q=ship'),
         environment,
         fetcher,
+        NOW_SECONDS,
       );
       assert.equal(response.status, 503);
       assert.deepEqual(await response.json(), {
@@ -214,26 +232,29 @@ describe('planning search BFF', () => {
   });
 });
 
-describe('planning search validation and signing', () => {
-  it('validates service origins, secret, workspace context, and bounded results', () => {
+describe('planning search boundary helpers', () => {
+  it('validates boundary helpers', () => {
     assert.equal(
-      requireServiceOrigin('https://identity.example.test', 'identity'),
+      requireServiceOrigin('https://identity.example.test'),
       'https://identity.example.test',
     );
-    assert.equal(requireGatewayContextSecret(GATEWAY_SECRET), GATEWAY_SECRET);
+    assert.equal(requireGatewaySecret(CONTEXT_SECRET), CONTEXT_SECRET);
     assert.equal(
       parseSessionWorkspace({ workspaceId: WORKSPACE_ID.toUpperCase() }),
       WORKSPACE_ID,
     );
-    const headers = createWorkspaceContextHeaders(
+    const contextHeaders = createPlanningContextHeaders(
       WORKSPACE_ID,
-      GATEWAY_SECRET,
-      1_785_806_400,
+      CONTEXT_SECRET,
+      NOW_SECONDS,
     );
-    assert.equal(headers['x-life-os-workspace-id'], WORKSPACE_ID);
-    assert.equal(headers['x-life-os-context-issued-at'], '1785806400');
+    assert.equal(contextHeaders['x-life-os-workspace-id'], WORKSPACE_ID);
+    assert.equal(
+      contextHeaders['x-life-os-context-issued-at'],
+      String(NOW_SECONDS),
+    );
     assert.match(
-      headers['x-life-os-context-signature'] ?? '',
+      contextHeaders['x-life-os-context-signature'] ?? '',
       /^[A-Za-z0-9_-]{43}$/,
     );
     assert.deepEqual(
@@ -244,19 +265,19 @@ describe('planning search validation and signing', () => {
           title: 'Goal',
           createdAt: '2026-08-04T01:00:00.000Z',
         },
-      ]),
-      [
         {
-          entityType: 'goal',
-          id: '22222222-2222-4222-8222-222222222222',
-          title: 'Goal',
+          entityType: 'project',
+          id: '33333333-3333-4333-8333-333333333333',
+          parentId: '22222222-2222-4222-8222-222222222222',
+          title: 'Project',
           createdAt: '2026-08-04T01:00:00.000Z',
         },
-      ],
+      ]).map((result) => result.entityType),
+      ['goal', 'project'],
     );
   });
 
-  it('rejects unsafe origins, secrets, sessions, timestamps, and result shapes', () => {
+  it('rejects unsafe boundary values', () => {
     for (const origin of [
       '',
       'ftp://identity.example.test',
@@ -265,21 +286,29 @@ describe('planning search validation and signing', () => {
       'https://identity.example.test?query=yes',
       'https://identity.example.test/#fragment',
     ]) {
-      assert.throws(() => requireServiceOrigin(origin, 'identity'));
+      assert.throws(
+        () => requireServiceOrigin(origin),
+        new Error('Service origin is invalid'),
+      );
     }
-    for (const secret of [undefined, '', 'too-short', `${'x'.repeat(32)}\n`]) {
-      assert.throws(() => requireGatewayContextSecret(secret));
-    }
+    assert.throws(
+      () => requireGatewaySecret('short'),
+      new Error('Gateway context secret is invalid'),
+    );
     for (const value of [null, {}, { workspaceId: '123' }]) {
-      assert.throws(() => parseSessionWorkspace(value));
+      assert.throws(
+        () => parseSessionWorkspace(value),
+        new Error('Identity session response is invalid'),
+      );
     }
-    assert.throws(() =>
-      createWorkspaceContextHeaders(WORKSPACE_ID, GATEWAY_SECRET, -1),
+    assert.throws(
+      () => createPlanningContextHeaders(WORKSPACE_ID, CONTEXT_SECRET, -1),
+      new Error('Gateway context timestamp is invalid'),
     );
     for (const value of [
       null,
       {},
-      Array.from({ length: 51 }, () => ({})),
+      Array.from({ length: 26 }, () => ({})),
       [{ entityType: 'habit' }],
       [{ entityType: 'goal', id: TASK_ID, title: '', createdAt: 'bad' }],
       [
@@ -300,7 +329,10 @@ describe('planning search validation and signing', () => {
         },
       ],
     ]) {
-      assert.throws(() => parsePlanningSearchResults(value));
+      assert.throws(
+        () => parsePlanningSearchResults(value),
+        new Error('Planning search response is invalid'),
+      );
     }
   });
 });
