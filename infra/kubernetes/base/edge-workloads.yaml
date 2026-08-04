@@ -66,7 +66,6 @@ spec:
               app.kubernetes.io/name: life-os-web
       containers:
         - name: web
-          # trivy:ignore:KSV-0125 -- exact organization path and digest are enforced by the shared renderer.
           image: ghcr.io/contextualwisdomlab/life-os-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           ports:
@@ -196,7 +195,6 @@ spec:
               app.kubernetes.io/name: life-os-gateway
       containers:
         - name: gateway
-          # trivy:ignore:KSV-0125 -- exact organization path and digest are enforced by the shared renderer.
           image: ghcr.io/contextualwisdomlab/life-os-gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           ports:
