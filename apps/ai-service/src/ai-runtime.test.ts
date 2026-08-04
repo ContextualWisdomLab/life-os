@@ -103,9 +103,12 @@ describe('AI runtime configuration', () => {
       },
       'AI database idle timeout is invalid',
     ],
-  ] as const)('rejects unsafe runtime configuration %#', (environment, message) => {
-    expect(() => createAiPoolConfiguration(environment)).toThrow(message);
-  });
+  ] as const)(
+    'rejects unsafe runtime configuration %#',
+    (environment, message) => {
+      expect(() => createAiPoolConfiguration(environment)).toThrow(message);
+    },
+  );
 });
 
 describe('AiRuntime', () => {

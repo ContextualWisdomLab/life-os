@@ -162,10 +162,6 @@ export function createAiRuntime(
   const proposalService = new ProposalService(new RuleBasedProposalModel());
   return new AiRuntime(
     pool,
-    new ProposalAuditApplication(
-      proposalService,
-      repository,
-      'rule-based-v1',
-    ),
+    new ProposalAuditApplication(proposalService, repository, 'rule-based-v1'),
   );
 }

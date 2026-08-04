@@ -37,9 +37,7 @@ import {
 } from './postgres-proposal-audit-repository';
 
 export const PROPOSAL_SERVICE = Symbol('PROPOSAL_SERVICE');
-export const PROPOSAL_AUDIT_APPLICATION = Symbol(
-  'PROPOSAL_AUDIT_APPLICATION',
-);
+export const PROPOSAL_AUDIT_APPLICATION = Symbol('PROPOSAL_AUDIT_APPLICATION');
 export const AI_RUNTIME = Symbol('AI_RUNTIME');
 
 interface ProposalGenerator {

@@ -130,12 +130,7 @@ export function validateProposalDecisionRequest(
           'reason',
           'decidedAt',
         ]
-      : [
-          'expectedContentDigest',
-          'idempotencyKey',
-          'decision',
-          'decidedAt',
-        ],
+      : ['expectedContentDigest', 'idempotencyKey', 'decision', 'decidedAt'],
   );
   const decision = record.decision;
   if (decision !== 'accepted' && decision !== 'rejected') {

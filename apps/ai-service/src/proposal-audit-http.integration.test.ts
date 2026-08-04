@@ -188,10 +188,12 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       );
       expect(listed.statusCode).toBe(200);
       expect(listed.body).toHaveLength(1);
-      const audit = (listed.body as Array<{
-        contentDigest: string;
-        proposal: { proposalId: string };
-      }>)[0];
+      const audit = (
+        listed.body as Array<{
+          contentDigest: string;
+          proposal: { proposalId: string };
+        }>
+      )[0];
       expect(audit?.proposal.proposalId).toBe(proposalId);
       if (!audit) {
         throw new Error('Expected persisted proposal audit evidence');

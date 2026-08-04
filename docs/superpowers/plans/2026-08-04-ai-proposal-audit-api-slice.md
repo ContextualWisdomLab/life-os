@@ -19,23 +19,23 @@ The production module has no planning, calendar, habit, identity, notification, 
 
 `AI_DATABASE_URL` is required and must use `postgres:` or `postgresql:`. Optional integer controls are bounded before node-postgres receives them:
 
-| Variable | Default | Minimum | Maximum |
-| --- | ---: | ---: | ---: |
-| `AI_DATABASE_POOL_MAX` | 10 | 1 | 32 |
-| `AI_DATABASE_CONNECT_TIMEOUT_MS` | 5000 | 100 | 30000 |
-| `AI_DATABASE_IDLE_TIMEOUT_MS` | 30000 | 1000 | 300000 |
+| Variable                         | Default | Minimum | Maximum |
+| -------------------------------- | ------: | ------: | ------: |
+| `AI_DATABASE_POOL_MAX`           |      10 |       1 |      32 |
+| `AI_DATABASE_CONNECT_TIMEOUT_MS` |    5000 |     100 |   30000 |
+| `AI_DATABASE_IDLE_TIMEOUT_MS`    |   30000 |    1000 |  300000 |
 
 The pool uses application name `life-os-ai-service` and closes exactly once through NestJS shutdown hooks.
 
 ## HTTP contract
 
-| Method | Route | Result |
-| --- | --- | --- |
-| `POST` | `/v1/proposals` | Generate an inert proposal and persist verified audit evidence before returning it. |
-| `GET` | `/v1/proposals` | List deterministic proposal history for the trusted workspace. |
-| `GET` | `/v1/proposals/:proposalId` | Return one immutable proposal revision for the trusted workspace. |
-| `GET` | `/v1/proposals/:proposalId/decisions` | Return append-only decision history for one tenant-scoped proposal. |
-| `POST` | `/v1/proposals/:proposalId/decisions` | Append an explicit accept/reject event bound to the exact proposal digest. |
+| Method | Route                                 | Result                                                                              |
+| ------ | ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `POST` | `/v1/proposals`                       | Generate an inert proposal and persist verified audit evidence before returning it. |
+| `GET`  | `/v1/proposals`                       | List deterministic proposal history for the trusted workspace.                      |
+| `GET`  | `/v1/proposals/:proposalId`           | Return one immutable proposal revision for the trusted workspace.                   |
+| `GET`  | `/v1/proposals/:proposalId/decisions` | Return append-only decision history for one tenant-scoped proposal.                 |
+| `POST` | `/v1/proposals/:proposalId/decisions` | Append an explicit accept/reject event bound to the exact proposal digest.          |
 
 Workspace scope is accepted only from `x-workspace-id`. Decision append also requires `x-actor-id`. The decision body is closed and accepts only:
 

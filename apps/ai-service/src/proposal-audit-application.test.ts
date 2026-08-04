@@ -10,10 +10,7 @@ import type {
   ProposalDecisionEvent,
 } from './proposal-audit-domain';
 import { ProposalAuditValidationError } from './proposal-audit-domain';
-import {
-  ProposalService,
-  RuleBasedProposalModel,
-} from './proposal-service';
+import { ProposalService, RuleBasedProposalModel } from './proposal-service';
 import { ProposalDigestMismatchError } from './postgres-proposal-audit-repository';
 
 const WORKSPACE_ID = '43eab0ee-0f7b-4c7f-9331-b133f2647675';
@@ -107,9 +104,7 @@ function application(
   );
 }
 
-function decisionBody(
-  contentDigest: string,
-): {
+function decisionBody(contentDigest: string): {
   expectedContentDigest: string;
   idempotencyKey: string;
   decision: 'accepted';
@@ -142,9 +137,9 @@ describe('ProposalAuditApplication', () => {
     await expect(service.listProposals(WORKSPACE_ID)).resolves.toEqual(
       repository.records,
     );
-    await expect(
-      service.listProposals(OTHER_WORKSPACE_ID),
-    ).resolves.toEqual([]);
+    await expect(service.listProposals(OTHER_WORKSPACE_ID)).resolves.toEqual(
+      [],
+    );
     await expect(
       service.findProposal(WORKSPACE_ID, PROPOSAL_ID),
     ).resolves.toEqual(repository.records[0]);
