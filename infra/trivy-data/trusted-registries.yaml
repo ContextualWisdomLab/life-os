@@ -1,0 +1,6 @@
+# KSV-0125 accepts only registry hosts. Repository tests separately require
+# every Kubernetes image under ghcr.io to use the reviewed organization-owned
+# repository path and an immutable SHA-256 digest.
+ksv0125:
+  trusted_registries:
+    - ghcr.io
