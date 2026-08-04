@@ -189,23 +189,26 @@ describe('trusted AI service context', () => {
       AI_GATEWAY_PREVIOUS_KEY_ID: PREVIOUS_KEY_ID,
       AI_GATEWAY_PREVIOUS_KEY_SECRET: ACTIVE_SECRET,
     },
-  ])('fails closed when gateway key configuration is unavailable: %#', (keys) => {
-    expectProblem(
-      () =>
-        requireTrustedAiContext(
-          contextHeaders(),
-          keys,
-          'POST',
-          '/v1/proposals',
-          NOW_SECONDS,
-        ),
-      {
-        title: 'Trusted gateway context is unavailable',
-        status: 503,
-        code: 'gateway_context_unavailable',
-      },
-    );
-  });
+  ])(
+    'fails closed when gateway key configuration is unavailable: %#',
+    (keys) => {
+      expectProblem(
+        () =>
+          requireTrustedAiContext(
+            contextHeaders(),
+            keys,
+            'POST',
+            '/v1/proposals',
+            NOW_SECONDS,
+          ),
+        {
+          title: 'Trusted gateway context is unavailable',
+          status: 503,
+          code: 'gateway_context_unavailable',
+        },
+      );
+    },
+  );
 
   it.each([
     { field: 'keyId', value: undefined },
@@ -223,23 +226,26 @@ describe('trusted AI service context', () => {
     { field: 'signature', value: undefined },
     { field: 'signature', value: 'invalid' },
     { field: 'signature', value: `${'a'.repeat(42)}!` },
-  ])('rejects malformed or unknown context field $field: %#', ({ field, value }) => {
-    expectProblem(
-      () =>
-        requireTrustedAiContext(
-          contextHeaders({ [field]: value }),
-          overlapEnvironment(),
-          'POST',
-          '/v1/proposals',
-          NOW_SECONDS,
-        ),
-      {
-        title: 'Trusted gateway context is invalid',
-        status: 401,
-        code: 'invalid_gateway_context',
-      },
-    );
-  });
+  ])(
+    'rejects malformed or unknown context field $field: %#',
+    ({ field, value }) => {
+      expectProblem(
+        () =>
+          requireTrustedAiContext(
+            contextHeaders({ [field]: value }),
+            overlapEnvironment(),
+            'POST',
+            '/v1/proposals',
+            NOW_SECONDS,
+          ),
+        {
+          title: 'Trusted gateway context is invalid',
+          status: 401,
+          code: 'invalid_gateway_context',
+        },
+      );
+    },
+  );
 
   it('rejects the previous key immediately after retirement', () => {
     expectProblem(

@@ -97,10 +97,7 @@ export function requireAiGatewayContextKeyRing(
     return Object.freeze({ active });
   }
   const previous = contextKey(previousId, previousSecret);
-  if (
-    previous.keyId === active.keyId ||
-    previous.secret === active.secret
-  ) {
+  if (previous.keyId === active.keyId || previous.secret === active.secret) {
     throw new AiGatewayKeyConfigurationError();
   }
   return Object.freeze({ active, previous });
