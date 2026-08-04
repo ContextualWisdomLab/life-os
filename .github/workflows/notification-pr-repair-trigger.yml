@@ -18,6 +18,8 @@ jobs:
       github.head_ref == 'feat/notification-postgres-inbox'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
     env:
       NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
     services:
@@ -57,7 +59,7 @@ jobs:
           python3 .github/scripts/repair_notification_reliability.py
           python3 .github/scripts/document_notification_reliability_repair.py
 
-      - name: Format and validate notification service
+      - name: Format and validate notification reliability
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -69,6 +71,14 @@ jobs:
           pnpm --filter @life-os/notification-service lint
           pnpm --filter @life-os/notification-service typecheck
           pnpm --filter @life-os/notification-service exec vitest run \
+            src/main.test.ts \
+            src/notification-runtime.test.ts \
+            src/notification-runtime.integration.test.ts \
+            src/postgres-reminder-migration.test.ts \
+            src/postgres-reminder-repository.test.ts \
+            src/postgres-reminder-repository.integration.test.ts \
+            src/reminder-scheduler.test.ts \
+            src/reminder-scheduler.integration.test.ts \
             --no-file-parallelism \
             --coverage.enabled=false
 
