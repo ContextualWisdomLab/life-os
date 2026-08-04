@@ -13,8 +13,10 @@ import {
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
-const MAXIMUM_IDEMPOTENCY_KEY_LENGTH = 2_048;
+const MAXIMUM_IDEMPOTENCY_KEY_LENGTH = 1_024;
 const MAXIMUM_QUERY_LIMIT = 100;
+const MINIMUM_CLAIM_LEASE_SECONDS = 30;
+const MAXIMUM_CLAIM_LEASE_SECONDS = 3_600;
 
 /** Minimal query result returned by a notification SQL client. */
 export interface NotificationSqlQueryResult<Row> {
@@ -29,7 +31,15 @@ export interface NotificationSqlClient {
   ): Promise<NotificationSqlQueryResult<Row>>;
 }
 
-/** Immutable scheduler outcome exposed to tenant-scoped service callers. */
+/** Durable reminder record returned by tenant-scoped service reads. */
+export interface PersistedReminderOccurrence extends ReminderOccurrence {
+  readonly status: 'pending' | 'delivered' | 'failed';
+  readonly claimExpiresAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** Immutable scheduler outcome returned by tenant-scoped service reads. */
 export interface ReminderOutcome {
   readonly id: string;
   readonly workspaceId: string;
@@ -44,9 +54,10 @@ export interface ReminderOutcome {
     | 'attempt_limit'
     | null;
   readonly deliveryLocalDate: string | null;
+  readonly createdAt: string;
 }
 
-/** Durable in-app notification exposed to tenant-scoped service callers. */
+/** Durable in-app notification returned by tenant-scoped service reads. */
 export interface InboxMessage {
   readonly id: string;
   readonly workspaceId: string;
@@ -56,6 +67,7 @@ export interface InboxMessage {
   readonly timeZone: string;
   readonly deliveredAt: string;
   readonly readAt: string | null;
+  readonly createdAt: string;
 }
 
 interface ReminderRow {
@@ -68,6 +80,10 @@ interface ReminderRow {
   quiet_end_minute: unknown;
   daily_delivery_limit: unknown;
   delivery_attempt_count: unknown;
+  occurrence_status: unknown;
+  claim_expires_at: unknown;
+  created_at: unknown;
+  updated_at: unknown;
 }
 
 interface OutcomeRow {
@@ -79,6 +95,7 @@ interface OutcomeRow {
   next_attempt_at: unknown;
   outcome_reason: unknown;
   delivery_local_date: unknown;
+  created_at: unknown;
 }
 
 interface InboxRow {
@@ -90,19 +107,23 @@ interface InboxRow {
   time_zone: unknown;
   delivered_at: unknown;
   read_at: unknown;
+  created_at: unknown;
 }
 
 interface CountRow {
-  delivered_count: unknown;
+  delivery_count: unknown;
 }
 
 interface IdentifierRow {
-  reminder_id?: unknown;
-  outcome_id?: unknown;
-  message_id?: unknown;
+  reminder_id: unknown;
 }
 
-/** Safe public failure for malformed rows and database transport errors. */
+interface TransitionRow {
+  transitioned: unknown;
+  outcome_inserted: unknown;
+}
+
+/** Safe public failure for invalid input, malformed rows, and SQL failures. */
 export class NotificationPersistenceError extends Error {
   constructor() {
     super('Notification persistence operation failed');
@@ -110,11 +131,11 @@ export class NotificationPersistenceError extends Error {
   }
 }
 
-/** Signals that one inbox idempotency key was reused with another payload. */
-export class NotificationIdempotencyConflictError extends Error {
+/** Signals that an idempotent identifier was reused with another payload. */
+export class NotificationReplayConflictError extends Error {
   constructor() {
-    super('Notification idempotency key reused with a different payload');
-    this.name = 'NotificationIdempotencyConflictError';
+    super('Notification replay conflicts with the persisted payload');
+    this.name = 'NotificationReplayConflictError';
   }
 }
 
@@ -136,11 +157,11 @@ function requireExpectedUuid(actual: string, expected: string): void {
 }
 
 function requireTimestamp(value: unknown): string {
-  const candidate = value instanceof Date ? value : new Date(String(value));
-  if (
-    (typeof value !== 'string' && !(value instanceof Date)) ||
-    Number.isNaN(candidate.getTime())
-  ) {
+  if (typeof value !== 'string' && !(value instanceof Date)) {
+    return persistenceFailure();
+  }
+  const candidate = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(candidate.getTime())) {
     return persistenceFailure();
   }
   return candidate.toISOString();
@@ -191,7 +212,16 @@ function requireLimit(value: number): number {
   return requireInteger(value, 1, MAXIMUM_QUERY_LIMIT);
 }
 
-function requireIdempotencyKey(value: string): string {
+function safeReminderOccurrence(value: unknown): ReminderOccurrence {
+  try {
+    return validateReminderOccurrence(value);
+  } catch {
+    return persistenceFailure();
+  }
+}
+
+/** Returns the exact SHA-256 bytes for a bounded opaque idempotency key. */
+export function hashNotificationIdempotencyKey(value: unknown): Buffer {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
@@ -200,11 +230,7 @@ function requireIdempotencyKey(value: string): string {
   ) {
     return persistenceFailure();
   }
-  return value;
-}
-
-function idempotencyDigest(value: string): Buffer {
-  return createHash('sha256').update(requireIdempotencyKey(value), 'utf8').digest();
+  return createHash('sha256').update(value, 'utf8').digest();
 }
 
 function exactlyOne<Row>(rows: readonly Row[]): Row {
@@ -221,11 +247,7 @@ function zeroOrOne<Row>(rows: readonly Row[]): Row | undefined {
   return rows[0];
 }
 
-function parseReminder(
-  row: ReminderRow,
-  expectedWorkspaceId?: string,
-  expectedReminderId?: string,
-): ReminderOccurrence {
+function baseReminderFromRow(row: ReminderRow): ReminderOccurrence {
   const quietStart =
     row.quiet_start_minute === null
       ? null
@@ -237,7 +259,7 @@ function parseReminder(
   if ((quietStart === null) !== (quietEnd === null)) {
     return persistenceFailure();
   }
-  const reminder = validateReminderOccurrence({
+  return safeReminderOccurrence({
     id: requireUuid(row.reminder_id),
     workspaceId: requireUuid(row.workspace_id),
     title: row.reminder_title,
@@ -258,13 +280,36 @@ function parseReminder(
       MAX_DELIVERY_ATTEMPTS,
     ),
   });
+}
+
+function parsePersistedReminder(
+  row: ReminderRow,
+  expectedWorkspaceId?: string,
+  expectedReminderId?: string,
+): PersistedReminderOccurrence {
+  const reminder = baseReminderFromRow(row);
   if (expectedWorkspaceId !== undefined) {
     requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
   }
   if (expectedReminderId !== undefined) {
     requireExpectedUuid(reminder.id, expectedReminderId);
   }
-  return reminder;
+  const status = row.occurrence_status;
+  if (status !== 'pending' && status !== 'delivered' && status !== 'failed') {
+    return persistenceFailure();
+  }
+  const createdAt = requireTimestamp(row.created_at);
+  const updatedAt = requireTimestamp(row.updated_at);
+  if (Date.parse(updatedAt) < Date.parse(createdAt)) {
+    return persistenceFailure();
+  }
+  return {
+    ...reminder,
+    status,
+    claimExpiresAt: requireNullableTimestamp(row.claim_expires_at),
+    createdAt,
+    updatedAt,
+  };
 }
 
 function parseOutcome(
@@ -294,8 +339,28 @@ function parseOutcome(
     nextAttemptAt: requireNullableTimestamp(row.next_attempt_at),
     reason,
     deliveryLocalDate: requireNullableLocalDate(row.delivery_local_date),
+    createdAt: requireTimestamp(row.created_at),
   };
   requireExpectedUuid(outcome.workspaceId, expectedWorkspaceId);
+  if (
+    (outcome.kind === 'delivered' &&
+      (outcome.reason !== null ||
+        outcome.nextAttemptAt !== null ||
+        outcome.deliveryLocalDate === null)) ||
+    (outcome.kind === 'deferred' &&
+      (outcome.nextAttemptAt === null ||
+        (outcome.reason !== 'quiet_hours' &&
+          outcome.reason !== 'daily_limit') ||
+        outcome.deliveryLocalDate !== null)) ||
+    (outcome.kind === 'failed' &&
+      (outcome.deliveryLocalDate !== null ||
+        (outcome.reason === 'delivery_failed'
+          ? outcome.nextAttemptAt === null
+          : outcome.reason !== 'attempt_limit' ||
+            outcome.nextAttemptAt !== null)))
+  ) {
+    return persistenceFailure();
+  }
   return outcome;
 }
 
@@ -303,7 +368,7 @@ function parseInbox(
   row: InboxRow,
   expectedWorkspaceId: string,
 ): InboxMessage {
-  const validated = validateReminderOccurrence({
+  const reminder = safeReminderOccurrence({
     id: requireUuid(row.reminder_id),
     workspaceId: requireUuid(row.workspace_id),
     title: row.message_title,
@@ -313,21 +378,27 @@ function parseInbox(
     maxPerLocalDay: 1,
     deliveryAttempt: 0,
   });
-  requireExpectedUuid(validated.workspaceId, expectedWorkspaceId);
+  requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
+  const deliveredAt = requireTimestamp(row.delivered_at);
+  const readAt = requireNullableTimestamp(row.read_at);
+  if (readAt !== null && Date.parse(readAt) < Date.parse(deliveredAt)) {
+    return persistenceFailure();
+  }
   return {
     id: requireUuid(row.message_id),
-    workspaceId: validated.workspaceId,
-    reminderId: validated.id,
-    title: validated.title,
-    dueAt: validated.dueAt,
-    timeZone: validated.timeZone,
-    deliveredAt: requireTimestamp(row.delivered_at),
-    readAt: requireNullableTimestamp(row.read_at),
+    workspaceId: reminder.workspaceId,
+    reminderId: reminder.id,
+    title: reminder.title,
+    dueAt: reminder.dueAt,
+    timeZone: reminder.timeZone,
+    deliveredAt,
+    readAt,
+    createdAt: requireTimestamp(row.created_at),
   };
 }
 
 function validateDelivery(message: ReminderDelivery): ReminderDelivery {
-  const reminder = validateReminderOccurrence({
+  const reminder = safeReminderOccurrence({
     id: message.reminderId,
     workspaceId: message.workspaceId,
     title: message.title,
@@ -337,28 +408,51 @@ function validateDelivery(message: ReminderDelivery): ReminderDelivery {
     maxPerLocalDay: 1,
     deliveryAttempt: 0,
   });
+  hashNotificationIdempotencyKey(message.idempotencyKey);
   return {
     workspaceId: reminder.workspaceId,
     reminderId: reminder.id,
     title: reminder.title,
     dueAt: reminder.dueAt,
     timeZone: reminder.timeZone,
-    idempotencyKey: requireIdempotencyKey(message.idempotencyKey),
+    idempotencyKey: message.idempotencyKey,
   };
 }
 
-function assertInboxReplay(
+function scheduleMatches(
+  persisted: PersistedReminderOccurrence,
+  attempted: ReminderOccurrence,
+): boolean {
+  return (
+    persisted.status === 'pending' &&
+    persisted.id === attempted.id &&
+    persisted.workspaceId === attempted.workspaceId &&
+    persisted.title === attempted.title &&
+    persisted.dueAt === attempted.dueAt &&
+    persisted.timeZone === attempted.timeZone &&
+    persisted.maxPerLocalDay === attempted.maxPerLocalDay &&
+    persisted.deliveryAttempt === attempted.deliveryAttempt &&
+    persisted.quietHours?.startMinute === attempted.quietHours?.startMinute &&
+    persisted.quietHours?.endMinute === attempted.quietHours?.endMinute
+  );
+}
+
+function inboxMatches(
   persisted: InboxMessage,
   attempted: ReminderDelivery,
-): void {
-  if (
-    persisted.workspaceId !== attempted.workspaceId ||
-    persisted.reminderId !== attempted.reminderId ||
-    persisted.title !== attempted.title ||
-    persisted.dueAt !== attempted.dueAt ||
-    persisted.timeZone !== attempted.timeZone
-  ) {
-    throw new NotificationIdempotencyConflictError();
+): boolean {
+  return (
+    persisted.workspaceId === attempted.workspaceId &&
+    persisted.reminderId === attempted.reminderId &&
+    persisted.title === attempted.title &&
+    persisted.dueAt === attempted.dueAt &&
+    persisted.timeZone === attempted.timeZone
+  );
+}
+
+function requireSuccessfulTransition(row: TransitionRow): void {
+  if (row.transitioned !== true || row.outcome_inserted !== true) {
+    persistenceFailure();
   }
 }
 
@@ -367,8 +461,13 @@ export class PostgresReminderRepository implements ReminderRepository {
   constructor(
     private readonly client: NotificationSqlClient,
     private readonly claimLeaseSeconds = 300,
+    private readonly uuidFactory: () => string = randomUUID,
   ) {
-    requireInteger(claimLeaseSeconds, 30, 900);
+    requireInteger(
+      claimLeaseSeconds,
+      MINIMUM_CLAIM_LEASE_SECONDS,
+      MAXIMUM_CLAIM_LEASE_SECONDS,
+    );
   }
 
   private async query<Row>(
@@ -382,19 +481,22 @@ export class PostgresReminderRepository implements ReminderRepository {
     }
   }
 
-  async createOccurrence(
+  /** Inserts one occurrence or returns an exact idempotent replay. */
+  async schedule(
     occurrence: ReminderOccurrence,
-  ): Promise<ReminderOccurrence> {
-    const safe = validateReminderOccurrence(occurrence);
-    const result = await this.query<ReminderRow>(
+  ): Promise<PersistedReminderOccurrence> {
+    const safe = safeReminderOccurrence(occurrence);
+    const inserted = await this.query<ReminderRow>(
       `INSERT INTO notification_service.reminder_occurrences
         (reminder_id, workspace_id, reminder_title, due_instant, time_zone,
          quiet_start_minute, quiet_end_minute, daily_delivery_limit,
          delivery_attempt_count)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT DO NOTHING
        RETURNING reminder_id, workspace_id, reminder_title, due_instant,
                  time_zone, quiet_start_minute, quiet_end_minute,
-                 daily_delivery_limit, delivery_attempt_count`,
+                 daily_delivery_limit, delivery_attempt_count,
+                 occurrence_status, claim_expires_at, created_at, updated_at`,
       [
         safe.id,
         safe.workspaceId,
@@ -407,11 +509,41 @@ export class PostgresReminderRepository implements ReminderRepository {
         safe.deliveryAttempt,
       ],
     );
-    return parseReminder(
-      exactlyOne(result.rows),
+    const insertedRow = zeroOrOne(inserted.rows);
+    if (insertedRow !== undefined) {
+      return parsePersistedReminder(
+        insertedRow,
+        safe.workspaceId,
+        safe.id,
+      );
+    }
+
+    const replay = await this.query<ReminderRow>(
+      `SELECT reminder_id, workspace_id, reminder_title, due_instant,
+              time_zone, quiet_start_minute, quiet_end_minute,
+              daily_delivery_limit, delivery_attempt_count,
+              occurrence_status, claim_expires_at, created_at, updated_at
+       FROM notification_service.reminder_occurrences
+       WHERE workspace_id = $1 AND reminder_id = $2
+       LIMIT 2`,
+      [safe.workspaceId, safe.id],
+    );
+    const persisted = parsePersistedReminder(
+      exactlyOne(replay.rows),
       safe.workspaceId,
       safe.id,
     );
+    if (!scheduleMatches(persisted, safe)) {
+      throw new NotificationReplayConflictError();
+    }
+    return persisted;
+  }
+
+  /** Compatibility alias for service code that names the write explicitly. */
+  async createOccurrence(
+    occurrence: ReminderOccurrence,
+  ): Promise<PersistedReminderOccurrence> {
+    return await this.schedule(occurrence);
   }
 
   async listDue(now: string, limit: number): Promise<ReminderOccurrence[]> {
@@ -420,11 +552,12 @@ export class PostgresReminderRepository implements ReminderRepository {
     const result = await this.query<ReminderRow>(
       `SELECT reminder_id, workspace_id, reminder_title, due_instant,
               time_zone, quiet_start_minute, quiet_end_minute,
-              daily_delivery_limit, delivery_attempt_count
+              daily_delivery_limit, delivery_attempt_count,
+              occurrence_status, claim_expires_at, created_at, updated_at
        FROM notification_service.reminder_occurrences
        WHERE occurrence_status = 'pending'
          AND due_instant <= $1
-         AND (claim_key_hash IS NULL OR claim_expires_at <= $1)
+         AND (claim_expires_at IS NULL OR claim_expires_at <= $1)
        ORDER BY due_instant ASC, reminder_id ASC
        LIMIT $2`,
       [safeNow, safeLimit],
@@ -432,7 +565,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     if (result.rows.length > safeLimit) {
       return persistenceFailure();
     }
-    return result.rows.map((row) => parseReminder(row));
+    return result.rows.map((row) => baseReminderFromRow(row));
   }
 
   async claim(
@@ -446,22 +579,22 @@ export class PostgresReminderRepository implements ReminderRepository {
       `UPDATE notification_service.reminder_occurrences
        SET claim_key_hash = $3,
            claim_expires_at = clock_timestamp()
-             + ($4::integer * interval '1 second'),
+             + make_interval(secs => $4),
            updated_at = clock_timestamp()
        WHERE workspace_id = $1
          AND reminder_id = $2
          AND occurrence_status = 'pending'
-         AND (claim_key_hash IS NULL OR claim_expires_at <= clock_timestamp())
+         AND (claim_expires_at IS NULL OR claim_expires_at <= clock_timestamp())
        RETURNING reminder_id`,
       [
         safeWorkspaceId,
         safeReminderId,
-        idempotencyDigest(idempotencyKey),
+        hashNotificationIdempotencyKey(idempotencyKey),
         this.claimLeaseSeconds,
       ],
     );
     const row = zeroOrOne(result.rows);
-    if (row?.reminder_id !== undefined) {
+    if (row !== undefined) {
       requireExpectedUuid(requireUuid(row.reminder_id), safeReminderId);
     }
     return row !== undefined;
@@ -474,7 +607,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     const safeWorkspaceId = requireUuid(workspaceId);
     const safeLocalDate = requireLocalDate(localDate);
     const result = await this.query<CountRow>(
-      `SELECT count(*) AS delivered_count
+      `SELECT count(*) AS delivery_count
        FROM notification_service.reminder_outcomes
        WHERE workspace_id = $1
          AND outcome_kind = 'delivered'
@@ -482,7 +615,7 @@ export class PostgresReminderRepository implements ReminderRepository {
       [safeWorkspaceId, safeLocalDate],
     );
     return requireInteger(
-      exactlyOne(result.rows).delivered_count,
+      exactlyOne(result.rows).delivery_count,
       0,
       Number.MAX_SAFE_INTEGER,
     );
@@ -493,10 +626,12 @@ export class PostgresReminderRepository implements ReminderRepository {
     deliveredAt: string,
     idempotencyKey: string,
   ): Promise<void> {
-    const safe = validateReminderOccurrence(reminder);
+    const safe = safeReminderOccurrence(reminder);
     const safeDeliveredAt = requireTimestamp(deliveredAt);
-    const result = await this.query<IdentifierRow>(
-      `WITH updated_occurrence AS (
+    const digest = hashNotificationIdempotencyKey(idempotencyKey);
+    const outcomeId = requireUuid(this.uuidFactory());
+    const result = await this.query<TransitionRow>(
+      `WITH transitioned_occurrence AS (
          UPDATE notification_service.reminder_occurrences
          SET occurrence_status = 'delivered',
              updated_at = clock_timestamp()
@@ -507,27 +642,30 @@ export class PostgresReminderRepository implements ReminderRepository {
            AND occurrence_status = 'pending'
            AND claim_key_hash = $5
          RETURNING workspace_id, reminder_id
+       ), inserted_outcome AS (
+         INSERT INTO notification_service.reminder_outcomes
+           (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+            next_attempt_at, outcome_reason, idempotency_key_hash,
+            delivery_local_date)
+         SELECT $6, workspace_id, reminder_id, 'delivered', $7, NULL, NULL,
+                $5, ($7::timestamptz AT TIME ZONE $8)::date
+         FROM transitioned_occurrence
+         RETURNING outcome_id
        )
-       INSERT INTO notification_service.reminder_outcomes
-         (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
-          next_attempt_at, outcome_reason, idempotency_key_hash,
-          delivery_local_date)
-       SELECT $6, workspace_id, reminder_id, 'delivered', $7, NULL, NULL,
-              $5, ($7::timestamptz AT TIME ZONE $8)::date
-       FROM updated_occurrence
-       RETURNING outcome_id`,
+       SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+              EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
       [
         safe.workspaceId,
         safe.id,
         safe.dueAt,
         safe.deliveryAttempt,
-        idempotencyDigest(idempotencyKey),
-        randomUUID(),
+        digest,
+        outcomeId,
         safeDeliveredAt,
         safe.timeZone,
       ],
     );
-    requireUuid(exactlyOne(result.rows).outcome_id);
+    requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
   async defer(
@@ -536,10 +674,12 @@ export class PostgresReminderRepository implements ReminderRepository {
     reason: 'quiet_hours' | 'daily_limit',
     idempotencyKey: string,
   ): Promise<void> {
-    const safe = validateReminderOccurrence(reminder);
+    const safe = safeReminderOccurrence(reminder);
     const safeNextAttemptAt = requireTimestamp(nextAttemptAt);
-    const result = await this.query<IdentifierRow>(
-      `WITH updated_occurrence AS (
+    const digest = hashNotificationIdempotencyKey(idempotencyKey);
+    const outcomeId = requireUuid(this.uuidFactory());
+    const result = await this.query<TransitionRow>(
+      `WITH transitioned_occurrence AS (
          UPDATE notification_service.reminder_occurrences
          SET due_instant = $5,
              claim_key_hash = NULL,
@@ -552,27 +692,30 @@ export class PostgresReminderRepository implements ReminderRepository {
            AND occurrence_status = 'pending'
            AND claim_key_hash = $6
          RETURNING workspace_id, reminder_id
+       ), inserted_outcome AS (
+         INSERT INTO notification_service.reminder_outcomes
+           (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+            next_attempt_at, outcome_reason, idempotency_key_hash,
+            delivery_local_date)
+         SELECT $7, workspace_id, reminder_id, 'deferred', clock_timestamp(),
+                $5, $8, $6, NULL
+         FROM transitioned_occurrence
+         RETURNING outcome_id
        )
-       INSERT INTO notification_service.reminder_outcomes
-         (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
-          next_attempt_at, outcome_reason, idempotency_key_hash,
-          delivery_local_date)
-       SELECT $7, workspace_id, reminder_id, 'deferred', clock_timestamp(),
-              $5, $8, $6, NULL
-       FROM updated_occurrence
-       RETURNING outcome_id`,
+       SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+              EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
       [
         safe.workspaceId,
         safe.id,
         safe.dueAt,
         safe.deliveryAttempt,
         safeNextAttemptAt,
-        idempotencyDigest(idempotencyKey),
-        randomUUID(),
+        digest,
+        outcomeId,
         reason,
       ],
     );
-    requireUuid(exactlyOne(result.rows).outcome_id);
+    requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
   async fail(
@@ -581,71 +724,106 @@ export class PostgresReminderRepository implements ReminderRepository {
     reason: 'delivery_failed' | 'attempt_limit',
     idempotencyKey: string,
   ): Promise<void> {
-    const safe = validateReminderOccurrence(reminder);
-    if (
-      (reason === 'delivery_failed' && retryAt === null) ||
-      (reason === 'attempt_limit' && retryAt !== null)
-    ) {
+    const safe = safeReminderOccurrence(reminder);
+    const digest = hashNotificationIdempotencyKey(idempotencyKey);
+    const outcomeId = requireUuid(this.uuidFactory());
+    if (reason === 'delivery_failed') {
+      if (retryAt === null || safe.deliveryAttempt >= MAX_DELIVERY_ATTEMPTS) {
+        return persistenceFailure();
+      }
+      const safeRetryAt = requireTimestamp(retryAt);
+      const result = await this.query<TransitionRow>(
+        `WITH transitioned_occurrence AS (
+           UPDATE notification_service.reminder_occurrences
+           SET due_instant = $5,
+               delivery_attempt_count = delivery_attempt_count + 1,
+               claim_key_hash = NULL,
+               claim_expires_at = NULL,
+               updated_at = clock_timestamp()
+           WHERE workspace_id = $1
+             AND reminder_id = $2
+             AND due_instant = $3
+             AND delivery_attempt_count = $4
+             AND occurrence_status = 'pending'
+             AND claim_key_hash = $6
+           RETURNING workspace_id, reminder_id
+         ), inserted_outcome AS (
+           INSERT INTO notification_service.reminder_outcomes
+             (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+              next_attempt_at, outcome_reason, idempotency_key_hash,
+              delivery_local_date)
+           SELECT $7, workspace_id, reminder_id, 'failed', clock_timestamp(),
+                  $5, 'delivery_failed', $6, NULL
+           FROM transitioned_occurrence
+           RETURNING outcome_id
+         )
+         SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+                EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
+        [
+          safe.workspaceId,
+          safe.id,
+          safe.dueAt,
+          safe.deliveryAttempt,
+          safeRetryAt,
+          digest,
+          outcomeId,
+        ],
+      );
+      requireSuccessfulTransition(exactlyOne(result.rows));
+      return;
+    }
+
+    if (retryAt !== null || safe.deliveryAttempt !== MAX_DELIVERY_ATTEMPTS) {
       return persistenceFailure();
     }
-    const safeRetryAt = retryAt === null ? null : requireTimestamp(retryAt);
-    const nextAttemptCount =
-      reason === 'delivery_failed'
-        ? requireInteger(safe.deliveryAttempt + 1, 1, MAX_DELIVERY_ATTEMPTS)
-        : safe.deliveryAttempt;
-    const result = await this.query<IdentifierRow>(
-      `WITH updated_occurrence AS (
+    const result = await this.query<TransitionRow>(
+      `WITH transitioned_occurrence AS (
          UPDATE notification_service.reminder_occurrences
-         SET occurrence_status = CASE WHEN $5::text = 'attempt_limit'
-                                      THEN 'failed' ELSE 'pending' END,
-             due_instant = COALESCE($6::timestamptz, due_instant),
-             delivery_attempt_count = $7,
-             claim_key_hash = CASE WHEN $5::text = 'delivery_failed'
-                                   THEN NULL ELSE claim_key_hash END,
-             claim_expires_at = CASE WHEN $5::text = 'delivery_failed'
-                                     THEN NULL ELSE claim_expires_at END,
+         SET occurrence_status = 'failed',
              updated_at = clock_timestamp()
          WHERE workspace_id = $1
            AND reminder_id = $2
            AND due_instant = $3
            AND delivery_attempt_count = $4
            AND occurrence_status = 'pending'
-           AND claim_key_hash = $8
+           AND claim_key_hash = $5
          RETURNING workspace_id, reminder_id
+       ), inserted_outcome AS (
+         INSERT INTO notification_service.reminder_outcomes
+           (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+            next_attempt_at, outcome_reason, idempotency_key_hash,
+            delivery_local_date)
+         SELECT $6, workspace_id, reminder_id, 'failed', clock_timestamp(),
+                NULL, 'attempt_limit', $5, NULL
+         FROM transitioned_occurrence
+         RETURNING outcome_id
        )
-       INSERT INTO notification_service.reminder_outcomes
-         (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
-          next_attempt_at, outcome_reason, idempotency_key_hash,
-          delivery_local_date)
-       SELECT $9, workspace_id, reminder_id, 'failed', clock_timestamp(),
-              $6, $5, $8, NULL
-       FROM updated_occurrence
-       RETURNING outcome_id`,
+       SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+              EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
       [
         safe.workspaceId,
         safe.id,
         safe.dueAt,
         safe.deliveryAttempt,
-        reason,
-        safeRetryAt,
-        nextAttemptCount,
-        idempotencyDigest(idempotencyKey),
-        randomUUID(),
+        digest,
+        outcomeId,
       ],
     );
-    requireUuid(exactlyOne(result.rows).outcome_id);
+    requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
-  async listOccurrences(
+  /** Returns a bounded newest-first tenant reminder view. */
+  async listReminders(
     workspaceId: string,
     limit = MAXIMUM_QUERY_LIMIT,
-  ): Promise<ReminderOccurrence[]> {
+  ): Promise<PersistedReminderOccurrence[]> {
     const safeWorkspaceId = requireUuid(workspaceId);
     const safeLimit = requireLimit(limit);
     const result = await this.query<ReminderRow>(
       `SELECT reminder_id, workspace_id, reminder_title, due_instant,
               time_zone, quiet_start_minute, quiet_end_minute,
-              daily_delivery_limit, delivery_attempt_count
+              daily_delivery_limit, delivery_attempt_count,
+              occurrence_status, claim_expires_at, created_at, updated_at
        FROM notification_service.reminder_occurrences
        WHERE workspace_id = $1
        ORDER BY created_at DESC, reminder_id ASC
@@ -656,10 +834,19 @@ export class PostgresReminderRepository implements ReminderRepository {
       return persistenceFailure();
     }
     return result.rows.map((row) =>
-      parseReminder(row, safeWorkspaceId),
+      parsePersistedReminder(row, safeWorkspaceId),
     );
   }
 
+  /** Compatibility alias retained for internal composition. */
+  async listOccurrences(
+    workspaceId: string,
+    limit = MAXIMUM_QUERY_LIMIT,
+  ): Promise<PersistedReminderOccurrence[]> {
+    return await this.listReminders(workspaceId, limit);
+  }
+
+  /** Returns a bounded newest-first tenant outcome view. */
   async listOutcomes(
     workspaceId: string,
     limit = MAXIMUM_QUERY_LIMIT,
@@ -669,7 +856,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     const result = await this.query<OutcomeRow>(
       `SELECT outcome_id, workspace_id, reminder_id, outcome_kind,
               occurred_at, next_attempt_at, outcome_reason,
-              delivery_local_date
+              delivery_local_date, created_at
        FROM notification_service.reminder_outcomes
        WHERE workspace_id = $1
        ORDER BY occurred_at DESC, outcome_id ASC
@@ -682,7 +869,8 @@ export class PostgresReminderRepository implements ReminderRepository {
     return result.rows.map((row) => parseOutcome(row, safeWorkspaceId));
   }
 
-  async listInboxMessages(
+  /** Returns a bounded newest-first tenant inbox view. */
+  async listInbox(
     workspaceId: string,
     limit = MAXIMUM_QUERY_LIMIT,
   ): Promise<InboxMessage[]> {
@@ -690,7 +878,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     const safeLimit = requireLimit(limit);
     const result = await this.query<InboxRow>(
       `SELECT message_id, workspace_id, reminder_id, message_title,
-              due_instant, time_zone, delivered_at, read_at
+              due_instant, time_zone, delivered_at, read_at, created_at
        FROM notification_service.inbox_messages
        WHERE workspace_id = $1
        ORDER BY delivered_at DESC, message_id ASC
@@ -702,13 +890,24 @@ export class PostgresReminderRepository implements ReminderRepository {
     }
     return result.rows.map((row) => parseInbox(row, safeWorkspaceId));
   }
+
+  /** Compatibility alias retained for internal composition. */
+  async listInboxMessages(
+    workspaceId: string,
+    limit = MAXIMUM_QUERY_LIMIT,
+  ): Promise<InboxMessage[]> {
+    return await this.listInbox(workspaceId, limit);
+  }
 }
 
 /** Idempotent in-app delivery adapter backed by the notification inbox table. */
 export class PostgresInAppDeliveryGateway
   implements ReminderDeliveryGateway
 {
-  constructor(private readonly client: NotificationSqlClient) {}
+  constructor(
+    private readonly client: NotificationSqlClient,
+    private readonly uuidFactory: () => string = randomUUID,
+  ) {}
 
   private async query<Row>(
     text: string,
@@ -723,17 +922,18 @@ export class PostgresInAppDeliveryGateway
 
   async deliver(message: ReminderDelivery): Promise<void> {
     const safe = validateDelivery(message);
-    const digest = idempotencyDigest(safe.idempotencyKey);
+    const messageId = requireUuid(this.uuidFactory());
+    const digest = hashNotificationIdempotencyKey(safe.idempotencyKey);
     const inserted = await this.query<InboxRow>(
       `INSERT INTO notification_service.inbox_messages
         (message_id, workspace_id, reminder_id, message_title, due_instant,
          time_zone, idempotency_key_hash, delivered_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, clock_timestamp())
-       ON CONFLICT ON CONSTRAINT inbox_messages_idempotency_unique DO NOTHING
+       ON CONFLICT DO NOTHING
        RETURNING message_id, workspace_id, reminder_id, message_title,
-                 due_instant, time_zone, delivered_at, read_at`,
+                 due_instant, time_zone, delivered_at, read_at, created_at`,
       [
-        randomUUID(),
+        messageId,
         safe.workspaceId,
         safe.reminderId,
         safe.title,
@@ -744,25 +944,24 @@ export class PostgresInAppDeliveryGateway
     );
     const insertedRow = zeroOrOne(inserted.rows);
     if (insertedRow !== undefined) {
-      assertInboxReplay(
-        parseInbox(insertedRow, safe.workspaceId),
-        safe,
-      );
+      const persisted = parseInbox(insertedRow, safe.workspaceId);
+      if (!inboxMatches(persisted, safe)) {
+        throw new NotificationReplayConflictError();
+      }
       return;
     }
 
     const replay = await this.query<InboxRow>(
       `SELECT message_id, workspace_id, reminder_id, message_title,
-              due_instant, time_zone, delivered_at, read_at
+              due_instant, time_zone, delivered_at, read_at, created_at
        FROM notification_service.inbox_messages
-       WHERE workspace_id = $1
-         AND idempotency_key_hash = $2
+       WHERE workspace_id = $1 AND idempotency_key_hash = $2
        LIMIT 2`,
       [safe.workspaceId, digest],
     );
-    assertInboxReplay(
-      parseInbox(exactlyOne(replay.rows), safe.workspaceId),
-      safe,
-    );
+    const persisted = parseInbox(exactlyOne(replay.rows), safe.workspaceId);
+    if (!inboxMatches(persisted, safe)) {
+      throw new NotificationReplayConflictError();
+    }
   }
 }
