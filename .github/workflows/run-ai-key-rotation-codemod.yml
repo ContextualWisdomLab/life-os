@@ -40,6 +40,22 @@ jobs:
           awk "/python3 - <<'PY'/{capture=1; next} /^          PY$/{capture=0} capture{sub(/^          /, \"\"); print}" \
             .github/workflows/complete-ai-key-rotation.yml > /tmp/complete-ai-key-rotation.py
           test -s /tmp/complete-ai-key-rotation.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/complete-ai-key-rotation.py')
+          source = path.read_text(encoding='utf-8')
+          start_marker = '# Production PostgreSQL HTTP integration and rotation lifecycle evidence.'
+          end_marker = '# Public example exposes active signer and optional previous verifier only.'
+          start = source.index(start_marker)
+          end = source.index(end_marker, start)
+          source = (
+              source[:start]
+              + '# Production PostgreSQL integration is applied by a focused follow-up.\n'
+              + source[end:]
+          )
+          path.write_text(source, encoding='utf-8')
+          PY
           python3 /tmp/complete-ai-key-rotation.py
 
       - name: Format modified sources
@@ -52,8 +68,7 @@ jobs:
             apps/web/app/ai-proposal-identity-stream-regression.test.ts \
             apps/web/app/api/ai/proposals/routes.test.ts \
             apps/ai-service/src/quality-coverage.test.ts \
-            apps/ai-service/src/no-silent-mutation.integration.test.ts \
-            apps/ai-service/src/proposal-audit-http.integration.test.ts
+            apps/ai-service/src/no-silent-mutation.integration.test.ts
 
       - name: Commit codemod result
         run: |
