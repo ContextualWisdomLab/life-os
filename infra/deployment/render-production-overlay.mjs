@@ -62,7 +62,8 @@ export function parseProductionImageMap(serializedMap) {
     if (
       typeof imageReference !== 'string' ||
       imageReference.length === 0 ||
-      Buffer.byteLength(imageReference, 'utf8') > MAXIMUM_IMAGE_REFERENCE_BYTES ||
+      Buffer.byteLength(imageReference, 'utf8') >
+        MAXIMUM_IMAGE_REFERENCE_BYTES ||
       /[\s\u0000-\u001f\u007f]/.test(imageReference) ||
       imageReference.includes('://')
     ) {
@@ -101,7 +102,7 @@ export function renderProductionKustomization(imageMap) {
       throw new Error(INVALID_IMAGE_MAP);
     }
     lines.push(
-      `  - name: life-os/${serviceName}`,
+      `  - name: ghcr.io/contextualwisdomlab/life-os-${serviceName}`,
       `    newName: ${image.name}`,
       `    digest: ${image.digest}`,
     );
@@ -146,7 +147,10 @@ async function runCli() {
   process.stdout.write(`production_overlay=${outputPath}\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   runCli().catch((error) => {
     const message = error instanceof Error ? error.message : INVALID_IMAGE_MAP;
     process.stderr.write(`${message}\n`);
