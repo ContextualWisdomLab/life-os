@@ -4,7 +4,9 @@ namespace: life-os
 resources:
   - namespace.yaml
   - runtime-identity.yaml
-  - workloads.yaml
+  - workloads-public.yaml
+  - workloads-core.yaml
+  - workloads-integrations.yaml
   - resilience.yaml
   - network-policies.yaml
 labels:
