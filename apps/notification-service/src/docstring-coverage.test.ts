@@ -18,6 +18,18 @@ function hasJSDoc(node: ts.Node, sourceFile: ts.SourceFile): boolean {
   return /\/\*\*[\s\S]*?\*\/\s*$/u.test(leadingTrivia);
 }
 
+/** Returns the syntax node that owns leading trivia for one declaration. */
+function documentationOwner(node: ts.Node): ts.Node {
+  if (
+    ts.isVariableDeclaration(node) &&
+    ts.isVariableDeclarationList(node.parent) &&
+    ts.isVariableStatement(node.parent.parent)
+  ) {
+    return node.parent.parent;
+  }
+  return node;
+}
+
 /** Returns whether a variable or property stores a named callable value. */
 function hasCallableInitializer(
   node: ts.VariableDeclaration | ts.PropertyDeclaration,
@@ -83,7 +95,10 @@ function collectUndocumentedDeclarations(
 
   /** Visits every syntax node while preserving exact source positions. */
   function visit(node: ts.Node): void {
-    if (requiresJSDoc(node) && !hasJSDoc(node, sourceFile)) {
+    if (
+      requiresJSDoc(node) &&
+      !hasJSDoc(documentationOwner(node), sourceFile)
+    ) {
       const position = sourceFile.getLineAndCharacterOfPosition(
         node.getStart(sourceFile),
       );
