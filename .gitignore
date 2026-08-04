@@ -11,6 +11,9 @@ coverage/
 appguardrail-findings.json
 appguardrail.sarif
 commercial-readiness-evidence/
+infra/kubernetes/overlays/production/kustomization.yaml
+deployment-evidence/
+deployment-bundle/
 .DS_Store
 .idea/
 .vscode/
