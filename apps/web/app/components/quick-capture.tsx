@@ -1,6 +1,11 @@
 'use client';
 
 import { type FormEvent, useEffect, useRef, useState } from 'react';
+import {
+  formatMessage,
+  type MessageCatalog,
+  type SupportedLocale,
+} from '../localization';
 import type { PlanningSearchView } from '../planning-search-client';
 import {
   isPlanningSearchAbort,
@@ -10,27 +15,30 @@ import {
 import styles from './quick-capture.module.css';
 
 interface QuickCaptureProps {
+  readonly locale: SupportedLocale;
+  readonly messages: MessageCatalog;
   readonly onCapture: (title: string) => boolean;
 }
 
 type SearchState =
-  | { status: 'idle'; results: readonly PlanningSearchView[]; message: string }
-  | {
-      status: 'loading';
-      results: readonly PlanningSearchView[];
-      message: string;
-    }
-  | { status: 'ready'; results: readonly PlanningSearchView[]; message: string }
+  | { status: 'idle'; results: readonly PlanningSearchView[] }
+  | { status: 'loading'; results: readonly PlanningSearchView[] }
+  | { status: 'ready'; results: readonly PlanningSearchView[] }
   | {
       status: 'error';
       results: readonly PlanningSearchView[];
-      message: string;
+      reason: 'minimum' | 'sign_in' | 'unavailable';
     };
 
-function resultTypeLabel(result: PlanningSearchView): string {
-  if (result.entityType === 'goal') return 'Goal';
-  if (result.entityType === 'project') return 'Project';
-  return result.status === 'done' ? 'Completed task' : 'Task';
+function resultTypeLabel(
+  result: PlanningSearchView,
+  messages: MessageCatalog,
+): string {
+  if (result.entityType === 'goal') return messages.goalType;
+  if (result.entityType === 'project') return messages.projectType;
+  return result.status === 'done'
+    ? messages.completedTaskType
+    : messages.taskType;
 }
 
 function isSearchResult(value: unknown): value is PlanningSearchView {
@@ -57,17 +65,38 @@ function parseClientResults(value: unknown): PlanningSearchView[] {
   return value;
 }
 
+function searchStatusMessage(
+  state: SearchState,
+  messages: MessageCatalog,
+): string {
+  if (state.status === 'idle') return messages.searchReady;
+  if (state.status === 'loading') return messages.searchingStatus;
+  if (state.status === 'error') {
+    if (state.reason === 'minimum') return messages.searchMinimum;
+    if (state.reason === 'sign_in') return messages.searchSignIn;
+    return messages.searchUnavailable;
+  }
+  if (state.results.length === 0) return messages.searchEmpty;
+  if (state.results.length === 1) return messages.searchResultSingle;
+  return formatMessage(messages, 'searchResultCount', {
+    count: state.results.length,
+  });
+}
+
 /**
  * Combines browser-local Today capture with authenticated durable workspace search.
  * The labels intentionally keep the two persistence boundaries visible.
  */
-export function QuickCapture({ onCapture }: QuickCaptureProps) {
+export function QuickCapture({
+  locale,
+  messages,
+  onCapture,
+}: QuickCaptureProps) {
   const [captureTitle, setCaptureTitle] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchState, setSearchState] = useState<SearchState>({
     status: 'idle',
     results: [],
-    message: 'Durable workspace search is ready.',
   });
   const latestSearch = useRef(new LatestPlanningSearchRequest());
 
@@ -94,17 +123,13 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
       setSearchState({
         status: 'error',
         results: [],
-        message: 'Enter at least two characters to search the workspace.',
+        reason: 'minimum',
       });
       return;
     }
 
     const controller = latestSearch.current.begin();
-    setSearchState({
-      status: 'loading',
-      results: [],
-      message: 'Searching durable workspace records…',
-    });
+    setSearchState({ status: 'loading', results: [] });
     try {
       const parameters = new URLSearchParams({ q: query, limit: '20' });
       const response = await fetch(`/api/planning/search?${parameters}`, {
@@ -119,7 +144,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         setSearchState({
           status: 'error',
           results: [],
-          message: 'Sign in to search durable workspace records.',
+          reason: 'sign_in',
         });
         return;
       }
@@ -128,14 +153,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
       }
       const results = parseClientResults(await response.json());
       if (!latestSearch.current.isCurrent(controller)) return;
-      setSearchState({
-        status: 'ready',
-        results,
-        message:
-          results.length === 0
-            ? 'No durable workspace records matched.'
-            : `${results.length} durable workspace result${results.length === 1 ? '' : 's'} found.`,
-      });
+      setSearchState({ status: 'ready', results });
     } catch (error) {
       if (
         isPlanningSearchAbort(error) ||
@@ -146,7 +164,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
       setSearchState({
         status: 'error',
         results: [],
-        message: 'Workspace search is temporarily unavailable.',
+        reason: 'unavailable',
       });
     } finally {
       latestSearch.current.finish(controller);
@@ -157,32 +175,33 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
     <section className={styles.shell} aria-labelledby="quick-capture-heading">
       <div className={styles.heading}>
         <div>
-          <p className="eyebrow">Capture and retrieve</p>
-          <h2 id="quick-capture-heading">Find the next visible action.</h2>
+          <p className="eyebrow">{messages.captureRetrieveEyebrow}</p>
+          <h2 id="quick-capture-heading">{messages.quickCaptureHeading}</h2>
         </div>
-        <span>Local + durable</span>
+        <span>{messages.localDurableBadge}</span>
       </div>
 
       <div className={styles.grid}>
         <form
           className={styles.capture}
           onSubmit={capture}
-          aria-label="Capture a browser-local action"
+          aria-label={messages.captureFormLabel}
         >
-          <label htmlFor="capture-title">Capture locally for Today</label>
+          <label htmlFor="capture-title">{messages.captureInputLabel}</label>
           <div>
             <input
               id="capture-title"
               maxLength={160}
               onChange={(event) => setCaptureTitle(event.target.value)}
-              placeholder="Write the next visible action…"
+              placeholder={messages.capturePlaceholder}
               value={captureTitle}
             />
-            <button type="submit">Capture</button>
+            <button type="submit">{messages.captureButton}</button>
           </div>
           <small>
-            {captureTitle.length}/160 · Stored only in this browser until sync
-            is connected.
+            {formatMessage(messages, 'captureCounter', {
+              count: captureTitle.length,
+            })}
           </small>
         </form>
 
@@ -190,42 +209,48 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
           className={styles.search}
           onSubmit={(event) => void search(event)}
           role="search"
-          aria-label="Search durable workspace planning records"
+          aria-label={messages.searchFormLabel}
         >
           <label htmlFor="workspace-search-query">
-            Search durable workspace
+            {messages.searchInputLabel}
           </label>
           <div>
             <input
               id="workspace-search-query"
               maxLength={120}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Goal, project, or task title…"
+              placeholder={messages.searchPlaceholder}
               value={searchQuery}
             />
             <button type="submit" disabled={searchState.status === 'loading'}>
-              {searchState.status === 'loading' ? 'Searching…' : 'Search'}
+              {searchState.status === 'loading'
+                ? messages.searchingButton
+                : messages.searchButton}
             </button>
           </div>
-          <small>
-            Authenticated workspace records; local drafts are excluded.
-          </small>
+          <small>{messages.searchHelper}</small>
         </form>
       </div>
 
       <p className={styles.status} role="status" aria-live="polite">
-        {searchState.message}
+        {searchStatusMessage(searchState, messages)}
       </p>
 
       {searchState.status === 'ready' && searchState.results.length > 0 ? (
-        <ul className={styles.results} aria-label="Workspace search results">
+        <ul
+          className={styles.results}
+          aria-label={messages.workspaceResultsLabel}
+        >
           {searchState.results.map((result) => (
             <li key={`${result.entityType}:${result.id}`}>
-              <span>{resultTypeLabel(result)}</span>
+              <span>{resultTypeLabel(result, messages)}</span>
               <strong>{result.title}</strong>
               <small>
-                Durable record ·{' '}
-                {new Date(result.createdAt).toLocaleDateString()}
+                {formatMessage(messages, 'durableRecordDate', {
+                  date: new Date(result.createdAt).toLocaleDateString(
+                    locale === 'ko' ? 'ko-KR' : 'en-US',
+                  ),
+                })}
               </small>
             </li>
           ))}
