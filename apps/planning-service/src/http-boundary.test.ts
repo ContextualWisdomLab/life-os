@@ -151,25 +151,28 @@ describe('planning HTTP boundary', () => {
       signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
       nowSeconds: -1,
     },
-  ])('rejects malformed, stale, future, or forged context %#', (context) => {
-    expectProblem(
-      () =>
-        requireTrustedWorkspaceContext(
-          {
-            workspaceId: context.workspaceId,
-            issuedAt: context.issuedAt,
-            signature: context.signature,
-          },
-          GATEWAY_SECRET,
-          context.nowSeconds,
-        ),
-      {
-        title: 'Trusted gateway context is invalid',
-        status: 401,
-        code: 'invalid_gateway_context',
-      },
-    );
-  });
+  ])(
+    'rejects malformed, stale, future, or forged context %#',
+    (context) => {
+      expectProblem(
+        () =>
+          requireTrustedWorkspaceContext(
+            {
+              workspaceId: context.workspaceId,
+              issuedAt: context.issuedAt,
+              signature: context.signature,
+            },
+            GATEWAY_SECRET,
+            context.nowSeconds,
+          ),
+        {
+          title: 'Trusted gateway context is invalid',
+          status: 401,
+          code: 'invalid_gateway_context',
+        },
+      );
+    },
+  );
 
   it('accepts the documented age and future-skew boundaries', () => {
     for (const issuedAtSeconds of [NOW_SECONDS - 60, NOW_SECONDS + 5]) {
