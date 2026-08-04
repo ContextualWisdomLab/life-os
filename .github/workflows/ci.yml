@@ -19,32 +19,35 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.head_ref == 'feat/notification-postgres-inbox'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
     env:
       NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-    services:
-      postgres:
-        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
-        env:
-          POSTGRES_DB: life_os_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d life_os_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: feat/notification-postgres-inbox
           fetch-depth: 0
+
+      - name: Start runner PostgreSQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql \
+            --set=ON_ERROR_STOP=1 \
+            --command "ALTER USER postgres PASSWORD 'postgres'"
+          if ! sudo -u postgres psql \
+            --tuples-only \
+            --no-align \
+            --command "SELECT 1 FROM pg_database WHERE datname = 'life_os_test'" \
+            | grep -qx 1; then
+            sudo -u postgres createdb life_os_test
+          fi
+          pg_isready -h 127.0.0.1 -U postgres -d life_os_test
 
       - name: Detect pending review repair
         id: repair_state
@@ -133,7 +136,7 @@ jobs:
       always() &&
       (needs.review_repair.result == 'success' ||
        needs.review_repair.result == 'skipped')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
@@ -141,25 +144,28 @@ jobs:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-    services:
-      postgres:
-        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
-        env:
-          POSTGRES_DB: life_os_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d life_os_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      - name: Start runner PostgreSQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql \
+            --set=ON_ERROR_STOP=1 \
+            --command "ALTER USER postgres PASSWORD 'postgres'"
+          if ! sudo -u postgres psql \
+            --tuples-only \
+            --no-align \
+            --command "SELECT 1 FROM pg_database WHERE datname = 'life_os_test'" \
+            | grep -qx 1; then
+            sudo -u postgres createdb life_os_test
+          fi
+          pg_isready -h 127.0.0.1 -U postgres -d life_os_test
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
