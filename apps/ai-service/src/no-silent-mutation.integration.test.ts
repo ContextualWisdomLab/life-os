@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
@@ -10,8 +11,10 @@ import {
 } from './proposal-service';
 
 const WORKSPACE_ID = '43eab0ee-0f7b-4c7f-9331-b133f2647675';
+const ACTOR_ID = 'd19b6077-2baa-4f84-97f6-c138b1d6ba34';
 const TASK_ID = 'e29c36af-999a-407f-9ca9-cfe194ab51f4';
 const PROPOSAL_ID = 'aedcb1d1-cc60-42c6-9357-ec90821fce1b';
+const GATEWAY_SECRET = '0123456789abcdef0123456789abcdef';
 
 interface JsonHttpResponse {
   statusCode: number;
@@ -40,10 +43,26 @@ function userOwnedState(): {
   };
 }
 
+/** Signs the authenticated actor and workspace context used by the AI boundary. */
+function signedContextHeaders(): Readonly<Record<string, string>> {
+  const issuedAt = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac('sha256', GATEWAY_SECRET)
+    .update(
+      `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': WORKSPACE_ID,
+    'x-life-os-actor-id': ACTOR_ID,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
+
 function postJson(
   address: AddressInfo,
   path: string,
-  workspaceId: string,
   body: unknown,
 ): Promise<JsonHttpResponse> {
   const payload = JSON.stringify(body);
@@ -57,7 +76,7 @@ function postJson(
         headers: {
           'content-type': 'application/json',
           'content-length': Buffer.byteLength(payload),
-          'x-workspace-id': workspaceId,
+          ...signedContextHeaders(),
         },
       },
       (response) => {
@@ -141,19 +160,16 @@ describe('AI proposal no-silent-mutation contract', () => {
     expect(JSON.stringify(state)).toBe(before);
   });
 
-  it('exercises the production HTTP module without exposing a mutation route', async () => {
+  it('exercises the authenticated HTTP module without exposing a mutation route', async () => {
     const state = userOwnedState();
     const before = JSON.stringify(state);
+    const originalSecret = process.env.AI_GATEWAY_CONTEXT_SECRET;
+    process.env.AI_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
     const app = await NestFactory.create(AiAppModule, { logger: false });
     await app.listen(0, '127.0.0.1');
     try {
       const address = app.getHttpServer().address() as AddressInfo;
-      const response = await postJson(
-        address,
-        '/v1/proposals',
-        WORKSPACE_ID,
-        state,
-      );
+      const response = await postJson(address, '/v1/proposals', state);
 
       expect(response.statusCode).toBe(201);
       expect(response.body).toMatchObject({
@@ -171,12 +187,16 @@ describe('AI proposal no-silent-mutation contract', () => {
       const unsupportedMutation = await postJson(
         address,
         '/v1/proposals/apply',
-        WORKSPACE_ID,
         { proposalId: PROPOSAL_ID },
       );
       expect(unsupportedMutation.statusCode).toBe(404);
     } finally {
       await app.close();
+      if (originalSecret === undefined) {
+        delete process.env.AI_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.AI_GATEWAY_CONTEXT_SECRET = originalSecret;
+      }
     }
   });
 });
