@@ -63,17 +63,19 @@ Kubernetes Secret values are not encrypted merely because they are base64 encode
 
 ## Forward-only migrations
 
-Application processes never apply SQL at startup. Before rolling out a database-backed service image, execute the migration runner from the repository root with `psql`, `sha256sum`, and `mktemp` available:
+Application processes never apply SQL at startup. Before rolling out a database-backed service image, load each required database URL from the approved secret manager into the named environment variable. Then execute the migration runner from the repository root with `psql`, `sha256sum`, and `mktemp` available:
 
 ```bash
+export IDENTITY_DATABASE_URL
+export PLANNING_DATABASE_URL
+export HABIT_DATABASE_URL
+export AI_DATABASE_URL
+export REVIEW_DATABASE_URL
 export LIFE_OS_MIGRATION_CONFIRMATION=apply-forward-only
-export IDENTITY_DATABASE_URL='postgresql://...'
-export PLANNING_DATABASE_URL='postgresql://...'
-export HABIT_DATABASE_URL='postgresql://...'
-export AI_DATABASE_URL='postgresql://...'
-export REVIEW_DATABASE_URL='postgresql://...'
 bash infra/kubernetes/run-migrations.sh
 ```
+
+Do not type connection strings into shell history or commit example credentials. A deployment wrapper should inject the values directly from secret management and clear the process environment after use.
 
 The runner discovers SQL files lexically under each registered service migration directory. For each database, it creates `life_os_deployment.schema_migrations`, records the service name, migration filename, SHA-256 digest, status, and application timestamp, and serializes changes with a PostgreSQL advisory lock. An exact completed replay is skipped. A previously recorded filename whose digest changed fails closed.
 
