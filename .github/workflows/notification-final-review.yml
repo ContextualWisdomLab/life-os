@@ -54,6 +54,27 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Normalize the temporary test fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path('.github/scripts/address_notification_review.py')
+          text = path.read_text(encoding='utf-8')
+          updated, count = re.subn(
+              r"name: 'bad\\+nname',",
+              "name: 'bad name',",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'expected one temporary fixture match, found {count}')
+          path.write_text(updated, encoding='utf-8')
+          PY
+
       - name: Add regression tests
         run: python3 .github/scripts/address_notification_review.py tests
 
