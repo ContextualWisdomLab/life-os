@@ -1,4 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import {
+  normalizeSearchText,
+  rankPlanningSearchCandidates,
+  requirePlanningSearchInput,
+  type PlanningSearchCandidate,
+  type PlanningSearchInput,
+  type PlanningSearchResult,
+} from './search';
 
 export interface Goal {
   id: string;
@@ -33,8 +41,13 @@ export interface PlanningRepository {
   listGoals(workspaceId: string): Promise<Goal[]>;
   listProjects(workspaceId: string, goalId: string): Promise<Project[]>;
   listTasks(workspaceId: string, projectId: string): Promise<Task[]>;
+  searchCandidates(
+    workspaceId: string,
+    input: PlanningSearchInput,
+  ): Promise<PlanningSearchCandidate[]>;
 }
 
+/** In-memory repository used only by deterministic domain tests and examples. */
 export class InMemoryPlanningRepository implements PlanningRepository {
   private readonly goals = new Map<string, Goal>();
   private readonly projects = new Map<string, Project>();
@@ -84,6 +97,45 @@ export class InMemoryPlanningRepository implements PlanningRepository {
         task.workspaceId === workspaceId && task.projectId === projectId,
     );
   }
+
+  async searchCandidates(
+    workspaceId: string,
+    input: PlanningSearchInput,
+  ): Promise<PlanningSearchCandidate[]> {
+    const candidates: PlanningSearchCandidate[] = [
+      ...[...this.goals.values()].map((goal) => ({
+        entityType: 'goal' as const,
+        id: goal.id,
+        workspaceId: goal.workspaceId,
+        title: goal.title,
+        createdAt: goal.createdAt,
+      })),
+      ...[...this.projects.values()].map((project) => ({
+        entityType: 'project' as const,
+        id: project.id,
+        workspaceId: project.workspaceId,
+        parentId: project.goalId,
+        title: project.title,
+        createdAt: project.createdAt,
+      })),
+      ...[...this.tasks.values()].map((task) => ({
+        entityType: 'task' as const,
+        id: task.id,
+        workspaceId: task.workspaceId,
+        parentId: task.projectId,
+        title: task.title,
+        status: task.status,
+        createdAt: task.createdAt,
+      })),
+    ];
+    return candidates.filter(
+      (candidate) =>
+        candidate.workspaceId === workspaceId &&
+        input.tokens.every((token) =>
+          normalizeSearchText(candidate.title).includes(token),
+        ),
+    );
+  }
 }
 
 function normalizeTitle(title: string): string {
@@ -106,6 +158,7 @@ function createOpaqueId(): string {
   return randomUUID();
 }
 
+/** Coordinates tenant-owned planning mutations, reads, and unified search. */
 export class PlanningService {
   constructor(private readonly repository: PlanningRepository) {}
 
@@ -181,5 +234,23 @@ export class PlanningService {
       requireOpaqueId(workspaceId),
       requireOpaqueId(projectId),
     );
+  }
+
+  /** Searches goals, projects, and tasks without returning workspace ownership. */
+  async search(
+    workspaceId: string,
+    query: unknown,
+    limit?: unknown,
+  ): Promise<PlanningSearchResult[]> {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const input = requirePlanningSearchInput(query, limit);
+    const candidates = await this.repository.searchCandidates(
+      safeWorkspaceId,
+      input,
+    );
+    if (candidates.some((candidate) => candidate.workspaceId !== safeWorkspaceId)) {
+      throw new Error('Planning search crossed workspace boundary');
+    }
+    return rankPlanningSearchCandidates(candidates, input);
   }
 }
