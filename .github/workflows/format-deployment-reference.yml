@@ -1,9 +1,8 @@
 name: Format Production Deployment Reference
 
 on:
-  push:
-    branches:
-      - feat/production-deployment-reference
+  pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/format-deployment-reference.yml'
       - 'infra/deployment/**'
@@ -12,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: format-production-deployment-reference
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
