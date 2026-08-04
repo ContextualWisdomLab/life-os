@@ -8,13 +8,13 @@ import {
   createProposalAuditRecord,
   createProposalDecisionEvent,
   ProposalAuditValidationError,
+  ProposalDigestMismatchError,
 } from './proposal-audit-domain';
 import {
   type AuditableProposal,
   type ProposalRequest,
   ProposalService,
 } from './proposal-service';
-import { ProposalDigestMismatchError } from './postgres-proposal-audit-repository';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -39,6 +39,7 @@ export type ProposalDecisionIdFactory = () => string;
 
 /** Stable tenant-scoped absence used by bounded HTTP problem mapping. */
 export class ProposalAuditNotFoundError extends Error {
+  /** Creates a stable tenant-safe absence without disclosing another workspace. */
   constructor() {
     super('Proposal audit record was not found');
     this.name = 'ProposalAuditNotFoundError';

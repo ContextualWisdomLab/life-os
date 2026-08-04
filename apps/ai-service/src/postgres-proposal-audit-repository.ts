@@ -1,11 +1,13 @@
 import {
   type ProposalAuditRecord,
   type ProposalAuditRepository,
-  ProposalAuditValidationError,
+  ProposalDigestMismatchError,
   type ProposalDecisionEvent,
   validateProposalAuditRecord,
   validateProposalDecisionEvent,
 } from './proposal-audit-domain';
+
+export { ProposalDigestMismatchError } from './proposal-audit-domain';
 
 /** Minimal parameterized SQL result boundary for proposal audit persistence. */
 export interface ProposalAuditSqlQueryResult<Row> {
@@ -14,12 +16,14 @@ export interface ProposalAuditSqlQueryResult<Row> {
 
 /** Minimal parameterized SQL client boundary for proposal audit persistence. */
 export interface ProposalAuditSqlClient {
+  /** Executes one parameterized SQL statement and returns bounded rows. */
   query<Row>(
     text: string,
     values: readonly unknown[],
   ): Promise<ProposalAuditSqlQueryResult<Row>>;
 }
 
+/** Untrusted PostgreSQL row for one immutable proposal revision. */
 interface ProposalAuditRow {
   proposal_id: unknown;
   workspace_id: unknown;
@@ -35,6 +39,7 @@ interface ProposalAuditRow {
   recorded_at: unknown;
 }
 
+/** Untrusted PostgreSQL row for one append-only proposal decision. */
 interface ProposalDecisionRow {
   id: unknown;
   workspace_id: unknown;
@@ -48,6 +53,7 @@ interface ProposalDecisionRow {
   recorded_at: unknown;
 }
 
+/** Minimal PostgreSQL error classification used for named constraint mapping. */
 interface PostgreSqlErrorShape {
   code?: unknown;
   constraint?: unknown;
@@ -61,32 +67,37 @@ const DIGEST_FOREIGN_KEY_CONSTRAINT =
 
 /** Credential-free failure for malformed rows and database errors. */
 export class ProposalAuditPersistenceError extends Error {
+  /** Creates a stable credential-free database failure. */
   constructor() {
     super('Proposal audit persistence operation failed');
     this.name = 'ProposalAuditPersistenceError';
   }
 }
 
-/** Raised when a decision references a stale or unknown proposal digest. */
-export class ProposalDigestMismatchError extends Error {
-  constructor() {
-    super('Proposal content digest does not match persisted evidence');
-    this.name = 'ProposalDigestMismatchError';
-  }
-}
-
 /** Raised when one decision idempotency key is reused with another payload. */
 export class ProposalDecisionConflictError extends Error {
+  /** Creates a stable conflict for non-identical idempotency replay. */
   constructor() {
     super('Proposal decision idempotency key conflicts with an earlier event');
     this.name = 'ProposalDecisionConflictError';
   }
 }
 
+/** Raises the shared credential-free persistence failure. */
 function invalidPersistence(): never {
   throw new ProposalAuditPersistenceError();
 }
 
+/** Maps any malformed boundary value to the stable persistence failure. */
+function mapPersistenceValidation<Value>(operation: () => Value): Value {
+  try {
+    return operation();
+  } catch {
+    return invalidPersistence();
+  }
+}
+
+/** Requires a canonical UUIDv4 at the SQL boundary. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string') {
     return invalidPersistence();
@@ -98,12 +109,14 @@ function requireUuidV4(value: unknown): string {
   return normalized;
 }
 
+/** Verifies that a persisted identifier remains within the requested tenant scope. */
 function requireExpected(actual: string, expected: string): void {
   if (actual !== expected.toLowerCase()) {
     invalidPersistence();
   }
 }
 
+/** Accepts zero or one row and rejects impossible duplicate identities. */
 function oneOrUndefined<Row>(rows: Row[]): Row | undefined {
   if (rows.length > 1) {
     invalidPersistence();
@@ -111,10 +124,12 @@ function oneOrUndefined<Row>(rows: Row[]): Row | undefined {
   return rows[0];
 }
 
+/** Requires exactly one row for a successful state transition or replay. */
 function exactlyOne<Row>(rows: Row[]): Row {
   return oneOrUndefined(rows) ?? invalidPersistence();
 }
 
+/** Matches only one PostgreSQL code and reviewed constraint name. */
 function isNamedDatabaseError(
   error: unknown,
   code: string,
@@ -127,13 +142,14 @@ function isNamedDatabaseError(
   return candidate.code === code && candidate.constraint === constraint;
 }
 
+/** Validates and tenant-checks one untrusted proposal row. */
 function parseProposalRow(
   row: ProposalAuditRow,
-  expectedWorkspaceId?: string,
+  expectedWorkspaceId: string,
   expectedProposalId?: string,
 ): ProposalAuditRecord {
-  try {
-    const record = validateProposalAuditRecord({
+  const record = mapPersistenceValidation(() =>
+    validateProposalAuditRecord({
       proposal: {
         proposalId: row.proposal_id,
         workspaceId: row.workspace_id,
@@ -148,88 +164,64 @@ function parseProposalRow(
       requestDigest: row.request_digest,
       contentDigest: row.content_digest,
       recordedAt: row.recorded_at,
-    });
-    if (expectedWorkspaceId) {
-      requireExpected(record.proposal.workspaceId, expectedWorkspaceId);
-    }
-    if (expectedProposalId) {
-      requireExpected(record.proposal.proposalId, expectedProposalId);
-    }
-    return record;
-  } catch (error) {
-    if (error instanceof ProposalAuditValidationError) {
-      return invalidPersistence();
-    }
-    throw error;
+    }),
+  );
+  requireExpected(record.proposal.workspaceId, expectedWorkspaceId);
+  if (expectedProposalId) {
+    requireExpected(record.proposal.proposalId, expectedProposalId);
   }
+  return record;
 }
 
+/** Validates and tenant-checks one untrusted decision row. */
 function parseDecisionRow(
   row: ProposalDecisionRow,
-  expectedWorkspaceId?: string,
+  expectedWorkspaceId: string,
   expectedProposalId?: string,
   expectedIdempotencyKey?: string,
 ): ProposalDecisionEvent {
-  try {
-    const value = {
-      id: row.id,
-      workspaceId: row.workspace_id,
-      proposalId: row.proposal_id,
-      proposalContentDigest: row.proposal_content_digest,
-      actorId: row.actor_id,
-      decision: row.decision_kind,
-      ...(row.reason_text === null || row.reason_text === undefined
-        ? {}
-        : { reason: row.reason_text }),
-      idempotencyKey: row.idempotency_key,
-      decidedAt: row.decided_at,
-      recordedAt: row.recorded_at,
-    };
-    const event = validateProposalDecisionEvent(value);
-    if (expectedWorkspaceId) {
-      requireExpected(event.workspaceId, expectedWorkspaceId);
-    }
-    if (expectedProposalId) {
-      requireExpected(event.proposalId, expectedProposalId);
-    }
-    if (expectedIdempotencyKey) {
-      requireExpected(event.idempotencyKey, expectedIdempotencyKey);
-    }
-    return event;
-  } catch (error) {
-    if (error instanceof ProposalAuditValidationError) {
-      return invalidPersistence();
-    }
-    throw error;
+  const value = {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    proposalId: row.proposal_id,
+    proposalContentDigest: row.proposal_content_digest,
+    actorId: row.actor_id,
+    decision: row.decision_kind,
+    ...(row.reason_text === null || row.reason_text === undefined
+      ? {}
+      : { reason: row.reason_text }),
+    idempotencyKey: row.idempotency_key,
+    decidedAt: row.decided_at,
+    recordedAt: row.recorded_at,
+  };
+  const event = mapPersistenceValidation(() =>
+    validateProposalDecisionEvent(value),
+  );
+  requireExpected(event.workspaceId, expectedWorkspaceId);
+  if (expectedProposalId) {
+    requireExpected(event.proposalId, expectedProposalId);
   }
+  if (expectedIdempotencyKey) {
+    requireExpected(event.idempotencyKey, expectedIdempotencyKey);
+  }
+  return event;
 }
 
+/** Maps malformed proposal input to the stable persistence error contract. */
 function validateProposalInput(
   record: ProposalAuditRecord,
 ): ProposalAuditRecord {
-  try {
-    return validateProposalAuditRecord(record);
-  } catch (error) {
-    if (error instanceof ProposalAuditValidationError) {
-      return invalidPersistence();
-    }
-    throw error;
-  }
+  return mapPersistenceValidation(() => validateProposalAuditRecord(record));
 }
 
+/** Maps malformed decision input to the stable persistence error contract. */
 function validateDecisionInput(
   event: ProposalDecisionEvent,
 ): ProposalDecisionEvent {
-  try {
-    return validateProposalDecisionEvent(event);
-  } catch (error) {
-    if (error instanceof ProposalAuditValidationError) {
-      return invalidPersistence();
-    }
-    throw error;
-  }
+  return mapPersistenceValidation(() => validateProposalDecisionEvent(event));
 }
 
+/** Compares every immutable decision field relevant to exact idempotent replay. */
 function sameDecisionPayload(
   persisted: ProposalDecisionEvent,
   attempted: ProposalDecisionEvent,
@@ -245,8 +237,10 @@ function sameDecisionPayload(
 
 /** Parameterized, tenant-scoped PostgreSQL proposal audit repository. */
 export class PostgresProposalAuditRepository implements ProposalAuditRepository {
+  /** Creates the repository over one bounded parameterized SQL client. */
   constructor(private readonly client: ProposalAuditSqlClient) {}
 
+  /** Executes SQL while replacing transport details with one stable failure. */
   private async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -258,6 +252,7 @@ export class PostgresProposalAuditRepository implements ProposalAuditRepository 
     }
   }
 
+  /** Persists one immutable tenant-scoped proposal revision. */
   async saveProposal(record: ProposalAuditRecord): Promise<void> {
     const safe = validateProposalInput(record);
     await this.query(
@@ -283,6 +278,7 @@ export class PostgresProposalAuditRepository implements ProposalAuditRepository 
     );
   }
 
+  /** Finds one tenant-scoped proposal revision with duplicate-row rejection. */
   async findProposal(
     workspaceId: string,
     proposalId: string,
@@ -304,6 +300,7 @@ export class PostgresProposalAuditRepository implements ProposalAuditRepository 
       : undefined;
   }
 
+  /** Lists tenant proposal evidence in deterministic creation order. */
   async listProposals(workspaceId: string): Promise<ProposalAuditRecord[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const result = await this.query<ProposalAuditRow>(
@@ -318,6 +315,7 @@ export class PostgresProposalAuditRepository implements ProposalAuditRepository 
     return result.rows.map((row) => parseProposalRow(row, safeWorkspaceId));
   }
 
+  /** Appends one decision or returns an exact idempotent replay. */
   async appendDecision(
     event: ProposalDecisionEvent,
   ): Promise<ProposalDecisionEvent> {
@@ -386,6 +384,7 @@ export class PostgresProposalAuditRepository implements ProposalAuditRepository 
     return persisted;
   }
 
+  /** Lists append-only tenant decision history in deterministic order. */
   async listDecisions(
     workspaceId: string,
     proposalId: string,

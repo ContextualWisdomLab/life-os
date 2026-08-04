@@ -1,14 +1,10 @@
 import { createHash } from 'node:crypto';
 import type {
   AuditableProposal,
-  ProposalContextItem,
   ProposalOperation,
   ProposalRequest,
 } from './proposal-service';
-import {
-  ProposalValidationError,
-  validateProposalRequest,
-} from './proposal-service';
+import { validateProposalRequest } from './proposal-service';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -46,13 +42,18 @@ export interface ProposalDecisionEvent {
 
 /** Asynchronous audit-only persistence contract with no user-data mutation API. */
 export interface ProposalAuditRepository {
+  /** Persists one immutable proposal revision and its canonical provenance. */
   saveProposal(record: ProposalAuditRecord): Promise<void>;
+  /** Finds one tenant-owned immutable proposal revision. */
   findProposal(
     workspaceId: string,
     proposalId: string,
   ): Promise<ProposalAuditRecord | undefined>;
+  /** Lists deterministic proposal evidence for one workspace. */
   listProposals(workspaceId: string): Promise<ProposalAuditRecord[]>;
+  /** Appends or exactly replays one immutable decision event. */
   appendDecision(event: ProposalDecisionEvent): Promise<ProposalDecisionEvent>;
+  /** Lists append-only decision history for one tenant-owned proposal. */
   listDecisions(
     workspaceId: string,
     proposalId: string,
@@ -61,16 +62,28 @@ export interface ProposalAuditRepository {
 
 /** Stable failure for malformed proposal-audit input or persisted evidence. */
 export class ProposalAuditValidationError extends Error {
+  /** Creates a stable credential-free audit validation failure. */
   constructor() {
     super('Proposal audit evidence is invalid');
     this.name = 'ProposalAuditValidationError';
   }
 }
 
+/** Raised when a decision references a stale or unknown proposal digest. */
+export class ProposalDigestMismatchError extends Error {
+  /** Creates a stable conflict representing an immutable revision mismatch. */
+  constructor() {
+    super('Proposal content digest does not match persisted evidence');
+    this.name = 'ProposalDigestMismatchError';
+  }
+}
+
+/** Raises the shared bounded audit validation failure. */
 function invalid(): never {
   throw new ProposalAuditValidationError();
 }
 
+/** Requires an object-shaped untrusted or persisted value. */
 function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return invalid();
@@ -78,6 +91,7 @@ function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
   return value as Readonly<Record<string, unknown>>;
 }
 
+/** Requires one exact closed set of object fields. */
 function requireExactKeys(
   record: Readonly<Record<string, unknown>>,
   expectedKeys: readonly string[],
@@ -92,6 +106,7 @@ function requireExactKeys(
   }
 }
 
+/** Requires one trimmed non-empty string within an explicit maximum length. */
 function requireString(value: unknown, maximumLength: number): string {
   if (typeof value !== 'string') {
     return invalid();
@@ -103,6 +118,7 @@ function requireString(value: unknown, maximumLength: number): string {
   return normalized;
 }
 
+/** Requires and canonicalizes one opaque UUIDv4 identifier. */
 function requireUuidV4(value: unknown): string {
   const normalized = requireString(value, 64).toLowerCase();
   if (!UUID_V4_PATTERN.test(normalized)) {
@@ -111,6 +127,7 @@ function requireUuidV4(value: unknown): string {
   return normalized;
 }
 
+/** Requires and canonicalizes one SHA-256 hexadecimal digest. */
 function requireDigest(value: unknown): string {
   const digest = requireString(value, 64).toLowerCase();
   if (!SHA_256_PATTERN.test(digest)) {
@@ -119,6 +136,7 @@ function requireDigest(value: unknown): string {
   return digest;
 }
 
+/** Requires a valid date or RFC 3339 timestamp and normalizes it to UTC. */
 function requireTimestamp(value: unknown): string {
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) {
@@ -136,46 +154,16 @@ function requireTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
-function validateContextItem(value: ProposalContextItem): ProposalContextItem {
-  const record = requireRecord(value);
-  requireExactKeys(record, ['id', 'kind', 'title', 'status']);
-  const kind = record.kind;
-  const status = record.status;
-  if (
-    kind !== 'goal' &&
-    kind !== 'project' &&
-    kind !== 'milestone' &&
-    kind !== 'task' &&
-    kind !== 'habit'
-  ) {
-    return invalid();
-  }
-  if (status !== 'active' && status !== 'blocked' && status !== 'completed') {
-    return invalid();
-  }
-  return Object.freeze({
-    id: requireUuidV4(record.id),
-    kind,
-    title: requireString(record.title, MAXIMUM_TEXT_LENGTH),
-    status,
-  });
-}
-
+/** Revalidates one proposal request and maps generator failures to audit validation. */
 function validateRequest(value: unknown): ProposalRequest {
   try {
-    const request = validateProposalRequest(value);
-    return Object.freeze({
-      objective: request.objective,
-      context: Object.freeze(request.context.map(validateContextItem)),
-    });
-  } catch (error) {
-    if (error instanceof ProposalValidationError) {
-      return invalid();
-    }
-    throw error;
+    return validateProposalRequest(value);
+  } catch {
+    return invalid();
   }
 }
 
+/** Revalidates one inert proposed operation for immutable evidence. */
 function validateOperation(value: unknown): ProposalOperation {
   const record = requireRecord(value);
   const hasTargetId = Object.hasOwn(record, 'targetId');
@@ -202,6 +190,7 @@ function validateOperation(value: unknown): ProposalOperation {
   });
 }
 
+/** Revalidates one immutable inert proposal and its bounded nested fields. */
 function validateProposal(value: unknown): AuditableProposal {
   const record = requireRecord(value);
   requireExactKeys(record, [
@@ -237,6 +226,7 @@ function validateProposal(value: unknown): AuditableProposal {
   });
 }
 
+/** Projects one validated operation into deterministic digest field order. */
 function canonicalOperation(
   operation: ProposalOperation,
 ): Readonly<Record<string, string>> {
@@ -252,6 +242,7 @@ function canonicalOperation(
       };
 }
 
+/** Computes a lowercase SHA-256 digest over canonical JSON evidence. */
 function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }

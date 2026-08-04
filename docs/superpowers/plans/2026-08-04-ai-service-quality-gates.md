@@ -23,12 +23,14 @@
 ### Task 1: Add executable 100% coverage and JSDoc gates
 
 **Files:**
+
 - Create: `apps/ai-service/vitest.config.ts`
 - Create: `apps/ai-service/src/docstring-coverage.test.ts`
 - Modify: `apps/ai-service/package.json`
 - Modify: `package.json`
 
 **Interfaces:**
+
 - Produces: package-local Vitest configuration with exact 100% thresholds.
 - Produces: a deterministic TypeScript-AST documentation test over production declarations.
 
@@ -95,6 +97,7 @@ git commit -m "test(ai): enforce complete coverage and documentation"
 ### Task 2: Restore domain-layer ownership of stale proposal revisions
 
 **Files:**
+
 - Modify: `apps/ai-service/src/proposal-audit-domain.ts`
 - Modify: `apps/ai-service/src/postgres-proposal-audit-repository.ts`
 - Modify: `apps/ai-service/src/proposal-audit-application.ts`
@@ -103,6 +106,7 @@ git commit -m "test(ai): enforce complete coverage and documentation"
 - Test: `apps/ai-service/src/postgres-proposal-audit-repository.test.ts`
 
 **Interfaces:**
+
 - Produces: `ProposalDigestMismatchError` from `proposal-audit-domain.ts`.
 - Preserves: `ProposalDigestMismatchError` re-export from `postgres-proposal-audit-repository.ts`.
 
@@ -156,10 +160,12 @@ git commit -m "refactor(ai): own stale revision semantics in domain"
 ### Task 3: Close every production coverage and documentation gap
 
 **Files:**
+
 - Modify tests under: `apps/ai-service/src/**/*.test.ts`
 - Modify production JSDoc only where the executable contract identifies a missing declaration.
 
 **Interfaces:**
+
 - Consumes: exact coverage summary and undocumented-declaration list from Task 1.
 - Produces: 100% statements, branches, functions, and lines with no production exclusions.
 
@@ -203,11 +209,13 @@ git commit -m "test(ai): reach complete production coverage"
 ### Task 4: Record governance standards and commercial evidence
 
 **Files:**
+
 - Create: `docs/operations/ai-proposal-audit-assurance.md`
 - Modify: `product/capabilities.json`
 - Modify: `CHANGELOG.md`
 
 **Interfaces:**
+
 - Produces: operator-facing control/limitation documentation with APA 7th references.
 - Produces: `quality.ai-audit-assurance` commercial-readiness capability.
 
@@ -253,9 +261,11 @@ git commit -m "docs(ai): record audit assurance standards"
 ### Task 5: Verify the exact head and open the PR
 
 **Files:**
+
 - No new source files beyond Tasks 1–4.
 
 **Interfaces:**
+
 - Produces: one reviewable PR that closes #107.
 
 - [ ] **Step 1: Run complete local verification**

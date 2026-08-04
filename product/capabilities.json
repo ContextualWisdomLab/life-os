@@ -723,6 +723,47 @@
           "path": "apps/ai-service/src/no-silent-mutation.integration.test.ts"
         }
       ]
+    },
+    {
+      "id": "quality.ai-audit-assurance",
+      "outcome": "Acquirers and operators can verify that the AI audit boundary is fully documented, exhaustively tested, and governed by current standards.",
+      "target_maturity": "production",
+      "customer_impact": 4,
+      "risk": 5,
+      "acquisition_impact": 5,
+      "effort": 3,
+      "dependencies": [
+        "ai.auditable-proposals",
+        "automation.commercial-readiness-loop"
+      ],
+      "tracking_issue": 107,
+      "evidence": [
+        {
+          "maturity": "prototype",
+          "kind": "implementation",
+          "mode": "exists",
+          "path": "apps/ai-service/vitest.config.ts"
+        },
+        {
+          "maturity": "usable",
+          "kind": "test",
+          "mode": "exists",
+          "path": "apps/ai-service/src/docstring-coverage.test.ts"
+        },
+        {
+          "maturity": "production",
+          "kind": "test",
+          "mode": "contains",
+          "path": "apps/ai-service/vitest.config.ts",
+          "value": "statements: 100"
+        },
+        {
+          "maturity": "production",
+          "kind": "documentation",
+          "mode": "exists",
+          "path": "docs/operations/ai-proposal-audit-assurance.md"
+        }
+      ]
     }
   ]
 }

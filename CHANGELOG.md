@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- Executable AI-service JSDoc and exact 100% statement, branch, function, and line coverage gates, with an operator-facing governance assurance boundary.
 - Tenant-safe durable planning search across goals, projects, and tasks, with Unicode-normalized exact, prefix, and whole-token matching.
 - An authenticated same-origin planning-search boundary that signs the session-derived workspace context and forwards no browser credential to planning-service.
 - An accessible quick-capture and search surface that keeps browser-local Today drafts visibly separate from durable workspace records.
@@ -18,6 +19,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Stale AI proposal revision conflicts now belong to the technology-independent audit domain while the PostgreSQL adapter preserves its compatibility export.
 - Planning search now normalizes browser query text and prevents stale or unmounted requests from replacing the latest visible result state.
 - Reminder fatigue deferral now crosses long IANA offset fallbacks and next-day quiet hours without abandoning the claimed occurrence.
 - Notification workers now recover expired claims and exact delivery replays without creating duplicate inbox messages.

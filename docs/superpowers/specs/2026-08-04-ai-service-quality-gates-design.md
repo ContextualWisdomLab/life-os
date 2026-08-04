@@ -87,10 +87,10 @@ The exact PR head must pass:
 
 ## References
 
-Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). *Artificial intelligence risk management framework: Generative artificial intelligence profile* (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
+Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). _Artificial intelligence risk management framework: Generative artificial intelligence profile_ (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
 
-International Organization for Standardization. (2023a). *Information technology—Artificial intelligence—Guidance on risk management* (ISO/IEC 23894:2023). ISO.
+International Organization for Standardization. (2023a). _Information technology—Artificial intelligence—Guidance on risk management_ (ISO/IEC 23894:2023). ISO.
 
-International Organization for Standardization. (2023b). *Information technology—Artificial intelligence—Management system* (ISO/IEC 42001:2023). ISO.
+International Organization for Standardization. (2023b). _Information technology—Artificial intelligence—Management system_ (ISO/IEC 42001:2023). ISO.
 
-Nottingham, M., Wilde, E., & Dalal, S. (2023). *Problem details for HTTP APIs* (RFC 9457). RFC Editor. https://doi.org/10.17487/RFC9457
+Nottingham, M., Wilde, E., & Dalal, S. (2023). _Problem details for HTTP APIs_ (RFC 9457). RFC Editor. https://doi.org/10.17487/RFC9457

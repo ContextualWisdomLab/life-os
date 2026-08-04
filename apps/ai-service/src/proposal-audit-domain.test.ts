@@ -6,6 +6,7 @@ import {
   createProposalAuditRecord,
   createProposalDecisionEvent,
   ProposalAuditValidationError,
+  ProposalDigestMismatchError,
   validateProposalAuditRecord,
   validateProposalDecisionEvent,
 } from './proposal-audit-domain';
@@ -150,6 +151,13 @@ describe('proposal audit domain', () => {
     expect(decision.decidedAt).toBe('2026-08-04T00:00:00.000Z');
     expect(validateProposalDecisionEvent(decision)).toEqual(decision);
     expect(Object.isFrozen(decision)).toBe(true);
+  });
+
+  it('owns stale immutable revision semantics in the audit domain', () => {
+    expect(new ProposalDigestMismatchError()).toMatchObject({
+      name: 'ProposalDigestMismatchError',
+      message: 'Proposal content digest does not match persisted evidence',
+    });
   });
 
   it('rejects numeric identifiers and malformed decision digests', () => {

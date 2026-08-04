@@ -50,24 +50,30 @@ export interface ProposalModelDraft {
 
 /** Read-only model boundary. It receives evidence and returns suggestions only. */
 export interface ProposalModel {
+  /** Produces one untrusted structured suggestion from validated read-only evidence. */
   generate(input: ProposalRequest): Promise<ProposalModelDraft>;
 }
 
+/** Supplies deterministic proposal creation time in tests and production. */
 export type ProposalClock = () => Date;
+/** Supplies opaque UUIDv4 proposal identifiers. */
 export type ProposalIdFactory = () => string;
 
 /** Stable validation failure suitable for bounded HTTP error mapping. */
 export class ProposalValidationError extends Error {
+  /** Creates a stable credential-free validation failure. */
   constructor() {
     super('Proposal request or model output is invalid');
     this.name = 'ProposalValidationError';
   }
 }
 
+/** Raises the shared bounded proposal validation failure. */
 function invalid(): never {
   throw new ProposalValidationError();
 }
 
+/** Requires one trimmed non-empty string within an explicit maximum length. */
 function requireString(value: unknown, maximumLength: number): string {
   if (typeof value !== 'string') {
     return invalid();
@@ -79,6 +85,7 @@ function requireString(value: unknown, maximumLength: number): string {
   return normalized;
 }
 
+/** Requires and canonicalizes one opaque UUIDv4 identifier. */
 function requireUuidV4(value: unknown): string {
   const normalized = requireString(value, 64).toLowerCase();
   if (!UUID_V4_PATTERN.test(normalized)) {
@@ -87,6 +94,7 @@ function requireUuidV4(value: unknown): string {
   return normalized;
 }
 
+/** Requires an object-shaped untrusted value. */
 function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return invalid();
@@ -94,6 +102,7 @@ function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
   return value as Readonly<Record<string, unknown>>;
 }
 
+/** Rejects missing, unknown, or duplicate object fields through an exact key set. */
 function requireExactKeys(
   record: Readonly<Record<string, unknown>>,
   expectedKeys: readonly string[],
@@ -108,6 +117,7 @@ function requireExactKeys(
   }
 }
 
+/** Validates one read-only planning evidence item. */
 function requireContextItem(value: unknown): ProposalContextItem {
   const record = requireRecord(value);
   requireExactKeys(record, ['id', 'kind', 'title', 'status']);
@@ -150,6 +160,7 @@ export function validateProposalRequest(value: unknown): ProposalRequest {
   });
 }
 
+/** Validates a bounded non-empty rationale collection. */
 function validateRationale(value: unknown): readonly string[] {
   if (
     !Array.isArray(value) ||
@@ -163,6 +174,7 @@ function validateRationale(value: unknown): readonly string[] {
   );
 }
 
+/** Validates one inert user-confirmable proposed operation. */
 function validateOperation(value: unknown): ProposalOperation {
   const record = requireRecord(value);
   const hasTargetId = Object.hasOwn(record, 'targetId');
@@ -189,6 +201,7 @@ function validateOperation(value: unknown): ProposalOperation {
   });
 }
 
+/** Validates a bounded non-empty operation collection. */
 function validateOperations(value: unknown): readonly ProposalOperation[] {
   if (
     !Array.isArray(value) ||
@@ -200,15 +213,13 @@ function validateOperations(value: unknown): readonly ProposalOperation[] {
   return Object.freeze(value.map(validateOperation));
 }
 
+/** Interpolates untrusted text into a fixed-size model response without overflow. */
 function boundedInterpolation(
   prefix: string,
   value: string,
   suffix: string,
 ): string {
   const available = MAXIMUM_TEXT_LENGTH - prefix.length - suffix.length;
-  if (available < TRUNCATION_MARKER.length) {
-    return invalid();
-  }
   const boundedValue =
     value.length <= available
       ? value
@@ -218,6 +229,7 @@ function boundedInterpolation(
 
 /** A deterministic local adapter used until a bounded external model is wired. */
 export class RuleBasedProposalModel implements ProposalModel {
+  /** Produces one deterministic inert proposal draft from validated evidence. */
   async generate(input: ProposalRequest): Promise<ProposalModelDraft> {
     const actionable = input.context.find(
       (item) => item.status !== 'completed',
@@ -268,12 +280,14 @@ export class RuleBasedProposalModel implements ProposalModel {
 
 /** Generates inert proposals without receiving any write-capable dependency. */
 export class ProposalService {
+  /** Creates the generator with explicit model, clock, and identifier seams. */
   constructor(
     private readonly model: ProposalModel,
     private readonly clock: ProposalClock = () => new Date(),
     private readonly idFactory: ProposalIdFactory = randomUUID,
   ) {}
 
+  /** Validates input and model output before returning one immutable inert proposal. */
   async generateProposal(
     workspaceId: string,
     request: ProposalRequest,
