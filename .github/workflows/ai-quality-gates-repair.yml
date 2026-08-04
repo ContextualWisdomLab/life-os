@@ -47,6 +47,7 @@ jobs:
           set -Eeuo pipefail
           python3 .github/scripts/complete_ai_quality_gates.py
           python3 .github/scripts/complete_ai_coverage.py
+          python3 .github/scripts/patch_ai_coverage_tests.py
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
