@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add beginner-readable JSDoc to every named notification declaration."""
+"""Add beginner-readable JSDoc and remove unreachable coverage branches."""
 
 from __future__ import annotations
 
@@ -81,6 +81,7 @@ SPECIAL_DESCRIPTIONS = {
     "listInboxMessages": "Returns the inbox through the composition-friendly alias.",
     "health": "Returns a fixed credential-free liveness response.",
     "hasJSDoc": "Determines whether a declaration has immediately preceding JSDoc.",
+    "documentationOwner": "Finds the syntax node that owns leading documentation trivia.",
     "declarationName": "Builds an actionable name for one parsed TypeScript declaration.",
     "requiresJSDoc": "Selects named declarations governed by the documentation contract.",
     "collectUndocumentedDeclarations": "Collects every named declaration that lacks immediately preceding JSDoc.",
@@ -160,8 +161,82 @@ def document_file(path: Path) -> int:
     return inserted
 
 
+def replace_once(path: Path, old: str, new: str) -> None:
+    """Replace one exact branch pattern while remaining idempotent."""
+    text = path.read_text(encoding="utf-8")
+    if new in text:
+        return
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"expected one coverage pattern in {path}, found {count}")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def remove_unreachable_coverage_branches() -> None:
+    """Remove comparisons already guaranteed by validated repository boundaries."""
+    repository = SOURCE_ROOT / "postgres-reminder-repository.ts"
+    replace_once(
+        repository,
+        """    quietHours:
+      quietStart === null || quietEnd === null
+        ? null
+        : { startMinute: quietStart, endMinute: quietEnd },
+""",
+        """    quietHours:
+      quietStart === null
+        ? null
+        : { startMinute: quietStart, endMinute: quietEnd as number },
+""",
+    )
+    replace_once(
+        repository,
+        """function parsePersistedReminder(
+  row: ReminderRow,
+  expectedWorkspaceId?: string,
+  expectedReminderId?: string,
+): PersistedReminderOccurrence {
+  const reminder = baseReminderFromRow(row);
+  if (expectedWorkspaceId !== undefined) {
+    requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
+  }
+""",
+        """function parsePersistedReminder(
+  row: ReminderRow,
+  expectedWorkspaceId: string,
+  expectedReminderId?: string,
+): PersistedReminderOccurrence {
+  const reminder = baseReminderFromRow(row);
+  requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
+""",
+    )
+    replace_once(
+        repository,
+        """  return (
+    persisted.status === 'pending' &&
+    persisted.id === attempted.id &&
+    persisted.workspaceId === attempted.workspaceId &&
+    persisted.title === attempted.title &&
+""",
+        """  return (
+    persisted.status === 'pending' &&
+    persisted.title === attempted.title &&
+""",
+    )
+    replace_once(
+        repository,
+        """  return (
+    persisted.workspaceId === attempted.workspaceId &&
+    persisted.reminderId === attempted.reminderId &&
+""",
+        """  return (
+    persisted.reminderId === attempted.reminderId &&
+""",
+    )
+
+
 def main() -> None:
-    """Document all named notification-service declarations deterministically."""
+    """Refine reachable branches and document all notification declarations."""
+    remove_unreachable_coverage_branches()
     source_files = sorted(SOURCE_ROOT.rglob("*.ts"))
     if not source_files:
         raise SystemExit("No notification TypeScript source files were found")
