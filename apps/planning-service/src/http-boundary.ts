@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 
+/** RFC 9457-compatible problem detail returned by planning HTTP boundaries. */
 export interface PlanningProblemDetails {
   type: 'about:blank';
   title: string;
@@ -28,6 +29,7 @@ const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
 
+/** Builds a credential-free HTTP exception with a stable machine-readable code. */
 function problemException(
   status: number,
   title: string,
@@ -42,6 +44,7 @@ function problemException(
   return new HttpException(problem, status);
 }
 
+/** Rejects malformed, stale, future-dated, or forged gateway context. */
 function invalidGatewayContext(): never {
   throw problemException(
     401,
@@ -50,6 +53,7 @@ function invalidGatewayContext(): never {
   );
 }
 
+/** Rejects requests when the service cannot verify gateway authenticity. */
 function unavailableGatewayContext(): never {
   throw problemException(
     503,
@@ -58,6 +62,7 @@ function unavailableGatewayContext(): never {
   );
 }
 
+/** Computes the versioned HMAC digest shared by the gateway and planning service. */
 function workspaceContextDigest(
   workspaceId: string,
   issuedAt: string,
@@ -118,6 +123,7 @@ export function requireTrustedWorkspaceContext(
   return workspaceId;
 }
 
+/** Requires and trims a non-empty title from an untrusted request body. */
 export function requireTitle(body: { title?: unknown } | undefined): string {
   const title = body?.title;
   if (typeof title !== 'string' || !title.trim()) {
@@ -126,6 +132,7 @@ export function requireTitle(body: { title?: unknown } | undefined): string {
   return title.trim();
 }
 
+/** Maps domain and persistence failures to credential-free HTTP exceptions. */
 export function toHttpException(error: unknown): HttpException {
   if (error instanceof HttpException) {
     return error;
