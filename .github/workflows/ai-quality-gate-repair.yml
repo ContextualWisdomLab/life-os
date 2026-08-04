@@ -15,28 +15,7 @@ jobs:
   repair:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    env:
-      AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      AI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-    services:
-      postgres:
-        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
-        env:
-          POSTGRES_DB: life_os_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d life_os_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 15
     steps:
       - name: Checkout repair branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,18 +70,7 @@ jobs:
       - name: Regenerate reproducible lockfile
         run: pnpm install --no-frozen-lockfile
 
-      - name: Verify repaired repository
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          pnpm format:check
-          pnpm lint
-          pnpm typecheck
-          pnpm test
-          pnpm build
-          docker compose config --quiet
-
-      - name: Commit verified repair and remove temporary automation
+      - name: Commit repair for exact-head verification
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
