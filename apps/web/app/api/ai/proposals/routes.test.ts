@@ -86,7 +86,7 @@ function request(method: 'GET' | 'POST', path: string, body?: unknown): Request 
       cookie: 'life_os_session=opaque',
       ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: payload,
+    ...(payload === undefined ? {} : { body: payload }),
   });
 }
 

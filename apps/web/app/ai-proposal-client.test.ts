@@ -133,7 +133,7 @@ function browserRequest(
       ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
       ...headers,
     },
-    body: payload,
+    ...(payload === undefined ? {} : { body: payload }),
   });
 }
 

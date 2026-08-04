@@ -512,13 +512,24 @@ async function parseBrowserRequest(
   }
   if (url.pathname !== expectedBrowserPath) throw new InvalidAiRequestError();
   const cookie = requireCookie(request);
-  if (method === 'GET') return { method, path, cookie };
+  if (method === 'GET') {
+    return {
+      method,
+      path,
+      ...(cookie === undefined ? {} : { cookie }),
+    };
+  }
   const bodyValue = await readBrowserJson(request);
   const body =
     route.kind === 'collection'
       ? parseProposalRequest(bodyValue)
       : parseDecisionRequest(bodyValue);
-  return { method, path, body, cookie };
+  return {
+    method,
+    path,
+    body,
+    ...(cookie === undefined ? {} : { cookie }),
+  };
 }
 
 /** Parses one bounded proposal response. */

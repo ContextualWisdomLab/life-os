@@ -113,7 +113,7 @@ function browserRequest(
       cookie: 'life_os_session=opaque',
       ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
     },
-    body: payload,
+    ...(payload === undefined ? {} : { body: payload }),
   });
 }
 
