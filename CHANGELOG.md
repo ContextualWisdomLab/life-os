@@ -16,6 +16,7 @@ All notable changes to LifeOS are documented in this file.
 - A bounded notification runtime that composes one PostgreSQL pool, the reminder repository, the in-app gateway, and the scheduler with exactly-once pool shutdown.
 - A production AI runtime that persists every inert proposal before returning it and exposes tenant-scoped proposal evidence and append-only accept/reject decision history.
 - Replay-safe AI proposal decisions bound to the exact workspace, actor, proposal revision digest, UUIDv4 idempotency key, and decision timestamp.
+- An authenticated same-origin AI proposal boundary that derives workspace and actor identity from the active session, signs the exact upstream method and path, and never forwards browser credentials to AI service.
 
 ### Fixed
 
@@ -29,4 +30,5 @@ All notable changes to LifeOS are documented in this file.
 
 - Planning-search upstream responses are stopped at a fixed byte limit before they can be fully buffered by the web boundary.
 - Notification persistence stores SHA-256 idempotency digests instead of raw delivery keys, validates every untrusted row, and keeps all SQL tenant-scoped and parameterized.
-- The AI production boundary accepts workspace and actor scope only through trusted headers, rejects ownership injection in decision bodies, returns credential-free problem details, and exposes no proposal apply or execution route.
+- The AI production boundary rejects direct client-selected ownership headers, verifies a short-lived HMAC-SHA-256 context bound to workspace, actor, HTTP method, and exact path, returns credential-free problem details, and exposes no proposal apply or execution route.
+- The AI web boundary consumes and bounds identity-session response streams exactly once, avoiding unbounded buffering from cloning an untrusted streamed response.

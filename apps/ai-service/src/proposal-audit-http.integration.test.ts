@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -10,6 +10,8 @@ import { AiProductionModule } from './main';
 
 const TEST_DATABASE_URL = process.env.AI_TEST_DATABASE_URL;
 const ORIGINAL_APPLICATION_DATABASE_URL = process.env.AI_DATABASE_URL;
+const ORIGINAL_GATEWAY_CONTEXT_SECRET = process.env.AI_GATEWAY_CONTEXT_SECRET;
+const GATEWAY_CONTEXT_SECRET = 'ai-http-integration-gateway-secret-32-bytes';
 const describeWithPostgres = TEST_DATABASE_URL ? describe : describe.skip;
 let administrativePool: Pool;
 
@@ -51,14 +53,39 @@ async function applyMigration(pool: Pool): Promise<void> {
   await pool.query(sql);
 }
 
+/** Signs one exact short-lived AI service context. */
+function signedContextHeaders(input: {
+  workspaceId: string;
+  actorId: string;
+  method: 'GET' | 'POST';
+  path: string;
+  issuedAt?: number;
+  secret?: string;
+}): Readonly<Record<string, string>> {
+  const workspaceId = input.workspaceId.toLowerCase();
+  const actorId = input.actorId.toLowerCase();
+  const issuedAt = String(input.issuedAt ?? Math.floor(Date.now() / 1000));
+  const signature = createHmac('sha256', input.secret ?? GATEWAY_CONTEXT_SECRET)
+    .update(
+      `life-os.ai-context.v1\n${workspaceId}\n${actorId}\n${issuedAt}\n${input.method}\n${input.path}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-actor-id': actorId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
+
 /** Sends one bounded JSON request to the local production module. */
 function requestJson(
   address: AddressInfo,
   method: 'GET' | 'POST',
   path: string,
-  workspaceId: string,
   body?: unknown,
-  actorId?: string,
+  headers: Readonly<Record<string, string>> = {},
 ): Promise<JsonHttpResponse> {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   return new Promise((resolveResponse, reject) => {
@@ -70,8 +97,7 @@ function requestJson(
         method,
         headers: {
           accept: 'application/json',
-          'x-workspace-id': workspaceId,
-          ...(actorId === undefined ? {} : { 'x-actor-id': actorId }),
+          ...headers,
           ...(payload === undefined
             ? {}
             : {
@@ -130,6 +156,7 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
   beforeAll(async () => {
     const testDatabaseUrl = requireTestDatabaseUrl();
     process.env.AI_DATABASE_URL = testDatabaseUrl;
+    process.env.AI_GATEWAY_CONTEXT_SECRET = GATEWAY_CONTEXT_SECRET;
     administrativePool = new Pool({
       connectionString: testDatabaseUrl,
       application_name: 'life-os-ai-http-integration-admin',
@@ -149,6 +176,69 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       } else {
         process.env.AI_DATABASE_URL = ORIGINAL_APPLICATION_DATABASE_URL;
       }
+      if (ORIGINAL_GATEWAY_CONTEXT_SECRET === undefined) {
+        delete process.env.AI_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.AI_GATEWAY_CONTEXT_SECRET = ORIGINAL_GATEWAY_CONTEXT_SECRET;
+      }
+    }
+  });
+
+  it('rejects unsigned ownership headers and method/path replay', async () => {
+    const workspaceId = randomUUID();
+    const actorId = randomUUID();
+    const taskId = randomUUID();
+    const app = await NestFactory.create(AiProductionModule, { logger: false });
+    await app.listen(0, '127.0.0.1');
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const unsigned = await requestJson(
+        address,
+        'POST',
+        '/v1/proposals',
+        proposalRequest(taskId),
+        { 'x-workspace-id': workspaceId, 'x-actor-id': actorId },
+      );
+      expect(unsigned).toMatchObject({
+        statusCode: 401,
+        body: { code: 'invalid_gateway_context' },
+      });
+
+      const methodReplay = await requestJson(
+        address,
+        'POST',
+        '/v1/proposals',
+        proposalRequest(taskId),
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'GET',
+          path: '/v1/proposals',
+        }),
+      );
+      expect(methodReplay).toMatchObject({
+        statusCode: 401,
+        body: { code: 'invalid_gateway_context' },
+      });
+
+      const pathReplay = await requestJson(
+        address,
+        'POST',
+        '/v1/proposals',
+        proposalRequest(taskId),
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'POST',
+          path: `/v1/proposals/${randomUUID()}`,
+        }),
+      );
+      expect(pathReplay).toMatchObject({
+        statusCode: 401,
+        body: { code: 'invalid_gateway_context' },
+      });
+    } finally {
+      await app.close();
     }
   });
 
@@ -168,8 +258,13 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
         address,
         'POST',
         '/v1/proposals',
-        workspaceId,
         proposalRequest(taskId),
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'POST',
+          path: '/v1/proposals',
+        }),
       );
       expect(created.statusCode).toBe(201);
       expect(created.body).toMatchObject({
@@ -178,11 +273,18 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       });
       proposalId = (created.body as { proposalId: string }).proposalId;
 
+      const proposalPath = `/v1/proposals/${proposalId}`;
       const hiddenFromOtherTenant = await requestJson(
         address,
         'GET',
-        `/v1/proposals/${proposalId}`,
-        otherWorkspaceId,
+        proposalPath,
+        undefined,
+        signedContextHeaders({
+          workspaceId: otherWorkspaceId,
+          actorId,
+          method: 'GET',
+          path: proposalPath,
+        }),
       );
       expect(hiddenFromOtherTenant).toMatchObject({
         statusCode: 404,
@@ -193,9 +295,13 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
         address,
         'POST',
         '/v1/proposals/apply',
-        workspaceId,
         { proposalId },
-        actorId,
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'POST',
+          path: '/v1/proposals',
+        }),
       );
       expect(unsupportedMutation.statusCode).toBe(404);
     } finally {
@@ -215,7 +321,13 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
         address,
         'GET',
         '/v1/proposals',
-        workspaceId,
+        undefined,
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'GET',
+          path: '/v1/proposals',
+        }),
       );
       expect(listed.statusCode).toBe(200);
       expect(listed.body).toHaveLength(1);
@@ -237,21 +349,26 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
         reason: 'Reviewed and accepted without executing any operation.',
         decidedAt: '2026-08-04T00:00:02.000Z',
       } as const;
+      const decisionsPath = `/v1/proposals/${proposalId}/decisions`;
+      const decisionHeaders = signedContextHeaders({
+        workspaceId,
+        actorId,
+        method: 'POST',
+        path: decisionsPath,
+      });
       const accepted = await requestJson(
         address,
         'POST',
-        `/v1/proposals/${proposalId}/decisions`,
-        workspaceId,
+        decisionsPath,
         decisionBody,
-        actorId,
+        decisionHeaders,
       );
       const replayed = await requestJson(
         address,
         'POST',
-        `/v1/proposals/${proposalId}/decisions`,
-        workspaceId,
+        decisionsPath,
         decisionBody,
-        actorId,
+        decisionHeaders,
       );
       expect(accepted.statusCode).toBe(201);
       expect(replayed).toEqual(accepted);
@@ -259,8 +376,14 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       const history = await requestJson(
         address,
         'GET',
-        `/v1/proposals/${proposalId}/decisions`,
-        workspaceId,
+        decisionsPath,
+        undefined,
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'GET',
+          path: decisionsPath,
+        }),
       );
       expect(history.statusCode).toBe(200);
       expect(history.body).toHaveLength(1);
@@ -268,14 +391,13 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       const stale = await requestJson(
         address,
         'POST',
-        `/v1/proposals/${proposalId}/decisions`,
-        workspaceId,
+        decisionsPath,
         {
           ...decisionBody,
           idempotencyKey: randomUUID(),
           expectedContentDigest: '0'.repeat(64),
         },
-        actorId,
+        decisionHeaders,
       );
       expect(stale).toMatchObject({
         statusCode: 409,
@@ -285,10 +407,9 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       const conflict = await requestJson(
         address,
         'POST',
-        `/v1/proposals/${proposalId}/decisions`,
-        workspaceId,
+        decisionsPath,
         { ...decisionBody, decision: 'rejected' },
-        actorId,
+        decisionHeaders,
       );
       expect(conflict).toMatchObject({
         statusCode: 409,

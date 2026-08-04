@@ -24,11 +24,15 @@ The production module exposes the inert proposal-generation route together with 
 - `GET /v1/proposals/:proposalId/decisions`
 - `POST /v1/proposals/:proposalId/decisions`
 
-Every route derives workspace scope only from `x-workspace-id`. Decision append additionally requires `x-actor-id` and a closed JSON body containing `expectedContentDigest`, `idempotencyKey`, `decision`, optional `reason`, and `decidedAt`. Workspace and actor identifiers are trusted only when supplied by an authenticated gateway; direct public exposure of the AI service is not supported.
+Every route requires a short-lived signed service context produced only after a trusted proxy authenticates a session and authorizes workspace membership. The headers are `x-life-os-workspace-id`, `x-life-os-actor-id`, `x-life-os-context-issued-at`, and `x-life-os-context-signature`. The HMAC-SHA-256 payload binds canonical workspace and actor UUIDv4 values to issuance time, uppercase HTTP method, and the exact `/v1/...` path. The shared `AI_GATEWAY_CONTEXT_SECRET` must contain 32–4096 UTF-8 bytes, remain server-only, and be identical in the trusted proxy and AI service.
 
-There is deliberately no apply, execute, command, or user-data mutation route. Proposal generation persists the complete verified audit record before returning the proposal. Validation, not-found, stale-digest, conflicting replay, persistence, and unknown failures are mapped to bounded credential-free problem details.
+Direct `x-workspace-id` and `x-actor-id` headers never authorize a route. Browser cookies, bearer material, client-selected ownership fields, and the HMAC secret must never be forwarded to or exposed by AI service. Missing, malformed, stale, future-dated, method-replayed, path-replayed, or forged context fails closed before the proposal or audit application receives tenant scope.
+
+Decision append accepts a closed JSON body containing `expectedContentDigest`, `idempotencyKey`, `decision`, optional `reason`, and `decidedAt`; actor identity comes only from the verified service context. There is deliberately no apply, execute, command, or user-data mutation route. Proposal generation persists the complete verified audit record before returning the proposal. Validation, not-found, stale-digest, conflicting replay, persistence, and unknown failures are mapped to bounded credential-free problem details.
 
 ## Trust boundary
+
+The default LifeOS composition exposes same-origin `/api/ai/...` web routes. That BFF sends the opaque browser cookie only to identity-service `GET /v1/session`, derives `workspaceId` and `userId` from the validated session response, signs the exact AI request, and calls AI service without forwarding the cookie. AI service remains independently deployable behind another compatible private proxy that implements the same versioned contract.
 
 The audit schema stores only validated proposal requests, model identity, inert proposed operations, explanatory rationale, canonical SHA-256 digests, timestamps, and explicit user decisions. It has no foreign key, repository dependency, database privilege, or command surface for planning, calendar, habit, identity, notification, or other user-owned state mutation.
 
@@ -52,12 +56,14 @@ Destructive schema setup is permitted only through `AI_TEST_DATABASE_URL`. The U
 
 ## Validation evidence
 
-CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, unsigned ownership rejection, method/path replay rejection, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+
+## Secret rotation and rollback
+
+This contract currently supports one active secret. Rotation requires a coordinated trusted-proxy and AI-service deployment; zero-downtime overlapping verification keys are deferred. If signer and verifier become incompatible, disable external AI proposal traffic rather than falling back to unsigned ownership headers. Secret compromise requires coordinated replacement, waiting at least the 60-second context lifetime before treating old tags as expired, and reviewing proposal/decision audit evidence for forged activity.
+
+The database migration is forward-only in automated environments. An operator-approved rollback must export and verify proposal and decision evidence before dropping `ai.proposal_decision_events`, `ai.proposal_audit_records`, `ai.reject_proposal_audit_mutation()`, and the `ai` schema. Do not roll back after recording production decisions unless legal, retention, and audit requirements have been reviewed and documented.
 
 ## Deferred work
 
-Authenticated workspace and actor derivation belongs at the gateway. External model transport, prompt and context redaction, policy evaluation, model-quality evaluation, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.
-
-## Rollback
-
-This migration is forward-only in automated environments. An operator-approved rollback must export and verify proposal and decision evidence before dropping `ai.proposal_decision_events`, `ai.proposal_audit_records`, `ai.reject_proposal_audit_mutation()`, and the `ai` schema. Do not roll back after recording production decisions unless legal, retention, and audit requirements have been reviewed and documented.
+External model transport, prompt and context redaction, policy evaluation, model-quality evaluation, multi-secret rotation windows, asymmetric workload identity, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.
