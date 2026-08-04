@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanningSqlClient, PlanningSqlQueryResult } from './postgres-planning-repository';
+import type {
+  PlanningSqlClient,
+  PlanningSqlQueryResult,
+} from './postgres-planning-repository';
 import {
   PostgresPlanningSearchRepository,
   PlanningSearchRepositoryError,

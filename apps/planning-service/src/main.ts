@@ -201,7 +201,8 @@ export class PlanningController {
     {
       provide: PLANNING_SERVICE,
       inject: [PLANNING_RUNTIME],
-      useFactory: (runtime: PlanningRuntime): PlanningService => runtime.service,
+      useFactory: (runtime: PlanningRuntime): PlanningService =>
+        runtime.service,
     },
     {
       provide: PLANNING_SEARCH_SERVICE,

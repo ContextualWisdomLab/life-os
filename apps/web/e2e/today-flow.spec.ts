@@ -18,7 +18,9 @@ test('captures, commits, schedules, persists, and completes an action', async ({
   await expect(backlog.getByText('Review the release evidence')).toBeVisible();
   await backlog.getByRole('button', { name: 'Make priority' }).click();
 
-  await page.getByLabel('Start time for Review the release evidence').fill('09:00');
+  await page
+    .getByLabel('Start time for Review the release evidence')
+    .fill('09:00');
   await page
     .getByLabel('Duration for Review the release evidence')
     .selectOption('60');
@@ -30,7 +32,9 @@ test('captures, commits, schedules, persists, and completes an action', async ({
 
   await page.getByRole('button', { name: 'Complete' }).click();
   const completed = page.getByRole('region', { name: 'Completed' });
-  await expect(completed.getByText('Review the release evidence')).toBeVisible();
+  await expect(
+    completed.getByText('Review the release evidence'),
+  ).toBeVisible();
 });
 
 test('enforces the visible three-priority capacity', async ({ page }) => {

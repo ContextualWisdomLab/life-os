@@ -10,9 +10,17 @@ interface QuickCaptureProps {
 
 type SearchState =
   | { status: 'idle'; results: readonly PlanningSearchView[]; message: string }
-  | { status: 'loading'; results: readonly PlanningSearchView[]; message: string }
+  | {
+      status: 'loading';
+      results: readonly PlanningSearchView[];
+      message: string;
+    }
   | { status: 'ready'; results: readonly PlanningSearchView[]; message: string }
-  | { status: 'error'; results: readonly PlanningSearchView[]; message: string };
+  | {
+      status: 'error';
+      results: readonly PlanningSearchView[];
+      message: string;
+    };
 
 function resultTypeLabel(result: PlanningSearchView): string {
   if (result.entityType === 'goal') return 'Goal';
@@ -34,7 +42,11 @@ function isSearchResult(value: unknown): value is PlanningSearchView {
 }
 
 function parseClientResults(value: unknown): PlanningSearchView[] {
-  if (!Array.isArray(value) || value.length > 50 || !value.every(isSearchResult)) {
+  if (
+    !Array.isArray(value) ||
+    value.length > 50 ||
+    !value.every(isSearchResult)
+  ) {
     throw new Error('Search response is invalid');
   }
   return value;
@@ -143,8 +155,8 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
             <button type="submit">Capture</button>
           </div>
           <small>
-            {captureTitle.length}/160 · Stored only in this browser until sync is
-            connected.
+            {captureTitle.length}/160 · Stored only in this browser until sync
+            is connected.
           </small>
         </form>
 
@@ -154,7 +166,9 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
           role="search"
           aria-label="Search durable workspace planning records"
         >
-          <label htmlFor="workspace-search-query">Search durable workspace</label>
+          <label htmlFor="workspace-search-query">
+            Search durable workspace
+          </label>
           <div>
             <input
               id="workspace-search-query"
@@ -167,7 +181,9 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
               {searchState.status === 'loading' ? 'Searching…' : 'Search'}
             </button>
           </div>
-          <small>Authenticated workspace records; local drafts are excluded.</small>
+          <small>
+            Authenticated workspace records; local drafts are excluded.
+          </small>
         </form>
       </div>
 
@@ -182,7 +198,8 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
               <span>{resultTypeLabel(result)}</span>
               <strong>{result.title}</strong>
               <small>
-                Durable record · {new Date(result.createdAt).toLocaleDateString()}
+                Durable record ·{' '}
+                {new Date(result.createdAt).toLocaleDateString()}
               </small>
             </li>
           ))}

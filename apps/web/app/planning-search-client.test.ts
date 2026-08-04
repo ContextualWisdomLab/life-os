@@ -88,7 +88,10 @@ describe('planning search BFF', () => {
     const planningHeaders = new Headers(calls[1]?.init?.headers);
     assert.equal(planningHeaders.get('x-workspace-id'), WORKSPACE_ID);
     assert.equal(planningHeaders.get('cookie'), null);
-    assert.match(planningHeaders.get('x-correlation-id') ?? '', /^[a-f0-9-]{36}$/);
+    assert.match(
+      planningHeaders.get('x-correlation-id') ?? '',
+      /^[a-f0-9-]{36}$/,
+    );
     assert.equal(calls[0]?.init?.redirect, 'error');
     assert.equal(calls[1]?.init?.redirect, 'error');
   });
@@ -144,7 +147,8 @@ describe('planning search BFF', () => {
 
   it('maps malformed identity, planning, transport, and oversized responses generically', async () => {
     const malformedResponses: PlanningSearchFetch[] = [
-      async () => new Response('{}', { headers: { 'content-type': 'text/plain' } }),
+      async () =>
+        new Response('{}', { headers: { 'content-type': 'text/plain' } }),
       async () =>
         new Response('x'.repeat(17 * 1024), {
           headers: { 'content-type': 'application/json' },

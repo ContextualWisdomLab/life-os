@@ -19,8 +19,7 @@ export interface NormalizedPlanningSearchQuery {
   escapedTokens: readonly string[];
 }
 
-export interface PlanningSearchRepositoryInput
-  extends NormalizedPlanningSearchQuery {
+export interface PlanningSearchRepositoryInput extends NormalizedPlanningSearchQuery {
   workspaceId: string;
   perEntityLimit: number;
   resultLimit: number;
@@ -87,7 +86,10 @@ function requireWorkspaceId(value: string): string {
 }
 
 function escapeLikeLiteral(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+  return value
+    .replaceAll('\\', '\\\\')
+    .replaceAll('%', '\\%')
+    .replaceAll('_', '\\_');
 }
 
 export function normalizePlanningSearchQuery(
@@ -193,7 +195,7 @@ function parseRecord(
     return invalidPersistence();
   }
   const entityType = record.entityType;
-  if (!(entityType in ENTITY_ORDER)) {
+  if (!Object.prototype.hasOwnProperty.call(ENTITY_ORDER, entityType)) {
     return invalidPersistence();
   }
   const parsed: PlanningSearchRepositoryRecord = {
@@ -242,7 +244,9 @@ function compareRecords(
   );
 }
 
-function publicResult(record: PlanningSearchRepositoryRecord): PlanningSearchResult {
+function publicResult(
+  record: PlanningSearchRepositoryRecord,
+): PlanningSearchResult {
   return {
     entityType: record.entityType,
     id: record.id,

@@ -74,9 +74,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     () =>
       draft.actions
         .filter((action) => action.priority !== null)
-        .sort((left, right) =>
-          (left.priority ?? 0) - (right.priority ?? 0),
-        ),
+        .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0)),
     [draft.actions],
   );
   const backlog = draft.actions.filter(
@@ -91,7 +89,9 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
       return true;
     } catch (error) {
       if (error instanceof TodayPriorityLimitError) {
-        setMessage('Three priorities are already committed. Release one first.');
+        setMessage(
+          'Three priorities are already committed. Release one first.',
+        );
       } else if (error instanceof TodayScheduleConflictError) {
         setMessage('That time overlaps another open priority.');
       } else {
@@ -129,12 +129,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     }
     update(
       () =>
-        scheduleTodayAction(
-          draft,
-          action.id,
-          parseTimeInput(start),
-          duration,
-        ),
+        scheduleTodayAction(draft, action.id, parseTimeInput(start), duration),
       'Time block saved locally.',
     );
   }

@@ -111,7 +111,9 @@ describe('PlanningSearchService', () => {
     const repository = new RecordingSearchRepository([record()]);
     const service = new PlanningSearchService(repository);
 
-    await expect(service.search(WORKSPACE_ID, 'Ship Search', 7)).resolves.toEqual([
+    await expect(
+      service.search(WORKSPACE_ID, 'Ship Search', 7),
+    ).resolves.toEqual([
       {
         entityType: 'task',
         id: TASK_ID,
@@ -193,9 +195,9 @@ describe('PlanningSearchService', () => {
       const service = new PlanningSearchService(
         new RecordingSearchRepository(records),
       );
-      await expect(service.search(WORKSPACE_ID, 'ship', 2)).rejects.toBeInstanceOf(
-        PlanningSearchPersistenceError,
-      );
+      await expect(
+        service.search(WORKSPACE_ID, 'ship', 2),
+      ).rejects.toBeInstanceOf(PlanningSearchPersistenceError);
     }
   });
 

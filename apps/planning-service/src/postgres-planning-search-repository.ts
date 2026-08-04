@@ -284,9 +284,7 @@ ORDER BY
   id ASC
 LIMIT $6`;
 
-export class PostgresPlanningSearchRepository
-  implements PlanningSearchRepository
-{
+export class PostgresPlanningSearchRepository implements PlanningSearchRepository {
   constructor(private readonly client: PlanningSqlClient) {}
 
   async searchPlanning(

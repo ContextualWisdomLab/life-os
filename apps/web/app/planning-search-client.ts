@@ -137,7 +137,11 @@ function parseResult(value: unknown): PlanningSearchView {
     throw new Error('Planning search response is invalid');
   }
   const entityType = value.entityType;
-  if (entityType !== 'goal' && entityType !== 'project' && entityType !== 'task') {
+  if (
+    entityType !== 'goal' &&
+    entityType !== 'project' &&
+    entityType !== 'task'
+  ) {
     throw new Error('Planning search response is invalid');
   }
   const result: PlanningSearchView = {
@@ -169,7 +173,9 @@ function parseResult(value: unknown): PlanningSearchView {
   return result;
 }
 
-export function parsePlanningSearchResults(value: unknown): PlanningSearchView[] {
+export function parsePlanningSearchResults(
+  value: unknown,
+): PlanningSearchView[] {
   if (!Array.isArray(value) || value.length > MAXIMUM_RESULTS) {
     throw new Error('Planning search response is invalid');
   }
@@ -185,10 +191,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
     throw new Error('Upstream response is invalid');
   }
   const body = await response.text();
-  if (
-    !body ||
-    Buffer.byteLength(body, 'utf8') > MAXIMUM_RESPONSE_BYTES
-  ) {
+  if (!body || Buffer.byteLength(body, 'utf8') > MAXIMUM_RESPONSE_BYTES) {
     throw new Error('Upstream response is invalid');
   }
   try {
@@ -198,7 +201,9 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-function parseBrowserQuery(url: URL): { query: string; limit: number } | undefined {
+function parseBrowserQuery(
+  url: URL,
+): { query: string; limit: number } | undefined {
   const keys = [...new Set(url.searchParams.keys())];
   if (keys.some((key) => key !== 'q' && key !== 'limit')) {
     return undefined;
