@@ -82,8 +82,14 @@ describe('durable notification database contract', () => {
     expect(sql).toContain('delivery_attempt_count BETWEEN 0 AND 3');
     expect(sql).toContain("occurrence_status IN ('pending', 'delivered', 'failed')");
     expect(sql).toContain("outcome_kind IN ('delivered', 'deferred', 'failed')");
-    expect(sql).toContain("outcome_reason IN ('quiet_hours', 'daily_limit', 'delivery_failed', 'attempt_limit')");
-    expect(sql.match(/octet_length\((?:claim_key_hash|idempotency_key_hash)\) = 32/gu)).toHaveLength(3);
+    expect(sql).toMatch(
+      /outcome_reason\s+IN\s*\(\s*'quiet_hours'\s*,\s*'daily_limit'\s*,\s*'delivery_failed'\s*,\s*'attempt_limit'\s*\)/u,
+    );
+    expect(
+      sql.match(
+        /octet_length\((?:claim_key_hash|idempotency_key_hash)\) = 32/gu,
+      ),
+    ).toHaveLength(3);
     expect(sql).not.toMatch(/\b(?:serial|bigserial)\b/iu);
   });
 
@@ -96,6 +102,8 @@ describe('durable notification database contract', () => {
     expect(sql).toContain('reminder_outcomes_idempotency_unique');
     expect(sql).toContain('inbox_messages_idempotency_unique');
     expect(sql).toContain('FOREIGN KEY (workspace_id, reminder_id)');
-    expect(sql).toContain('REFERENCES notification_service.reminder_occurrences (workspace_id, reminder_id)');
+    expect(sql).toContain(
+      'REFERENCES notification_service.reminder_occurrences (workspace_id, reminder_id)',
+    );
   });
 });
