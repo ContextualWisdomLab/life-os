@@ -40,7 +40,9 @@
       "risk": 5,
       "acquisition_impact": 5,
       "effort": 2,
-      "dependencies": ["platform.msa-foundation"],
+      "dependencies": [
+        "platform.msa-foundation"
+      ],
       "tracking_issue": 16,
       "evidence": [
         {
@@ -71,7 +73,10 @@
       "risk": 5,
       "acquisition_impact": 5,
       "effort": 3,
-      "dependencies": ["platform.msa-foundation", "security.appguardrail-gate"],
+      "dependencies": [
+        "platform.msa-foundation",
+        "security.appguardrail-gate"
+      ],
       "tracking_issue": 19,
       "evidence": [
         {
@@ -114,7 +119,10 @@
       "risk": 5,
       "acquisition_impact": 5,
       "effort": 4,
-      "dependencies": ["platform.msa-foundation", "security.appguardrail-gate"],
+      "dependencies": [
+        "platform.msa-foundation",
+        "security.appguardrail-gate"
+      ],
       "tracking_issue": 18,
       "evidence": [
         {
@@ -153,7 +161,10 @@
       "risk": 5,
       "acquisition_impact": 5,
       "effort": 4,
-      "dependencies": ["platform.msa-foundation", "identity.oauth-session"],
+      "dependencies": [
+        "platform.msa-foundation",
+        "identity.oauth-session"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -191,7 +202,9 @@
       "risk": 3,
       "acquisition_impact": 4,
       "effort": 4,
-      "dependencies": ["identity.oauth-session"],
+      "dependencies": [
+        "identity.oauth-session"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -223,7 +236,10 @@
       "risk": 3,
       "acquisition_impact": 5,
       "effort": 4,
-      "dependencies": ["planning.durable-data", "habit.recurring-core"],
+      "dependencies": [
+        "planning.durable-data",
+        "habit.recurring-core"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -291,7 +307,10 @@
       "risk": 2,
       "acquisition_impact": 5,
       "effort": 3,
-      "dependencies": ["identity.oauth-session", "today.action-loop"],
+      "dependencies": [
+        "identity.oauth-session",
+        "today.action-loop"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -322,7 +341,10 @@
       "risk": 4,
       "acquisition_impact": 5,
       "effort": 5,
-      "dependencies": ["identity.oauth-session", "planning.durable-data"],
+      "dependencies": [
+        "identity.oauth-session",
+        "planning.durable-data"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -354,7 +376,9 @@
       "risk": 2,
       "acquisition_impact": 4,
       "effort": 3,
-      "dependencies": ["planning.durable-data"],
+      "dependencies": [
+        "planning.durable-data"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -385,7 +409,10 @@
       "risk": 3,
       "acquisition_impact": 4,
       "effort": 4,
-      "dependencies": ["planning.durable-data", "habit.recurring-core"],
+      "dependencies": [
+        "planning.durable-data",
+        "habit.recurring-core"
+      ],
       "tracking_issue": 103,
       "evidence": [
         {
@@ -434,7 +461,9 @@
       "risk": 2,
       "acquisition_impact": 5,
       "effort": 4,
-      "dependencies": ["today.action-loop"],
+      "dependencies": [
+        "today.action-loop"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -465,7 +494,9 @@
       "risk": 3,
       "acquisition_impact": 4,
       "effort": 4,
-      "dependencies": ["today.action-loop"],
+      "dependencies": [
+        "today.action-loop"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -533,7 +564,9 @@
       "risk": 5,
       "acquisition_impact": 5,
       "effort": 4,
-      "dependencies": ["platform.msa-foundation"],
+      "dependencies": [
+        "platform.msa-foundation"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -599,7 +632,9 @@
       "risk": 5,
       "acquisition_impact": 5,
       "effort": 2,
-      "dependencies": ["platform.msa-foundation"],
+      "dependencies": [
+        "platform.msa-foundation"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -666,7 +701,10 @@
       "risk": 4,
       "acquisition_impact": 5,
       "effort": 5,
-      "dependencies": ["identity.oauth-session", "planning.durable-data"],
+      "dependencies": [
+        "identity.oauth-session",
+        "planning.durable-data"
+      ],
       "tracking_issue": null,
       "evidence": [
         {
@@ -752,7 +790,7 @@
         },
         {
           "maturity": "production",
-          "kind": "test",
+          "kind": "implementation",
           "mode": "contains",
           "path": "apps/ai-service/vitest.config.ts",
           "value": "statements: 100"
