@@ -37,258 +37,339 @@ jobs:
           path = Path('apps/ai-service/src/quality-coverage.test.ts')
           text = path.read_text(encoding='utf-8')
 
-          edits = [
-              (
+          if "import { createHmac } from 'node:crypto';" not in text:
+              text = text.replace(
                   "import { HttpException, Logger } from '@nestjs/common';\n",
                   "import { createHmac } from 'node:crypto';\n"
                   "import { HttpException, Logger } from '@nestjs/common';\n",
-              ),
-              (
-                  "import { describe, expect, it, vi } from 'vitest';\n",
-                  "import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';\n",
-              ),
-              (
-                  "const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';\n\n",
-                  "const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';\n"
-                  "const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';\n\n"
-                  "/** Exact signed headers accepted by one method-and-path-bound controller call. */\n"
-                  "interface SignedControllerContext {\n"
-                  "  readonly workspaceId: string;\n"
-                  "  readonly actorId: string;\n"
-                  "  readonly issuedAt: string;\n"
-                  "  readonly signature: string;\n"
-                  "}\n\n"
-                  "/** Signs fresh service context for one controller-owned route. */\n"
-                  "function signedControllerContext(\n"
-                  "  method: 'GET' | 'POST',\n"
-                  "  path: string,\n"
-                  "): SignedControllerContext {\n"
-                  "  const issuedAt = String(Math.floor(Date.now() / 1_000));\n"
-                  "  const signature = createHmac('sha256', GATEWAY_SECRET)\n"
-                  "    .update(\n"
-                  "      `life-os.ai-context.v1\\n${WORKSPACE_ID}\\n${ACTOR_ID}\\n${issuedAt}\\n${method}\\n${path}`,\n"
-                  "      'utf8',\n"
-                  "    )\n"
-                  "    .digest('base64url');\n"
-                  "  return { workspaceId: WORKSPACE_ID, actorId: ACTOR_ID, issuedAt, signature };\n"
-                  "}\n\n",
-              ),
-              (
-                  "describe('AI controllers and bootstrap error contracts', () => {\n",
-                  "describe('AI controllers and bootstrap error contracts', () => {\n"
-                  "  beforeEach(() => {\n"
-                  "    vi.stubEnv('AI_GATEWAY_CONTEXT_SECRET', GATEWAY_SECRET);\n"
-                  "  });\n\n"
-                  "  afterEach(() => {\n"
-                  "    vi.unstubAllEnvs();\n"
-                  "  });\n\n",
-              ),
-              (
-                  "    const controller = new AiProposalController(generator);\n",
-                  "    const controller = new AiProposalController(generator);\n"
-                  "    const proposalContext = signedControllerContext(\n"
-                  "      'POST',\n"
-                  "      '/v1/proposals',\n"
-                  "    );\n",
-              ),
-              (
-                  "      controller.createProposal(WORKSPACE_ID, request()),\n",
-                  "      controller.createProposal(\n"
-                  "        proposalContext.workspaceId,\n"
-                  "        proposalContext.actorId,\n"
-                  "        proposalContext.issuedAt,\n"
-                  "        proposalContext.signature,\n"
-                  "        request(),\n"
-                  "      ),\n",
-              ),
-              (
-                  "      controller.createProposal(undefined, request()),\n      400,\n      'invalid_request',\n",
-                  "      controller.createProposal(\n"
-                  "        undefined,\n"
-                  "        proposalContext.actorId,\n"
-                  "        proposalContext.issuedAt,\n"
-                  "        proposalContext.signature,\n"
-                  "        request(),\n"
-                  "      ),\n"
-                  "      401,\n"
-                  "      'invalid_gateway_context',\n",
-              ),
-              (
-                  "      controller.createProposal(WORKSPACE_ID, null),\n",
-                  "      controller.createProposal(\n"
-                  "        proposalContext.workspaceId,\n"
-                  "        proposalContext.actorId,\n"
-                  "        proposalContext.issuedAt,\n"
-                  "        proposalContext.signature,\n"
-                  "        null,\n"
-                  "      ),\n",
-              ),
-              (
-                  "        }).createProposal(WORKSPACE_ID, request()),\n",
-                  "        }).createProposal(\n"
-                  "          proposalContext.workspaceId,\n"
-                  "          proposalContext.actorId,\n"
-                  "          proposalContext.issuedAt,\n"
-                  "          proposalContext.signature,\n"
-                  "          request(),\n"
-                  "        ),\n",
-              ),
-              (
-                  "    const controller = new AiProposalAuditController(application);\n\n",
-                  "    const controller = new AiProposalAuditController(application);\n"
-                  "    const listContext = signedControllerContext('GET', '/v1/proposals');\n"
-                  "    const proposalPath = `/v1/proposals/${PROPOSAL_ID}`;\n"
-                  "    const detailContext = signedControllerContext('GET', proposalPath);\n"
-                  "    const decisionsPath = `${proposalPath}/decisions`;\n"
-                  "    const decisionsReadContext = signedControllerContext(\n"
-                  "      'GET',\n"
-                  "      decisionsPath,\n"
-                  "    );\n"
-                  "    const decisionsWriteContext = signedControllerContext(\n"
-                  "      'POST',\n"
-                  "      decisionsPath,\n"
-                  "    );\n\n",
-              ),
-              (
-                  "    await expect(controller.listProposals(WORKSPACE_ID)).resolves.toEqual([\n      audit,\n    ]);\n",
-                  "    await expect(\n"
-                  "      controller.listProposals(\n"
-                  "        listContext.workspaceId,\n"
-                  "        listContext.actorId,\n"
-                  "        listContext.issuedAt,\n"
-                  "        listContext.signature,\n"
-                  "      ),\n"
-                  "    ).resolves.toEqual([audit]);\n",
-              ),
-              (
-                  "      controller.findProposal(WORKSPACE_ID, PROPOSAL_ID),\n",
-                  "      controller.findProposal(\n"
-                  "        detailContext.workspaceId,\n"
-                  "        detailContext.actorId,\n"
-                  "        detailContext.issuedAt,\n"
-                  "        detailContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "      ),\n",
-              ),
-              (
-                  "      controller.listDecisions(WORKSPACE_ID, PROPOSAL_ID),\n",
-                  "      controller.listDecisions(\n"
-                  "        decisionsReadContext.workspaceId,\n"
-                  "        decisionsReadContext.actorId,\n"
-                  "        decisionsReadContext.issuedAt,\n"
-                  "        decisionsReadContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "      ),\n",
-              ),
-              (
-                  "      controller.appendDecision(WORKSPACE_ID, ACTOR_ID, PROPOSAL_ID, {\n",
-                  "      controller.appendDecision(\n"
-                  "        decisionsWriteContext.workspaceId,\n"
-                  "        decisionsWriteContext.actorId,\n"
-                  "        decisionsWriteContext.issuedAt,\n"
-                  "        decisionsWriteContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "        {\n",
-              ),
-              (
-                  "        decidedAt: '2026-08-04T00:00:02Z',\n      }),\n",
-                  "          decidedAt: '2026-08-04T00:00:02Z',\n"
-                  "        },\n"
-                  "      ),\n",
-              ),
-              (
-                  "      controller.listProposals(undefined),\n      400,\n      'invalid_request',\n",
-                  "      controller.listProposals(\n"
-                  "        undefined,\n"
-                  "        listContext.actorId,\n"
-                  "        listContext.issuedAt,\n"
-                  "        listContext.signature,\n"
-                  "      ),\n"
-                  "      401,\n"
-                  "      'invalid_gateway_context',\n",
-              ),
-              (
-                  "      controller.findProposal(undefined, PROPOSAL_ID),\n      400,\n      'invalid_request',\n",
-                  "      controller.findProposal(\n"
-                  "        undefined,\n"
-                  "        detailContext.actorId,\n"
-                  "        detailContext.issuedAt,\n"
-                  "        detailContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "      ),\n"
-                  "      401,\n"
-                  "      'invalid_gateway_context',\n",
-              ),
-              (
-                  "      controller.listDecisions(undefined, PROPOSAL_ID),\n      400,\n      'invalid_request',\n",
-                  "      controller.listDecisions(\n"
-                  "        undefined,\n"
-                  "        decisionsReadContext.actorId,\n"
-                  "        decisionsReadContext.issuedAt,\n"
-                  "        decisionsReadContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "      ),\n"
-                  "      401,\n"
-                  "      'invalid_gateway_context',\n",
-              ),
-              (
-                  "      controller.appendDecision(undefined, ACTOR_ID, PROPOSAL_ID, {}),\n      400,\n      'invalid_request',\n",
-                  "      controller.appendDecision(\n"
-                  "        undefined,\n"
-                  "        decisionsWriteContext.actorId,\n"
-                  "        decisionsWriteContext.issuedAt,\n"
-                  "        decisionsWriteContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "        {},\n"
-                  "      ),\n"
-                  "      401,\n"
-                  "      'invalid_gateway_context',\n",
-              ),
-              (
-                  "      controller.appendDecision(WORKSPACE_ID, undefined, PROPOSAL_ID, {}),\n      400,\n      'invalid_request',\n",
-                  "      controller.appendDecision(\n"
-                  "        decisionsWriteContext.workspaceId,\n"
-                  "        undefined,\n"
-                  "        decisionsWriteContext.issuedAt,\n"
-                  "        decisionsWriteContext.signature,\n"
-                  "        PROPOSAL_ID,\n"
-                  "        {},\n"
-                  "      ),\n"
-                  "      401,\n"
-                  "      'invalid_gateway_context',\n",
-              ),
-              (
-                  "    for (const [error, status, code] of cases) {\n      await expectProblem(\n        new AiProposalAuditController(throwingApplication(error)).listProposals(\n          WORKSPACE_ID,\n        ),\n",
-                  "    const listContext = signedControllerContext('GET', '/v1/proposals');\n"
-                  "    for (const [error, status, code] of cases) {\n"
-                  "      await expectProblem(\n"
-                  "        new AiProposalAuditController(throwingApplication(error)).listProposals(\n"
-                  "          listContext.workspaceId,\n"
-                  "          listContext.actorId,\n"
-                  "          listContext.issuedAt,\n"
-                  "          listContext.signature,\n"
-                  "        ),\n",
-              ),
-          ]
+                  1,
+              )
+          text = text.replace(
+              "import { describe, expect, it, vi } from 'vitest';\n",
+              "import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';\n",
+              1,
+          )
 
-          for old, new in edits:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'expected one match, found {count}: {old!r}')
-              text = text.replace(old, new)
+          helper_marker = "const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';"
+          if helper_marker not in text:
+              anchor = "const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';\n"
+              helper = r'''
+          const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
 
-          path.write_text(text, encoding='utf-8')
+          /** Exact signed headers accepted by one method-and-path-bound controller call. */
+          interface SignedControllerContext {
+            readonly workspaceId: string;
+            readonly actorId: string;
+            readonly issuedAt: string;
+            readonly signature: string;
+          }
+
+          /** Signs fresh service context for one controller-owned route. */
+          function signedControllerContext(
+            method: 'GET' | 'POST',
+            path: string,
+          ): SignedControllerContext {
+            const issuedAt = String(Math.floor(Date.now() / 1_000));
+            const signature = createHmac('sha256', GATEWAY_SECRET)
+              .update(
+                `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\n${method}\n${path}`,
+                'utf8',
+              )
+              .digest('base64url');
+            return {
+              workspaceId: WORKSPACE_ID,
+              actorId: ACTOR_ID,
+              issuedAt,
+              signature,
+            };
+          }
+          '''
+              if anchor not in text:
+                  raise SystemExit('constant anchor not found')
+              text = text.replace(anchor, anchor + helper.lstrip(), 1)
+
+          marker = "describe('AI controllers and bootstrap error contracts', () => {"
+          if marker not in text:
+              raise SystemExit('controller coverage marker not found')
+          prefix = text.split(marker, 1)[0]
+          tail = r'''describe('AI controllers and bootstrap error contracts', () => {
+            beforeEach(() => {
+              vi.stubEnv('AI_GATEWAY_CONTEXT_SECRET', GATEWAY_SECRET);
+            });
+
+            afterEach(() => {
+              vi.unstubAllEnvs();
+            });
+
+            it('covers health, successful generation, and all generation failures', async () => {
+              const generated = proposal();
+              const generator = {
+                generateProposal: vi.fn().mockResolvedValue(generated),
+              };
+              const controller = new AiProposalController(generator);
+              const proposalContext = signedControllerContext(
+                'POST',
+                '/v1/proposals',
+              );
+              expect(controller.health()).toEqual({
+                status: 'ok',
+                service: 'ai-service',
+              });
+              await expect(
+                controller.createProposal(
+                  proposalContext.workspaceId,
+                  proposalContext.actorId,
+                  proposalContext.issuedAt,
+                  proposalContext.signature,
+                  request(),
+                ),
+              ).resolves.toEqual(generated);
+
+              await expectProblem(
+                controller.createProposal(
+                  undefined,
+                  proposalContext.actorId,
+                  proposalContext.issuedAt,
+                  proposalContext.signature,
+                  request(),
+                ),
+                401,
+                'invalid_gateway_context',
+              );
+              await expectProblem(
+                controller.createProposal(
+                  proposalContext.workspaceId,
+                  proposalContext.actorId,
+                  proposalContext.issuedAt,
+                  proposalContext.signature,
+                  null,
+                ),
+                400,
+                'invalid_request',
+              );
+              for (const [error, status, code] of [
+                [new ProposalAuditValidationError(), 400, 'invalid_request'],
+                [new ProposalAuditPersistenceError(), 503, 'audit_unavailable'],
+                [new Error('secret'), 503, 'proposal_unavailable'],
+                ['secret', 503, 'proposal_unavailable'],
+              ] as const) {
+                await expectProblem(
+                  new AiProposalController({
+                    async generateProposal(): Promise<AuditableProposal> {
+                      throw error;
+                    },
+                  }).createProposal(
+                    proposalContext.workspaceId,
+                    proposalContext.actorId,
+                    proposalContext.issuedAt,
+                    proposalContext.signature,
+                    request(),
+                  ),
+                  status,
+                  code,
+                );
+              }
+            });
+
+            it('covers successful audit calls and missing trusted headers', async () => {
+              const audit = auditRecord();
+              const event = decisionEvent();
+              const application = {
+                listProposals: vi.fn().mockResolvedValue([audit]),
+                findProposal: vi.fn().mockResolvedValue(audit),
+                listDecisions: vi.fn().mockResolvedValue([event]),
+                appendDecision: vi.fn().mockResolvedValue(event),
+              } as unknown as ProposalAuditApplication;
+              const controller = new AiProposalAuditController(application);
+              const listContext = signedControllerContext('GET', '/v1/proposals');
+              const proposalPath = `/v1/proposals/${PROPOSAL_ID}`;
+              const detailContext = signedControllerContext('GET', proposalPath);
+              const decisionsPath = `${proposalPath}/decisions`;
+              const decisionsReadContext = signedControllerContext(
+                'GET',
+                decisionsPath,
+              );
+              const decisionsWriteContext = signedControllerContext(
+                'POST',
+                decisionsPath,
+              );
+
+              await expect(
+                controller.listProposals(
+                  listContext.workspaceId,
+                  listContext.actorId,
+                  listContext.issuedAt,
+                  listContext.signature,
+                ),
+              ).resolves.toEqual([audit]);
+              await expect(
+                controller.findProposal(
+                  detailContext.workspaceId,
+                  detailContext.actorId,
+                  detailContext.issuedAt,
+                  detailContext.signature,
+                  PROPOSAL_ID,
+                ),
+              ).resolves.toEqual(audit);
+              await expect(
+                controller.listDecisions(
+                  decisionsReadContext.workspaceId,
+                  decisionsReadContext.actorId,
+                  decisionsReadContext.issuedAt,
+                  decisionsReadContext.signature,
+                  PROPOSAL_ID,
+                ),
+              ).resolves.toEqual([event]);
+              await expect(
+                controller.appendDecision(
+                  decisionsWriteContext.workspaceId,
+                  decisionsWriteContext.actorId,
+                  decisionsWriteContext.issuedAt,
+                  decisionsWriteContext.signature,
+                  PROPOSAL_ID,
+                  {
+                    expectedContentDigest: audit.contentDigest,
+                    idempotencyKey: IDEMPOTENCY_KEY,
+                    decision: 'accepted',
+                    decidedAt: '2026-08-04T00:00:02Z',
+                  },
+                ),
+              ).resolves.toEqual(event);
+
+              await expectProblem(
+                controller.listProposals(
+                  undefined,
+                  listContext.actorId,
+                  listContext.issuedAt,
+                  listContext.signature,
+                ),
+                401,
+                'invalid_gateway_context',
+              );
+              await expectProblem(
+                controller.findProposal(
+                  undefined,
+                  detailContext.actorId,
+                  detailContext.issuedAt,
+                  detailContext.signature,
+                  PROPOSAL_ID,
+                ),
+                401,
+                'invalid_gateway_context',
+              );
+              await expectProblem(
+                controller.listDecisions(
+                  undefined,
+                  decisionsReadContext.actorId,
+                  decisionsReadContext.issuedAt,
+                  decisionsReadContext.signature,
+                  PROPOSAL_ID,
+                ),
+                401,
+                'invalid_gateway_context',
+              );
+              await expectProblem(
+                controller.appendDecision(
+                  undefined,
+                  decisionsWriteContext.actorId,
+                  decisionsWriteContext.issuedAt,
+                  decisionsWriteContext.signature,
+                  PROPOSAL_ID,
+                  {},
+                ),
+                401,
+                'invalid_gateway_context',
+              );
+              await expectProblem(
+                controller.appendDecision(
+                  decisionsWriteContext.workspaceId,
+                  undefined,
+                  decisionsWriteContext.issuedAt,
+                  decisionsWriteContext.signature,
+                  PROPOSAL_ID,
+                  {},
+                ),
+                401,
+                'invalid_gateway_context',
+              );
+            });
+
+            it('maps every audit application failure without credential details', async () => {
+              const logger = vi
+                .spyOn(Logger.prototype, 'error')
+                .mockImplementation(() => undefined);
+              const cases: Array<[unknown, number, string]> = [
+                [new ProposalValidationError(), 400, 'invalid_request'],
+                [new ProposalAuditValidationError(), 400, 'invalid_request'],
+                [new ProposalAuditNotFoundError(), 404, 'proposal_not_found'],
+                [new ProposalDigestMismatchError(), 409, 'stale_proposal'],
+                [new ProposalDecisionConflictError(), 409, 'idempotency_conflict'],
+                [new ProposalAuditPersistenceError(), 503, 'audit_unavailable'],
+                [new Error('password=secret'), 503, 'audit_unavailable'],
+                ['password=secret', 503, 'audit_unavailable'],
+              ];
+              const listContext = signedControllerContext('GET', '/v1/proposals');
+              for (const [error, status, code] of cases) {
+                await expectProblem(
+                  new AiProposalAuditController(
+                    throwingApplication(error),
+                  ).listProposals(
+                    listContext.workspaceId,
+                    listContext.actorId,
+                    listContext.issuedAt,
+                    listContext.signature,
+                  ),
+                  status,
+                  code,
+                );
+              }
+              expect(JSON.stringify(logger.mock.calls)).not.toContain('password=secret');
+              logger.mockRestore();
+            });
+
+            it('validates service ports and boots through an injected application', async () => {
+              expect(resolveAiServicePort(undefined)).toBe(4_105);
+              expect(resolveAiServicePort('   ')).toBe(4_105);
+              expect(resolveAiServicePort('1')).toBe(1);
+              expect(resolveAiServicePort('65535')).toBe(65_535);
+              for (const value of ['0', '65536', '1.5', 'not-a-port']) {
+                expect(() => resolveAiServicePort(value)).toThrow(
+                  'AI service port is invalid',
+                );
+              }
+
+              const application: AiBootstrapApplication = {
+                enableShutdownHooks: vi.fn(),
+                listen: vi.fn().mockResolvedValue(undefined),
+              };
+              await bootstrapAiService(
+                { AI_SERVICE_PORT: '4321' },
+                async () => application,
+              );
+              expect(application.enableShutdownHooks).toHaveBeenCalledOnce();
+              expect(application.listen).toHaveBeenCalledWith(4_321, '0.0.0.0');
+            });
+
+            it('creates the default Nest application through the production module', async () => {
+              const application: AiBootstrapApplication = {
+                enableShutdownHooks: vi.fn(),
+                listen: vi.fn().mockResolvedValue(undefined),
+              };
+              const factory = vi
+                .spyOn(NestFactory, 'create')
+                .mockResolvedValue(application as never);
+              await expect(createAiApplication()).resolves.toBe(application);
+              factory.mockRestore();
+            });
+          });
+          '''
+          path.write_text(prefix + tail, encoding='utf-8')
           PY
-
-      - name: Install and verify AI service
-        run: |
           corepack enable
           pnpm install --frozen-lockfile
           pnpm exec prettier --single-quote --write apps/ai-service/src/quality-coverage.test.ts
-          pnpm --filter @life-os/ai-service lint
-          pnpm --filter @life-os/ai-service test
 
-      - name: Commit repair
+      - name: Commit repair before verification
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
@@ -302,3 +383,8 @@ jobs:
           authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
             push origin HEAD:feat/ai-authenticated-gateway-context
+
+      - name: Verify AI service
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
