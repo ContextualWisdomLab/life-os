@@ -16,7 +16,7 @@ export const PRODUCTION_SERVICE_NAMES = Object.freeze([
 ]);
 
 const IMMUTABLE_IMAGE_PATTERN =
-  /^(?<name>[a-z0-9](?:[a-z0-9._/:_-]*[a-z0-9])?)@(?<digest>sha256:[a-f0-9]{64})$/;
+  /^(?<name>[a-z0-9](?:[a-z0-9._/:-]*[a-z0-9])?)@(?<digest>sha256:[a-f0-9]{64})$/;
 const MAXIMUM_IMAGE_REFERENCE_BYTES = 512;
 const INVALID_IMAGE_MAP = 'Production image digest map is invalid';
 
@@ -102,7 +102,7 @@ export function renderProductionKustomization(imageMap) {
       throw new Error(INVALID_IMAGE_MAP);
     }
     lines.push(
-      `  - name: docker.io/contextualwisdomlab/life-os-${serviceName}`,
+      `  - name: ghcr.io/contextualwisdomlab/life-os-${serviceName}`,
       `    newName: ${image.name}`,
       `    digest: ${image.digest}`,
     );
