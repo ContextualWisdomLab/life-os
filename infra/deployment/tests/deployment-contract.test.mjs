@@ -72,7 +72,7 @@ describe('production image renderer', () => {
     assert.equal(
       (
         first.match(
-          /^\s+newName: ghcr.io\/contextualwisdomlab\/life-os-/gm,
+          /^\s+newName: docker.io\/contextualwisdomlab\/life-os-/gm,
         ) ?? []
       ).length,
       9,
