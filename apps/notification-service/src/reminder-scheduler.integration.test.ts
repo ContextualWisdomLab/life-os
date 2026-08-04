@@ -12,7 +12,9 @@ const workspaceAlpha = '018f47a4-9976-4c57-8a8a-674630a873d1';
 const workspaceBeta = '69b8f6fb-c65a-462e-b5e7-1b21808db998';
 const reminderAlpha = '91fe0f58-2035-49b7-a793-ac75939a433f';
 
-function reminder(overrides: Partial<ReminderOccurrence> = {}): ReminderOccurrence {
+function reminder(
+  overrides: Partial<ReminderOccurrence> = {},
+): ReminderOccurrence {
   return {
     id: reminderAlpha,
     workspaceId: workspaceAlpha,
@@ -248,7 +250,9 @@ describe('bounded reminder scheduling integration', () => {
       reason: 'delivery_failed',
       idempotencyKey: `${workspaceAlpha}:${reminderAlpha}:2026-08-04T12:00:00.000Z`,
     });
-    expect(JSON.stringify(repository.outcomes)).not.toContain('provider secret');
+    expect(JSON.stringify(repository.outcomes)).not.toContain(
+      'provider secret',
+    );
   });
 
   it('stops permanently at the bounded attempt limit without provider delivery', async () => {
