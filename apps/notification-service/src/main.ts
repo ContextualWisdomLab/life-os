@@ -28,3 +28,11 @@ export {
   type PersistedReminderOccurrence,
   type ReminderOutcome,
 } from './postgres-reminder-repository';
+
+export {
+  NotificationRuntime,
+  createNotificationPoolConfiguration,
+  createNotificationRuntime,
+  type NotificationPool,
+  type NotificationPoolFactory,
+} from './notification-runtime';
