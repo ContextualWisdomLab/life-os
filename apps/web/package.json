@@ -5,7 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev -p 3000",
-    "lint": "tsc --noEmit && prettier --single-quote --write app/planning-search-client.ts && git diff --exit-code -- app/planning-search-client.ts",
+    "lint": "tsc --noEmit && prettier --single-quote --check package.json app/planning-search-client.ts app/planning-search-client.test.ts app/api/planning/search/route.ts",
     "test": "tsx --test app/today-state.test.ts app/planning-search-client.test.ts",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"
