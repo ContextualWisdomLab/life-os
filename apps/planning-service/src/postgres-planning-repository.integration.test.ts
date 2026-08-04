@@ -160,4 +160,73 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
       new Set(created.map((task) => task.title)),
     );
   });
+
+  it('normalizes, ranks, bounds, and tenant-scopes unified search in PostgreSQL', async () => {
+    const workspaceId = randomUUID();
+    const otherWorkspaceId = randomUUID();
+    const runtime = createRuntime();
+    const goal = await runtime.service.createGoal(workspaceId, {
+      title: 'ＬＡＵＮＣＨ　ＰＬＡＮ',
+    });
+    const project = await runtime.service.createProject(workspaceId, {
+      goalId: goal.id,
+      title: 'Launch plan execution',
+    });
+    const task = await runtime.service.createTask(workspaceId, {
+      projectId: project.id,
+      title: 'Draft launch plan evidence',
+    });
+    await runtime.service.createGoal(workspaceId, {
+      title: 'Launch planning',
+    });
+    await runtime.service.createGoal(otherWorkspaceId, {
+      title: 'Launch plan',
+    });
+
+    await expect(
+      runtime.service.search(workspaceId, 'launch plan'),
+    ).resolves.toEqual([
+      {
+        entityType: 'goal',
+        id: goal.id,
+        title: goal.title,
+        createdAt: goal.createdAt,
+      },
+      {
+        entityType: 'project',
+        id: project.id,
+        parentId: goal.id,
+        title: project.title,
+        createdAt: project.createdAt,
+      },
+      {
+        entityType: 'task',
+        id: task.id,
+        parentId: project.id,
+        title: task.title,
+        status: task.status,
+        createdAt: task.createdAt,
+      },
+    ]);
+    await expect(
+      runtime.service.search(workspaceId, 'launch plan', 2),
+    ).resolves.toEqual([
+      {
+        entityType: 'goal',
+        id: goal.id,
+        title: goal.title,
+        createdAt: goal.createdAt,
+      },
+      {
+        entityType: 'project',
+        id: project.id,
+        parentId: goal.id,
+        title: project.title,
+        createdAt: project.createdAt,
+      },
+    ]);
+    await expect(
+      runtime.service.search(otherWorkspaceId, 'evidence'),
+    ).resolves.toEqual([]);
+  });
 });
