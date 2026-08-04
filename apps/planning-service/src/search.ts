@@ -3,6 +3,7 @@ const MAXIMUM_SEARCH_QUERY_LENGTH = 120;
 const MAXIMUM_SEARCH_TOKENS = 8;
 const DEFAULT_SEARCH_LIMIT = 20;
 const MAXIMUM_SEARCH_LIMIT = 25;
+const SEARCH_TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 
 /** Planning entity kinds included by the unified tenant-scoped search boundary. */
 export type PlanningSearchEntityType = 'goal' | 'project' | 'task';
@@ -46,6 +47,11 @@ export function normalizeSearchText(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase();
 }
 
+/** Splits normalized search text into Unicode letter-or-number tokens. */
+export function tokenizeSearchText(value: string): string[] {
+  return normalizeSearchText(value).match(SEARCH_TOKEN_PATTERN) ?? [];
+}
+
 function invalidSearchRequest(): never {
   throw new Error('Planning search request is invalid');
 }
@@ -66,8 +72,8 @@ export function requirePlanningSearchInput(
   ) {
     return invalidSearchRequest();
   }
-  const tokens = [...new Set(normalizedQuery.split(' '))];
-  if (tokens.length > MAXIMUM_SEARCH_TOKENS) {
+  const tokens = [...new Set(tokenizeSearchText(normalizedQuery))];
+  if (tokens.length === 0 || tokens.length > MAXIMUM_SEARCH_TOKENS) {
     return invalidSearchRequest();
   }
 
@@ -101,6 +107,15 @@ export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/gu, '\\$&');
 }
 
+/** Returns true only when every query token equals a complete title token. */
+export function matchesPlanningSearchTokens(
+  value: string,
+  input: PlanningSearchInput,
+): boolean {
+  const titleTokens = new Set(tokenizeSearchText(value));
+  return input.tokens.every((token) => titleTokens.has(token));
+}
+
 function matchRank(
   normalizedTitle: string,
   input: PlanningSearchInput,
@@ -108,10 +123,10 @@ function matchRank(
   if (normalizedTitle === input.normalizedQuery) {
     return 0;
   }
-  if (normalizedTitle.startsWith(input.normalizedQuery)) {
+  if (normalizedTitle.startsWith(`${input.normalizedQuery} `)) {
     return 1;
   }
-  if (input.tokens.every((token) => normalizedTitle.includes(token))) {
+  if (matchesPlanningSearchTokens(normalizedTitle, input)) {
     return 2;
   }
   return undefined;
