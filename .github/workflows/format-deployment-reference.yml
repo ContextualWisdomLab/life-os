@@ -7,13 +7,14 @@ on:
     paths:
       - '.github/workflows/format-deployment-reference.yml'
       - 'infra/deployment/**'
+      - 'infra/kubernetes/base/workloads-*.yaml'
 
 permissions:
   contents: write
 
 concurrency:
   group: format-production-deployment-reference
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -41,9 +42,51 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Format deployment helper sources
+      - name: Apply trusted registry aliases and format sources
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_names = (
+              'web',
+              'gateway',
+              'identity-service',
+              'planning-service',
+              'habit-service',
+              'review-service',
+              'ai-service',
+              'integration-calendar-service',
+              'integration-service',
+          )
+          workload_paths = (
+              Path('infra/kubernetes/base/workloads-public.yaml'),
+              Path('infra/kubernetes/base/workloads-core.yaml'),
+              Path('infra/kubernetes/base/workloads-integrations.yaml'),
+          )
+          for workload_path in workload_paths:
+              content = workload_path.read_text(encoding='utf-8')
+              for service_name in service_names:
+                  content = content.replace(
+                      f'image: life-os/{service_name}:local',
+                      f'image: ghcr.io/contextualwisdomlab/life-os-{service_name}:local',
+                  )
+              workload_path.write_text(content, encoding='utf-8')
+
+          test_path = Path(
+              'infra/deployment/tests/deployment-contract.test.mjs',
+          )
+          test_content = test_path.read_text(encoding='utf-8')
+          test_content = test_content.replace(
+              '`life-os/${serviceName}:local`',
+              '`ghcr.io/contextualwisdomlab/life-os-${serviceName}:local`',
+          )
+          test_content = test_content.replace(
+              '/^\\s+- name: life-os\\//gm',
+              '/^\\s+- name: ghcr.io\\/contextualwisdomlab\\/life-os-/gm',
+          )
+          test_path.write_text(test_content, encoding='utf-8')
+          PY
           pnpm exec prettier --single-quote --write \
             infra/deployment/render-production-overlay.mjs \
             infra/deployment/validate-rendered-manifest.mjs \
@@ -51,7 +94,7 @@ jobs:
             infra/deployment/tests/deployment-contract.test.mjs
           git rm .github/workflows/format-deployment-reference.yml
 
-      - name: Commit formatted sources and remove formatter
+      - name: Commit formatted and hardened sources
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -61,7 +104,10 @@ jobs:
             infra/deployment/validate-rendered-manifest.mjs \
             infra/deployment/create-provenance.mjs \
             infra/deployment/tests/deployment-contract.test.mjs \
+            infra/kubernetes/base/workloads-public.yaml \
+            infra/kubernetes/base/workloads-core.yaml \
+            infra/kubernetes/base/workloads-integrations.yaml \
             .github/workflows/format-deployment-reference.yml
           git diff --cached --check
-          git commit -m 'chore(deploy): format production deployment helpers'
+          git commit -m 'fix(deploy): format helpers and trust registry aliases'
           git push origin HEAD:feat/production-deployment-reference
