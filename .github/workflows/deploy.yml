@@ -132,12 +132,6 @@ jobs:
     timeout-minutes: 30
     environment: production
     env:
-      LIFE_OS_KUBE_CONFIG_B64: ${{ secrets.LIFE_OS_KUBE_CONFIG_B64 }}
-      IDENTITY_DATABASE_URL: ${{ secrets.IDENTITY_DATABASE_URL }}
-      PLANNING_DATABASE_URL: ${{ secrets.PLANNING_DATABASE_URL }}
-      HABIT_DATABASE_URL: ${{ secrets.HABIT_DATABASE_URL }}
-      AI_DATABASE_URL: ${{ secrets.AI_DATABASE_URL }}
-      REVIEW_DATABASE_URL: ${{ secrets.REVIEW_DATABASE_URL }}
       WEB_IMAGE: ${{ inputs.web_image }}
       GATEWAY_IMAGE: ${{ inputs.gateway_image }}
       WEB_ORIGIN: ${{ inputs.web_origin }}
@@ -216,6 +210,8 @@ jobs:
           kubectl kustomize "${render_root}/overlays/production" >"${RUNNER_TEMP}/life-os-production.yaml"
 
       - name: Configure ephemeral cluster credential
+        env:
+          LIFE_OS_KUBE_CONFIG_B64: ${{ secrets.LIFE_OS_KUBE_CONFIG_B64 }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -232,6 +228,11 @@ jobs:
         if: ${{ inputs.run_migrations }}
         env:
           LIFE_OS_MIGRATION_CONFIRMATION: apply-forward-only
+          IDENTITY_DATABASE_URL: ${{ secrets.IDENTITY_DATABASE_URL }}
+          PLANNING_DATABASE_URL: ${{ secrets.PLANNING_DATABASE_URL }}
+          HABIT_DATABASE_URL: ${{ secrets.HABIT_DATABASE_URL }}
+          AI_DATABASE_URL: ${{ secrets.AI_DATABASE_URL }}
+          REVIEW_DATABASE_URL: ${{ secrets.REVIEW_DATABASE_URL }}
         shell: bash
         run: |
           set -Eeuo pipefail
