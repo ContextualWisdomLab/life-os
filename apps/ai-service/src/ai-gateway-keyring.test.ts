@@ -25,7 +25,7 @@ function activeEnvironment(): {
 }
 
 describe('AI gateway key configuration', () => {
-  it.each(['a', 'A_1', 'release.2026-08', 'gateway-key']) (
+  it.each(['a', 'A_1', 'release.2026-08', 'gateway-key'])(
     'accepts bounded opaque key identifier %s',
     (keyId) => {
       expect(requireAiGatewayKeyId(keyId)).toBe(keyId);
