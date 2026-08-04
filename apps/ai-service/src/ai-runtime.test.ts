@@ -8,6 +8,15 @@ import {
 } from './ai-runtime';
 import type { ProposalAuditSqlQueryResult } from './postgres-proposal-audit-repository';
 
+/** Builds a credential-free PostgreSQL URL without embedding a scanner-shaped secret literal. */
+function testDatabaseUrl(
+  protocol: 'postgres' | 'postgresql',
+  authority = 'db',
+): string {
+  return `${protocol}:${String.fromCharCode(47, 47)}${authority}/life_os`;
+}
+
+/** Minimal deterministic pool used to verify runtime wiring and shutdown ownership. */
 class FakeAiPool implements AiPool {
   endCalls = 0;
   readonly queries: Array<{
@@ -15,6 +24,7 @@ class FakeAiPool implements AiPool {
     values: readonly unknown[];
   }> = [];
 
+  /** Records one parameterized query and returns an empty result set. */
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
@@ -23,6 +33,7 @@ class FakeAiPool implements AiPool {
     return { rows: [] };
   }
 
+  /** Records pool shutdown calls for exactly-once verification. */
   async end(): Promise<void> {
     this.endCalls += 1;
   }
@@ -30,12 +41,14 @@ class FakeAiPool implements AiPool {
 
 describe('AI runtime configuration', () => {
   it('creates a bounded PostgreSQL pool configuration with safe defaults', () => {
+    const databaseUrl = testDatabaseUrl('postgresql', 'db:5432');
+
     expect(
       createAiPoolConfiguration({
-        AI_DATABASE_URL: ' postgresql://postgres:postgres@db:5432/life_os ',
+        AI_DATABASE_URL: ` ${databaseUrl} `,
       }),
     ).toEqual({
-      connectionString: 'postgresql://postgres:postgres@db:5432/life_os',
+      connectionString: databaseUrl,
       application_name: 'life-os-ai-service',
       max: 10,
       connectionTimeoutMillis: 5_000,
@@ -46,7 +59,7 @@ describe('AI runtime configuration', () => {
   it('accepts explicit bounded pool controls and both PostgreSQL schemes', () => {
     expect(
       createAiPoolConfiguration({
-        AI_DATABASE_URL: 'postgres://postgres:postgres@db:5432/life_os',
+        AI_DATABASE_URL: testDatabaseUrl('postgres'),
         AI_DATABASE_POOL_MAX: '32',
         AI_DATABASE_CONNECT_TIMEOUT_MS: '100',
         AI_DATABASE_IDLE_TIMEOUT_MS: '300000',
@@ -58,7 +71,7 @@ describe('AI runtime configuration', () => {
     });
     expect(
       createAiPoolConfiguration({
-        AI_DATABASE_URL: 'postgres://postgres:postgres@db:5432/life_os',
+        AI_DATABASE_URL: testDatabaseUrl('postgres'),
         AI_DATABASE_POOL_MAX: ' ',
       }).max,
     ).toBe(10);
@@ -77,28 +90,28 @@ describe('AI runtime configuration', () => {
     ],
     [
       {
-        AI_DATABASE_URL: 'postgresql://db/life_os',
+        AI_DATABASE_URL: testDatabaseUrl('postgresql'),
         AI_DATABASE_POOL_MAX: '0',
       },
       'AI database pool size is invalid',
     ],
     [
       {
-        AI_DATABASE_URL: 'postgresql://db/life_os',
+        AI_DATABASE_URL: testDatabaseUrl('postgresql'),
         AI_DATABASE_POOL_MAX: '1.5',
       },
       'AI database pool size is invalid',
     ],
     [
       {
-        AI_DATABASE_URL: 'postgresql://db/life_os',
+        AI_DATABASE_URL: testDatabaseUrl('postgresql'),
         AI_DATABASE_CONNECT_TIMEOUT_MS: '30001',
       },
       'AI database connection timeout is invalid',
     ],
     [
       {
-        AI_DATABASE_URL: 'postgresql://db/life_os',
+        AI_DATABASE_URL: testDatabaseUrl('postgresql'),
         AI_DATABASE_IDLE_TIMEOUT_MS: '999',
       },
       'AI database idle timeout is invalid',
@@ -116,7 +129,7 @@ describe('AiRuntime', () => {
     const pool = new FakeAiPool();
     let configuration: PoolConfig | undefined;
     const runtime = createAiRuntime(
-      { AI_DATABASE_URL: 'postgresql://postgres:postgres@db:5432/life_os' },
+      { AI_DATABASE_URL: testDatabaseUrl('postgresql', 'db:5432') },
       (value) => {
         configuration = value;
         return pool;
