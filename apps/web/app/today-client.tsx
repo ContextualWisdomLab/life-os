@@ -35,10 +35,7 @@ function localDate(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-function scheduleLabel(
-  action: TodayAction,
-  notScheduled: string,
-): string {
+function scheduleLabel(action: TodayAction, notScheduled: string): string {
   if (action.startMinute === null || action.durationMinutes === null) {
     return notScheduled;
   }
@@ -164,10 +161,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
     duration: number,
   ): void {
     if (!start) {
-      update(
-        () => clearTodaySchedule(draft, action.id),
-        'scheduleCleared',
-      );
+      update(() => clearTodaySchedule(draft, action.id), 'scheduleCleared');
       return;
     }
     update(
@@ -228,11 +222,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
           </div>
         </header>
 
-        <QuickCapture
-          locale={locale}
-          messages={messages}
-          onCapture={capture}
-        />
+        <QuickCapture locale={locale} messages={messages} onCapture={capture} />
         <p className="sr-status" aria-live="polite">
           {messageKey ? messages[messageKey] : ''}
         </p>
@@ -267,9 +257,7 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
                     <div className="priority-row">
                       <div>
                         <h3>{action.title}</h3>
-                        <p>
-                          {scheduleLabel(action, messages.notScheduled)}
-                        </p>
+                        <p>{scheduleLabel(action, messages.notScheduled)}</p>
                       </div>
                       <button
                         type="button"
