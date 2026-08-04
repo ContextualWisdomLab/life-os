@@ -158,7 +158,7 @@ describe('AI production runtime wiring', () => {
     expect(poolState.endCalls).toBe(1);
   });
 
-  it('covers the standalone and production runtime provider factories', async () => {
+  it('covers standalone and shared production provider factories', async () => {
     expect(providerFactory(AiAppModule, PROPOSAL_SERVICE)()).toBeInstanceOf(
       ProposalService,
     );
