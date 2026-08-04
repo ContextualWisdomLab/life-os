@@ -17,12 +17,14 @@ export {
 } from './reminder-scheduler';
 
 export {
-  NotificationIdempotencyConflictError,
   NotificationPersistenceError,
+  NotificationReplayConflictError,
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
+  hashNotificationIdempotencyKey,
   type InboxMessage,
   type NotificationSqlClient,
   type NotificationSqlQueryResult,
+  type PersistedReminderOccurrence,
   type ReminderOutcome,
 } from './postgres-reminder-repository';
