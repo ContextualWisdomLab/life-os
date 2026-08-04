@@ -407,7 +407,6 @@ export class ReminderScheduler {
       const quietHours = reminder.quietHours;
       if (
         quietHours !== null &&
-        /** Performs the is within quiet hours operation while preserving tenant-safe bounded behavior. */
         isWithinQuietHours(clock.minuteOfDay, quietHours)
       ) {
         const nextAttemptAt = nextAllowedInstant(
@@ -431,10 +430,16 @@ export class ReminderScheduler {
         continue;
       }
 
-      const deliveredToday = await this.repository.countDelivered(
-        reminder.workspaceId,
-        clock.localDate,
-      );
+      let deliveredToday: number;
+      try {
+        deliveredToday = await this.repository.countDelivered(
+          reminder.workspaceId,
+          clock.localDate,
+        );
+      } catch {
+        persistenceFailures += 1;
+        continue;
+      }
       if (deliveredToday >= reminder.maxPerLocalDay) {
         const nextAttemptAt = nextAllowedInstant(
           now,
@@ -486,7 +491,6 @@ export class ReminderScheduler {
         try {
           await this.repository.fail(
             reminder,
-            /** Performs the retry instant operation while preserving tenant-safe bounded behavior. */
             retryInstant(now, reminder.deliveryAttempt),
             'delivery_failed',
             claimKey,
