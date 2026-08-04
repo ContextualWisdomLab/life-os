@@ -63,8 +63,17 @@ describe('production image renderer', () => {
     assert.equal((first.match(/^\s+digest: sha256:/gm) ?? []).length, 9);
     assert.equal(
       (
-        first.match(/^\s+- name: ghcr.io\/contextualwisdomlab\/life-os-/gm) ??
-        []
+        first.match(
+          /^\s+- name: docker.io\/contextualwisdomlab\/life-os-/gm,
+        ) ?? []
+      ).length,
+      9,
+    );
+    assert.equal(
+      (
+        first.match(
+          /^\s+newName: ghcr.io\/contextualwisdomlab\/life-os-/gm,
+        ) ?? []
       ).length,
       9,
     );
