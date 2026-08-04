@@ -130,8 +130,8 @@ function browserRequest(
     method,
     headers: {
       cookie: 'life_os_session=opaque_session_value',
-      ...headers,
       ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+      ...headers,
     },
     body: payload,
   });
@@ -147,16 +147,32 @@ function expectedSignature(method: string, path: string): string {
     .digest('base64url');
 }
 
-describe('authenticated AI proposal BFF', () => {
-  it('derives workspace and actor from identity and never forwards the browser cookie', async () => {
-    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
-    const fetcher: AiProposalFetch = async (input, init) => {
+/** Creates a two-hop dependency simulator and records both calls. */
+function successfulFetcher(
+  upstream: unknown,
+  status = 200,
+): {
+  calls: Array<{ url: string; init: RequestInit | undefined }>;
+  fetcher: AiProposalFetch;
+} {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  return {
+    calls,
+    fetcher: async (input, init) => {
       calls.push({ url: String(input), init });
-      return calls.length === 1 ? sessionResponse() : jsonResponse(proposal, 201);
-    };
+      return calls.length === 1
+        ? sessionResponse()
+        : jsonResponse(upstream, status);
+    },
+  };
+}
 
+describe('authenticated AI proposal BFF', () => {
+  it('derives scope from identity and never forwards browser credentials', async () => {
+    const { calls, fetcher } = successfulFetcher(proposal, 201);
     const response = await handleAiProposalRequest(
       browserRequest('POST', '/api/ai/proposals', proposalRequest, {
+        authorization: 'Bearer browser-token',
         'x-workspace-id': randomUUID(),
         'x-actor-id': randomUUID(),
       }),
@@ -176,7 +192,10 @@ describe('authenticated AI proposal BFF', () => {
       identityHeaders.get('cookie'),
       'life_os_session=opaque_session_value',
     );
-    assert.match(identityHeaders.get('x-correlation-id') ?? '', /^[a-f0-9-]{36}$/);
+    assert.match(
+      identityHeaders.get('x-correlation-id') ?? '',
+      /^[a-f0-9-]{36}$/u,
+    );
 
     assert.equal(calls[1]?.url, 'http://ai-service:4105/v1/proposals');
     const aiHeaders = new Headers(calls[1]?.init?.headers);
@@ -186,7 +205,10 @@ describe('authenticated AI proposal BFF', () => {
     assert.equal(aiHeaders.get('x-actor-id'), null);
     assert.equal(aiHeaders.get('x-life-os-workspace-id'), WORKSPACE_ID);
     assert.equal(aiHeaders.get('x-life-os-actor-id'), ACTOR_ID);
-    assert.equal(aiHeaders.get('x-life-os-context-issued-at'), String(NOW_SECONDS));
+    assert.equal(
+      aiHeaders.get('x-life-os-context-issued-at'),
+      String(NOW_SECONDS),
+    );
     assert.equal(
       aiHeaders.get('x-life-os-context-signature'),
       expectedSignature('POST', '/v1/proposals'),
@@ -200,7 +222,7 @@ describe('authenticated AI proposal BFF', () => {
     assert.deepEqual(JSON.parse(String(calls[1]?.init?.body)), proposalRequest);
   });
 
-  it('translates proposal and decision routes to exact method-bound upstream paths', async () => {
+  it('translates every supported route to its exact method-bound upstream path', async () => {
     const cases: Array<{
       method: 'GET' | 'POST';
       browserPath: string;
@@ -246,13 +268,10 @@ describe('authenticated AI proposal BFF', () => {
     ];
 
     for (const testCase of cases) {
-      const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
-      const fetcher: AiProposalFetch = async (input, init) => {
-        calls.push({ url: String(input), init });
-        return calls.length === 1
-          ? sessionResponse()
-          : jsonResponse(testCase.upstreamResponse, testCase.expectedStatus);
-      };
+      const { calls, fetcher } = successfulFetcher(
+        testCase.upstreamResponse,
+        testCase.expectedStatus,
+      );
       const response = await handleAiProposalRequest(
         browserRequest(
           testCase.method,
@@ -266,7 +285,10 @@ describe('authenticated AI proposal BFF', () => {
       );
 
       assert.equal(response.status, testCase.expectedStatus);
-      assert.equal(calls[1]?.url, `http://ai-service:4105${testCase.expectedPath}`);
+      assert.equal(
+        calls[1]?.url,
+        `http://ai-service:4105${testCase.expectedPath}`,
+      );
       const headers = new Headers(calls[1]?.init?.headers);
       assert.equal(
         headers.get('x-life-os-context-signature'),
@@ -275,7 +297,7 @@ describe('authenticated AI proposal BFF', () => {
     }
   });
 
-  it('rejects malformed methods, route identifiers, query injection, and closed-body violations before fetch', async () => {
+  it('rejects malformed browser requests before any dependency call', async () => {
     const unsafeRequests: Array<{
       request: Request;
       route: AiProposalRoute;
@@ -347,7 +369,7 @@ describe('authenticated AI proposal BFF', () => {
     }
   });
 
-  it('rejects oversized cookies and request streams before dependency calls', async () => {
+  it('rejects oversized cookies and bodies before dependency calls', async () => {
     const oversizedCookie = browserRequest('GET', '/api/ai/proposals', undefined, {
       cookie: `life_os_session=${'x'.repeat(4096)}`,
     });
@@ -363,15 +385,12 @@ describe('authenticated AI proposal BFF', () => {
       }),
     });
 
-    for (const [request, route] of [
-      [oversizedCookie, { kind: 'collection' }],
-      [oversizedBody, { kind: 'collection' }],
-    ] as const) {
+    for (const request of [oversizedCookie, oversizedBody]) {
       let called = false;
       const response = await handleAiProposalRequest(
         request,
         environment,
-        route,
+        { kind: 'collection' },
         async () => {
           called = true;
           return sessionResponse();
@@ -406,8 +425,8 @@ describe('authenticated AI proposal BFF', () => {
     });
   });
 
-  it('passes through only tenant-safe proposal absence and decision conflict problems', async () => {
-    for (const safeProblem of [
+  it('passes through only reconstructed tenant-safe absence and conflict problems', async () => {
+    const safeProblems = [
       {
         status: 404,
         code: 'proposal_not_found',
@@ -423,7 +442,9 @@ describe('authenticated AI proposal BFF', () => {
         code: 'idempotency_conflict',
         title: 'Decision idempotency key conflicts with an earlier request',
       },
-    ]) {
+    ] as const;
+
+    for (const safeProblem of safeProblems) {
       let calls = 0;
       const response = await handleAiProposalRequest(
         browserRequest('GET', `/api/ai/proposals/${PROPOSAL_ID}`),
@@ -436,7 +457,7 @@ describe('authenticated AI proposal BFF', () => {
             : jsonResponse(
                 {
                   type: 'about:blank',
-                  title: safeProblem.title,
+                  title: 'Untrusted upstream title',
                   status: safeProblem.status,
                   code: safeProblem.code,
                 },
@@ -447,11 +468,16 @@ describe('authenticated AI proposal BFF', () => {
         NOW_SECONDS,
       );
       assert.equal(response.status, safeProblem.status);
-      assert.equal((await response.json() as { code: string }).code, safeProblem.code);
+      assert.deepEqual(await response.json(), {
+        type: 'about:blank',
+        title: safeProblem.title,
+        status: safeProblem.status,
+        code: safeProblem.code,
+      });
     }
   });
 
-  it('maps invalid configuration, malformed sessions, dependency failures, and malformed AI responses to one sanitized failure', async () => {
+  it('sanitizes invalid configuration, dependency failures, and malformed responses', async () => {
     const cases: Array<{
       environment?: Readonly<Record<string, string | undefined>>;
       fetcher: AiProposalFetch;
@@ -461,7 +487,10 @@ describe('authenticated AI proposal BFF', () => {
         fetcher: async () => sessionResponse(),
       },
       {
-        environment: { ...environment, AI_SERVICE_ORIGIN: 'https://user:secret@ai.example' },
+        environment: {
+          ...environment,
+          AI_SERVICE_ORIGIN: 'https://user:secret@ai.example',
+        },
         fetcher: async () => sessionResponse(),
       },
       {
@@ -492,7 +521,7 @@ describe('authenticated AI proposal BFF', () => {
         fetcher: async (input) =>
           String(input).includes('/v1/session')
             ? sessionResponse()
-            : jsonResponse({ proposalId: 'not-a-uuid' }),
+            : jsonResponse({ proposalId: 'not-a-uuid' }, 201),
       },
       {
         fetcher: async (input) =>
@@ -531,7 +560,7 @@ describe('authenticated AI proposal BFF', () => {
 });
 
 describe('AI proposal BFF helpers', () => {
-  it('validates service origins, secrets, session principals, and exact signatures', () => {
+  it('validates origins, secrets, session principals, and exact signatures', () => {
     assert.equal(
       requireAiServiceOrigin('https://ai.example.test'),
       'https://ai.example.test',
@@ -557,7 +586,10 @@ describe('AI proposal BFF helpers', () => {
     );
     assert.equal(headers['x-life-os-workspace-id'], WORKSPACE_ID);
     assert.equal(headers['x-life-os-actor-id'], ACTOR_ID);
-    assert.equal(headers['x-life-os-context-issued-at'], String(NOW_SECONDS));
+    assert.equal(
+      headers['x-life-os-context-issued-at'],
+      String(NOW_SECONDS),
+    );
     assert.equal(
       headers['x-life-os-context-signature'],
       expectedSignature('POST', `/v1/proposals/${PROPOSAL_ID}/decisions`),
@@ -578,7 +610,12 @@ describe('AI proposal BFF helpers', () => {
         new Error('AI service origin is invalid'),
       );
     }
-    for (const secret of ['', 'short', 'x'.repeat(4097), `x${String.fromCharCode(0)}y`]) {
+    for (const secret of [
+      '',
+      'short',
+      'x'.repeat(4097),
+      `x${String.fromCharCode(0)}y`,
+    ]) {
       assert.throws(
         () => requireAiGatewaySecret(secret),
         new Error('AI gateway context secret is invalid'),
