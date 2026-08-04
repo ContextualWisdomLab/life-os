@@ -52,6 +52,7 @@ jobs:
           python3 .github/scripts/complete_ai_quality_gates.py
           python3 .github/scripts/complete_ai_coverage.py
           python3 .github/scripts/patch_ai_coverage_tests.py
+          python3 .github/scripts/stabilize_notification_lease_test.py
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -72,6 +73,7 @@ jobs:
             apps/ai-service/package.json \
             apps/ai-service/vitest.config.ts \
             "apps/ai-service/src/**/*.ts" \
+            apps/notification-service/src/postgres-reminder-repository.integration.test.ts \
             package.json \
             product/capabilities.json \
             CHANGELOG.md \
@@ -102,6 +104,7 @@ jobs:
             .github/scripts/complete_ai_quality_gates.py \
             .github/scripts/complete_ai_coverage.py \
             .github/scripts/patch_ai_coverage_tests.py \
+            .github/scripts/stabilize_notification_lease_test.py \
             .github/workflows/ai-quality-gates-repair.yml
           git add -A
           git diff --cached --check
