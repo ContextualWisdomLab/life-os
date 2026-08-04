@@ -1,4 +1,4 @@
-name: Format Notification Persistence
+name: Repair Notification Persistence
 
 on:
   push:
@@ -18,9 +18,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  format:
+  repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -39,103 +39,945 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Enforce byte bounds and RFC 3339 timestamps
+      - name: Fence claims and harden persistence boundaries
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f'{label} did not match expected source')
+              return text.replace(old, new, 1)
+
+          def replace_pattern(text: str, pattern: str, replacement: str, label: str) -> str:
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f'{label} matched {count} times')
+              return updated
+
+          scheduler_path = Path('apps/notification-service/src/reminder-scheduler.ts')
+          scheduler = scheduler_path.read_text(encoding='utf-8')
+          scheduler = replace_once(
+              scheduler,
+              """  claim(
+              workspaceId: string,
+              reminderId: string,
+              idempotencyKey: string,
+            ): Promise<boolean>;
+          """.replace('          ', ''),
+              """  claim(
+              workspaceId: string,
+              reminderId: string,
+            ): Promise<string | null>;
+          """.replace('          ', ''),
+              'scheduler claim contract',
+          )
+          scheduler = replace_once(
+              scheduler,
+              """  markDelivered(
+              reminder: ReminderOccurrence,
+              deliveredAt: string,
+              idempotencyKey: string,
+            ): Promise<void>;
+          """.replace('          ', ''),
+              """  markDelivered(
+              reminder: ReminderOccurrence,
+              deliveredAt: string,
+              claimKey: string,
+              idempotencyKey: string,
+            ): Promise<void>;
+          """.replace('          ', ''),
+              'scheduler delivered contract',
+          )
+          scheduler = replace_once(
+              scheduler,
+              """  defer(
+              reminder: ReminderOccurrence,
+              nextAttemptAt: string,
+              reason: 'quiet_hours' | 'daily_limit',
+              idempotencyKey: string,
+            ): Promise<void>;
+          """.replace('          ', ''),
+              """  defer(
+              reminder: ReminderOccurrence,
+              nextAttemptAt: string,
+              reason: 'quiet_hours' | 'daily_limit',
+              claimKey: string,
+              idempotencyKey: string,
+            ): Promise<void>;
+          """.replace('          ', ''),
+              'scheduler defer contract',
+          )
+          scheduler = replace_once(
+              scheduler,
+              """  fail(
+              reminder: ReminderOccurrence,
+              retryAt: string | null,
+              reason: 'delivery_failed' | 'attempt_limit',
+              idempotencyKey: string,
+            ): Promise<void>;
+          """.replace('          ', ''),
+              """  fail(
+              reminder: ReminderOccurrence,
+              retryAt: string | null,
+              reason: 'delivery_failed' | 'attempt_limit',
+              claimKey: string,
+              idempotencyKey: string,
+            ): Promise<void>;
+          """.replace('          ', ''),
+              'scheduler failure contract',
+          )
+          scheduler = replace_once(
+              scheduler,
+              """      const deliveryKey = idempotencyKey(reminder);
+                const claimed = await this.repository.claim(
+                  reminder.workspaceId,
+                  reminder.id,
+                  deliveryKey,
+                );
+                if (!claimed) {
+          """.replace('              ', ''),
+              """      const deliveryKey = idempotencyKey(reminder);
+                const claimKey = await this.repository.claim(
+                  reminder.workspaceId,
+                  reminder.id,
+                );
+                if (claimKey === null) {
+          """.replace('              ', ''),
+              'scheduler claim acquisition',
+          )
+          scheduler = scheduler.replace(
+              "          'quiet_hours',\n          deliveryKey,\n",
+              "          'quiet_hours',\n          claimKey,\n          deliveryKey,\n",
+              1,
+          )
+          scheduler = scheduler.replace(
+              "          'daily_limit',\n          deliveryKey,\n",
+              "          'daily_limit',\n          claimKey,\n          deliveryKey,\n",
+              1,
+          )
+          scheduler = scheduler.replace(
+              "          'attempt_limit',\n          deliveryKey,\n",
+              "          'attempt_limit',\n          claimKey,\n          deliveryKey,\n",
+              1,
+          )
+          scheduler = replace_once(
+              scheduler,
+              """      try {
+                await this.gateway.deliver({
+                  workspaceId: reminder.workspaceId,
+                  reminderId: reminder.id,
+                  title: reminder.title,
+                  dueAt: reminder.dueAt,
+                  timeZone: reminder.timeZone,
+                  idempotencyKey: deliveryKey,
+                });
+                await this.repository.markDelivered(
+                  reminder,
+                  now.toISOString(),
+                  deliveryKey,
+                );
+                delivered += 1;
+              } catch {
+                await this.repository.fail(
+                  reminder,
+                  retryInstant(now, reminder.deliveryAttempt),
+                  'delivery_failed',
+                  deliveryKey,
+                );
+                failed += 1;
+              }
+          """.replace('              ', ''),
+              """      try {
+                await this.gateway.deliver({
+                  workspaceId: reminder.workspaceId,
+                  reminderId: reminder.id,
+                  title: reminder.title,
+                  dueAt: reminder.dueAt,
+                  timeZone: reminder.timeZone,
+                  idempotencyKey: deliveryKey,
+                });
+              } catch {
+                await this.repository.fail(
+                  reminder,
+                  retryInstant(now, reminder.deliveryAttempt),
+                  'delivery_failed',
+                  claimKey,
+                  deliveryKey,
+                );
+                failed += 1;
+                continue;
+              }
+              await this.repository.markDelivered(
+                reminder,
+                now.toISOString(),
+                claimKey,
+                deliveryKey,
+              );
+              delivered += 1;
+          """.replace('              ', ''),
+              'scheduler provider and persistence separation',
+          )
+          scheduler_path.write_text(scheduler, encoding='utf-8')
 
           repository_path = Path('apps/notification-service/src/postgres-reminder-repository.ts')
           repository = repository_path.read_text(encoding='utf-8')
-          old_constants = """const UUID_V4_PATTERN =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-          const LOCAL_DATE_PATTERN = /^(\\d{4})-(\\d{2})-(\\d{2})$/u;
-          const MAXIMUM_IDEMPOTENCY_KEY_LENGTH = 1_024;
-          """.replace('          ', '')
-          new_constants = """const UUID_V4_PATTERN =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-          const RFC_3339_TIMESTAMP_PATTERN =
-            /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$/u;
-          const LOCAL_DATE_PATTERN = /^(\\d{4})-(\\d{2})-(\\d{2})$/u;
-          const MAXIMUM_IDEMPOTENCY_KEY_BYTES = 1_024;
-          """.replace('          ', '')
-          if old_constants not in repository:
-              raise SystemExit('notification repository constants did not match expected source')
-          repository = repository.replace(old_constants, new_constants, 1)
-
-          old_timestamp = """function requireTimestamp(value: unknown): string {
-            if (typeof value !== 'string' && !(value instanceof Date)) {
-              return persistenceFailure();
-            }
-            const candidate = value instanceof Date ? value : new Date(value);
-            if (Number.isNaN(candidate.getTime())) {
-              return persistenceFailure();
-            }
-            return candidate.toISOString();
-          }
-          """.replace('          ', '')
-          new_timestamp = """function requireTimestamp(value: unknown): string {
-            if (value instanceof Date) {
-              if (Number.isNaN(value.getTime())) {
-                return persistenceFailure();
+          if 'MAXIMUM_IDEMPOTENCY_KEY_LENGTH' in repository:
+              repository = replace_once(
+                  repository,
+                  """const UUID_V4_PATTERN =
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+                  const LOCAL_DATE_PATTERN = /^\\d{4}-\\d{2}-\\d{2}$/u;
+                  const MAXIMUM_IDEMPOTENCY_KEY_LENGTH = 1_024;
+                  """.replace('                  ', ''),
+                  """const UUID_V4_PATTERN =
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+                  const RFC_3339_TIMESTAMP_PATTERN =
+                    /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$/u;
+                  const LOCAL_DATE_PATTERN = /^\\d{4}-\\d{2}-\\d{2}$/u;
+                  const MAXIMUM_IDEMPOTENCY_KEY_BYTES = 1_024;
+                  """.replace('                  ', ''),
+                  'repository constants',
+              )
+              repository = replace_once(
+                  repository,
+                  """function requireTimestamp(value: unknown): string {
+                    if (typeof value !== 'string' && !(value instanceof Date)) {
+                      return persistenceFailure();
+                    }
+                    const candidate = value instanceof Date ? value : new Date(value);
+                    if (Number.isNaN(candidate.getTime())) {
+                      return persistenceFailure();
+                    }
+                    return candidate.toISOString();
+                  }
+                  """.replace('                  ', ''),
+                  """function requireTimestamp(value: unknown): string {
+                    if (value instanceof Date) {
+                      if (Number.isNaN(value.getTime())) {
+                        return persistenceFailure();
+                      }
+                      return value.toISOString();
+                    }
+                    if (
+                      typeof value !== 'string' ||
+                      !RFC_3339_TIMESTAMP_PATTERN.test(value)
+                    ) {
+                      return persistenceFailure();
+                    }
+                    const candidate = new Date(value);
+                    if (Number.isNaN(candidate.getTime())) {
+                      return persistenceFailure();
+                    }
+                    return candidate.toISOString();
+                  }
+                  """.replace('                  ', ''),
+                  'repository timestamp validator',
+              )
+              repository = replace_once(
+                  repository,
+                  'value.length > MAXIMUM_IDEMPOTENCY_KEY_LENGTH',
+                  "Buffer.byteLength(value, 'utf8') > MAXIMUM_IDEMPOTENCY_KEY_BYTES",
+                  'repository idempotency byte bound',
+              )
+          repository = replace_once(
+              repository,
+              """    private readonly uuidFactory: () => string = randomUUID,
+                ) {
+          """.replace('              ', ''),
+              """    private readonly uuidFactory: () => string = randomUUID,
+                  private readonly claimKeyFactory: () => string = randomUUID,
+                ) {
+          """.replace('              ', ''),
+              'repository claim factory',
+          )
+          repository = replace_pattern(
+              repository,
+              r"  async claim\([\s\S]*?\n  async countDelivered\(",
+              """  async claim(
+                workspaceId: string,
+                reminderId: string,
+              ): Promise<string | null> {
+                const safeWorkspaceId = requireUuid(workspaceId);
+                const safeReminderId = requireUuid(reminderId);
+                const claimKey = requireUuid(this.claimKeyFactory());
+                const result = await this.query<IdentifierRow>(
+                  `UPDATE notification_service.reminder_occurrences
+                   SET claim_key_hash = $3,
+                       claim_expires_at = clock_timestamp()
+                         + make_interval(secs => $4),
+                       updated_at = clock_timestamp()
+                   WHERE workspace_id = $1
+                     AND reminder_id = $2
+                     AND occurrence_status = 'pending'
+                     AND (claim_expires_at IS NULL OR claim_expires_at <= clock_timestamp())
+                   RETURNING reminder_id`,
+                  [
+                    safeWorkspaceId,
+                    safeReminderId,
+                    hashNotificationIdempotencyKey(claimKey),
+                    this.claimLeaseSeconds,
+                  ],
+                );
+                const row = zeroOrOne(result.rows);
+                if (row === undefined) {
+                  return null;
+                }
+                requireExpectedUuid(requireUuid(row.reminder_id), safeReminderId);
+                return claimKey;
               }
-              return value.toISOString();
-            }
-            if (
-              typeof value !== 'string' ||
-              !RFC_3339_TIMESTAMP_PATTERN.test(value)
-            ) {
-              return persistenceFailure();
-            }
-            const candidate = new Date(value);
-            if (Number.isNaN(candidate.getTime())) {
-              return persistenceFailure();
-            }
-            return candidate.toISOString();
-          }
-          """.replace('          ', '')
-          if old_timestamp not in repository:
-              raise SystemExit('notification timestamp validator did not match expected source')
-          repository = repository.replace(old_timestamp, new_timestamp, 1)
-          repository = repository.replace(
-              'value.length > MAXIMUM_IDEMPOTENCY_KEY_LENGTH',
-              "Buffer.byteLength(value, 'utf8') > MAXIMUM_IDEMPOTENCY_KEY_BYTES",
-              1,
+
+              async countDelivered(""".replace('              ', ''),
+              'repository claim implementation',
+          )
+          repository = replace_pattern(
+              repository,
+              r"  async markDelivered\([\s\S]*?\n  async defer\(",
+              """  async markDelivered(
+                reminder: ReminderOccurrence,
+                deliveredAt: string,
+                claimKey: string,
+                idempotencyKey: string,
+              ): Promise<void> {
+                const safe = safeReminderOccurrence(reminder);
+                const safeDeliveredAt = requireTimestamp(deliveredAt);
+                const claimDigest = hashNotificationIdempotencyKey(claimKey);
+                const idempotencyDigest = hashNotificationIdempotencyKey(idempotencyKey);
+                const outcomeId = requireUuid(this.uuidFactory());
+                const result = await this.query<TransitionRow>(
+                  `WITH transitioned_occurrence AS (
+                     UPDATE notification_service.reminder_occurrences
+                     SET occurrence_status = 'delivered',
+                         updated_at = clock_timestamp()
+                     WHERE workspace_id = $1
+                       AND reminder_id = $2
+                       AND due_instant = $3
+                       AND delivery_attempt_count = $4
+                       AND occurrence_status = 'pending'
+                       AND claim_key_hash = $5
+                       AND claim_expires_at > clock_timestamp()
+                     RETURNING workspace_id, reminder_id
+                   ), inserted_outcome AS (
+                     INSERT INTO notification_service.reminder_outcomes
+                       (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+                        next_attempt_at, outcome_reason, idempotency_key_hash,
+                        delivery_local_date)
+                     SELECT $6, workspace_id, reminder_id, 'delivered', $7, NULL, NULL,
+                            $9, ($7::timestamptz AT TIME ZONE $8)::date
+                     FROM transitioned_occurrence
+                     RETURNING outcome_id
+                   )
+                   SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+                          EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
+                  [
+                    safe.workspaceId,
+                    safe.id,
+                    safe.dueAt,
+                    safe.deliveryAttempt,
+                    claimDigest,
+                    outcomeId,
+                    safeDeliveredAt,
+                    safe.timeZone,
+                    idempotencyDigest,
+                  ],
+                );
+                requireSuccessfulTransition(exactlyOne(result.rows));
+              }
+
+              async defer(""".replace('              ', ''),
+              'repository delivered transition',
+          )
+          repository = replace_pattern(
+              repository,
+              r"  async defer\([\s\S]*?\n  async fail\(",
+              """  async defer(
+                reminder: ReminderOccurrence,
+                nextAttemptAt: string,
+                reason: 'quiet_hours' | 'daily_limit',
+                claimKey: string,
+                idempotencyKey: string,
+              ): Promise<void> {
+                const safe = safeReminderOccurrence(reminder);
+                const safeNextAttemptAt = requireTimestamp(nextAttemptAt);
+                const claimDigest = hashNotificationIdempotencyKey(claimKey);
+                const idempotencyDigest = hashNotificationIdempotencyKey(idempotencyKey);
+                const outcomeId = requireUuid(this.uuidFactory());
+                const result = await this.query<TransitionRow>(
+                  `WITH transitioned_occurrence AS (
+                     UPDATE notification_service.reminder_occurrences
+                     SET due_instant = $5,
+                         claim_key_hash = NULL,
+                         claim_expires_at = NULL,
+                         updated_at = clock_timestamp()
+                     WHERE workspace_id = $1
+                       AND reminder_id = $2
+                       AND due_instant = $3
+                       AND delivery_attempt_count = $4
+                       AND occurrence_status = 'pending'
+                       AND claim_key_hash = $6
+                       AND claim_expires_at > clock_timestamp()
+                     RETURNING workspace_id, reminder_id
+                   ), inserted_outcome AS (
+                     INSERT INTO notification_service.reminder_outcomes
+                       (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+                        next_attempt_at, outcome_reason, idempotency_key_hash,
+                        delivery_local_date)
+                     SELECT $7, workspace_id, reminder_id, 'deferred', clock_timestamp(),
+                            $5, $8, $9, NULL
+                     FROM transitioned_occurrence
+                     RETURNING outcome_id
+                   )
+                   SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+                          EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
+                  [
+                    safe.workspaceId,
+                    safe.id,
+                    safe.dueAt,
+                    safe.deliveryAttempt,
+                    safeNextAttemptAt,
+                    claimDigest,
+                    outcomeId,
+                    reason,
+                    idempotencyDigest,
+                  ],
+                );
+                requireSuccessfulTransition(exactlyOne(result.rows));
+              }
+
+              async fail(""".replace('              ', ''),
+              'repository defer transition',
+          )
+          repository = replace_pattern(
+              repository,
+              r"  async fail\([\s\S]*?\n  /\*\* Returns a bounded newest-first tenant reminder view\. \*/",
+              """  async fail(
+                reminder: ReminderOccurrence,
+                retryAt: string | null,
+                reason: 'delivery_failed' | 'attempt_limit',
+                claimKey: string,
+                idempotencyKey: string,
+              ): Promise<void> {
+                const safe = safeReminderOccurrence(reminder);
+                const claimDigest = hashNotificationIdempotencyKey(claimKey);
+                const idempotencyDigest = hashNotificationIdempotencyKey(idempotencyKey);
+                const outcomeId = requireUuid(this.uuidFactory());
+                if (reason === 'delivery_failed') {
+                  if (retryAt === null || safe.deliveryAttempt >= MAX_DELIVERY_ATTEMPTS) {
+                    return persistenceFailure();
+                  }
+                  const safeRetryAt = requireTimestamp(retryAt);
+                  const result = await this.query<TransitionRow>(
+                    `WITH transitioned_occurrence AS (
+                       UPDATE notification_service.reminder_occurrences
+                       SET due_instant = $5,
+                           delivery_attempt_count = delivery_attempt_count + 1,
+                           claim_key_hash = NULL,
+                           claim_expires_at = NULL,
+                           updated_at = clock_timestamp()
+                       WHERE workspace_id = $1
+                         AND reminder_id = $2
+                         AND due_instant = $3
+                         AND delivery_attempt_count = $4
+                         AND occurrence_status = 'pending'
+                         AND claim_key_hash = $6
+                         AND claim_expires_at > clock_timestamp()
+                       RETURNING workspace_id, reminder_id
+                     ), inserted_outcome AS (
+                       INSERT INTO notification_service.reminder_outcomes
+                         (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+                          next_attempt_at, outcome_reason, idempotency_key_hash,
+                          delivery_local_date)
+                       SELECT $7, workspace_id, reminder_id, 'failed', clock_timestamp(),
+                              $5, 'delivery_failed', $8, NULL
+                       FROM transitioned_occurrence
+                       RETURNING outcome_id
+                     )
+                     SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+                            EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
+                    [
+                      safe.workspaceId,
+                      safe.id,
+                      safe.dueAt,
+                      safe.deliveryAttempt,
+                      safeRetryAt,
+                      claimDigest,
+                      outcomeId,
+                      idempotencyDigest,
+                    ],
+                  );
+                  requireSuccessfulTransition(exactlyOne(result.rows));
+                  return;
+                }
+
+                if (retryAt !== null || safe.deliveryAttempt !== MAX_DELIVERY_ATTEMPTS) {
+                  return persistenceFailure();
+                }
+                const result = await this.query<TransitionRow>(
+                  `WITH transitioned_occurrence AS (
+                     UPDATE notification_service.reminder_occurrences
+                     SET occurrence_status = 'failed',
+                         updated_at = clock_timestamp()
+                     WHERE workspace_id = $1
+                       AND reminder_id = $2
+                       AND due_instant = $3
+                       AND delivery_attempt_count = $4
+                       AND occurrence_status = 'pending'
+                       AND claim_key_hash = $5
+                       AND claim_expires_at > clock_timestamp()
+                     RETURNING workspace_id, reminder_id
+                   ), inserted_outcome AS (
+                     INSERT INTO notification_service.reminder_outcomes
+                       (outcome_id, workspace_id, reminder_id, outcome_kind, occurred_at,
+                        next_attempt_at, outcome_reason, idempotency_key_hash,
+                        delivery_local_date)
+                     SELECT $6, workspace_id, reminder_id, 'failed', clock_timestamp(),
+                            NULL, 'attempt_limit', $7, NULL
+                     FROM transitioned_occurrence
+                     RETURNING outcome_id
+                   )
+                   SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+                          EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
+                  [
+                    safe.workspaceId,
+                    safe.id,
+                    safe.dueAt,
+                    safe.deliveryAttempt,
+                    claimDigest,
+                    outcomeId,
+                    idempotencyDigest,
+                  ],
+                );
+                requireSuccessfulTransition(exactlyOne(result.rows));
+              }
+
+              /** Returns a bounded newest-first tenant reminder view. */""".replace('              ', ''),
+              'repository failure transitions',
           )
           repository_path.write_text(repository, encoding='utf-8')
 
-          test_path = Path('apps/notification-service/src/postgres-reminder-repository.test.ts')
-          test = test_path.read_text(encoding='utf-8')
-          old_key_cases = "for (const value of ['', 'key\\nvalue', 42, 'x'.repeat(1025)]) {"
-          new_key_cases = "for (const value of [\n      '',\n      'key\\nvalue',\n      42,\n      'x'.repeat(1025),\n      'é'.repeat(600),\n    ]) {"
-          if old_key_cases not in test:
-              raise SystemExit('notification idempotency test cases did not match expected source')
-          test = test.replace(old_key_cases, new_key_cases, 1)
-          old_due_case = "      () => repository.listDue('invalid', 10),\n"
-          new_due_case = (
-              "      () => repository.listDue('invalid', 10),\n"
-              "      () => repository.listDue('2026-08-04', 10),\n"
+          unit_path = Path('apps/notification-service/src/postgres-reminder-repository.test.ts')
+          unit = unit_path.read_text(encoding='utf-8')
+          unit = replace_once(
+              unit,
+              "const messageId = 'ca035df4-0149-4b08-8f21-07bd758cfbaa';\n",
+              "const messageId = 'ca035df4-0149-4b08-8f21-07bd758cfbaa';\nconst claimKey = 'ebeb80f5-a077-45ee-9f39-f3e64af94cdb';\n",
+              'unit claim key constant',
           )
-          if old_due_case not in test:
-              raise SystemExit('notification due validation test did not match expected source')
-          test = test.replace(old_due_case, new_due_case, 1)
-          test_path.write_text(test, encoding='utf-8')
+          if "'é'.repeat(600)" not in unit:
+              unit = replace_once(
+                  unit,
+                  "for (const value of ['', 'key\\nvalue', 42, 'x'.repeat(1025)]) {",
+                  "for (const value of [\n      '',\n      'key\\nvalue',\n      42,\n      'x'.repeat(1025),\n      'é'.repeat(600),\n    ]) {",
+                  'unit byte bound cases',
+              )
+          unit = replace_pattern(
+              unit,
+              r"  it\('claims once with a SHA-256 digest and a bounded lease',[\s\S]*?\n  it\('counts delivered outcomes",
+              """  it('returns one opaque claim key and null when the lease is unavailable', async () => {
+                const claimedClient = new RecordingSqlClient([[{ reminder_id: reminderId }]]);
+                const repository = new PostgresReminderRepository(
+                  claimedClient,
+                  600,
+                  () => outcomeId,
+                  () => claimKey,
+                );
+
+                await expect(repository.claim(workspaceId, reminderId)).resolves.toBe(
+                  claimKey,
+                );
+                const call = claimedClient.calls[0];
+                expect(call?.text).toContain(
+                  'UPDATE notification_service.reminder_occurrences',
+                );
+                expect(call?.text).toContain('claim_expires_at <= clock_timestamp()');
+                expect(call?.text).toContain('make_interval(secs => $4)');
+                expect(call?.values?.[0]).toBe(workspaceId);
+                expect(call?.values?.[1]).toBe(reminderId);
+                expect(call?.values?.[2]).toEqual(
+                  hashNotificationIdempotencyKey(claimKey),
+                );
+                expect(call?.values?.[3]).toBe(600);
+
+                const missedClient = new RecordingSqlClient([[]]);
+                await expect(
+                  new PostgresReminderRepository(
+                    missedClient,
+                    300,
+                    () => outcomeId,
+                    () => claimKey,
+                  ).claim(workspaceId, reminderId),
+                ).resolves.toBeNull();
+                await expect(
+                  new PostgresReminderRepository(
+                    new RecordingSqlClient([]),
+                    300,
+                    () => outcomeId,
+                    () => 'numeric-claim-key',
+                  ).claim(workspaceId, reminderId),
+                ).rejects.toBeInstanceOf(NotificationPersistenceError);
+              });
+
+              it('counts delivered outcomes""".replace('              ', ''),
+              'unit claim test',
+          )
+          unit = unit.replace(
+              "      '2026-08-04T12:00:01.000Z',\n      idempotencyKey,\n    );",
+              "      '2026-08-04T12:00:01.000Z',\n      claimKey,\n      idempotencyKey,\n    );",
+              1,
+          )
+          unit = unit.replace(
+              "      'quiet_hours',\n      idempotencyKey,\n    );",
+              "      'quiet_hours',\n      claimKey,\n      idempotencyKey,\n    );",
+              1,
+          )
+          unit = unit.replace(
+              "      'delivery_failed',\n      idempotencyKey,\n    );",
+              "      'delivery_failed',\n      claimKey,\n      idempotencyKey,\n    );",
+              1,
+          )
+          unit = unit.replace(
+              "      'attempt_limit',\n      idempotencyKey,\n    );",
+              "      'attempt_limit',\n      claimKey,\n      idempotencyKey,\n    );",
+              1,
+          )
+          unit = unit.replace(
+              "        '2026-08-04T12:00:01.000Z',\n        idempotencyKey,\n      ),",
+              "        '2026-08-04T12:00:01.000Z',\n        claimKey,\n        idempotencyKey,\n      ),",
+              1,
+          )
+          unit = replace_once(
+              unit,
+              """    for (const call of client.calls) {
+                expect(call.text).toContain('WITH transitioned_occurrence AS');
+          """.replace('              ', ''),
+              """    for (const call of client.calls) {
+                expect(call.text).toContain('WITH transitioned_occurrence AS');
+                expect(call.text).toContain(
+                  'claim_expires_at > clock_timestamp()',
+                );
+          """.replace('              ', ''),
+              'unit active lease assertion',
+          )
+          if "repository.listDue('2026-08-04', 10)" not in unit:
+              unit = unit.replace(
+                  "      () => repository.listDue('invalid', 10),\n",
+                  "      () => repository.listDue('invalid', 10),\n      () => repository.listDue('2026-08-04', 10),\n",
+                  1,
+              )
+          unit_path.write_text(unit, encoding='utf-8')
+
+          scheduler_unit_path = Path('apps/notification-service/src/reminder-scheduler.test.ts')
+          scheduler_unit = scheduler_unit_path.read_text(encoding='utf-8')
+          scheduler_unit = replace_once(
+              scheduler_unit,
+              """  async claim(): Promise<boolean> {
+                return true;
+              }
+          """.replace('              ', ''),
+              """  async claim(): Promise<string | null> {
+                return 'noop-claim-key';
+              }
+          """.replace('              ', ''),
+              'scheduler noop claim',
+          )
+          scheduler_unit_path.write_text(scheduler_unit, encoding='utf-8')
+
+          scheduler_integration_path = Path(
+              'apps/notification-service/src/reminder-scheduler.integration.test.ts'
+          )
+          scheduler_integration = scheduler_integration_path.read_text(encoding='utf-8')
+          scheduler_integration = replace_pattern(
+              scheduler_integration,
+              r"class InMemoryReminderRepository implements ReminderRepository \{[\s\S]*?\n\}\n\nclass RecordingGateway",
+              """class InMemoryReminderRepository implements ReminderRepository {
+                readonly claims = new Map<string, string>();
+                readonly outcomes: Outcome[] = [];
+                readonly deliveredByWorkspaceDate = new Map<string, number>();
+
+                constructor(readonly records: readonly unknown[]) {}
+
+                async listDue(_now: string, limit: number): Promise<readonly unknown[]> {
+                  return this.records.slice(0, limit);
+                }
+
+                async claim(
+                  workspaceId: string,
+                  reminderId: string,
+                ): Promise<string | null> {
+                  const occurrenceKey = `${workspaceId}:${reminderId}`;
+                  if (this.claims.has(occurrenceKey)) return null;
+                  const claimKey = `${occurrenceKey}:claim`;
+                  this.claims.set(occurrenceKey, claimKey);
+                  return claimKey;
+                }
+
+                async countDelivered(workspaceId: string, date: string): Promise<number> {
+                  return this.deliveredByWorkspaceDate.get(`${workspaceId}:${date}`) ?? 0;
+                }
+
+                async markDelivered(
+                  value: ReminderOccurrence,
+                  deliveredAt: string,
+                  claimKey: string,
+                  idempotencyKey: string,
+                ): Promise<void> {
+                  this.requireClaim(value, claimKey);
+                  const date = localDate(deliveredAt, value.timeZone);
+                  const key = `${value.workspaceId}:${date}`;
+                  this.deliveredByWorkspaceDate.set(
+                    key,
+                    (this.deliveredByWorkspaceDate.get(key) ?? 0) + 1,
+                  );
+                  this.outcomes.push({
+                    kind: 'delivered',
+                    workspaceId: value.workspaceId,
+                    reminderId: value.id,
+                    at: deliveredAt,
+                    reason: null,
+                    idempotencyKey,
+                  });
+                }
+
+                async defer(
+                  value: ReminderOccurrence,
+                  nextAttemptAt: string,
+                  reason: 'quiet_hours' | 'daily_limit',
+                  claimKey: string,
+                  idempotencyKey: string,
+                ): Promise<void> {
+                  this.release(value, claimKey);
+                  this.outcomes.push({
+                    kind: 'deferred',
+                    workspaceId: value.workspaceId,
+                    reminderId: value.id,
+                    at: nextAttemptAt,
+                    reason,
+                    idempotencyKey,
+                  });
+                }
+
+                async fail(
+                  value: ReminderOccurrence,
+                  retryAt: string | null,
+                  reason: 'delivery_failed' | 'attempt_limit',
+                  claimKey: string,
+                  idempotencyKey: string,
+                ): Promise<void> {
+                  this.requireClaim(value, claimKey);
+                  if (retryAt !== null) this.release(value, claimKey);
+                  this.outcomes.push({
+                    kind: 'failed',
+                    workspaceId: value.workspaceId,
+                    reminderId: value.id,
+                    at: retryAt,
+                    reason,
+                    idempotencyKey,
+                  });
+                }
+
+                private occurrenceKey(value: ReminderOccurrence): string {
+                  return `${value.workspaceId}:${value.id}`;
+                }
+
+                private requireClaim(value: ReminderOccurrence, claimKey: string): void {
+                  if (this.claims.get(this.occurrenceKey(value)) !== claimKey) {
+                    throw new Error('claim is not owned');
+                  }
+                }
+
+                private release(value: ReminderOccurrence, claimKey: string): void {
+                  this.requireClaim(value, claimKey);
+                  this.claims.delete(this.occurrenceKey(value));
+                }
+              }
+
+              class RecordingGateway""".replace('              ', ''),
+              'scheduler integration repository',
+          )
+          scheduler_integration_path.write_text(
+              scheduler_integration,
+              encoding='utf-8',
+          )
+
+          runtime_test_path = Path('apps/notification-service/src/notification-runtime.test.ts')
+          runtime_test = runtime_test_path.read_text(encoding='utf-8')
+          runtime_test = replace_once(
+              runtime_test,
+              """      runtime.repository.claim(
+                '018f47a4-9976-4c57-8a8a-674630a873d1',
+                '91fe0f58-2035-49b7-a793-ac75939a433f',
+                'runtime-claim-key',
+              ),
+            ).resolves.toBe(false);
+          """.replace('            ', ''),
+              """      runtime.repository.claim(
+                '018f47a4-9976-4c57-8a8a-674630a873d1',
+                '91fe0f58-2035-49b7-a793-ac75939a433f',
+              ),
+            ).resolves.toBeNull();
+          """.replace('            ', ''),
+              'runtime claim expectation',
+          )
+          runtime_test_path.write_text(runtime_test, encoding='utf-8')
+
+          postgres_integration_path = Path(
+              'apps/notification-service/src/postgres-reminder-repository.integration.test.ts'
+          )
+          postgres_integration = postgres_integration_path.read_text(encoding='utf-8')
+          postgres_integration = replace_once(
+              postgres_integration,
+              """  NotificationReplayConflictError,
+          """.replace('          ', ''),
+              """  NotificationPersistenceError,
+                NotificationReplayConflictError,
+          """.replace('          ', ''),
+              'integration persistence error import',
+          )
+          postgres_integration = replace_pattern(
+              postgres_integration,
+              r"  it\('serializes concurrent workers into one active claim',[\s\S]*?\n  it\('recovers an expired lease",
+              """  it('serializes concurrent workers into one active claim', async () => {
+                const workspaceId = randomUUID();
+                const reminder = occurrence(workspaceId);
+                const durableRepository = repository(administrativePool, 300);
+                await durableRepository.schedule(reminder);
+
+                const claims = await Promise.all(
+                  Array.from({ length: 16 }, () =>
+                    durableRepository.claim(workspaceId, reminder.id),
+                  ),
+                );
+
+                expect(claims.filter((claimKey) => claimKey !== null)).toHaveLength(1);
+                expect(claims.filter((claimKey) => claimKey === null)).toHaveLength(15);
+              });
+
+              it('fences an expired owner after a replacement claim is acquired', async () => {
+                const workspaceId = randomUUID();
+                const reminder = occurrence(workspaceId);
+                const durableRepository = repository(administrativePool, 30);
+                await durableRepository.schedule(reminder);
+                const deliveryKey = `${workspaceId}:${reminder.id}:${reminder.dueAt}`;
+                const firstClaim = await durableRepository.claim(
+                  workspaceId,
+                  reminder.id,
+                );
+                expect(firstClaim).not.toBeNull();
+                await administrativePool.query(
+                  `UPDATE notification_service.reminder_occurrences
+                   SET claim_expires_at = clock_timestamp() - interval '1 second'
+                   WHERE workspace_id = $1 AND reminder_id = $2`,
+                  [workspaceId, reminder.id],
+                );
+                const secondClaim = await durableRepository.claim(
+                  workspaceId,
+                  reminder.id,
+                );
+                expect(secondClaim).not.toBeNull();
+                expect(secondClaim).not.toBe(firstClaim);
+
+                await expect(
+                  durableRepository.markDelivered(
+                    reminder,
+                    '2026-08-04T12:00:01.000Z',
+                    firstClaim as string,
+                    deliveryKey,
+                  ),
+                ).rejects.toBeInstanceOf(NotificationPersistenceError);
+                await expect(
+                  durableRepository.markDelivered(
+                    reminder,
+                    '2026-08-04T12:00:01.000Z',
+                    secondClaim as string,
+                    deliveryKey,
+                  ),
+                ).resolves.toBeUndefined();
+                await expect(
+                  durableRepository.listOutcomes(workspaceId, 10),
+                ).resolves.toHaveLength(1);
+              });
+
+              it('recovers an expired lease""".replace('              ', ''),
+              'integration concurrent and fenced claims',
+          )
+          postgres_integration = replace_once(
+              postgres_integration,
+              """    await expect(
+                durableRepository.claim(workspaceId, reminder.id, key),
+              ).resolves.toBe(true);
+          """.replace('              ', ''),
+              """    await expect(
+                durableRepository.claim(workspaceId, reminder.id),
+              ).resolves.not.toBeNull();
+          """.replace('              ', ''),
+              'integration recovery claim',
+          )
+          postgres_integration_path.write_text(
+              postgres_integration,
+              encoding='utf-8',
+          )
+
+          docs_path = Path('docs/operations/notification-persistence.md')
+          docs = docs_path.read_text(encoding='utf-8')
+          docs = docs.replace(
+              'writes the SHA-256 claim digest and a bounded expiration time.',
+              'writes a SHA-256 digest of a unique per-attempt claim token and a bounded expiration time.',
+              1,
+          )
+          docs = docs.replace(
+              'A worker may process an occurrence only when its claim update returns the expected reminder identifier.',
+              'A worker may process an occurrence only when its claim update returns a unique opaque claim token.',
+              1,
+          )
+          docs = docs.replace(
+              'A mismatched replay raises `NotificationReplayConflictError`',
+              'Claim tokens are separate from stable delivery idempotency keys, and every transition requires both the exact token digest and an unexpired lease. A mismatched replay raises `NotificationReplayConflictError`',
+              1,
+          )
+          docs_path.write_text(docs, encoding='utf-8')
+
+          design_path = Path(
+              'docs/superpowers/specs/2026-08-04-notification-postgres-inbox-design.md'
+          )
+          design = design_path.read_text(encoding='utf-8')
+          design = design.replace(
+              '`claim` hashes the scheduler idempotency key with SHA-256',
+              '`claim` creates a unique per-attempt opaque token, hashes it with SHA-256,',
+              1,
+          )
+          design = design.replace(
+              'Completion statements use data-modifying common table expressions',
+              'The stable delivery idempotency key remains separate from the claim token. Every completion statement requires the exact claim digest and an unexpired lease, then uses data-modifying common table expressions',
+              1,
+          )
+          design_path.write_text(design, encoding='utf-8')
           PY
 
-      - name: Format and verify the complete notification slice
+      - name: Format and verify notification service
         run: |
           set -euo pipefail
           pnpm exec prettier --single-quote --write \
+            apps/notification-service/package.json \
+            apps/notification-service/src/main.ts \
+            apps/notification-service/src/reminder-scheduler.ts \
+            apps/notification-service/src/reminder-scheduler.test.ts \
+            apps/notification-service/src/reminder-scheduler.integration.test.ts \
             apps/notification-service/src/postgres-reminder-migration.test.ts \
             apps/notification-service/src/postgres-reminder-repository.ts \
             apps/notification-service/src/postgres-reminder-repository.test.ts \
             apps/notification-service/src/postgres-reminder-repository.integration.test.ts \
+            apps/notification-service/src/notification-runtime.ts \
+            apps/notification-service/src/notification-runtime.test.ts \
             docs/operations/notification-persistence.md \
             docs/superpowers/specs/2026-08-04-notification-postgres-inbox-design.md
           pnpm --filter @life-os/notification-service lint
+          pnpm --filter @life-os/notification-service typecheck
           pnpm --filter @life-os/notification-service test
+          pnpm --filter @life-os/notification-service build
 
-      - name: Commit verified formatting and remove one-shot workflow
+      - name: Commit verified repair and remove one-shot workflow
         run: |
           set -euo pipefail
           rm -f pnpm-lock.yaml
@@ -143,15 +985,20 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
+            apps/notification-service/package.json \
+            apps/notification-service/src/main.ts \
+            apps/notification-service/src/reminder-scheduler.ts \
+            apps/notification-service/src/reminder-scheduler.test.ts \
+            apps/notification-service/src/reminder-scheduler.integration.test.ts \
             apps/notification-service/src/postgres-reminder-migration.test.ts \
             apps/notification-service/src/postgres-reminder-repository.ts \
             apps/notification-service/src/postgres-reminder-repository.test.ts \
             apps/notification-service/src/postgres-reminder-repository.integration.test.ts \
+            apps/notification-service/src/notification-runtime.ts \
+            apps/notification-service/src/notification-runtime.test.ts \
             docs/operations/notification-persistence.md \
             docs/superpowers/specs/2026-08-04-notification-postgres-inbox-design.md \
             .github/workflows/format-notification-persistence.yml
           git diff --cached --check
-          git commit -m 'fix(notification): harden and format persistence boundaries'
+          git commit -m 'fix(notification): fence expiring reminder claims'
           git push origin HEAD:feat/notification-postgres-inbox
-
-# Triggered after the temporary formatter cleanup.
