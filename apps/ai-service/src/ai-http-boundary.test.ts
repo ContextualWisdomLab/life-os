@@ -235,7 +235,7 @@ describe('trusted AI service context', () => {
     const alphabet =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     const canonical = signContext();
-    const finalIndex = alphabet.indexOf(canonical[canonical.length - 1]);
+    const finalIndex = alphabet.indexOf(canonical[canonical.length - 1]!);
     expect(finalIndex).toBeGreaterThanOrEqual(0);
     expect(finalIndex % 4).toBe(0);
     const alternateFinalCharacter = alphabet[finalIndex + 1]!;
