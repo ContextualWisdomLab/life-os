@@ -123,8 +123,9 @@ function providerFactory(
     readonly provide?: unknown;
     readonly useFactory?: (...arguments_: unknown[]) => unknown;
   }>;
-  const factory = providers.find((provider) => provider.provide === token)
-    ?.useFactory;
+  const factory = providers.find(
+    (provider) => provider.provide === token,
+  )?.useFactory;
   if (!factory) {
     throw new Error('Expected module factory provider');
   }
@@ -142,9 +143,9 @@ describe('AI production runtime wiring', () => {
   it('adapts the default PostgreSQL pool through query and shutdown boundaries', async () => {
     const runtime = createAiRuntime({ AI_DATABASE_URL: databaseUrl() });
 
-    await expect(runtime.application.listProposals(WORKSPACE_ID)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      runtime.application.listProposals(WORKSPACE_ID),
+    ).resolves.toEqual([]);
     await runtime.close();
 
     expect(poolState.configuration).toMatchObject({
@@ -158,9 +159,9 @@ describe('AI production runtime wiring', () => {
   });
 
   it('covers the standalone and production runtime provider factories', async () => {
-    expect(
-      providerFactory(AiAppModule, PROPOSAL_SERVICE)(),
-    ).toBeInstanceOf(ProposalService);
+    expect(providerFactory(AiAppModule, PROPOSAL_SERVICE)()).toBeInstanceOf(
+      ProposalService,
+    );
 
     const previousDatabaseUrl = process.env.AI_DATABASE_URL;
     process.env.AI_DATABASE_URL = databaseUrl();
@@ -186,9 +187,9 @@ describe('AI production runtime wiring', () => {
     ) as ProposalAuditApplication;
     const runtime = { application } as AiRuntime;
 
-    expect(
-      providerFactory(AiProductionModule, PROPOSAL_SERVICE)(runtime),
-    ).toBe(application);
+    expect(providerFactory(AiProductionModule, PROPOSAL_SERVICE)(runtime)).toBe(
+      application,
+    );
     expect(
       providerFactory(AiProductionModule, PROPOSAL_AUDIT_APPLICATION)(runtime),
     ).toBe(application);

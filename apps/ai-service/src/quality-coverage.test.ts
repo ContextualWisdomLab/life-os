@@ -54,7 +54,7 @@ const EVENT_ID = '55555555-5555-4555-8555-555555555555';
 const IDEMPOTENCY_KEY = '66666666-6666-4666-8666-666666666666';
 const OTHER_EVENT_ID = '77777777-7777-4777-8777-777777777777';
 const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';
-const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
+const GATEWAY_SECRET = Buffer.alloc(32, 0x51).toString('base64url');
 
 /** Exact signed headers accepted by one method-and-path-bound controller call. */
 interface SignedControllerContext {
@@ -1021,7 +1021,15 @@ describe('AI controllers and bootstrap error contracts', () => {
         code,
       );
     }
-    expect(JSON.stringify(logger.mock.calls)).not.toContain('password=secret');
+    const loggedOutput = logger.mock.calls
+      .flat()
+      .flatMap((value) =>
+        value instanceof Error
+          ? [value.name, value.message, value.stack ?? '']
+          : [typeof value === 'string' ? value : JSON.stringify(value)],
+      )
+      .join('\n');
+    expect(loggedOutput).not.toContain('password=secret');
     logger.mockRestore();
   });
 
