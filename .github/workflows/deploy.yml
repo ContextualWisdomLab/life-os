@@ -1,0 +1,258 @@
+name: Deploy Production Reference
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_image:
+        description: Digest-pinned web image reference
+        required: true
+        type: string
+      gateway_image:
+        description: Digest-pinned gateway image reference
+        required: true
+        type: string
+      web_origin:
+        description: Exact public HTTPS origin allowed by gateway CORS
+        required: true
+        type: string
+      run_migrations:
+        description: Apply all forward-only service migrations before rollout
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: life-os-production-deployment
+  cancel-in-progress: false
+
+env:
+  KUBECTL_VERSION: v1.34.1
+  WEB_IMAGE_SENTINEL: ghcr.io/contextualwisdomlab/life-os-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  GATEWAY_IMAGE_SENTINEL: ghcr.io/contextualwisdomlab/life-os-gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  WEB_ORIGIN_SENTINEL: https://life-os.invalid
+
+jobs:
+  validate:
+    name: Validate immutable deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install verified kubectl
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          binary="${RUNNER_TEMP}/kubectl"
+          checksum="${RUNNER_TEMP}/kubectl.sha256"
+          base_url="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output "${binary}" "${base_url}"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output "${checksum}" "${base_url}.sha256"
+          printf '%s  %s\n' "$(cat "${checksum}")" "${binary}" | sha256sum --check --strict
+          sudo install --owner=root --group=root --mode=0755 "${binary}" /usr/local/bin/kubectl
+
+      - name: Validate inputs and render overlay
+        env:
+          WEB_IMAGE: ${{ inputs.web_image }}
+          GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+          WEB_ORIGIN: ${{ inputs.web_origin }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          render_root="${RUNNER_TEMP}/life-os-kubernetes"
+          rendered_manifest="${RUNNER_TEMP}/life-os-production.yaml"
+          cp --recursive infra/kubernetes "${render_root}"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          image_pattern = re.compile(
+              r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{2,5})?"
+              r"/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$"
+          )
+          images = {
+              os.environ["WEB_IMAGE_SENTINEL"]: os.environ["WEB_IMAGE"],
+              os.environ["GATEWAY_IMAGE_SENTINEL"]: os.environ["GATEWAY_IMAGE"],
+          }
+          for image in images.values():
+              if image_pattern.fullmatch(image) is None:
+                  raise SystemExit("image reference must use a registry path and sha256 digest")
+              if image.endswith("sha256:" + ("0" * 64)):
+                  raise SystemExit("zero image digest is not deployable")
+
+          origin = urlsplit(os.environ["WEB_ORIGIN"])
+          if (
+              origin.scheme != "https"
+              or not origin.hostname
+              or origin.username is not None
+              or origin.password is not None
+              or origin.query
+              or origin.fragment
+              or origin.path not in ("", "/")
+          ):
+              raise SystemExit("web_origin must be an exact credential-free HTTPS origin")
+
+          manifest_path = Path(os.environ["RUNNER_TEMP"]) / "life-os-kubernetes/base/edge-workloads.yaml"
+          manifest = manifest_path.read_text(encoding="utf-8")
+          for sentinel, image in images.items():
+              if manifest.count(sentinel) != 1:
+                  raise SystemExit("deployment image sentinel is missing or duplicated")
+              manifest = manifest.replace(sentinel, image)
+          origin_sentinel = os.environ["WEB_ORIGIN_SENTINEL"]
+          if manifest.count(origin_sentinel) != 1:
+              raise SystemExit("deployment origin sentinel is missing or duplicated")
+          manifest_path.write_text(
+              manifest.replace(origin_sentinel, os.environ["WEB_ORIGIN"]),
+              encoding="utf-8",
+          )
+          PY
+          kubectl kustomize "${render_root}/overlays/production" >"${rendered_manifest}"
+          ! grep --quiet 'sha256:0000000000000000000000000000000000000000000000000000000000000000' "${rendered_manifest}"
+          ! grep --quiet 'life-os.invalid' "${rendered_manifest}"
+          kubectl apply --dry-run=client --validate=false --filename "${rendered_manifest}" >/dev/null
+
+  deploy:
+    name: Apply protected production rollout
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      LIFE_OS_KUBE_CONFIG_B64: ${{ secrets.LIFE_OS_KUBE_CONFIG_B64 }}
+      IDENTITY_DATABASE_URL: ${{ secrets.IDENTITY_DATABASE_URL }}
+      PLANNING_DATABASE_URL: ${{ secrets.PLANNING_DATABASE_URL }}
+      HABIT_DATABASE_URL: ${{ secrets.HABIT_DATABASE_URL }}
+      AI_DATABASE_URL: ${{ secrets.AI_DATABASE_URL }}
+      REVIEW_DATABASE_URL: ${{ secrets.REVIEW_DATABASE_URL }}
+      WEB_IMAGE: ${{ inputs.web_image }}
+      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+      WEB_ORIGIN: ${{ inputs.web_origin }}
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install verified kubectl
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          binary="${RUNNER_TEMP}/kubectl"
+          checksum="${RUNNER_TEMP}/kubectl.sha256"
+          base_url="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output "${binary}" "${base_url}"
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output "${checksum}" "${base_url}.sha256"
+          printf '%s  %s\n' "$(cat "${checksum}")" "${binary}" | sha256sum --check --strict
+          sudo install --owner=root --group=root --mode=0755 "${binary}" /usr/local/bin/kubectl
+
+      - name: Render exact production manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          render_root="${RUNNER_TEMP}/life-os-kubernetes"
+          cp --recursive infra/kubernetes "${render_root}"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          image_pattern = re.compile(
+              r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{2,5})?"
+              r"/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$"
+          )
+          replacements = {
+              os.environ["WEB_IMAGE_SENTINEL"]: os.environ["WEB_IMAGE"],
+              os.environ["GATEWAY_IMAGE_SENTINEL"]: os.environ["GATEWAY_IMAGE"],
+          }
+          for image in replacements.values():
+              if image_pattern.fullmatch(image) is None or image.endswith("sha256:" + ("0" * 64)):
+                  raise SystemExit("invalid immutable image input")
+          origin = urlsplit(os.environ["WEB_ORIGIN"])
+          if (
+              origin.scheme != "https"
+              or not origin.hostname
+              or origin.username is not None
+              or origin.password is not None
+              or origin.query
+              or origin.fragment
+              or origin.path not in ("", "/")
+          ):
+              raise SystemExit("invalid exact HTTPS web origin")
+          manifest_path = Path(os.environ["RUNNER_TEMP"]) / "life-os-kubernetes/base/edge-workloads.yaml"
+          manifest = manifest_path.read_text(encoding="utf-8")
+          for sentinel, image in replacements.items():
+              if manifest.count(sentinel) != 1:
+                  raise SystemExit("deployment image sentinel is missing or duplicated")
+              manifest = manifest.replace(sentinel, image)
+          if manifest.count(os.environ["WEB_ORIGIN_SENTINEL"]) != 1:
+              raise SystemExit("deployment origin sentinel is missing or duplicated")
+          manifest_path.write_text(
+              manifest.replace(os.environ["WEB_ORIGIN_SENTINEL"], os.environ["WEB_ORIGIN"]),
+              encoding="utf-8",
+          )
+          PY
+          kubectl kustomize "${render_root}/overlays/production" >"${RUNNER_TEMP}/life-os-production.yaml"
+
+      - name: Configure ephemeral cluster credential
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${LIFE_OS_KUBE_CONFIG_B64}" ]] || {
+            printf 'Required production environment secret LIFE_OS_KUBE_CONFIG_B64 is missing.\n' >&2
+            exit 1
+          }
+          kubeconfig="${RUNNER_TEMP}/life-os-kubeconfig"
+          printf '%s' "${LIFE_OS_KUBE_CONFIG_B64}" | base64 --decode >"${kubeconfig}"
+          chmod 0600 "${kubeconfig}"
+          printf 'KUBECONFIG=%s\n' "${kubeconfig}" >>"${GITHUB_ENV}"
+
+      - name: Apply forward-only migrations
+        if: ${{ inputs.run_migrations }}
+        env:
+          LIFE_OS_MIGRATION_CONFIRMATION: apply-forward-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash infra/kubernetes/run-migrations.sh
+
+      - name: Review and apply exact manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rendered_manifest="${RUNNER_TEMP}/life-os-production.yaml"
+          kubectl apply --server-side --field-manager=life-os-deployer \
+            --filename infra/kubernetes/base/namespace.yaml
+          kubectl apply --server-side --dry-run=server --field-manager=life-os-deployer \
+            --filename "${rendered_manifest}" >/dev/null
+          diff_status=0
+          kubectl diff --server-side --field-manager=life-os-deployer \
+            --filename "${rendered_manifest}" || diff_status=$?
+          ((diff_status <= 1)) || exit "${diff_status}"
+          kubectl apply --server-side --field-manager=life-os-deployer \
+            --filename "${rendered_manifest}"
+
+      - name: Verify rollout or restore prior revisions
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if kubectl rollout status deployment/life-os-web --namespace life-os --timeout=10m && \
+            kubectl rollout status deployment/life-os-gateway --namespace life-os --timeout=10m; then
+            kubectl get deployment/life-os-web deployment/life-os-gateway \
+              --namespace life-os \
+              --output=custom-columns='NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,REVISION:.metadata.annotations.deployment\.kubernetes\.io/revision'
+            exit 0
+          fi
+          kubectl rollout undo deployment/life-os-web --namespace life-os || true
+          kubectl rollout undo deployment/life-os-gateway --namespace life-os || true
+          kubectl rollout status deployment/life-os-web --namespace life-os --timeout=5m || true
+          kubectl rollout status deployment/life-os-gateway --namespace life-os --timeout=5m || true
+          exit 1
