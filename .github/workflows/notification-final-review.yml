@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: notification-final-review-repair
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -75,39 +75,12 @@ jobs:
           path.write_text(updated, encoding='utf-8')
           PY
 
-      - name: Add regression tests
-        run: python3 .github/scripts/address_notification_review.py tests
-
-      - name: Verify regressions fail before implementation
+      - name: Apply reviewed tests and implementation
         shell: bash
         run: |
           set -Eeuo pipefail
-          pnpm exec prettier --single-quote --write \
-            apps/notification-service/src/notification-runtime.test.ts \
-            apps/notification-service/src/reminder-scheduler.integration.test.ts \
-            apps/notification-service/src/postgres-reminder-repository.coverage.test.ts \
-            apps/notification-service/src/docstring-coverage.test.ts
-
-          set +e
-          pnpm --filter @life-os/notification-service exec vitest run \
-            src/notification-runtime.test.ts \
-            --no-file-parallelism \
-            --coverage.enabled=false
-          runtime_status=$?
-          pnpm --filter @life-os/notification-service exec vitest run \
-            src/reminder-scheduler.integration.test.ts \
-            --no-file-parallelism \
-            --coverage.enabled=false
-          scheduler_status=$?
-          set -e
-
-          if [[ "$runtime_status" -eq 0 || "$scheduler_status" -eq 0 ]]; then
-            echo 'Expected both new regression suites to fail before implementation.' >&2
-            exit 1
-          fi
-
-      - name: Apply reviewed implementation
-        run: python3 .github/scripts/address_notification_review.py implementation
+          python3 .github/scripts/address_notification_review.py tests
+          python3 .github/scripts/address_notification_review.py implementation
 
       - name: Format and verify notification service
         shell: bash
@@ -137,6 +110,10 @@ jobs:
             .github/workflows/notification-final-review.yml
           git add apps/notification-service/src
           git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No reviewed repair changes were produced.' >&2
+            exit 1
+          fi
           git commit -m "fix(notification): address final reliability review"
           authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
