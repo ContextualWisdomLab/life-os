@@ -24,6 +24,12 @@ function signContext(
     .digest('base64url');
 }
 
+/** Changes a significant base64url character so the decoded digest must differ. */
+function forgeSignature(signature: string): string {
+  const replacement = signature.startsWith('A') ? 'B' : 'A';
+  return `${replacement}${signature.slice(1)}`;
+}
+
 /** Builds one complete signed header set for focused mutation by each test. */
 function validHeaders(
   issuedAt = String(NOW_SECONDS),
@@ -144,10 +150,8 @@ describe('trusted AI gateway context', () => {
       { ...base, issuedAt: otherIssuedAt },
       'invalid_gateway_context',
     );
-    const signature = String(base.signature);
-    const replacement = signature.endsWith('A') ? 'B' : 'A';
     expectFailure(
-      { ...base, signature: `${signature.slice(0, -1)}${replacement}` },
+      { ...base, signature: forgeSignature(String(base.signature)) },
       'invalid_gateway_context',
     );
   });
