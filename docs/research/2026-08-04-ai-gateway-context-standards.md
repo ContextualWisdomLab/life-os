@@ -30,18 +30,18 @@ This design is appropriate for a private BFF-to-service hop where both workloads
 
 ## APA 7 references
 
-Fielding, R., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110). RFC Editor. https://doi.org/10.17487/RFC9110
+Fielding, R., Nottingham, M., & Reschke, J. (2022). _HTTP semantics_ (RFC 9110). RFC Editor. https://doi.org/10.17487/RFC9110
 
-Krawczyk, H., Bellare, M., & Canetti, R. (1997). *HMAC: Keyed-hashing for message authentication* (RFC 2104). RFC Editor. https://doi.org/10.17487/RFC2104
+Krawczyk, H., Bellare, M., & Canetti, R. (1997). _HMAC: Keyed-hashing for message authentication_ (RFC 2104). RFC Editor. https://doi.org/10.17487/RFC2104
 
-National Institute of Standards and Technology. (2008). *The keyed-hash message authentication code (HMAC)* (FIPS PUB 198-1). U.S. Department of Commerce. https://doi.org/10.6028/NIST.FIPS.198-1
+National Institute of Standards and Technology. (2008). _The keyed-hash message authentication code (HMAC)_ (FIPS PUB 198-1). U.S. Department of Commerce. https://doi.org/10.6028/NIST.FIPS.198-1
 
-National Institute of Standards and Technology. (2025, June 23). *Proposed withdrawal of FIPS 198-1, keyed-hash message authentication code (HMAC).* https://csrc.nist.gov/news/2025/proposed-withdrawal-of-fips-198-1-hmac
+National Institute of Standards and Technology. (2025, June 23). _Proposed withdrawal of FIPS 198-1, keyed-hash message authentication code (HMAC)._ https://csrc.nist.gov/news/2025/proposed-withdrawal-of-fips-198-1-hmac
 
-Nottingham, M., Wilde, E., & Dalal, S. (2023). *Problem details for HTTP APIs* (RFC 9457). RFC Editor. https://doi.org/10.17487/RFC9457
+Nottingham, M., Wilde, E., & Dalal, S. (2023). _Problem details for HTTP APIs_ (RFC 9457). RFC Editor. https://doi.org/10.17487/RFC9457
 
-Nystrom, M. (2005). *Identifiers and test vectors for HMAC-SHA-224, HMAC-SHA-256, HMAC-SHA-384, and HMAC-SHA-512* (RFC 4231). RFC Editor. https://doi.org/10.17487/RFC4231
+Nystrom, M. (2005). _Identifiers and test vectors for HMAC-SHA-224, HMAC-SHA-256, HMAC-SHA-384, and HMAC-SHA-512_ (RFC 4231). RFC Editor. https://doi.org/10.17487/RFC4231
 
-OWASP Foundation. (2025). *OWASP application security verification standard 5.0.0.* https://github.com/OWASP/ASVS/releases/tag/v5.0.0_release
+OWASP Foundation. (2025). _OWASP application security verification standard 5.0.0._ https://github.com/OWASP/ASVS/releases/tag/v5.0.0_release
 
-Turan, M. S., & Brandão, L. T. A. N. (2024). *Keyed-hash message authentication code (HMAC): Specification of HMAC and recommendations for message authentication* (NIST SP 800-224 Initial Public Draft). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-224.ipd
+Turan, M. S., & Brandão, L. T. A. N. (2024). _Keyed-hash message authentication code (HMAC): Specification of HMAC and recommendations for message authentication_ (NIST SP 800-224 Initial Public Draft). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-224.ipd

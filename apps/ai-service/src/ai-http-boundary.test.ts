@@ -13,14 +13,16 @@ const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_785_806_400;
 
 /** Creates the exact versioned HMAC expected by the AI service boundary. */
-function signContext(input: {
-  workspaceId?: string;
-  actorId?: string;
-  issuedAt?: string;
-  method?: string;
-  path?: string;
-  secret?: string;
-} = {}): string {
+function signContext(
+  input: {
+    workspaceId?: string;
+    actorId?: string;
+    issuedAt?: string;
+    method?: string;
+    path?: string;
+    secret?: string;
+  } = {},
+): string {
   const workspaceId = (input.workspaceId ?? WORKSPACE_ID).toLowerCase();
   const actorId = (input.actorId ?? ACTOR_ID).toLowerCase();
   const issuedAt = input.issuedAt ?? String(NOW_SECONDS);
@@ -116,26 +118,30 @@ describe('trusted AI service context', () => {
     }
   });
 
-  it.each([undefined, null, '', 'too-short', 'x'.repeat(4097), `x${String.fromCharCode(0)}y`])(
-    'fails closed when the gateway secret is unavailable: %#',
-    (secret) => {
-      expectProblem(
-        () =>
-          requireTrustedAiContext(
-            contextHeaders(),
-            secret,
-            'POST',
-            '/v1/proposals',
-            NOW_SECONDS,
-          ),
-        {
-          title: 'Trusted gateway context is unavailable',
-          status: 503,
-          code: 'gateway_context_unavailable',
-        },
-      );
-    },
-  );
+  it.each([
+    undefined,
+    null,
+    '',
+    'too-short',
+    'x'.repeat(4097),
+    `x${String.fromCharCode(0)}y`,
+  ])('fails closed when the gateway secret is unavailable: %#', (secret) => {
+    expectProblem(
+      () =>
+        requireTrustedAiContext(
+          contextHeaders(),
+          secret,
+          'POST',
+          '/v1/proposals',
+          NOW_SECONDS,
+        ),
+      {
+        title: 'Trusted gateway context is unavailable',
+        status: 503,
+        code: 'gateway_context_unavailable',
+      },
+    );
+  });
 
   it.each([
     { field: 'workspaceId', value: undefined },
@@ -171,27 +177,30 @@ describe('trusted AI service context', () => {
     { issuedAt: NOW_SECONDS + 6, nowSeconds: NOW_SECONDS },
     { issuedAt: NOW_SECONDS, nowSeconds: -1 },
     { issuedAt: NOW_SECONDS, nowSeconds: Number.MAX_SAFE_INTEGER + 1 },
-  ])('rejects stale, future, or invalid clock input %#', ({ issuedAt, nowSeconds }) => {
-    const issuedAtText = String(issuedAt);
-    expectProblem(
-      () =>
-        requireTrustedAiContext(
-          contextHeaders({
-            issuedAt: issuedAtText,
-            signature: signContext({ issuedAt: issuedAtText }),
-          }),
-          GATEWAY_SECRET,
-          'POST',
-          '/v1/proposals',
-          nowSeconds,
-        ),
-      {
-        title: 'Trusted gateway context is invalid',
-        status: 401,
-        code: 'invalid_gateway_context',
-      },
-    );
-  });
+  ])(
+    'rejects stale, future, or invalid clock input %#',
+    ({ issuedAt, nowSeconds }) => {
+      const issuedAtText = String(issuedAt);
+      expectProblem(
+        () =>
+          requireTrustedAiContext(
+            contextHeaders({
+              issuedAt: issuedAtText,
+              signature: signContext({ issuedAt: issuedAtText }),
+            }),
+            GATEWAY_SECRET,
+            'POST',
+            '/v1/proposals',
+            nowSeconds,
+          ),
+        {
+          title: 'Trusted gateway context is invalid',
+          status: 401,
+          code: 'invalid_gateway_context',
+        },
+      );
+    },
+  );
 
   it.each([
     { method: 'post', path: '/v1/proposals' },
@@ -236,7 +245,9 @@ describe('trusted AI service context', () => {
     {
       method: 'POST',
       path: '/v1/proposals',
-      signature: signContext({ secret: 'another-gateway-secret-with-32-bytes' }),
+      signature: signContext({
+        secret: 'another-gateway-secret-with-32-bytes',
+      }),
     },
   ])('rejects method replay, path replay, or forged signature %#', (input) => {
     expectProblem(
