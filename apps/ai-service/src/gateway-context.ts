@@ -94,7 +94,6 @@ export function requireTrustedAiContext(
   const actorId = headers.actorId.toLowerCase();
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
-    !Number.isSafeInteger(issuedAtSeconds) ||
     issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
     issuedAtSeconds < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS
   ) {
@@ -108,7 +107,7 @@ export function requireTrustedAiContext(
     secret,
   );
   const actual = Buffer.from(headers.signature, 'base64url');
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+  if (!timingSafeEqual(actual, expected)) {
     return invalidGatewayContext();
   }
 
