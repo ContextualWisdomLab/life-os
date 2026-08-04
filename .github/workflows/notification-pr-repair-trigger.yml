@@ -57,6 +57,7 @@ jobs:
       - name: Apply reviewed reliability repairs
         run: |
           python3 .github/scripts/repair_notification_reliability.py
+          python3 .github/scripts/refine_notification_reliability.py
           python3 .github/scripts/document_notification_reliability_repair.py
 
       - name: Format and validate notification reliability
@@ -91,6 +92,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f \
             .github/scripts/repair_notification_reliability.py \
+            .github/scripts/refine_notification_reliability.py \
             .github/scripts/document_notification_reliability_repair.py \
             .github/workflows/notification-pr-repair-trigger.yml
           git add \
