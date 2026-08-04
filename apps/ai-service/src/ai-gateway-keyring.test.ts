@@ -99,6 +99,8 @@ describe('AI gateway key configuration', () => {
   });
 
   it.each([
+    undefined,
+    null,
     {
       ...activeEnvironment(),
       AI_GATEWAY_PREVIOUS_KEY_ID: PREVIOUS_ID,
@@ -113,17 +115,22 @@ describe('AI gateway key configuration', () => {
       AI_GATEWAY_PREVIOUS_KEY_SECRET: PREVIOUS_SECRET,
     },
     {
+      ...activeEnvironment(),
+      AI_GATEWAY_PREVIOUS_KEY_ID: PREVIOUS_ID,
+      AI_GATEWAY_PREVIOUS_KEY_SECRET: ACTIVE_SECRET,
+    },
+    {
       AI_GATEWAY_ACTIVE_KEY_ID: ACTIVE_ID,
     },
     {
       AI_GATEWAY_ACTIVE_KEY_SECRET: ACTIVE_SECRET,
     },
   ])(
-    'rejects incomplete or conflicting keyring configuration %#',
+    'rejects incomplete, duplicate, or conflicting keyring configuration %#',
     (environment) => {
-      expect(() => requireAiGatewayContextKeyRing(environment)).toThrow(
-        AiGatewayKeyConfigurationError,
-      );
+      expect(() =>
+        requireAiGatewayContextKeyRing(environment as never),
+      ).toThrow(AiGatewayKeyConfigurationError);
     },
   );
 });
