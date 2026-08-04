@@ -6,20 +6,15 @@ import {
   ReminderValidationError,
   isWithinQuietHours,
   validateReminderOccurrence,
-  /** Represents the reminder delivery values used by deterministic test fixtures. */
   type ReminderDelivery,
-  /** Represents the reminder delivery gateway values used by deterministic test fixtures. */
   type ReminderDeliveryGateway,
-  /** Represents the reminder occurrence values used by deterministic test fixtures. */
   type ReminderOccurrence,
-  /** Represents the reminder repository values used by deterministic test fixtures. */
   type ReminderRepository,
 } from './reminder-scheduler';
 
 const workspaceId = '018f47a4-9976-4c57-8a8a-674630a873d1';
 const reminderId = '91fe0f58-2035-49b7-a793-ac75939a433f';
 
-/** Supports the reminder test scenario without hiding production behavior. */
 function reminder(
   overrides: Partial<ReminderOccurrence> = {},
 ): ReminderOccurrence {
@@ -85,7 +80,6 @@ class NoopGateway implements ReminderDeliveryGateway {
 describe('reminder boundary validation', () => {
   it('normalizes a bounded offset instant while preserving authored text', () => {
     const value = validateReminderOccurrence(
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({ dueAt: '2026-08-04T21:00:00+09:00' }),
     );
 
@@ -169,32 +163,27 @@ describe('reminder boundary validation', () => {
 describe('quiet-hours evaluation', () => {
   it('supports same-day and overnight intervals with an exclusive end', () => {
     expect(
-      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(9 * 60, { startMinute: 8 * 60, endMinute: 10 * 60 }),
     ).toBe(true);
     expect(
-      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(10 * 60, {
         startMinute: 8 * 60,
         endMinute: 10 * 60,
       }),
     ).toBe(false);
     expect(
-      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(23 * 60, {
         startMinute: 22 * 60,
         endMinute: 7 * 60,
       }),
     ).toBe(true);
     expect(
-      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(6 * 60 + 59, {
         startMinute: 22 * 60,
         endMinute: 7 * 60,
       }),
     ).toBe(true);
     expect(
-      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(12 * 60, {
         startMinute: 22 * 60,
         endMinute: 7 * 60,
@@ -226,7 +215,6 @@ describe('scheduler options and defensive failures', () => {
 
   it('rethrows an unexpected repository-record accessor failure', async () => {
     const malformed = Object.defineProperty({}, 'id', {
-      /** Supports the get test scenario without hiding production behavior. */
       get(): never {
         throw new Error('unexpected accessor failure');
       },

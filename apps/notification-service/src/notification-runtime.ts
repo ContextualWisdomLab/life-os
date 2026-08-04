@@ -23,21 +23,34 @@ export interface NotificationPoolErrorSource {
   on(event: 'error', listener: (error: Error) => void): unknown;
 }
 
+/** Structured credential-free record emitted for one pool failure. */
+export interface NotificationPoolErrorRecord {
+  readonly message: string;
+  readonly context: 'NotificationRuntime';
+  readonly errorName: string;
+  readonly postgresCode: string | null;
+}
+
 /** Credential-free error logger used by the pool error boundary. */
 export type NotificationPoolErrorLogger = (
-  message: string,
-  context: string,
+  record: NotificationPoolErrorRecord,
 ) => void;
 
 const NOTIFICATION_POOL_ERROR_MESSAGE =
   'Notification PostgreSQL pool reported an idle client error';
+const POOL_ERROR_CLASSIFICATION_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/u;
 
-/** Emits one fixed error record without serializing the database error. */
+/** Retains only bounded non-secret error classification tokens. */
+function safePoolErrorClassification(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return POOL_ERROR_CLASSIFICATION_PATTERN.test(value) ? value : null;
+}
+
+/** Emits one structured record without serializing the database error. */
 function defaultNotificationPoolErrorLogger(
-  message: string,
-  context: string,
+  record: NotificationPoolErrorRecord,
 ): void {
-  Logger.error(message, context);
+  Logger.error(record, record.context);
 }
 
 /** Registers a sanitized listener before the PostgreSQL pool can be used. */
@@ -45,9 +58,14 @@ export function registerNotificationPoolErrorHandler(
   pool: NotificationPoolErrorSource,
   logError: NotificationPoolErrorLogger = defaultNotificationPoolErrorLogger,
 ): void {
-  pool.on('error', () => {
-    /** Performs the log error operation while preserving tenant-safe bounded behavior. */
-    logError(NOTIFICATION_POOL_ERROR_MESSAGE, 'NotificationRuntime');
+  pool.on('error', (error) => {
+    const code = (error as { code?: unknown }).code;
+    logError({
+      message: NOTIFICATION_POOL_ERROR_MESSAGE,
+      context: 'NotificationRuntime',
+      errorName: safePoolErrorClassification(error.name) ?? 'Error',
+      postgresCode: safePoolErrorClassification(code),
+    });
   });
 }
 
@@ -107,8 +125,13 @@ function requireConfiguration(
   name: string,
 ): string {
   const value = environment[name]?.trim();
-  if (!value || value.length > MAXIMUM_CONFIGURATION_LENGTH) {
+  if (!value) {
     throw new Error(`Required notification configuration is missing: ${name}`);
+  }
+  if (value.length > MAXIMUM_CONFIGURATION_LENGTH) {
+    throw new Error(
+      `Notification configuration exceeds maximum length: ${name}`,
+    );
   }
   return value;
 }
@@ -151,7 +174,6 @@ export function createNotificationPoolConfiguration(
 ): PoolConfig {
   return {
     connectionString: requireDatabaseUrl(
-      /** Performs the require configuration operation while preserving tenant-safe bounded behavior. */
       requireConfiguration(environment, 'NOTIFICATION_DATABASE_URL'),
     ),
     application_name: 'life-os-notification-service',
@@ -182,14 +204,13 @@ export function createNotificationPoolConfiguration(
 /** Creates the production node-postgres pool behind the runtime-owned pool boundary. */
 function defaultPoolFactory(configuration: PoolConfig): NotificationPool {
   const pool = new Pool(configuration);
-  /** Performs the register notification pool error handler operation while preserving bounded, tenant-safe notification behavior. */
   registerNotificationPoolErrorHandler(pool);
   return new NodePostgresNotificationPool(pool);
 }
 
 /** Owns one pool and the composed durable notification scheduler. */
 export class NotificationRuntime implements OnApplicationShutdown {
-  private closed = false;
+  private closing: Promise<void> | undefined;
 
   /** Creates the component with validated dependencies and bounded configuration. */
   constructor(
@@ -201,11 +222,13 @@ export class NotificationRuntime implements OnApplicationShutdown {
 
   /** Closes the owned PostgreSQL pool exactly once. */
   async close(): Promise<void> {
-    if (this.closed) {
-      return;
+    if (this.closing === undefined) {
+      this.closing = this.pool.end().catch((error: unknown) => {
+        this.closing = undefined;
+        throw error;
+      });
     }
-    this.closed = true;
-    await this.pool.end();
+    await this.closing;
   }
 
   /** Delegates the NestJS shutdown lifecycle to the idempotent runtime close operation. */

@@ -5,7 +5,6 @@ import {
   createNotificationPoolConfiguration,
   createNotificationRuntime,
   registerNotificationPoolErrorHandler,
-  /** Represents the notification pool values used by deterministic test fixtures. */
   type NotificationPool,
 } from './notification-runtime';
 
@@ -19,6 +18,7 @@ const DATABASE_URL = [
 /** Implements the fake notification pool test double with observable deterministic behavior. */
 class FakeNotificationPool implements NotificationPool {
   endCalls = 0;
+  endBehavior: () => Promise<void> = async () => undefined;
   readonly calls: Array<{
     readonly text: string;
     readonly values: readonly unknown[];
@@ -36,16 +36,71 @@ class FakeNotificationPool implements NotificationPool {
   /** Closes the owned resource without exposing connection details. */
   async end(): Promise<void> {
     this.endCalls += 1;
+    await this.endBehavior();
   }
 }
 
 describe('Notification runtime', () => {
-  it('handles idle pool errors with one fixed credential-free record', () => {
+  it('emits bounded credential-free pool error classifications', () => {
     let errorListener: ((error: Error) => void) | undefined;
     const source = {
-      /** Supports the on test scenario without hiding production behavior. */
       on(event: 'error', listener: (error: Error) => void): void {
         expect(event).toBe('error');
+        errorListener = listener;
+      },
+    };
+    const logged: unknown[][] = [];
+    registerNotificationPoolErrorHandler(source, (...values: unknown[]) => {
+      logged.push(values);
+    });
+
+    errorListener?.(
+      Object.assign(
+        new Error('postgresql://administrator:secret@database.example.test'),
+        { name: 'DatabaseError', code: '57P01' },
+      ),
+    );
+    errorListener?.(
+      Object.assign(new Error('secret'), {
+        name: 'bad name',
+        code: 'bad code',
+      }),
+    );
+    errorListener?.(Object.assign(new Error('secret'), { code: 42 }));
+
+    expect(logged).toEqual([
+      [
+        {
+          message: 'Notification PostgreSQL pool reported an idle client error',
+          context: 'NotificationRuntime',
+          errorName: 'DatabaseError',
+          postgresCode: '57P01',
+        },
+      ],
+      [
+        {
+          message: 'Notification PostgreSQL pool reported an idle client error',
+          context: 'NotificationRuntime',
+          errorName: 'Error',
+          postgresCode: null,
+        },
+      ],
+      [
+        {
+          message: 'Notification PostgreSQL pool reported an idle client error',
+          context: 'NotificationRuntime',
+          errorName: 'Error',
+          postgresCode: null,
+        },
+      ],
+    ]);
+    expect(JSON.stringify(logged)).not.toContain('secret');
+  });
+
+  it('uses the Nest logger without serializing the database error', () => {
+    let errorListener: ((error: Error) => void) | undefined;
+    const source = {
+      on(_event: 'error', listener: (error: Error) => void): void {
         errorListener = listener;
       },
     };
@@ -53,14 +108,18 @@ describe('Notification runtime', () => {
       .spyOn(Logger, 'error')
       .mockImplementation(() => undefined);
 
-    /** Supports the register notification pool error handler test scenario without hiding production behavior. */
     registerNotificationPoolErrorHandler(source);
     errorListener?.(
       new Error('postgresql://administrator:secret@database.example.test'),
     );
 
     expect(logger).toHaveBeenCalledWith(
-      'Notification PostgreSQL pool reported an idle client error',
+      {
+        message: 'Notification PostgreSQL pool reported an idle client error',
+        context: 'NotificationRuntime',
+        errorName: 'Error',
+        postgresCode: null,
+      },
       'NotificationRuntime',
     );
     expect(JSON.stringify(logger.mock.calls)).not.toContain('secret');
@@ -69,7 +128,6 @@ describe('Notification runtime', () => {
 
   it('builds a bounded PostgreSQL pool configuration', () => {
     expect(
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
         NOTIFICATION_DATABASE_POOL_MAX: '12',
@@ -90,51 +148,44 @@ describe('Notification runtime', () => {
       'Required notification configuration is missing: NOTIFICATION_DATABASE_URL',
     );
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: 'not a URL',
       }),
     ).toThrowError('Notification database URL is invalid');
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: 'https://database.example.test/life_os',
       }),
     ).toThrowError('Notification database URL must use PostgreSQL');
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: `postgresql://${'a'.repeat(8 * 1024)}`,
       }),
     ).toThrowError(
-      'Required notification configuration is missing: NOTIFICATION_DATABASE_URL',
+      'Notification configuration exceeds maximum length: NOTIFICATION_DATABASE_URL',
     );
   });
 
   it('fails closed on non-integer or out-of-range pool configuration', () => {
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
         NOTIFICATION_DATABASE_POOL_MAX: '1.5',
       }),
     ).toThrowError('Notification database pool size is invalid');
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
         NOTIFICATION_DATABASE_POOL_MAX: '33',
       }),
     ).toThrowError('Notification database pool size is invalid');
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
         NOTIFICATION_DATABASE_CONNECT_TIMEOUT_MS: '99',
       }),
     ).toThrowError('Notification database connection timeout is invalid');
     expect(() =>
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
         NOTIFICATION_DATABASE_IDLE_TIMEOUT_MS: '300001',
@@ -144,7 +195,6 @@ describe('Notification runtime', () => {
 
   it('uses defaults for absent and blank optional integer configuration', () => {
     expect(
-      /** Supports the create notification pool configuration test scenario without hiding production behavior. */
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
         NOTIFICATION_DATABASE_POOL_MAX: '   ',
@@ -165,7 +215,6 @@ describe('Notification runtime', () => {
     };
 
     expect(() =>
-      /** Supports the create notification runtime test scenario without hiding production behavior. */
       createNotificationRuntime(
         {
           NOTIFICATION_DATABASE_URL: DATABASE_URL,
@@ -175,7 +224,6 @@ describe('Notification runtime', () => {
       ),
     ).toThrowError('Notification claim lease is invalid');
     expect(() =>
-      /** Supports the create notification runtime test scenario without hiding production behavior. */
       createNotificationRuntime(
         {
           NOTIFICATION_DATABASE_URL: DATABASE_URL,
@@ -194,6 +242,52 @@ describe('Notification runtime', () => {
 
     await runtime.close();
     await runtime.close();
+  });
+
+  it('shares one in-flight close promise across concurrent callers', async () => {
+    const pool = new FakeNotificationPool();
+    let releaseEnd: (() => void) | undefined;
+    pool.endBehavior = () =>
+      new Promise<void>((resolve) => {
+        releaseEnd = resolve;
+      });
+    const runtime = createNotificationRuntime(
+      { NOTIFICATION_DATABASE_URL: DATABASE_URL },
+      () => pool,
+    );
+
+    const first = runtime.close();
+    const second = runtime.onApplicationShutdown();
+    let secondSettled = false;
+    void second.then(() => {
+      secondSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(pool.endCalls).toBe(1);
+    expect(secondSettled).toBe(false);
+    releaseEnd?.();
+    await Promise.all([first, second]);
+    expect(secondSettled).toBe(true);
+  });
+
+  it('allows a later close attempt to retry a rejected pool shutdown', async () => {
+    const pool = new FakeNotificationPool();
+    let failureAvailable = true;
+    pool.endBehavior = async () => {
+      if (failureAvailable) {
+        failureAvailable = false;
+        throw new Error('shutdown unavailable');
+      }
+    };
+    const runtime = createNotificationRuntime(
+      { NOTIFICATION_DATABASE_URL: DATABASE_URL },
+      () => pool,
+    );
+
+    await expect(runtime.close()).rejects.toThrowError('shutdown unavailable');
+    await expect(runtime.close()).resolves.toBeUndefined();
+    expect(pool.endCalls).toBe(2);
   });
 
   it('shares one pool across adapters and closes it exactly once', async () => {

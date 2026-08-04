@@ -10,9 +10,7 @@ import {
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
   hashNotificationIdempotencyKey,
-  /** Represents the notification sql client values used by deterministic test fixtures. */
   type NotificationSqlClient,
-  /** Represents the notification sql query result values used by deterministic test fixtures. */
   type NotificationSqlQueryResult,
 } from './postgres-reminder-repository';
 
@@ -48,7 +46,6 @@ class RecordingSqlClient implements NotificationSqlClient {
   }
 }
 
-/** Supports the reminder test scenario without hiding production behavior. */
 function reminder(
   overrides: Partial<ReminderOccurrence> = {},
 ): ReminderOccurrence {
@@ -65,7 +62,6 @@ function reminder(
   };
 }
 
-/** Supports the reminder row test scenario without hiding production behavior. */
 function reminderRow(overrides: Record<string, unknown> = {}) {
   return {
     reminder_id: reminderId,
@@ -85,7 +81,6 @@ function reminderRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Supports the inbox row test scenario without hiding production behavior. */
 function inboxRow(overrides: Record<string, unknown> = {}) {
   return {
     message_id: messageId,
@@ -101,7 +96,6 @@ function inboxRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Supports the outcome row test scenario without hiding production behavior. */
 function outcomeRow(overrides: Record<string, unknown> = {}) {
   return {
     outcome_id: outcomeId,
@@ -124,7 +118,6 @@ describe('notification idempotency digest', () => {
     expect(Buffer.isBuffer(digest)).toBe(true);
     expect(digest).toHaveLength(32);
     expect(digest).toEqual(
-      /** Supports the create hash test scenario without hiding production behavior. */
       createHash('sha256').update(idempotencyKey, 'utf8').digest(),
     );
     expect(digest.toString('utf8')).not.toContain(idempotencyKey);
@@ -167,11 +160,8 @@ describe('PostgresReminderRepository', () => {
     expect(client.calls[0]?.values).toEqual([
       reminderId,
       workspaceId,
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder().title,
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder().dueAt,
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder().timeZone,
       1320,
       420,
@@ -244,9 +234,7 @@ describe('PostgresReminderRepository', () => {
       repository.claim(
         workspaceId,
         reminderId,
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder().dueAt,
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder().deliveryAttempt,
       ),
     ).resolves.toBe(claimKey);
@@ -275,9 +263,7 @@ describe('PostgresReminderRepository', () => {
       ).claim(
         workspaceId,
         reminderId,
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder().dueAt,
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder().deliveryAttempt,
       ),
     ).resolves.toBeNull();
@@ -290,9 +276,7 @@ describe('PostgresReminderRepository', () => {
       ).claim(
         workspaceId,
         reminderId,
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder().dueAt,
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder().deliveryAttempt,
       ),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -321,14 +305,12 @@ describe('PostgresReminderRepository', () => {
     const repository = new PostgresReminderRepository(client);
 
     await repository.markDelivered(
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder(),
       '2026-08-04T12:00:01.000Z',
       claimKey,
       idempotencyKey,
     );
     await repository.defer(
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder(),
       '2026-08-04T22:00:00.000Z',
       'quiet_hours',
@@ -336,7 +318,6 @@ describe('PostgresReminderRepository', () => {
       idempotencyKey,
     );
     await repository.fail(
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder(),
       '2026-08-04T12:05:00.000Z',
       'delivery_failed',
@@ -344,7 +325,6 @@ describe('PostgresReminderRepository', () => {
       idempotencyKey,
     );
     await repository.fail(
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({ deliveryAttempt: 3 }),
       null,
       'attempt_limit',
@@ -379,7 +359,6 @@ describe('PostgresReminderRepository', () => {
 
     await expect(
       repository.markDelivered(
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder(),
         '2026-08-04T12:00:01.000Z',
         claimKey,
@@ -521,7 +500,6 @@ describe('PostgresInAppDeliveryGateway', () => {
       delivery.title,
       delivery.dueAt,
       delivery.timeZone,
-      /** Supports the hash notification idempotency key test scenario without hiding production behavior. */
       hashNotificationIdempotencyKey(idempotencyKey),
     ]);
   });

@@ -5,7 +5,6 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createNotificationRuntime,
-  /** Represents the notification runtime values used by deterministic test fixtures. */
   type NotificationRuntime,
 } from './notification-runtime';
 import { NotificationPersistenceError } from './postgres-reminder-repository';
@@ -15,7 +14,6 @@ const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
 let administrativePool: Pool;
 let runtime: NotificationRuntime | undefined;
 
-/** Supports the require database url test scenario without hiding production behavior. */
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
     throw new Error(
@@ -25,17 +23,14 @@ function requireDatabaseUrl(): string {
   return DATABASE_URL;
 }
 
-/** Supports the apply migration test scenario without hiding production behavior. */
 async function applyMigration(pool: Pool): Promise<void> {
   const sql = await readFile(
-    /** Supports the resolve test scenario without hiding production behavior. */
     resolve(__dirname, '../migrations/0001_durable_reminder_inbox.sql'),
     'utf8',
   );
   await pool.query(sql);
 }
 
-/** Supports the reset schema test scenario without hiding production behavior. */
 async function resetSchema(): Promise<void> {
   await administrativePool.query(
     'DROP SCHEMA IF EXISTS notification_service CASCADE',
@@ -44,7 +39,6 @@ async function resetSchema(): Promise<void> {
 }
 
 describeWithPostgres('production notification runtime integration', () => {
-  /** Supports the before all test scenario without hiding production behavior. */
   beforeAll(async () => {
     administrativePool = new Pool({
       connectionString: requireDatabaseUrl(),
@@ -53,7 +47,6 @@ describeWithPostgres('production notification runtime integration', () => {
     });
   });
 
-  /** Supports the before each test scenario without hiding production behavior. */
   beforeEach(async () => {
     if (runtime) {
       await runtime.close();
@@ -62,7 +55,6 @@ describeWithPostgres('production notification runtime integration', () => {
     await resetSchema();
   });
 
-  /** Supports the after all test scenario without hiding production behavior. */
   afterAll(async () => {
     if (runtime) {
       await runtime.close();

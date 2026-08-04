@@ -9,15 +9,12 @@ import {
   NotificationReplayConflictError,
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
-  /** Represents the notification sql client values used by deterministic test fixtures. */
   type NotificationSqlClient,
-  /** Represents the notification sql query result values used by deterministic test fixtures. */
   type NotificationSqlQueryResult,
 } from './postgres-reminder-repository';
 import {
   ReminderScheduler,
   idempotencyKey,
-  /** Represents the reminder occurrence values used by deterministic test fixtures. */
   type ReminderOccurrence,
 } from './reminder-scheduler';
 
@@ -40,7 +37,6 @@ class PoolSqlClient implements NotificationSqlClient {
   }
 }
 
-/** Supports the require database url test scenario without hiding production behavior. */
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
     throw new Error(
@@ -50,17 +46,14 @@ function requireDatabaseUrl(): string {
   return DATABASE_URL;
 }
 
-/** Supports the apply migration test scenario without hiding production behavior. */
 async function applyMigration(pool: Pool): Promise<void> {
   const sql = await readFile(
-    /** Supports the resolve test scenario without hiding production behavior. */
     resolve(__dirname, '../migrations/0001_durable_reminder_inbox.sql'),
     'utf8',
   );
   await pool.query(sql);
 }
 
-/** Supports the reset schema test scenario without hiding production behavior. */
 async function resetSchema(): Promise<void> {
   await administrativePool.query(
     'DROP SCHEMA IF EXISTS notification_service CASCADE',
@@ -68,7 +61,6 @@ async function resetSchema(): Promise<void> {
   await applyMigration(administrativePool);
 }
 
-/** Supports the repository test scenario without hiding production behavior. */
 function repository(
   pool: Pool,
   claimLeaseSeconds = 30,
@@ -79,12 +71,10 @@ function repository(
   );
 }
 
-/** Supports the gateway test scenario without hiding production behavior. */
 function gateway(pool: Pool): PostgresInAppDeliveryGateway {
   return new PostgresInAppDeliveryGateway(new PoolSqlClient(pool));
 }
 
-/** Supports the occurrence test scenario without hiding production behavior. */
 function occurrence(
   workspaceId: string,
   overrides: Partial<ReminderOccurrence> = {},
@@ -103,7 +93,6 @@ function occurrence(
 }
 
 describeWithPostgres('PostgreSQL notification repository integration', () => {
-  /** Supports the before all test scenario without hiding production behavior. */
   beforeAll(async () => {
     administrativePool = new Pool({
       connectionString: requireDatabaseUrl(),
@@ -112,12 +101,10 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     });
   });
 
-  /** Supports the before each test scenario without hiding production behavior. */
   beforeEach(async () => {
     await resetSchema();
   });
 
-  /** Supports the after all test scenario without hiding production behavior. */
   afterAll(async () => {
     await administrativePool.query(
       'DROP SCHEMA IF EXISTS notification_service CASCADE',
@@ -164,21 +151,18 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const secondId = '00000000-0000-4000-8000-000000000002';
     const laterId = '00000000-0000-4000-8000-000000000003';
     await durableRepository.schedule(
-      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         id: secondId,
         dueAt: '2026-08-04T10:00:00.000Z',
       }),
     );
     await durableRepository.schedule(
-      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         id: laterId,
         dueAt: '2026-08-04T11:00:00.000Z',
       }),
     );
     await durableRepository.schedule(
-      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         id: firstId,
         dueAt: '2026-08-04T10:00:00.000Z',
@@ -367,24 +351,20 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool);
     const scheduler = new ReminderScheduler(
       durableRepository,
-      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );
     await durableRepository.schedule(
-      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         dueAt: '2026-08-04T08:00:00.000Z',
       }),
     );
     await durableRepository.schedule(
-      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         dueAt: '2026-08-04T08:01:00.000Z',
       }),
     );
     await durableRepository.schedule(
-      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(otherWorkspaceId, {
         dueAt: '2026-08-04T08:02:00.000Z',
       }),
@@ -408,7 +388,6 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool);
     const scheduler = new ReminderScheduler(
       durableRepository,
-      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );
@@ -445,7 +424,6 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const fatigueRepository = repository(administrativePool);
     const fatigueScheduler = new ReminderScheduler(
       fatigueRepository,
-      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );
@@ -591,7 +569,6 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool);
     const scheduler = new ReminderScheduler(
       durableRepository,
-      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );

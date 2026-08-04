@@ -2,13 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_DELIVERY_ATTEMPTS,
   ReminderScheduler,
-  /** Represents the reminder delivery values used by deterministic test fixtures. */
   type ReminderDelivery,
-  /** Represents the reminder delivery gateway values used by deterministic test fixtures. */
   type ReminderDeliveryGateway,
-  /** Represents the reminder occurrence values used by deterministic test fixtures. */
   type ReminderOccurrence,
-  /** Represents the reminder repository values used by deterministic test fixtures. */
   type ReminderRepository,
 } from './reminder-scheduler';
 
@@ -16,7 +12,6 @@ const workspaceAlpha = '018f47a4-9976-4c57-8a8a-674630a873d1';
 const workspaceBeta = '69b8f6fb-c65a-462e-b5e7-1b21808db998';
 const reminderAlpha = '91fe0f58-2035-49b7-a793-ac75939a433f';
 
-/** Supports the reminder test scenario without hiding production behavior. */
 function reminder(
   overrides: Partial<ReminderOccurrence> = {},
 ): ReminderOccurrence {
@@ -43,7 +38,6 @@ interface Outcome {
   readonly idempotencyKey: string;
 }
 
-/** Supports the local date test scenario without hiding production behavior. */
 function localDate(instant: string, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -60,6 +54,7 @@ class InMemoryReminderRepository implements ReminderRepository {
   readonly claims = new Map<string, string>();
   readonly outcomes: Outcome[] = [];
   readonly deliveredByWorkspaceDate = new Map<string, number>();
+  private claimSequence = 0;
 
   /** Creates the component with explicit dependencies and deterministic initial state. */
   constructor(readonly records: readonly unknown[]) {}
@@ -78,7 +73,8 @@ class InMemoryReminderRepository implements ReminderRepository {
   ): Promise<string | null> {
     const occurrenceKey = `${workspaceId}:${reminderId}`;
     if (this.claims.has(occurrenceKey)) return null;
-    const claimKey = `${occurrenceKey}:claim`;
+    this.claimSequence += 1;
+    const claimKey = `${occurrenceKey}:claim:${this.claimSequence}`;
     this.claims.set(occurrenceKey, claimKey);
     return claimKey;
   }
@@ -151,27 +147,24 @@ class InMemoryReminderRepository implements ReminderRepository {
     });
   }
 
-  /** Supports the occurrence key test scenario without hiding production behavior. */
   private occurrenceKey(value: ReminderOccurrence): string {
     return `${value.workspaceId}:${value.id}`;
   }
 
-  /** Supports the require claim test scenario without hiding production behavior. */
   private requireClaim(value: ReminderOccurrence, claimKey: string): void {
     if (this.claims.get(this.occurrenceKey(value)) !== claimKey) {
       throw new Error('claim is not owned');
     }
   }
 
-  /** Supports the release test scenario without hiding production behavior. */
   private release(value: ReminderOccurrence, claimKey: string): void {
     this.requireClaim(value, claimKey);
     this.claims.delete(this.occurrenceKey(value));
   }
 }
 
-/** Represents the persistence operation values used by deterministic test fixtures. */
-type PersistenceOperation = 'defer' | 'fail' | 'markDelivered';
+type PersistenceOperation =
+  'countDelivered' | 'defer' | 'fail' | 'markDelivered';
 
 /** Implements the fail once reminder repository test double with observable deterministic behavior. */
 class FailOnceReminderRepository extends InMemoryReminderRepository {
@@ -185,13 +178,23 @@ class FailOnceReminderRepository extends InMemoryReminderRepository {
     super(records);
   }
 
-  /** Supports the consume failure test scenario without hiding production behavior. */
   private consumeFailure(operation: PersistenceOperation): boolean {
     if (this.failureAvailable && this.operation === operation) {
       this.failureAvailable = false;
       return true;
     }
     return false;
+  }
+
+  /** Counts delivered outcomes or simulates one transient persistence failure. */
+  override async countDelivered(
+    workspaceId: string,
+    date: string,
+  ): Promise<number> {
+    if (this.consumeFailure('countDelivered')) {
+      throw new Error('persistence unavailable');
+    }
+    return await super.countDelivered(workspaceId, date);
   }
 
   /** Atomically completes a fenced claim and records an immutable delivered outcome. */
@@ -251,7 +254,6 @@ class RecordingGateway implements ReminderDeliveryGateway {
 describe('bounded reminder scheduling integration', () => {
   it('uses an atomic tenant-scoped claim to prevent concurrent duplicates', async () => {
     const repository = new InMemoryReminderRepository([
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({ quietHours: null }),
     ]);
     const gateway = new RecordingGateway();
@@ -272,9 +274,36 @@ describe('bounded reminder scheduling integration', () => {
     expect(gateway.messages[0]?.idempotencyKey).toContain(workspaceAlpha);
   });
 
+  it('creates a distinct opaque token for each released claim attempt', async () => {
+    const value = reminder({ quietHours: null });
+    const repository = new InMemoryReminderRepository([value]);
+    const firstClaim = await repository.claim(
+      value.workspaceId,
+      value.id,
+      value.dueAt,
+      value.deliveryAttempt,
+    );
+    if (firstClaim === null) throw new Error('expected the first claim');
+    await repository.defer(
+      value,
+      '2026-08-04T12:05:00.000Z',
+      'quiet_hours',
+      firstClaim,
+      'first-delivery-key',
+    );
+    const secondClaim = await repository.claim(
+      value.workspaceId,
+      value.id,
+      value.dueAt,
+      value.deliveryAttempt,
+    );
+
+    expect(secondClaim).not.toBeNull();
+    expect(secondClaim).not.toBe(firstClaim);
+  });
+
   it('defers through a daylight-saving fallback until local quiet hours end', async () => {
     const repository = new InMemoryReminderRepository([
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({
         dueAt: '2026-11-01T05:30:00.000Z',
         timeZone: 'America/New_York',
@@ -362,7 +391,6 @@ describe('bounded reminder scheduling integration', () => {
 
   it('records a credential-free bounded retry after provider failure', async () => {
     const repository = new InMemoryReminderRepository([
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({ quietHours: null, deliveryAttempt: 0 }),
     ]);
     const gateway = new RecordingGateway();
@@ -388,7 +416,6 @@ describe('bounded reminder scheduling integration', () => {
 
   it('stops permanently at the bounded attempt limit without provider delivery', async () => {
     const repository = new InMemoryReminderRepository([
-      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({
         quietHours: null,
         deliveryAttempt: MAX_DELIVERY_ATTEMPTS,
@@ -413,9 +440,7 @@ describe('bounded reminder scheduling integration', () => {
     const secondReminderId = 'ee09fe10-2602-4d6c-b52a-e58cbf55ea41';
     const deliveredRepository = new FailOnceReminderRepository(
       [
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder({ quietHours: null }),
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder({ id: secondReminderId, quietHours: null }),
       ],
       'markDelivered',
@@ -432,7 +457,6 @@ describe('bounded reminder scheduling integration', () => {
 
     const deferredRepository = new FailOnceReminderRepository(
       [
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder({
           quietHours: { startMinute: 20 * 60, endMinute: 22 * 60 },
         }),
@@ -445,9 +469,37 @@ describe('bounded reminder scheduling integration', () => {
       ),
     ).resolves.toMatchObject({ deferred: 0, persistenceFailures: 1 });
 
+    const countRepository = new FailOnceReminderRepository(
+      [reminder({ quietHours: null })],
+      'countDelivered',
+    );
+    await expect(
+      new ReminderScheduler(countRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ delivered: 0, persistenceFailures: 1 });
+
+    const dailyLimitRepository = new FailOnceReminderRepository(
+      [
+        reminder({
+          quietHours: null,
+          maxPerLocalDay: 1,
+        }),
+      ],
+      'defer',
+    );
+    dailyLimitRepository.deliveredByWorkspaceDate.set(
+      `${workspaceAlpha}:2026-08-04`,
+      1,
+    );
+    await expect(
+      new ReminderScheduler(dailyLimitRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ deferred: 0, persistenceFailures: 1 });
+
     const terminalRepository = new FailOnceReminderRepository(
       [
-        /** Supports the reminder test scenario without hiding production behavior. */
         reminder({
           quietHours: null,
           deliveryAttempt: MAX_DELIVERY_ATTEMPTS,

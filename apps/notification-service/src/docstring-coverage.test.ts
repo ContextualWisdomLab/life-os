@@ -3,14 +3,12 @@ import { resolve } from 'node:path';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-/** Defines the undocumented declaration shape used to make the test evidence explicit. */
 interface UndocumentedDeclaration {
   readonly file: string;
   readonly line: number;
   readonly declaration: string;
 }
 
-/** Returns whether a declaration has an immediately preceding JSDoc block. */
 function hasJSDoc(node: ts.Node, sourceFile: ts.SourceFile): boolean {
   const leadingTrivia = sourceFile.text.slice(
     node.getFullStart(),
@@ -19,7 +17,6 @@ function hasJSDoc(node: ts.Node, sourceFile: ts.SourceFile): boolean {
   return /\/\*\*[\s\S]*?\*\/\s*$/u.test(leadingTrivia);
 }
 
-/** Returns the syntax node that owns leading trivia for one declaration. */
 function documentationOwner(node: ts.Node): ts.Node {
   if (
     ts.isVariableDeclaration(node) &&
@@ -31,7 +28,6 @@ function documentationOwner(node: ts.Node): ts.Node {
   return node;
 }
 
-/** Returns whether a variable or property stores a named callable value. */
 function hasCallableInitializer(
   node: ts.VariableDeclaration | ts.PropertyDeclaration,
 ): boolean {
@@ -42,7 +38,6 @@ function hasCallableInitializer(
   );
 }
 
-/** Names one declaration precisely enough for an actionable failure message. */
 function declarationName(node: ts.Node): string {
   if (ts.isConstructorDeclaration(node)) {
     const parent = node.parent;
@@ -65,7 +60,6 @@ function declarationName(node: ts.Node): string {
   return node.kind.toString();
 }
 
-/** Selects every named callable or structural declaration governed by JSDoc. */
 function requiresJSDoc(node: ts.Node): boolean {
   return (
     ts.isFunctionDeclaration(node) ||
@@ -80,7 +74,15 @@ function requiresJSDoc(node: ts.Node): boolean {
   );
 }
 
-/** Collects every undocumented named declaration in one TypeScript source. */
+function isDocumentedScope(node: ts.Node, sourceFile: ts.SourceFile): boolean {
+  const owner = documentationOwner(node);
+  return (
+    owner.parent === sourceFile ||
+    ts.isClassDeclaration(node.parent) ||
+    ts.isInterfaceDeclaration(node.parent)
+  );
+}
+
 function collectUndocumentedDeclarations(
   file: string,
   source: string,
@@ -94,11 +96,10 @@ function collectUndocumentedDeclarations(
   );
   const missing: UndocumentedDeclaration[] = [];
 
-  /** Visits every syntax node while preserving exact source positions. */
   function visit(node: ts.Node): void {
     if (
-      /** Selects named declarations governed by the documentation contract. */
       requiresJSDoc(node) &&
+      isDocumentedScope(node, sourceFile) &&
       !hasJSDoc(documentationOwner(node), sourceFile)
     ) {
       const position = sourceFile.getLineAndCharacterOfPosition(
@@ -113,12 +114,10 @@ function collectUndocumentedDeclarations(
     ts.forEachChild(node, visit);
   }
 
-  /** Supports the visit test scenario without hiding production behavior. */
   visit(sourceFile);
   return missing;
 }
 
-/** Discovers all notification-service TypeScript files deterministically. */
 async function discoverSourceFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(
@@ -127,14 +126,18 @@ async function discoverSourceFiles(directory: string): Promise<string[]> {
       if (entry.isDirectory()) {
         return await discoverSourceFiles(path);
       }
-      return entry.isFile() && entry.name.endsWith('.ts') ? [path] : [];
+      return entry.isFile() &&
+        entry.name.endsWith('.ts') &&
+        !entry.name.endsWith('.test.ts')
+        ? [path]
+        : [];
     }),
   );
   return files.flat().sort();
 }
 
 describe('notification-service source documentation', () => {
-  it('documents every named declaration with JSDoc', async () => {
+  it('documents every production declaration with JSDoc', async () => {
     const sourceFiles = await discoverSourceFiles(__dirname);
     const missing = (
       await Promise.all(

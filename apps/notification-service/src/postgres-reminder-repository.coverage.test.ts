@@ -1,24 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_DELIVERY_ATTEMPTS,
-  ReminderScheduler,
-  /** Represents the reminder delivery values used by deterministic test fixtures. */
   type ReminderDelivery,
-  /** Represents the reminder delivery gateway values used by deterministic test fixtures. */
-  type ReminderDeliveryGateway,
-  /** Represents the reminder occurrence values used by deterministic test fixtures. */
   type ReminderOccurrence,
-  /** Represents the reminder repository values used by deterministic test fixtures. */
-  type ReminderRepository,
 } from './reminder-scheduler';
 import {
   NotificationPersistenceError,
   NotificationReplayConflictError,
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
-  /** Represents the notification sql client values used by deterministic test fixtures. */
   type NotificationSqlClient,
-  /** Represents the notification sql query result values used by deterministic test fixtures. */
   type NotificationSqlQueryResult,
 } from './postgres-reminder-repository';
 
@@ -75,7 +66,10 @@ function sequencedSqlClient(
       values: readonly unknown[],
     ): Promise<NotificationSqlQueryResult<Row>> => {
       calls.push({ text, values });
-      const response = responses[index] ?? [];
+      const response = responses[index];
+      if (response === undefined) {
+        throw new Error(`unexpected query #${index + 1}: no response prepared`);
+      }
       index += 1;
       if (response instanceof Error) {
         throw response;
@@ -142,31 +136,26 @@ describe('PostgreSQL notification defensive coverage', () => {
   it('covers aliases, nullable policies, status variants, and bounded result guards', async () => {
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[reminderRow()]]).client,
       ).createOccurrence(baseReminder),
     ).resolves.toMatchObject({ id: reminderId, status: 'pending' });
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[reminderRow()]]).client,
       ).listOccurrences(workspaceId, 1),
     ).resolves.toHaveLength(1);
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[inboxRow()]]).client,
       ).listInboxMessages(workspaceId, 1),
     ).resolves.toHaveLength(1);
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([
           [
-            /** Supports the reminder row test scenario without hiding production behavior. */
             reminderRow({
               quiet_start_minute: null,
               quiet_end_minute: null,
@@ -178,15 +167,12 @@ describe('PostgreSQL notification defensive coverage', () => {
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([
           [
-            /** Supports the reminder row test scenario without hiding production behavior. */
             reminderRow({
               occurrence_status: 'delivered',
               claim_expires_at: new Date('2026-08-04T12:05:00.000Z'),
             }),
-            /** Supports the reminder row test scenario without hiding production behavior. */
             reminderRow({ occurrence_status: 'failed' }),
           ],
         ]).client,
@@ -199,22 +185,18 @@ describe('PostgreSQL notification defensive coverage', () => {
     for (const operation of [
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[reminderRow(), reminderRow()]]).client,
         ).listDue(baseReminder.dueAt, 1),
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[reminderRow(), reminderRow()]]).client,
         ).listReminders(workspaceId, 1),
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[outcomeRow(), outcomeRow()]]).client,
         ).listOutcomes(workspaceId, 1),
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[inboxRow(), inboxRow()]]).client,
         ).listInbox(workspaceId, 1),
     ]) {
@@ -226,21 +208,15 @@ describe('PostgreSQL notification defensive coverage', () => {
 
   it('rejects malformed temporal, cardinality, ownership, and row-state values', async () => {
     const malformedDueRows = [
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ due_instant: new Date(Number.NaN) }),
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ due_instant: '2026-13-01T00:00:00Z' }),
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ due_instant: 42 }),
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ quiet_start_minute: null, quiet_end_minute: 420 }),
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ daily_delivery_limit: {} }),
     ];
     for (const row of malformedDueRows) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[row]]).client,
         ).listDue(baseReminder.dueAt, 1),
       ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -249,7 +225,6 @@ describe('PostgreSQL notification defensive coverage', () => {
     for (const localDate of ['2026-13-01', '2026-02-30']) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([]).client,
         ).countDelivered(workspaceId, localDate),
       ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -257,31 +232,25 @@ describe('PostgreSQL notification defensive coverage', () => {
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[]]).client,
       ).countDelivered(workspaceId, '2026-08-04'),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[{ delivery_count: {} }]]).client,
       ).countDelivered(workspaceId, '2026-08-04'),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[reminderRow(), reminderRow()]]).client,
       ).schedule(baseReminder),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
 
     for (const row of [
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ workspace_id: otherWorkspaceId }),
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({ occurrence_status: 'archived' }),
-      /** Supports the reminder row test scenario without hiding production behavior. */
       reminderRow({
         created_at: new Date('2026-08-04T11:00:00.000Z'),
         updated_at: new Date('2026-08-04T10:00:00.000Z'),
@@ -289,7 +258,6 @@ describe('PostgreSQL notification defensive coverage', () => {
     ]) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[row]]).client,
         ).listReminders(workspaceId, 1),
       ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -297,7 +265,6 @@ describe('PostgreSQL notification defensive coverage', () => {
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[reminderRow({ reminder_id: otherReminderId })]])
           .client,
       ).schedule(baseReminder),
@@ -319,7 +286,6 @@ describe('PostgreSQL notification defensive coverage', () => {
     for (const overrides of replayMismatches) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[], [reminderRow(overrides)]]).client,
         ).schedule(baseReminder),
       ).rejects.toBeInstanceOf(NotificationReplayConflictError);
@@ -327,11 +293,9 @@ describe('PostgreSQL notification defensive coverage', () => {
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([
           [],
           [
-            /** Supports the reminder row test scenario without hiding production behavior. */
             reminderRow({
               quiet_start_minute: null,
               quiet_end_minute: null,
@@ -344,30 +308,25 @@ describe('PostgreSQL notification defensive coverage', () => {
 
   it('accepts valid outcome variants and rejects every kind-specific invariant violation', async () => {
     const validRows = [
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow(),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'deferred',
         next_attempt_at: new Date('2026-08-04T13:00:00.000Z'),
         outcome_reason: 'quiet_hours',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'deferred',
         next_attempt_at: new Date('2026-08-05T00:00:00.000Z'),
         outcome_reason: 'daily_limit',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'failed',
         next_attempt_at: new Date('2026-08-04T12:05:00.000Z'),
         outcome_reason: 'delivery_failed',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'failed',
         next_attempt_at: null,
@@ -378,87 +337,69 @@ describe('PostgreSQL notification defensive coverage', () => {
     for (const row of validRows) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[row]]).client,
         ).listOutcomes(workspaceId, 1),
       ).resolves.toHaveLength(1);
     }
 
     const invalidRows = [
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ outcome_kind: 'unknown' }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ outcome_reason: 'unknown' }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ workspace_id: otherWorkspaceId }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ outcome_reason: 'quiet_hours' }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         next_attempt_at: new Date('2026-08-04T13:00:00.000Z'),
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ delivery_local_date: null }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'deferred',
         next_attempt_at: null,
         outcome_reason: 'quiet_hours',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'deferred',
         next_attempt_at: new Date('2026-08-04T13:00:00.000Z'),
         outcome_reason: 'delivery_failed',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'deferred',
         next_attempt_at: new Date('2026-08-04T13:00:00.000Z'),
         outcome_reason: 'daily_limit',
         delivery_local_date: '2026-08-04',
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'failed',
         next_attempt_at: null,
         outcome_reason: 'attempt_limit',
         delivery_local_date: '2026-08-04',
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'failed',
         next_attempt_at: null,
         outcome_reason: 'delivery_failed',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'failed',
         next_attempt_at: new Date('2026-08-04T13:00:00.000Z'),
         outcome_reason: 'attempt_limit',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({
         outcome_kind: 'failed',
         next_attempt_at: null,
         outcome_reason: 'quiet_hours',
         delivery_local_date: null,
       }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ delivery_local_date: '2026-13-01' }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ delivery_local_date: '2026-02-30' }),
-      /** Supports the outcome row test scenario without hiding production behavior. */
       outcomeRow({ delivery_local_date: new Date(Number.NaN) }),
     ];
     for (const row of invalidRows) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[row]]).client,
         ).listOutcomes(workspaceId, 1),
       ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -468,7 +409,6 @@ describe('PostgreSQL notification defensive coverage', () => {
   it('covers inbox chronology, delivery comparisons, and gateway transport failures', async () => {
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([
           [inboxRow({ read_at: new Date('2026-08-04T12:00:02.000Z') })],
         ]).client,
@@ -476,14 +416,11 @@ describe('PostgreSQL notification defensive coverage', () => {
     ).resolves.toMatchObject([{ readAt: '2026-08-04T12:00:02.000Z' }]);
 
     for (const row of [
-      /** Supports the inbox row test scenario without hiding production behavior. */
       inboxRow({ read_at: new Date('2026-08-04T12:00:00.000Z') }),
-      /** Supports the inbox row test scenario without hiding production behavior. */
       inboxRow({ workspace_id: otherWorkspaceId }),
     ]) {
       await expect(
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[row]]).client,
         ).listInbox(workspaceId, 1),
       ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -498,7 +435,6 @@ describe('PostgreSQL notification defensive coverage', () => {
     for (const overrides of insertedMismatches) {
       await expect(
         new PostgresInAppDeliveryGateway(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([[inboxRow(overrides)]]).client,
           () => messageId,
         ).deliver(baseDelivery),
@@ -507,7 +443,6 @@ describe('PostgreSQL notification defensive coverage', () => {
 
     await expect(
       new PostgresInAppDeliveryGateway(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([new Error('database unavailable')]).client,
         () => messageId,
       ).deliver(baseDelivery),
@@ -517,7 +452,6 @@ describe('PostgreSQL notification defensive coverage', () => {
   it('covers transition outcome failures and every invalid terminal-state combination', async () => {
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([[{ transitioned: true, outcome_inserted: false }]])
           .client,
         300,
@@ -534,7 +468,6 @@ describe('PostgreSQL notification defensive coverage', () => {
     const invalidFailures = [
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([]).client,
           300,
           () => outcomeId,
@@ -542,7 +475,6 @@ describe('PostgreSQL notification defensive coverage', () => {
         ).fail(baseReminder, null, 'delivery_failed', claimKey, idempotencyKey),
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([]).client,
           300,
           () => outcomeId,
@@ -556,7 +488,6 @@ describe('PostgreSQL notification defensive coverage', () => {
         ),
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([]).client,
           300,
           () => outcomeId,
@@ -570,7 +501,6 @@ describe('PostgreSQL notification defensive coverage', () => {
         ),
       () =>
         new PostgresReminderRepository(
-          /** Supports the sequenced sql client test scenario without hiding production behavior. */
           sequencedSqlClient([]).client,
           300,
           () => outcomeId,
@@ -585,7 +515,6 @@ describe('PostgreSQL notification defensive coverage', () => {
 
     await expect(
       new PostgresReminderRepository(
-        /** Supports the sequenced sql client test scenario without hiding production behavior. */
         sequencedSqlClient([]).client,
         300,
         () => 'invalid-outcome-id',
@@ -597,39 +526,5 @@ describe('PostgreSQL notification defensive coverage', () => {
         idempotencyKey,
       ),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
-  });
-
-  it('isolates a daily-limit deferral persistence failure', async () => {
-    const dailyLimitedReminder: ReminderOccurrence = {
-      ...baseReminder,
-      quietHours: null,
-      maxPerLocalDay: 1,
-    };
-    const repository: ReminderRepository = {
-      listDue: async () => [dailyLimitedReminder],
-      claim: async (..._arguments: unknown[]) => claimKey,
-      countDelivered: async () => 1,
-      markDelivered: async () => undefined,
-      defer: async () => {
-        throw new Error('persistence unavailable');
-      },
-      fail: async () => undefined,
-    };
-    const gateway: ReminderDeliveryGateway = {
-      deliver: async () => {
-        throw new Error('delivery must not run after the daily limit');
-      },
-    };
-
-    await expect(
-      new ReminderScheduler(repository, gateway).run(
-        new Date('2026-08-04T12:00:00.000Z'),
-      ),
-    ).resolves.toMatchObject({
-      scanned: 1,
-      deferred: 0,
-      delivered: 0,
-      persistenceFailures: 1,
-    });
   });
 });
