@@ -39,6 +39,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -53,6 +55,27 @@ jobs:
 
       - name: Check formatting
         run: pnpm format:check
+
+      - name: Check deployment reference sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --check \
+            .github/workflows/deploy.yml \
+            trivy.yaml \
+            infra/trivy-data/trusted-registries.yaml \
+            infra/kubernetes/base/kustomization.yaml \
+            infra/kubernetes/base/namespace.yaml \
+            infra/kubernetes/base/edge-workloads.yaml \
+            infra/kubernetes/base/network-policies.yaml \
+            infra/kubernetes/overlays/production/kustomization.yaml \
+            infra/tests/deployment.spec.ts \
+            infra/tests/deployment-scripts.spec.ts \
+            docs/superpowers/plans/2026-08-04-production-kubernetes-reference-slice.md
+          bash -n infra/kubernetes/run-migrations.sh
+          python -m py_compile \
+            infra/kubernetes/render-production-manifest.py \
+            infra/kubernetes/write-pg-service.py
 
       - name: Lint
         run: pnpm lint

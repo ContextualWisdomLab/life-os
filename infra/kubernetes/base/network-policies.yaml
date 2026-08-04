@@ -1,0 +1,146 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: life-os
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: life-os
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-approved-edge-ingress
+  namespace: life-os
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - life-os-web
+          - life-os-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              life-os.io/edge-access: 'true'
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 4000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-gateway-egress
+  namespace: life-os
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: life-os-web
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: life-os-gateway
+      ports:
+        - protocol: TCP
+          port: 4000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-gateway-ingress
+  namespace: life-os
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: life-os-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: life-os-web
+      ports:
+        - protocol: TCP
+          port: 4000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-internal-egress
+  namespace: life-os
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: life-os-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - life-os-identity
+                  - life-os-planning
+                  - life-os-habit
+                  - life-os-ai
+                  - life-os-review
+                  - life-os-calendar
+                  - life-os-integration
+                  - life-os-postgres
+                  - life-os-nats
+      ports:
+        - protocol: TCP
+          port: 4101
+        - protocol: TCP
+          port: 4102
+        - protocol: TCP
+          port: 4103
+        - protocol: TCP
+          port: 4104
+        - protocol: TCP
+          port: 4105
+        - protocol: TCP
+          port: 4106
+        - protocol: TCP
+          port: 4107
+        - protocol: TCP
+          port: 4222
+        - protocol: TCP
+          port: 5432
