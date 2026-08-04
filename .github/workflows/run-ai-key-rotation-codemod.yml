@@ -1,4 +1,4 @@
-name: Run AI Key Rotation Codemod
+name: Verify AI Key Rotation Slice
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  run:
+  verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -34,52 +34,37 @@ jobs:
           corepack enable
           pnpm install --no-frozen-lockfile
 
-      - name: Extract and execute reviewed codemod
-        run: |
-          set -Eeuo pipefail
-          awk "/python3 - <<'PY'/{capture=1; next} /^          PY$/{capture=0} capture{sub(/^          /, \"\"); print}" \
-            .github/workflows/complete-ai-key-rotation.yml > /tmp/complete-ai-key-rotation.py
-          test -s /tmp/complete-ai-key-rotation.py
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('/tmp/complete-ai-key-rotation.py')
-          source = path.read_text(encoding='utf-8')
-          start_marker = '# Production PostgreSQL HTTP integration and rotation lifecycle evidence.'
-          end_marker = '# Public example exposes active signer and optional previous verifier only.'
-          start = source.index(start_marker)
-          end = source.index(end_marker, start)
-          source = (
-              source[:start]
-              + '# Production PostgreSQL integration is applied by a focused follow-up.\n'
-              + source[end:]
-          )
-          path.write_text(source, encoding='utf-8')
-          PY
-          python3 /tmp/complete-ai-key-rotation.py
-
-      - name: Format modified sources
+      - name: Format complete keyed-context slice
         run: |
           pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/ai-gateway-keyring.ts \
+            apps/ai-service/src/ai-gateway-keyring.test.ts \
+            apps/ai-service/src/ai-http-boundary.ts \
+            apps/ai-service/src/ai-http-boundary.test.ts \
+            apps/ai-service/src/main.ts \
+            apps/ai-service/src/quality-coverage.test.ts \
+            apps/ai-service/src/no-silent-mutation.integration.test.ts \
             apps/web/app/ai-proposal-client-core.ts \
             apps/web/app/ai-proposal-client.ts \
             apps/web/app/ai-proposal-client.test.ts \
             apps/web/app/ai-proposal-scope-regression.test.ts \
             apps/web/app/ai-proposal-identity-stream-regression.test.ts \
-            apps/web/app/api/ai/proposals/routes.test.ts \
-            apps/ai-service/src/quality-coverage.test.ts \
-            apps/ai-service/src/no-silent-mutation.integration.test.ts
+            apps/web/app/api/ai/proposals/routes.test.ts
 
-      - name: Commit codemod result
+      - name: Commit canonical formatting when needed
         run: |
           set -Eeuo pipefail
           rm -f pnpm-lock.yaml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .env.example apps/web apps/ai-service
+          git add apps/ai-service apps/web
           git diff --cached --check
-          git commit -m 'feat(ai): wire versioned keyed gateway context'
-          git push origin HEAD:feat/ai-gateway-key-rotation
+          if git diff --cached --quiet; then
+            echo 'No formatting changes required.'
+          else
+            git commit -m 'style(ai): format keyed gateway context slice'
+            git push origin HEAD:feat/ai-gateway-key-rotation
+          fi
 
       - name: Verify AI and web boundaries
         run: |
