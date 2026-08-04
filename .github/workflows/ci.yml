@@ -88,7 +88,9 @@ jobs:
             "apps/notification-service/src/**/*.ts"
           pnpm --filter @life-os/notification-service lint
           pnpm --filter @life-os/notification-service typecheck
-          pnpm --filter @life-os/notification-service test
+          pnpm --filter @life-os/notification-service exec vitest run \
+            --no-file-parallelism \
+            --coverage.enabled=false
 
       - name: Commit reviewed fixes and remove temporary automation
         if: steps.repair_state.outputs.required == 'true'
