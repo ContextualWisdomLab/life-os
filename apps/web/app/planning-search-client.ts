@@ -169,10 +169,7 @@ export function createPlanningContextHeaders(
   }
   const issuedAt = String(nowSeconds);
   const signature = createHmac('sha256', safeSecret)
-    .update(
-      `life-os.workspace.v1\n${safeWorkspaceId}\n${issuedAt}`,
-      'utf8',
-    )
+    .update(`life-os.workspace.v1\n${safeWorkspaceId}\n${issuedAt}`, 'utf8')
     .digest('base64url');
   return Object.freeze({
     'x-life-os-workspace-id': safeWorkspaceId,
@@ -266,10 +263,7 @@ function parseBrowserQuery(
   if (queryValues.length !== 1 || limitValues.length > 1) {
     return undefined;
   }
-  const query = queryValues[0]
-    ?.normalize('NFKC')
-    .trim()
-    .replace(/\s+/gu, ' ');
+  const query = queryValues[0]?.normalize('NFKC').trim().replace(/\s+/gu, ' ');
   if (
     !query ||
     codePointLength(query) < 2 ||
