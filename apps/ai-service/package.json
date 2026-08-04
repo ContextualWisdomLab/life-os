@@ -5,8 +5,8 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "lint": "prettier --single-quote --check \"src/**/*.ts\" migrations/README.md ../../docs/research/2026-08-04-ai-gateway-context-standards.md ../../docs/superpowers/plans/2026-08-04-ai-authenticated-gateway-context.md ../../docs/superpowers/specs/2026-08-04-ai-authenticated-gateway-context-design.md && tsc --noEmit",
-    "test": "vitest run --passWithNoTests --no-file-parallelism",
+    "lint": "prettier --single-quote --check package.json tsconfig.json vitest.config.ts \"src/**/*.ts\" migrations/README.md ../../docs/research/2026-08-04-ai-gateway-context-standards.md ../../docs/superpowers/plans/2026-08-04-ai-authenticated-gateway-context.md ../../docs/superpowers/specs/2026-08-04-ai-authenticated-gateway-context-design.md && tsc --noEmit",
+    "test": "vitest run --passWithNoTests --no-file-parallelism --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,6 +21,7 @@
     "@nestjs/cli": "^11.0.10",
     "@types/node": "^24.3.0",
     "@types/pg": "^8.20.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
