@@ -1,0 +1,122 @@
+name: Notification final review repair
+
+on:
+  push:
+    branches: [feat/notification-postgres-inbox]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notification-final-review-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    steps:
+      - name: Checkout feature branch without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/notification-postgres-inbox
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Start runner PostgreSQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql \
+            --set=ON_ERROR_STOP=1 \
+            --command "ALTER USER postgres PASSWORD 'postgres'"
+          if ! sudo -u postgres psql \
+            --tuples-only \
+            --no-align \
+            --command "SELECT 1 FROM pg_database WHERE datname = 'life_os_test'" \
+            | grep -qx 1; then
+            sudo -u postgres createdb life_os_test
+          fi
+          pg_isready -h 127.0.0.1 -U postgres -d life_os_test
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Add regression tests
+        run: python3 .github/scripts/address_notification_review.py tests
+
+      - name: Verify regressions fail before implementation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/notification-service/src/notification-runtime.test.ts \
+            apps/notification-service/src/reminder-scheduler.integration.test.ts \
+            apps/notification-service/src/postgres-reminder-repository.coverage.test.ts \
+            apps/notification-service/src/docstring-coverage.test.ts
+
+          set +e
+          pnpm --filter @life-os/notification-service exec vitest run \
+            src/notification-runtime.test.ts \
+            --no-file-parallelism \
+            --coverage.enabled=false
+          runtime_status=$?
+          pnpm --filter @life-os/notification-service exec vitest run \
+            src/reminder-scheduler.integration.test.ts \
+            --no-file-parallelism \
+            --coverage.enabled=false
+          scheduler_status=$?
+          set -e
+
+          if [[ "$runtime_status" -eq 0 || "$scheduler_status" -eq 0 ]]; then
+            echo 'Expected both new regression suites to fail before implementation.' >&2
+            exit 1
+          fi
+
+      - name: Apply reviewed implementation
+        run: python3 .github/scripts/address_notification_review.py implementation
+
+      - name: Format and verify notification service
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/notification-service/package.json \
+            apps/notification-service/tsconfig.json \
+            apps/notification-service/vitest.config.ts \
+            "apps/notification-service/src/**/*.ts"
+          pnpm --filter @life-os/notification-service lint
+          pnpm --filter @life-os/notification-service typecheck
+          pnpm --filter @life-os/notification-service test
+          pnpm --filter @life-os/notification-service build
+
+      - name: Commit verified repair and remove temporary automation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git restore --worktree pnpm-lock.yaml 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f \
+            .github/scripts/address_notification_review.py \
+            .github/workflows/notification-final-review.yml
+          git add apps/notification-service/src
+          git diff --cached --check
+          git commit -m "fix(notification): address final reliability review"
+          authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
+            push origin HEAD:feat/notification-postgres-inbox
