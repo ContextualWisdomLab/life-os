@@ -23,7 +23,7 @@ const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const MAXIMUM_REASON_LENGTH = 1_000;
 
-/** Untrusted decision payload accepted by the versioned HTTP boundary. */
+/** Validated decision payload passed from the versioned HTTP boundary. */
 export interface ProposalDecisionRequest {
   readonly expectedContentDigest: string;
   readonly idempotencyKey: string;
@@ -226,30 +226,27 @@ export class ProposalAuditApplication {
     );
   }
 
-  /** Appends one explicit decision against the exact immutable proposal digest. */
+  /** Appends one prevalidated decision against the exact immutable proposal digest. */
   async appendDecision(
     workspaceId: string,
     proposalId: string,
     actorId: string,
     request: ProposalDecisionRequest,
   ): Promise<ProposalDecisionEvent> {
-    const safeRequest = validateProposalDecisionRequest(request);
     const record = await this.findProposal(workspaceId, proposalId);
-    if (safeRequest.expectedContentDigest !== record.contentDigest) {
+    if (request.expectedContentDigest !== record.contentDigest) {
       throw new ProposalDigestMismatchError();
     }
     const event = createProposalDecisionEvent({
       id: this.decisionIdFactory(),
       workspaceId: record.proposal.workspaceId,
       proposalId: record.proposal.proposalId,
-      proposalContentDigest: safeRequest.expectedContentDigest,
+      proposalContentDigest: request.expectedContentDigest,
       actorId: requireUuidV4(actorId),
-      decision: safeRequest.decision,
-      ...(safeRequest.reason === undefined
-        ? {}
-        : { reason: safeRequest.reason }),
-      idempotencyKey: safeRequest.idempotencyKey,
-      decidedAt: safeRequest.decidedAt,
+      decision: request.decision,
+      ...(request.reason === undefined ? {} : { reason: request.reason }),
+      idempotencyKey: request.idempotencyKey,
+      decidedAt: request.decidedAt,
       recordedAt: now(this.clock),
     });
     return await this.repository.appendDecision(event);
