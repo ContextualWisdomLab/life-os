@@ -656,7 +656,7 @@ describe('AI proposal BFF helpers', () => {
         createAiContextHeaders(
           WORKSPACE_ID,
           ACTOR_ID,
-          GATEWAY_SECRET,
+          { keyId: ACTIVE_KEY_ID, secret: GATEWAY_SECRET },
           -1,
           'POST',
           '/v1/proposals',
