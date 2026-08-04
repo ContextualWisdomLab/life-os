@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -10,6 +10,11 @@ import { AiProductionModule } from './main';
 
 const TEST_DATABASE_URL = process.env.AI_TEST_DATABASE_URL;
 const ORIGINAL_APPLICATION_DATABASE_URL = process.env.AI_DATABASE_URL;
+const ORIGINAL_GATEWAY_CONTEXT_SECRET =
+  process.env.AI_GATEWAY_CONTEXT_SECRET;
+const TEST_GATEWAY_CONTEXT_SECRET =
+  '0123456789abcdef0123456789abcdef';
+const DEFAULT_ACTOR_ID = '20a6d1a2-8de8-47c1-aeba-84b10de74809';
 const describeWithPostgres = TEST_DATABASE_URL ? describe : describe.skip;
 let administrativePool: Pool;
 
@@ -51,6 +56,26 @@ async function applyMigration(pool: Pool): Promise<void> {
   await pool.query(sql);
 }
 
+/** Creates the exact short-lived signature expected from the authenticated gateway. */
+function signedContextHeaders(
+  workspaceId: string,
+  actorId: string,
+): Readonly<Record<string, string>> {
+  const issuedAt = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac('sha256', TEST_GATEWAY_CONTEXT_SECRET)
+    .update(
+      `life-os.ai-context.v1\n${workspaceId}\n${actorId}\n${issuedAt}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-actor-id': actorId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
+
 /** Sends one bounded JSON request to the local production module. */
 function requestJson(
   address: AddressInfo,
@@ -58,7 +83,7 @@ function requestJson(
   path: string,
   workspaceId: string,
   body?: unknown,
-  actorId?: string,
+  actorId = DEFAULT_ACTOR_ID,
 ): Promise<JsonHttpResponse> {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   return new Promise((resolveResponse, reject) => {
@@ -70,8 +95,7 @@ function requestJson(
         method,
         headers: {
           accept: 'application/json',
-          'x-workspace-id': workspaceId,
-          ...(actorId === undefined ? {} : { 'x-actor-id': actorId }),
+          ...signedContextHeaders(workspaceId, actorId),
           ...(payload === undefined
             ? {}
             : {
@@ -130,6 +154,7 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
   beforeAll(async () => {
     const testDatabaseUrl = requireTestDatabaseUrl();
     process.env.AI_DATABASE_URL = testDatabaseUrl;
+    process.env.AI_GATEWAY_CONTEXT_SECRET = TEST_GATEWAY_CONTEXT_SECRET;
     administrativePool = new Pool({
       connectionString: testDatabaseUrl,
       application_name: 'life-os-ai-http-integration-admin',
@@ -149,10 +174,16 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       } else {
         process.env.AI_DATABASE_URL = ORIGINAL_APPLICATION_DATABASE_URL;
       }
+      if (ORIGINAL_GATEWAY_CONTEXT_SECRET === undefined) {
+        delete process.env.AI_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.AI_GATEWAY_CONTEXT_SECRET =
+          ORIGINAL_GATEWAY_CONTEXT_SECRET;
+      }
     }
   });
 
-  it('persists proposals across restarts and appends replay-safe decisions', async () => {
+  it('persists proposals across restarts and appends replay-safe signed-actor decisions', async () => {
     const workspaceId = randomUUID();
     const otherWorkspaceId = randomUUID();
     const actorId = randomUUID();
@@ -254,6 +285,7 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
         actorId,
       );
       expect(accepted.statusCode).toBe(201);
+      expect(accepted.body).toMatchObject({ actorId });
       expect(replayed).toEqual(accepted);
 
       const history = await requestJson(
