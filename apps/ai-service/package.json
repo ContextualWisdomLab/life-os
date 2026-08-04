@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "lint": "tsc --noEmit",
+    "lint": "prettier --single-quote --check \"src/**/*.ts\" migrations/README.md ../../docs/superpowers/plans/2026-08-04-ai-authenticated-gateway-context.md ../../docs/superpowers/specs/2026-08-04-ai-authenticated-gateway-context-design.md && tsc --noEmit",
     "test": "vitest run --passWithNoTests --no-file-parallelism",
     "typecheck": "tsc --noEmit"
   },
