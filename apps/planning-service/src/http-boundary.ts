@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 
 export interface PlanningProblemDetails {
@@ -7,11 +8,25 @@ export interface PlanningProblemDetails {
   code: string;
 }
 
+/** Headers emitted by the trusted gateway after authenticating a workspace. */
+export interface TrustedWorkspaceContextHeaders {
+  workspaceId: unknown;
+  issuedAt: unknown;
+  signature: unknown;
+}
+
 const VALIDATION_MESSAGES = new Set([
   'Title is required',
   'Identifier must be an opaque non-numeric string',
   'Planning search request is invalid',
 ]);
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
+const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
+const MINIMUM_GATEWAY_SECRET_BYTES = 32;
+const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
+const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
 
 function problemException(
   status: number,
@@ -25,6 +40,82 @@ function problemException(
     code,
   };
   return new HttpException(problem, status);
+}
+
+function invalidGatewayContext(): never {
+  throw problemException(
+    401,
+    'Trusted gateway context is invalid',
+    'invalid_gateway_context',
+  );
+}
+
+function unavailableGatewayContext(): never {
+  throw problemException(
+    503,
+    'Trusted gateway context is unavailable',
+    'gateway_context_unavailable',
+  );
+}
+
+function workspaceContextDigest(
+  workspaceId: string,
+  issuedAt: string,
+  secret: string,
+): Buffer {
+  return createHmac('sha256', secret)
+    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .digest();
+}
+
+/**
+ * Verifies a short-lived HMAC context created only after gateway authentication.
+ * Client-selected workspace headers are intentionally not accepted.
+ */
+export function requireTrustedWorkspaceContext(
+  headers: TrustedWorkspaceContextHeaders,
+  secret: unknown,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): string {
+  if (
+    typeof secret !== 'string' ||
+    Buffer.byteLength(secret, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
+  ) {
+    return unavailableGatewayContext();
+  }
+  if (
+    typeof headers.workspaceId !== 'string' ||
+    typeof headers.issuedAt !== 'string' ||
+    typeof headers.signature !== 'string' ||
+    !UUID_V4_PATTERN.test(headers.workspaceId) ||
+    !UNIX_SECONDS_PATTERN.test(headers.issuedAt) ||
+    !BASE64URL_SHA256_PATTERN.test(headers.signature) ||
+    !Number.isSafeInteger(nowSeconds) ||
+    nowSeconds < 0
+  ) {
+    return invalidGatewayContext();
+  }
+
+  const workspaceId = headers.workspaceId.toLowerCase();
+  const issuedAtSeconds = Number(headers.issuedAt);
+  if (
+    !Number.isSafeInteger(issuedAtSeconds) ||
+    issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
+    issuedAtSeconds < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS
+  ) {
+    return invalidGatewayContext();
+  }
+
+  const expected = workspaceContextDigest(
+    workspaceId,
+    headers.issuedAt,
+    secret,
+  );
+  const actual = Buffer.from(headers.signature, 'base64url');
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return invalidGatewayContext();
+  }
+  return workspaceId;
 }
 
 export function requireTitle(body: { title?: unknown } | undefined): string {
