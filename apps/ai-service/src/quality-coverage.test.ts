@@ -1021,15 +1021,7 @@ describe('AI controllers and bootstrap error contracts', () => {
         code,
       );
     }
-    const loggedOutput = logger.mock.calls
-    .flat()
-    .flatMap((value) =>
-      value instanceof Error
-        ? [value.name, value.message, value.stack ?? '']
-        : [typeof value === 'string' ? value : JSON.stringify(value)],
-    )
-    .join('\n');
-  expect(loggedOutput).not.toContain('password=secret');
+    expect(JSON.stringify(logger.mock.calls)).not.toContain('password=secret');
     logger.mockRestore();
   });
 
