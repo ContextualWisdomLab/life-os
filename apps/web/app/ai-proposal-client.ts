@@ -121,10 +121,12 @@ function unavailableAiProposal(correlationId: string | null): Response {
 }
 
 /** Returns the workspace carried by a validated proposal representation. */
-function proposalScope(value: unknown): {
-  workspaceId: string;
-  proposalId: string;
-} | undefined {
+function proposalScope(value: unknown):
+  | {
+      workspaceId: string;
+      proposalId: string;
+    }
+  | undefined {
   if (!isRecord(value)) return undefined;
   const workspaceId = value.workspaceId;
   const proposalId = value.proposalId;
@@ -135,20 +137,24 @@ function proposalScope(value: unknown): {
 }
 
 /** Returns the proposal scope carried by a validated immutable audit record. */
-function auditScope(value: unknown): {
-  workspaceId: string;
-  proposalId: string;
-} | undefined {
+function auditScope(value: unknown):
+  | {
+      workspaceId: string;
+      proposalId: string;
+    }
+  | undefined {
   if (!isRecord(value)) return undefined;
   return proposalScope(value.proposal);
 }
 
 /** Returns the scope carried by a validated append-only decision event. */
-function decisionScope(value: unknown): {
-  workspaceId: string;
-  actorId: string;
-  proposalId: string;
-} | undefined {
+function decisionScope(value: unknown):
+  | {
+      workspaceId: string;
+      actorId: string;
+      proposalId: string;
+    }
+  | undefined {
   if (!isRecord(value)) return undefined;
   const workspaceId = value.workspaceId;
   const actorId = value.actorId;

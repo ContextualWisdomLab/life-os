@@ -219,7 +219,10 @@ export function parseAiSessionPrincipal(value: unknown): AiSessionPrincipal {
 }
 
 /** Requires one supported method and exact canonical AI service path. */
-function requireAiTarget(method: unknown, path: unknown): {
+function requireAiTarget(
+  method: unknown,
+  path: unknown,
+): {
   method: AiMethod;
   path: string;
 } {
@@ -323,7 +326,10 @@ async function readBoundedText(
 /** Reads bounded JSON from an allowed response media type. */
 async function readResponseJson(response: Response): Promise<unknown> {
   const mediaType = response.headers.get('content-type')?.split(';', 1)[0];
-  if (mediaType !== 'application/json' && mediaType !== 'application/problem+json') {
+  if (
+    mediaType !== 'application/json' &&
+    mediaType !== 'application/problem+json'
+  ) {
     throw new Error('AI service response is invalid');
   }
   const text = await readBoundedText(
@@ -488,7 +494,12 @@ function parseDecisionRequest(value: unknown): unknown {
 async function parseBrowserRequest(
   request: Request,
   route: AiProposalRoute,
-): Promise<{ method: AiMethod; path: string; body?: unknown; cookie?: string }> {
+): Promise<{
+  method: AiMethod;
+  path: string;
+  body?: unknown;
+  cookie?: string;
+}> {
   const url = new URL(request.url);
   if (url.search || url.hash) throw new InvalidAiRequestError();
   const method = request.method;
@@ -497,7 +508,8 @@ async function parseBrowserRequest(
   if (route.kind === 'collection') {
     expectedBrowserPath = '/api/ai/proposals';
     path = '/v1/proposals';
-    if (method !== 'GET' && method !== 'POST') throw new InvalidAiRequestError();
+    if (method !== 'GET' && method !== 'POST')
+      throw new InvalidAiRequestError();
   } else {
     const proposalId = requireCanonicalUuid(route.proposalId);
     if (route.kind === 'proposal') {
@@ -507,7 +519,8 @@ async function parseBrowserRequest(
     } else {
       expectedBrowserPath = `/api/ai/proposals/${proposalId}/decisions`;
       path = `/v1/proposals/${proposalId}/decisions`;
-      if (method !== 'GET' && method !== 'POST') throw new InvalidAiRequestError();
+      if (method !== 'GET' && method !== 'POST')
+        throw new InvalidAiRequestError();
     }
   }
   if (url.pathname !== expectedBrowserPath) throw new InvalidAiRequestError();
@@ -569,7 +582,9 @@ function parseProposal(value: unknown): Record<string, unknown> {
     const hasTargetId = Object.hasOwn(operation, 'targetId');
     requireExactKeys(
       operation,
-      hasTargetId ? ['kind', 'description', 'targetId'] : ['kind', 'description'],
+      hasTargetId
+        ? ['kind', 'description', 'targetId']
+        : ['kind', 'description'],
       () => {
         throw new Error('AI service response is invalid');
       },
@@ -595,8 +610,14 @@ function parseProposal(value: unknown): Record<string, unknown> {
     };
   });
   return {
-    proposalId: requireUuid(record.proposalId, 'AI service response is invalid'),
-    workspaceId: requireUuid(record.workspaceId, 'AI service response is invalid'),
+    proposalId: requireUuid(
+      record.proposalId,
+      'AI service response is invalid',
+    ),
+    workspaceId: requireUuid(
+      record.workspaceId,
+      'AI service response is invalid',
+    ),
     summary: requireString(record.summary, MAXIMUM_TEXT_LENGTH),
     rationale,
     operations,
@@ -693,8 +714,14 @@ function parseDecisionEvent(value: unknown): Record<string, unknown> {
   }
   return {
     id: requireUuid(record.id, 'AI service response is invalid'),
-    workspaceId: requireUuid(record.workspaceId, 'AI service response is invalid'),
-    proposalId: requireUuid(record.proposalId, 'AI service response is invalid'),
+    workspaceId: requireUuid(
+      record.workspaceId,
+      'AI service response is invalid',
+    ),
+    proposalId: requireUuid(
+      record.proposalId,
+      'AI service response is invalid',
+    ),
     proposalContentDigest: record.proposalContentDigest,
     actorId: requireUuid(record.actorId, 'AI service response is invalid'),
     decision: record.decision,
@@ -737,7 +764,8 @@ async function safeProblemResponse(
   correlationId: string,
 ): Promise<Response | undefined> {
   const value = await readResponseJson(response);
-  if (!isPlainObject(value) || value.status !== response.status) return undefined;
+  if (!isPlainObject(value) || value.status !== response.status)
+    return undefined;
   const code = value.code;
   if (response.status === 404 && code === 'proposal_not_found') {
     return problemResponse(
@@ -833,26 +861,23 @@ export async function handleAiProposalRequest(
       parsedRequest.body === undefined
         ? undefined
         : JSON.stringify(parsedRequest.body);
-    const aiResponse = await fetcher(
-      new URL(parsedRequest.path, aiOrigin),
-      {
-        method: parsedRequest.method,
-        headers: requestHeaders({
-          ...contextHeaders,
-          'x-correlation-id': correlationId,
-          ...(payload === undefined
-            ? {}
-            : {
-                'content-type': 'application/json',
-                'content-length': String(Buffer.byteLength(payload)),
-              }),
-        }),
-        ...(payload === undefined ? {} : { body: payload }),
-        cache: 'no-store',
-        redirect: 'error',
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      },
-    );
+    const aiResponse = await fetcher(new URL(parsedRequest.path, aiOrigin), {
+      method: parsedRequest.method,
+      headers: requestHeaders({
+        ...contextHeaders,
+        'x-correlation-id': correlationId,
+        ...(payload === undefined
+          ? {}
+          : {
+              'content-type': 'application/json',
+              'content-length': String(Buffer.byteLength(payload)),
+            }),
+      }),
+      ...(payload === undefined ? {} : { body: payload }),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
     const expectedStatus = parsedRequest.method === 'POST' ? 201 : 200;
     if (aiResponse.status !== expectedStatus) {
       const safe = await safeProblemResponse(aiResponse, correlationId);

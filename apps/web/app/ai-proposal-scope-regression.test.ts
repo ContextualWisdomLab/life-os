@@ -187,17 +187,13 @@ describe('authenticated AI upstream scope validation', () => {
       decisionEvent(WORKSPACE_ID, OTHER_ACTOR_ID),
     ]) {
       const response = await requestWithAiRepresentation(
-        browserRequest(
-          'POST',
-          `/api/ai/proposals/${PROPOSAL_ID}/decisions`,
-          {
-            expectedContentDigest: 'b'.repeat(64),
-            idempotencyKey: IDEMPOTENCY_KEY,
-            decision: 'accepted',
-            reason: 'Reviewed without executing the proposal.',
-            decidedAt: '2026-08-04T11:00:02.000Z',
-          },
-        ),
+        browserRequest('POST', `/api/ai/proposals/${PROPOSAL_ID}/decisions`, {
+          expectedContentDigest: 'b'.repeat(64),
+          idempotencyKey: IDEMPOTENCY_KEY,
+          decision: 'accepted',
+          reason: 'Reviewed without executing the proposal.',
+          decidedAt: '2026-08-04T11:00:02.000Z',
+        }),
         { kind: 'decisions', proposalId: PROPOSAL_ID },
         event,
         201,

@@ -78,7 +78,11 @@ function json(value: unknown, status = 200): Response {
 }
 
 /** Creates one same-origin route request with optional JSON. */
-function request(method: 'GET' | 'POST', path: string, body?: unknown): Request {
+function request(
+  method: 'GET' | 'POST',
+  path: string,
+  body?: unknown,
+): Request {
   const payload = body === undefined ? undefined : JSON.stringify(body);
   return new Request(`https://life-os.example${path}`, {
     method,
@@ -133,9 +137,7 @@ describe('AI proposal Next.js route handlers', () => {
 
     try {
       assert.equal(
-        (
-          await getCollection(request('GET', '/api/ai/proposals'))
-        ).status,
+        (await getCollection(request('GET', '/api/ai/proposals'))).status,
         200,
       );
       assert.equal(
@@ -158,10 +160,7 @@ describe('AI proposal Next.js route handlers', () => {
       assert.equal(
         (
           await getDecisions(
-            request(
-              'GET',
-              `/api/ai/proposals/${PROPOSAL_ID}/decisions`,
-            ),
+            request('GET', `/api/ai/proposals/${PROPOSAL_ID}/decisions`),
             { params: Promise.resolve({ proposalId: PROPOSAL_ID }) },
           )
         ).status,
