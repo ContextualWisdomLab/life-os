@@ -75,7 +75,7 @@ describe('planning HTTP boundary', () => {
     ).toBe(WORKSPACE_ID);
   });
 
-  it.each([undefined, null, '', 'too-short']) (
+  it.each([undefined, null, '', 'too-short'])(
     'fails closed when the gateway secret is unavailable: %s',
     (secret) => {
       expectProblem(
@@ -138,7 +138,11 @@ describe('planning HTTP boundary', () => {
     {
       workspaceId: WORKSPACE_ID,
       issuedAt: String(NOW_SECONDS),
-      signature: signContext(WORKSPACE_ID, String(NOW_SECONDS), 'x'.repeat(32)),
+      signature: signContext(
+        WORKSPACE_ID,
+        String(NOW_SECONDS),
+        'x'.repeat(32),
+      ),
       nowSeconds: NOW_SECONDS,
     },
     {
