@@ -211,28 +211,28 @@ describe('bounded reminder scheduling integration', () => {
     });
   });
 
-  it('searches beyond 26 hours when the next local day is still quiet', async () => {
+  it('covers a 27-hour local day before leaving next-day quiet hours', async () => {
     const value = reminder({
-      dueAt: '2026-08-04T00:00:00.000Z',
-      timeZone: 'UTC',
-      quietHours: { startMinute: 0, endMinute: 7 * 60 },
+      dueAt: '2020-03-06T17:00:00.000Z',
+      timeZone: 'Antarctica/Casey',
+      quietHours: { startMinute: 0, endMinute: 3 * 60 + 30 },
       maxPerLocalDay: 1,
     });
     const repository = new InMemoryReminderRepository([value]);
-    repository.deliveredByWorkspaceDate.set(`${workspaceAlpha}:2026-08-04`, 1);
+    repository.deliveredByWorkspaceDate.set(`${workspaceAlpha}:2020-03-07`, 1);
 
     const report = await new ReminderScheduler(
       repository,
       new RecordingGateway(),
-    ).run(new Date('2026-08-04T00:00:00.000Z'));
+    ).run(new Date('2020-03-06T17:00:00.000Z'));
 
     expect(report.deferred).toBe(1);
     expect(repository.outcomes[0]).toMatchObject({
       kind: 'deferred',
-      at: '2026-08-05T07:00:00.000Z',
+      at: '2020-03-07T19:30:00.000Z',
       reason: 'daily_limit',
     });
-    expect(repository.claims).toHaveLength(0);
+    expect(repository.claims.size).toBe(0);
   });
 
   it('counts deliveries independently for each workspace', async () => {
