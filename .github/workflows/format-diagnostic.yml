@@ -1,6 +1,9 @@
 name: AI Audit Formatting Diagnostic
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - feat/ai-proposal-audit-api
@@ -9,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-audit-format-${{ github.ref }}
+  group: ai-audit-format-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
