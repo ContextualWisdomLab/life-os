@@ -14,6 +14,11 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { AiRuntime, createAiRuntime } from './ai-runtime';
 import {
+  requireTrustedAiContext,
+  type TrustedAiContext,
+  type TrustedAiContextHeaders,
+} from './ai-http-boundary';
+import {
   ProposalAuditApplication,
   ProposalAuditNotFoundError,
   validateProposalDecisionRequest,
@@ -74,8 +79,25 @@ function problem(status: number, title: string, code: string): HttpException {
   return new HttpException(details, status);
 }
 
+/** Verifies the exact context for one controller-owned method and canonical path. */
+function trustedContext(
+  headers: TrustedAiContextHeaders,
+  method: 'GET' | 'POST',
+  path: string,
+): TrustedAiContext {
+  return requireTrustedAiContext(
+    headers,
+    process.env.AI_GATEWAY_CONTEXT_SECRET,
+    method,
+    path,
+  );
+}
+
 /** Maps proposal-audit failures to stable credential-free HTTP problems. */
 function mapAuditError(error: unknown): never {
+  if (error instanceof HttpException) {
+    throw error;
+  }
   if (
     error instanceof ProposalValidationError ||
     error instanceof ProposalAuditValidationError
@@ -103,6 +125,16 @@ function mapAuditError(error: unknown): never {
   throw problem(503, 'Proposal audit is unavailable', 'audit_unavailable');
 }
 
+/** Converts the four signed headers into the framework-neutral verifier input. */
+function contextHeaders(
+  workspaceId: unknown,
+  actorId: unknown,
+  issuedAt: unknown,
+  signature: unknown,
+): TrustedAiContextHeaders {
+  return { workspaceId, actorId, issuedAt, signature };
+}
+
 /** Exposes health and inert proposal generation. */
 @Controller()
 export class AiProposalController {
@@ -118,18 +150,23 @@ export class AiProposalController {
     return { status: 'ok', service: 'ai-service' };
   }
 
-  /** Generates and persists one inert proposal for the trusted workspace scope. */
+  /** Generates and persists one inert proposal for the authenticated workspace. */
   @Post('v1/proposals')
   async createProposal(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: unknown,
+    @Headers('x-life-os-actor-id') actorId: unknown,
+    @Headers('x-life-os-context-issued-at') issuedAt: unknown,
+    @Headers('x-life-os-context-signature') signature: unknown,
     @Body() body: unknown,
   ): Promise<AuditableProposal> {
     try {
-      if (!workspaceId) {
-        throw new ProposalValidationError();
-      }
+      const context = trustedContext(
+        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        'POST',
+        '/v1/proposals',
+      );
       return await this.proposalService.generateProposal(
-        workspaceId,
+        context.workspaceId,
         validateProposalRequest(body),
       );
     } catch (error) {
@@ -137,6 +174,7 @@ export class AiProposalController {
         throw problem(400, 'Proposal request is invalid', 'invalid_request');
       }
       if (
+        error instanceof HttpException ||
         error instanceof ProposalAuditValidationError ||
         error instanceof ProposalAuditPersistenceError
       ) {
@@ -164,69 +202,97 @@ export class AiProposalAuditController {
     private readonly application: ProposalAuditApplication,
   ) {}
 
-  /** Lists deterministic proposal evidence for the trusted workspace. */
+  /** Lists deterministic proposal evidence for the authenticated workspace. */
   @Get('v1/proposals')
   async listProposals(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: unknown,
+    @Headers('x-life-os-actor-id') actorId: unknown,
+    @Headers('x-life-os-context-issued-at') issuedAt: unknown,
+    @Headers('x-life-os-context-signature') signature: unknown,
   ): Promise<ProposalAuditRecord[]> {
     try {
-      if (!workspaceId) {
-        throw new ProposalAuditValidationError();
-      }
-      return await this.application.listProposals(workspaceId);
+      const context = trustedContext(
+        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        'GET',
+        '/v1/proposals',
+      );
+      return await this.application.listProposals(context.workspaceId);
     } catch (error) {
       return mapAuditError(error);
     }
   }
 
-  /** Returns one immutable proposal revision within the trusted workspace. */
+  /** Returns one immutable proposal revision within the authenticated workspace. */
   @Get('v1/proposals/:proposalId')
   async findProposal(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: unknown,
+    @Headers('x-life-os-actor-id') actorId: unknown,
+    @Headers('x-life-os-context-issued-at') issuedAt: unknown,
+    @Headers('x-life-os-context-signature') signature: unknown,
     @Param('proposalId') proposalId: string,
   ): Promise<ProposalAuditRecord> {
     try {
-      if (!workspaceId) {
-        throw new ProposalAuditValidationError();
-      }
-      return await this.application.findProposal(workspaceId, proposalId);
+      const path = `/v1/proposals/${proposalId}`;
+      const context = trustedContext(
+        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        'GET',
+        path,
+      );
+      return await this.application.findProposal(
+        context.workspaceId,
+        proposalId,
+      );
     } catch (error) {
       return mapAuditError(error);
     }
   }
 
-  /** Lists append-only decisions for one workspace-owned proposal revision. */
+  /** Lists append-only decisions for one authenticated workspace proposal. */
   @Get('v1/proposals/:proposalId/decisions')
   async listDecisions(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: unknown,
+    @Headers('x-life-os-actor-id') actorId: unknown,
+    @Headers('x-life-os-context-issued-at') issuedAt: unknown,
+    @Headers('x-life-os-context-signature') signature: unknown,
     @Param('proposalId') proposalId: string,
   ): Promise<ProposalDecisionEvent[]> {
     try {
-      if (!workspaceId) {
-        throw new ProposalAuditValidationError();
-      }
-      return await this.application.listDecisions(workspaceId, proposalId);
+      const path = `/v1/proposals/${proposalId}/decisions`;
+      const context = trustedContext(
+        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        'GET',
+        path,
+      );
+      return await this.application.listDecisions(
+        context.workspaceId,
+        proposalId,
+      );
     } catch (error) {
       return mapAuditError(error);
     }
   }
 
-  /** Appends an explicit accept or reject event without executing operations. */
+  /** Appends an explicit authenticated-actor decision without executing operations. */
   @Post('v1/proposals/:proposalId/decisions')
   async appendDecision(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
-    @Headers('x-actor-id') actorId: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: unknown,
+    @Headers('x-life-os-actor-id') actorId: unknown,
+    @Headers('x-life-os-context-issued-at') issuedAt: unknown,
+    @Headers('x-life-os-context-signature') signature: unknown,
     @Param('proposalId') proposalId: string,
     @Body() body: unknown,
   ): Promise<ProposalDecisionEvent> {
     try {
-      if (!workspaceId || !actorId) {
-        throw new ProposalAuditValidationError();
-      }
+      const path = `/v1/proposals/${proposalId}/decisions`;
+      const context = trustedContext(
+        contextHeaders(workspaceId, actorId, issuedAt, signature),
+        'POST',
+        path,
+      );
       return await this.application.appendDecision(
-        workspaceId,
+        context.workspaceId,
         proposalId,
-        actorId,
+        context.actorId,
         validateProposalDecisionRequest(body),
       );
     } catch (error) {
