@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  NotificationReplayConflictError,
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
   type NotificationSqlClient,
@@ -133,6 +134,43 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     await restartedPool.end();
   });
 
+  it('returns due reminders by instant and identifier deterministically', async () => {
+    const workspaceId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    const firstId = '00000000-0000-4000-8000-000000000001';
+    const secondId = '00000000-0000-4000-8000-000000000002';
+    const laterId = '00000000-0000-4000-8000-000000000003';
+    await durableRepository.schedule(
+      occurrence(workspaceId, {
+        id: secondId,
+        dueAt: '2026-08-04T10:00:00.000Z',
+      }),
+    );
+    await durableRepository.schedule(
+      occurrence(workspaceId, {
+        id: laterId,
+        dueAt: '2026-08-04T11:00:00.000Z',
+      }),
+    );
+    await durableRepository.schedule(
+      occurrence(workspaceId, {
+        id: firstId,
+        dueAt: '2026-08-04T10:00:00.000Z',
+      }),
+    );
+
+    const due = await durableRepository.listDue(
+      '2026-08-04T12:00:00.000Z',
+      10,
+    );
+
+    expect(due.map((reminder) => reminder.id)).toEqual([
+      firstId,
+      secondId,
+      laterId,
+    ]);
+  });
+
   it('serializes concurrent workers into one active claim', async () => {
     const workspaceId = randomUUID();
     const reminder = occurrence(workspaceId);
@@ -199,6 +237,207 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     await expect(
       durableRepository.listOutcomes(workspaceId, 10),
     ).resolves.toMatchObject([{ kind: 'delivered', reminderId: reminder.id }]);
+    await expect(
+      inAppGateway.deliver({
+        workspaceId,
+        reminderId: reminder.id,
+        title: 'Conflicting reminder title',
+        dueAt: reminder.dueAt,
+        timeZone: reminder.timeZone,
+        idempotencyKey: key,
+      }),
+    ).rejects.toBeInstanceOf(NotificationReplayConflictError);
+  });
+
+  it('counts delivered evidence by tenant and local calendar date', async () => {
+    const workspaceId = randomUUID();
+    const otherWorkspaceId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    const scheduler = new ReminderScheduler(
+      durableRepository,
+      gateway(administrativePool),
+      10,
+    );
+    await durableRepository.schedule(
+      occurrence(workspaceId, {
+        dueAt: '2026-08-04T08:00:00.000Z',
+      }),
+    );
+    await durableRepository.schedule(
+      occurrence(workspaceId, {
+        dueAt: '2026-08-04T08:01:00.000Z',
+      }),
+    );
+    await durableRepository.schedule(
+      occurrence(otherWorkspaceId, {
+        dueAt: '2026-08-04T08:02:00.000Z',
+      }),
+    );
+
+    await scheduler.run(new Date('2026-08-04T08:03:00.000Z'));
+
+    await expect(
+      durableRepository.countDelivered(workspaceId, '2026-08-04'),
+    ).resolves.toBe(2);
+    await expect(
+      durableRepository.countDelivered(otherWorkspaceId, '2026-08-04'),
+    ).resolves.toBe(1);
+    await expect(
+      durableRepository.countDelivered(workspaceId, '2026-08-05'),
+    ).resolves.toBe(0);
+  });
+
+  it('persists quiet-hour and daily-limit deferrals with the next due instant', async () => {
+    const workspaceId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    const scheduler = new ReminderScheduler(
+      durableRepository,
+      gateway(administrativePool),
+      10,
+    );
+    const quietReminder = occurrence(workspaceId, {
+      dueAt: '2026-08-04T12:00:00.000Z',
+      quietHours: { startMinute: 1_200, endMinute: 1_320 },
+    });
+    await durableRepository.schedule(quietReminder);
+
+    await expect(
+      scheduler.run(new Date('2026-08-04T12:01:00.000Z')),
+    ).resolves.toMatchObject({ deferred: 1, delivered: 0 });
+    await expect(
+      durableRepository.listOutcomes(workspaceId, 10),
+    ).resolves.toMatchObject([
+      {
+        reminderId: quietReminder.id,
+        kind: 'deferred',
+        reason: 'quiet_hours',
+        nextAttemptAt: '2026-08-04T13:00:00.000Z',
+      },
+    ]);
+    await expect(
+      durableRepository.listReminders(workspaceId, 10),
+    ).resolves.toMatchObject([
+      {
+        id: quietReminder.id,
+        dueAt: '2026-08-04T13:00:00.000Z',
+        status: 'pending',
+      },
+    ]);
+
+    await administrativePool.query(
+      'DROP SCHEMA notification_service CASCADE',
+    );
+    await applyMigration(administrativePool);
+    const fatigueRepository = repository(administrativePool);
+    const fatigueScheduler = new ReminderScheduler(
+      fatigueRepository,
+      gateway(administrativePool),
+      10,
+    );
+    const deliveredSeed = occurrence(workspaceId, {
+      dueAt: '2026-08-04T09:00:00.000Z',
+      maxPerLocalDay: 1,
+    });
+    await fatigueRepository.schedule(deliveredSeed);
+    await fatigueScheduler.run(new Date('2026-08-04T09:01:00.000Z'));
+    const fatigueReminder = occurrence(workspaceId, {
+      dueAt: '2026-08-04T10:00:00.000Z',
+      maxPerLocalDay: 1,
+    });
+    await fatigueRepository.schedule(fatigueReminder);
+
+    await expect(
+      fatigueScheduler.run(new Date('2026-08-04T10:01:00.000Z')),
+    ).resolves.toMatchObject({ deferred: 1, delivered: 0 });
+    await expect(
+      fatigueRepository.listOutcomes(workspaceId, 10),
+    ).resolves.toMatchObject([
+      {
+        reminderId: fatigueReminder.id,
+        kind: 'deferred',
+        reason: 'daily_limit',
+        nextAttemptAt: '2026-08-04T15:00:00.000Z',
+      },
+      {
+        reminderId: deliveredSeed.id,
+        kind: 'delivered',
+      },
+    ]);
+  });
+
+  it('persists retryable and terminal failures without provider exception text', async () => {
+    const workspaceId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    const failingScheduler = new ReminderScheduler(
+      durableRepository,
+      {
+        async deliver(): Promise<void> {
+          throw new Error('provider token and sensitive exception text');
+        },
+      },
+      10,
+    );
+    const retryable = occurrence(workspaceId, {
+      dueAt: '2026-08-04T12:00:00.000Z',
+    });
+    await durableRepository.schedule(retryable);
+
+    await expect(
+      failingScheduler.run(new Date('2026-08-04T12:01:00.000Z')),
+    ).resolves.toMatchObject({ failed: 1 });
+    await expect(
+      durableRepository.listReminders(workspaceId, 10),
+    ).resolves.toMatchObject([
+      {
+        id: retryable.id,
+        dueAt: '2026-08-04T12:06:00.000Z',
+        deliveryAttempt: 1,
+        status: 'pending',
+      },
+    ]);
+    const [retryOutcome] = await durableRepository.listOutcomes(
+      workspaceId,
+      10,
+    );
+    expect(retryOutcome).toMatchObject({
+      reminderId: retryable.id,
+      kind: 'failed',
+      reason: 'delivery_failed',
+      nextAttemptAt: '2026-08-04T12:06:00.000Z',
+    });
+    expect(JSON.stringify(retryOutcome)).not.toContain('provider token');
+
+    const terminal = occurrence(workspaceId, {
+      dueAt: '2026-08-04T13:00:00.000Z',
+      deliveryAttempt: 3,
+    });
+    await durableRepository.schedule(terminal);
+    await expect(
+      failingScheduler.run(new Date('2026-08-04T13:01:00.000Z')),
+    ).resolves.toMatchObject({ failed: 1 });
+    await expect(
+      durableRepository.listReminders(workspaceId, 10),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: terminal.id,
+          deliveryAttempt: 3,
+          status: 'failed',
+        }),
+      ]),
+    );
+    await expect(
+      durableRepository.listOutcomes(workspaceId, 10),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reminderId: terminal.id,
+          kind: 'failed',
+          reason: 'attempt_limit',
+          nextAttemptAt: null,
+        }),
+      ]),
+    );
   });
 
   it('enforces immutable outcome history for update, delete, and truncate', async () => {
