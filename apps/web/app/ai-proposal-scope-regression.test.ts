@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
 import { describe, it } from 'node:test';
 import {
   handleAiProposalRequest,
@@ -128,7 +127,9 @@ async function requestWithAiRepresentation(
   let calls = 0;
   const fetcher: AiProposalFetch = async () => {
     calls += 1;
-    return calls === 1 ? sessionResponse() : jsonResponse(representation, aiStatus);
+    return calls === 1
+      ? sessionResponse()
+      : jsonResponse(representation, aiStatus);
   };
   return await handleAiProposalRequest(
     request,
@@ -160,7 +161,7 @@ describe('authenticated AI upstream scope validation', () => {
 
     assert.equal(response.status, 503);
     assert.equal(
-      (await response.json() as { code: string }).code,
+      ((await response.json()) as { code: string }).code,
       'ai_proposal_unavailable',
     );
   });
@@ -175,7 +176,7 @@ describe('authenticated AI upstream scope validation', () => {
 
     assert.equal(response.status, 503);
     assert.equal(
-      (await response.json() as { code: string }).code,
+      ((await response.json()) as { code: string }).code,
       'ai_proposal_unavailable',
     );
   });
@@ -204,7 +205,7 @@ describe('authenticated AI upstream scope validation', () => {
 
       assert.equal(response.status, 503);
       assert.equal(
-        (await response.json() as { code: string }).code,
+        ((await response.json()) as { code: string }).code,
         'ai_proposal_unavailable',
       );
     }
