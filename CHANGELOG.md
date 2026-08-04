@@ -19,6 +19,7 @@ All notable changes to LifeOS are documented in this file.
 - Planning search now normalizes browser query text and prevents stale or unmounted requests from replacing the latest visible result state.
 - Reminder fatigue deferral now crosses long IANA offset fallbacks and next-day quiet hours without abandoning the claimed occurrence.
 - Notification workers now recover expired claims and exact delivery replays without creating duplicate inbox messages.
+- Notification batches now isolate delivery-count persistence failures, issue a distinct token for each claim attempt, share concurrent shutdown work, and emit bounded credential-free PostgreSQL failure classifications.
 
 ### Security
 
