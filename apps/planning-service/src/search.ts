@@ -73,10 +73,14 @@ export function requirePlanningSearchInput(
   ) {
     return invalidSearchRequest();
   }
-  const tokens = [...new Set(tokenizeSearchText(normalizedQuery))];
-  if (tokens.length === 0 || tokens.length > MAXIMUM_SEARCH_TOKENS) {
+  const parsedTokens = tokenizeSearchText(normalizedQuery);
+  if (
+    parsedTokens.length === 0 ||
+    parsedTokens.length > MAXIMUM_SEARCH_TOKENS
+  ) {
     return invalidSearchRequest();
   }
+  const tokens = [...new Set(parsedTokens)];
 
   let limit = DEFAULT_SEARCH_LIMIT;
   if (requestedLimit !== undefined) {
