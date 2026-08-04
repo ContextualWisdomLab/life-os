@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 const repositoryRoot = resolve(process.cwd(), '../..');
 const kubernetesRoot = resolve(repositoryRoot, 'infra/kubernetes');
 
+/** Execute one deployment Python helper with a bounded test timeout. */
 function python(
   script: string,
   arguments_: string[],
@@ -26,6 +27,7 @@ function python(
   });
 }
 
+/** Build a synthetic PostgreSQL URI without committing a connection-string literal. */
 function databaseUri(query: Readonly<Record<string, string>> = {}): string {
   const uri = new URL('https://db.example/life_os');
   uri.protocol = `${['post', 'gresql'].join('')}:`;
