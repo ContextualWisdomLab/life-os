@@ -65,14 +65,14 @@ describe('production Kubernetes reference contract', () => {
     expect(occurrenceCount(workloads, /replicas: 2/g)).toBe(2);
     expect(occurrenceCount(workloads, /maxUnavailable: 0/g)).toBe(2);
     expect(occurrenceCount(workloads, /maxSurge: 1/g)).toBe(2);
-    expect(occurrenceCount(workloads, /automountServiceAccountToken: false/g)).toBe(
-      4,
-    );
+    expect(
+      occurrenceCount(workloads, /automountServiceAccountToken: false/g),
+    ).toBe(4);
     expect(occurrenceCount(workloads, /runAsNonRoot: true/g)).toBe(2);
     expect(occurrenceCount(workloads, /readOnlyRootFilesystem: true/g)).toBe(2);
-    expect(occurrenceCount(workloads, /allowPrivilegeEscalation: false/g)).toBe(
-      2,
-    );
+    expect(
+      occurrenceCount(workloads, /allowPrivilegeEscalation: false/g),
+    ).toBe(2);
     expect(occurrenceCount(workloads, /type: RuntimeDefault/g)).toBe(2);
     expect(occurrenceCount(workloads, /- ALL/g)).toBe(2);
     expect(occurrenceCount(workloads, /startupProbe:/g)).toBe(2);
@@ -92,9 +92,13 @@ describe('production Kubernetes reference contract', () => {
     expect(workloads).toContain(
       `ghcr.io/contextualwisdomlab/life-os-gateway@sha256:${zeroDigest}`,
     );
-    expect(workflow).toContain('image reference must use a registry path and sha256 digest');
+    expect(workflow).toContain(
+      'image reference must use a registry path and sha256 digest',
+    );
     expect(workflow).toContain('zero image digest is not deployable');
-    expect(workflow).toContain("! grep --quiet 'sha256:0000000000000000000000000000000000000000000000000000000000000000'");
+    expect(workflow).toContain(
+      "! grep --quiet 'sha256:0000000000000000000000000000000000000000000000000000000000000000'",
+    );
   });
 
   it('exposes no public load balancer and denies ambient network access', () => {
@@ -106,7 +110,9 @@ describe('production Kubernetes reference contract', () => {
     expect(networkPolicies).toContain('- Ingress');
     expect(networkPolicies).toContain('- Egress');
     expect(networkPolicies).toContain("life-os.io/edge-access: 'true'");
-    expect(networkPolicies).toContain('kubernetes.io/metadata.name: kube-system');
+    expect(networkPolicies).toContain(
+      'kubernetes.io/metadata.name: kube-system',
+    );
   });
 
   it('deploys only through a serialized protected manual workflow', () => {
@@ -117,20 +123,38 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('cancel-in-progress: false');
     expect(workflow).toContain('environment: production');
     expect(workflow).toContain('permissions:\n  contents: read');
-    expect(workflow).toContain('actions/checkout@11d5960a326750d5838078e36cf38b85af677262');
+    expect(workflow).toContain(
+      'actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
+    );
     expect(workflow).toContain('LIFE_OS_KUBE_CONFIG_B64');
     expect(workflow).toContain('--dry-run=server');
     expect(workflow).toContain('kubectl diff --server-side');
-    expect(workflow).toContain('kubectl rollout status deployment/life-os-web');
-    expect(workflow).toContain('kubectl rollout undo deployment/life-os-gateway');
+    expect(workflow).toContain(
+      'kubectl rollout status deployment/life-os-web',
+    );
+    expect(workflow).toContain(
+      'kubectl rollout undo deployment/life-os-gateway',
+    );
   });
 
   it('tracks forward-only migrations without putting database URLs in psql arguments', () => {
-    expect(migrationRunner).toContain("readonly MIGRATION_SCHEMA='life_os_deployment'");
-    expect(migrationRunner).toContain("readonly MIGRATION_TABLE='schema_migrations'");
-    expect(migrationRunner).toContain('migration_sha256 character(64) NOT NULL');
-    expect(migrationRunner).toContain("pg_advisory_xact_lock(hashtextextended('life-os-migration-ledger'");
-    expect(migrationRunner).toContain('migration_digest_changed:');
+    expect(migrationRunner).toContain(
+      "readonly MIGRATION_SCHEMA='life_os_deployment'",
+    );
+    expect(migrationRunner).toContain(
+      "readonly MIGRATION_TABLE='schema_migrations'",
+    );
+    expect(migrationRunner).toContain(
+      'migration_sha256 character(64) NOT NULL',
+    );
+    expect(migrationRunner).toContain("pg_advisory_lock(hashtextextended('");
+    expect(migrationRunner).toContain(
+      'migration_error=migration_digest_changed',
+    );
+    expect(migrationRunner).toContain(
+      'migration_error=incomplete_migration_requires_reconciliation',
+    );
+    expect(migrationRunner).toContain("migration_status IN ('applying', 'applied')");
     expect(migrationRunner).toContain('LIFE_OS_MIGRATION_CONFIRMATION');
     expect(migrationRunner).toContain('PGDATABASE="${database_url}" psql');
     expect(migrationRunner).not.toContain('--dbname "${database_url}"');
