@@ -27,6 +27,7 @@ export interface NotificationSqlQueryResult<Row> {
 
 /** Parameterized SQL boundary used by the PostgreSQL notification adapters. */
 export interface NotificationSqlClient {
+  /** Executes one parameterized PostgreSQL statement and maps transport failures to a credential-free service error. */
   query<Row>(
     text: string,
     values: readonly unknown[],
@@ -68,6 +69,7 @@ export interface InboxMessage {
   readonly createdAt: string;
 }
 
+/** Describes the untrusted PostgreSQL reminder row validated before domain use. */
 interface ReminderRow {
   reminder_id: unknown;
   workspace_id: unknown;
@@ -84,6 +86,7 @@ interface ReminderRow {
   updated_at: unknown;
 }
 
+/** Describes the untrusted PostgreSQL outcome row validated before domain use. */
 interface OutcomeRow {
   outcome_id: unknown;
   workspace_id: unknown;
@@ -96,6 +99,7 @@ interface OutcomeRow {
   created_at: unknown;
 }
 
+/** Describes the untrusted PostgreSQL inbox row validated before domain use. */
 interface InboxRow {
   message_id: unknown;
   workspace_id: unknown;
@@ -108,14 +112,17 @@ interface InboxRow {
   created_at: unknown;
 }
 
+/** Describes the untrusted PostgreSQL count row validated before domain use. */
 interface CountRow {
   delivery_count: unknown;
 }
 
+/** Describes the untrusted PostgreSQL identifier row validated before domain use. */
 interface IdentifierRow {
   reminder_id: unknown;
 }
 
+/** Describes the untrusted PostgreSQL transition row validated before domain use. */
 interface TransitionRow {
   transitioned: unknown;
   outcome_inserted: unknown;
@@ -123,6 +130,7 @@ interface TransitionRow {
 
 /** Safe public failure for invalid input, malformed rows, and SQL failures. */
 export class NotificationPersistenceError extends Error {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor() {
     super('Notification persistence operation failed');
     this.name = 'NotificationPersistenceError';
@@ -131,16 +139,19 @@ export class NotificationPersistenceError extends Error {
 
 /** Signals that an idempotent identifier was reused with another payload. */
 export class NotificationReplayConflictError extends Error {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor() {
     super('Notification replay conflicts with the persisted payload');
     this.name = 'NotificationReplayConflictError';
   }
 }
 
+/** Raises the stable credential-free persistence error used at every fail-closed boundary. */
 function persistenceFailure(): never {
   throw new NotificationPersistenceError();
 }
 
+/** Validates and canonicalizes an untrusted UUIDv4 identifier before it reaches SQL. */
 function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return persistenceFailure();
@@ -148,12 +159,14 @@ function requireUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Rejects a returned identifier when it does not match the tenant-scoped value requested by the caller. */
 function requireExpectedUuid(actual: string, expected: string): void {
   if (actual !== requireUuid(expected)) {
     persistenceFailure();
   }
 }
 
+/** Validates an RFC 3339 timestamp or PostgreSQL Date value and returns canonical UTC text. */
 function requireTimestamp(value: unknown): string {
   if (value instanceof Date) {
     if (Number.isNaN(value.getTime())) {
@@ -171,10 +184,12 @@ function requireTimestamp(value: unknown): string {
   return candidate.toISOString();
 }
 
+/** Validates an optional timestamp while preserving an explicit null value. */
 function requireNullableTimestamp(value: unknown): string | null {
   return value === null ? null : requireTimestamp(value);
 }
 
+/** Validates a real Gregorian calendar date in YYYY-MM-DD form. */
 function requireLocalDate(value: unknown): string {
   const candidate =
     value instanceof Date
@@ -197,10 +212,12 @@ function requireLocalDate(value: unknown): string {
   return candidate;
 }
 
+/** Validates an optional local calendar date while preserving null. */
 function requireNullableLocalDate(value: unknown): string | null {
   return value === null ? null : requireLocalDate(value);
 }
 
+/** Validates an integer against an explicit inclusive safety range. */
 function requireInteger(
   value: unknown,
   minimum: number,
@@ -218,10 +235,12 @@ function requireInteger(
   return candidate;
 }
 
+/** Validates a caller-supplied result limit against the repository-wide maximum. */
 function requireLimit(value: number): number {
   return requireInteger(value, 1, MAXIMUM_QUERY_LIMIT);
 }
 
+/** Converts untrusted reminder data into the validated scheduler domain shape or fails closed. */
 function safeReminderOccurrence(value: unknown): ReminderOccurrence {
   try {
     return validateReminderOccurrence(value);
@@ -243,6 +262,7 @@ export function hashNotificationIdempotencyKey(value: unknown): Buffer {
   return createHash('sha256').update(value, 'utf8').digest();
 }
 
+/** Requires a SQL operation to return exactly one row before any row is trusted. */
 function exactlyOne<Row>(rows: readonly Row[]): Row {
   if (rows.length !== 1) {
     return persistenceFailure();
@@ -250,6 +270,7 @@ function exactlyOne<Row>(rows: readonly Row[]): Row {
   return rows[0] as Row;
 }
 
+/** Requires a conditional SQL operation to return at most one row. */
 function zeroOrOne<Row>(rows: readonly Row[]): Row | undefined {
   if (rows.length > 1) {
     return persistenceFailure();
@@ -257,6 +278,7 @@ function zeroOrOne<Row>(rows: readonly Row[]): Row | undefined {
   return rows[0];
 }
 
+/** Validates the scheduler fields of an untrusted PostgreSQL reminder row. */
 function baseReminderFromRow(row: ReminderRow): ReminderOccurrence {
   const quietStart =
     row.quiet_start_minute === null
@@ -292,6 +314,7 @@ function baseReminderFromRow(row: ReminderRow): ReminderOccurrence {
   });
 }
 
+/** Validates a complete durable reminder row and enforces optional tenant and reminder expectations. */
 function parsePersistedReminder(
   row: ReminderRow,
   expectedWorkspaceId?: string,
@@ -322,6 +345,7 @@ function parsePersistedReminder(
   };
 }
 
+/** Validates an immutable outcome row and its kind-specific invariants. */
 function parseOutcome(
   row: OutcomeRow,
   expectedWorkspaceId: string,
@@ -351,6 +375,7 @@ function parseOutcome(
     deliveryLocalDate: requireNullableLocalDate(row.delivery_local_date),
     createdAt: requireTimestamp(row.created_at),
   };
+  /** Rejects a returned identifier when it does not match the tenant-scoped value requested by the caller. */
   requireExpectedUuid(outcome.workspaceId, expectedWorkspaceId);
   if (
     (outcome.kind === 'delivered' &&
@@ -374,6 +399,7 @@ function parseOutcome(
   return outcome;
 }
 
+/** Validates an inbox row, tenant ownership, and monotonic delivery/read timestamps. */
 function parseInbox(row: InboxRow, expectedWorkspaceId: string): InboxMessage {
   const reminder = safeReminderOccurrence({
     id: requireUuid(row.reminder_id),
@@ -385,6 +411,7 @@ function parseInbox(row: InboxRow, expectedWorkspaceId: string): InboxMessage {
     maxPerLocalDay: 1,
     deliveryAttempt: 0,
   });
+  /** Rejects a returned identifier when it does not match the tenant-scoped value requested by the caller. */
   requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
   const deliveredAt = requireTimestamp(row.delivered_at);
   const readAt = requireNullableTimestamp(row.read_at);
@@ -404,6 +431,7 @@ function parseInbox(row: InboxRow, expectedWorkspaceId: string): InboxMessage {
   };
 }
 
+/** Validates a delivery envelope without retaining its raw idempotency key. */
 function validateDelivery(message: ReminderDelivery): ReminderDelivery {
   const reminder = safeReminderOccurrence({
     id: message.reminderId,
@@ -415,6 +443,7 @@ function validateDelivery(message: ReminderDelivery): ReminderDelivery {
     maxPerLocalDay: 1,
     deliveryAttempt: 0,
   });
+  /** Returns SHA-256 bytes for a bounded opaque key without persisting the raw value. */
   hashNotificationIdempotencyKey(message.idempotencyKey);
   return {
     workspaceId: reminder.workspaceId,
@@ -426,6 +455,7 @@ function validateDelivery(message: ReminderDelivery): ReminderDelivery {
   };
 }
 
+/** Compares an attempted schedule with its persisted immutable replay fields. */
 function scheduleMatches(
   persisted: PersistedReminderOccurrence,
   attempted: ReminderOccurrence,
@@ -444,6 +474,7 @@ function scheduleMatches(
   );
 }
 
+/** Compares an attempted delivery with the persisted inbox replay fields. */
 function inboxMatches(
   persisted: InboxMessage,
   attempted: ReminderDelivery,
@@ -457,6 +488,7 @@ function inboxMatches(
   );
 }
 
+/** Requires both the reminder state transition and immutable outcome insert to succeed atomically. */
 function requireSuccessfulTransition(row: TransitionRow): void {
   if (row.transitioned !== true || row.outcome_inserted !== true) {
     persistenceFailure();
@@ -465,6 +497,7 @@ function requireSuccessfulTransition(row: TransitionRow): void {
 
 /** Parameterized, tenant-scoped PostgreSQL reminder repository. */
 export class PostgresReminderRepository implements ReminderRepository {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(
     private readonly client: NotificationSqlClient,
     private readonly claimLeaseSeconds = 300,
@@ -478,6 +511,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     );
   }
 
+  /** Executes one parameterized PostgreSQL statement and maps transport failures to a credential-free service error. */
   private async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -550,6 +584,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     return await this.schedule(occurrence);
   }
 
+  /** Returns a bounded deterministic set of due, unclaimed reminder occurrences. */
   async listDue(now: string, limit: number): Promise<ReminderOccurrence[]> {
     const safeNow = requireTimestamp(now);
     const safeLimit = requireInteger(limit, 1, MAX_REMINDER_BATCH_SIZE);
@@ -572,6 +607,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     return result.rows.map((row) => baseReminderFromRow(row));
   }
 
+  /** Acquires a fenced expiring claim and returns its opaque per-attempt token. */
   async claim(workspaceId: string, reminderId: string): Promise<string | null> {
     const safeWorkspaceId = requireUuid(workspaceId);
     const safeReminderId = requireUuid(reminderId);
@@ -602,6 +638,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     return claimKey;
   }
 
+  /** Counts delivered outcomes for one workspace and one local calendar date. */
   async countDelivered(
     workspaceId: string,
     localDate: string,
@@ -623,6 +660,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     );
   }
 
+  /** Atomically completes a fenced claim and appends its immutable delivered outcome. */
   async markDelivered(
     reminder: ReminderOccurrence,
     deliveredAt: string,
@@ -674,6 +712,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
+  /** Atomically releases a fenced claim, reschedules the occurrence, and appends a deferral outcome. */
   async defer(
     reminder: ReminderOccurrence,
     nextAttemptAt: string,
@@ -728,6 +767,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
+  /** Atomically records either a bounded retry or a terminal attempt-limit failure. */
   async fail(
     reminder: ReminderOccurrence,
     retryAt: string | null,
@@ -918,11 +958,13 @@ export class PostgresReminderRepository implements ReminderRepository {
 
 /** Idempotent in-app delivery adapter backed by the notification inbox table. */
 export class PostgresInAppDeliveryGateway implements ReminderDeliveryGateway {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(
     private readonly client: NotificationSqlClient,
     private readonly uuidFactory: () => string = randomUUID,
   ) {}
 
+  /** Executes one parameterized PostgreSQL statement and maps transport failures to a credential-free service error. */
   private async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -934,6 +976,7 @@ export class PostgresInAppDeliveryGateway implements ReminderDeliveryGateway {
     }
   }
 
+  /** Inserts one idempotent in-app message or verifies the exact persisted replay. */
   async deliver(message: ReminderDelivery): Promise<void> {
     const safe = validateDelivery(message);
     const messageId = requireUuid(this.uuidFactory());

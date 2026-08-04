@@ -12,6 +12,7 @@ const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
 const DEFAULT_CLAIM_LEASE_SECONDS = 300;
 const DEFAULT_REMINDER_BATCH_SIZE = 50;
 
+/** Represents the bounded runtime environment values used by the notification service. */
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
 /** Minimal event boundary needed to observe idle PostgreSQL client failures. */
@@ -49,10 +50,12 @@ export function registerNotificationPoolErrorHandler(
 
 /** PostgreSQL pool boundary owned by the notification service runtime. */
 export interface NotificationPool {
+  /** Executes one parameterized PostgreSQL statement and maps transport failures to a credential-free service error. */
   query<Row>(
     text: string,
     values?: readonly unknown[],
   ): Promise<NotificationSqlQueryResult<Row>>;
+  /** Closes the owned node-postgres pool and releases its connections. */
   end(): Promise<void>;
 }
 
@@ -61,9 +64,12 @@ export type NotificationPoolFactory = (
   configuration: PoolConfig,
 ) => NotificationPool;
 
+/** Implements node postgres notification pool behavior behind an explicit notification-service boundary. */
 class NodePostgresNotificationPool implements NotificationPool {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(private readonly pool: Pool) {}
 
+  /** Executes one parameterized PostgreSQL statement and maps transport failures to a credential-free service error. */
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
@@ -72,14 +78,18 @@ class NodePostgresNotificationPool implements NotificationPool {
     return { rows: result.rows as Row[] };
   }
 
+  /** Closes the owned node-postgres pool and releases its connections. */
   async end(): Promise<void> {
     await this.pool.end();
   }
 }
 
+/** Implements node postgres notification sql client behavior behind an explicit notification-service boundary. */
 class NodePostgresNotificationSqlClient implements NotificationSqlClient {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(private readonly pool: NotificationPool) {}
 
+  /** Executes one parameterized PostgreSQL statement and maps transport failures to a credential-free service error. */
   async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -88,6 +98,7 @@ class NodePostgresNotificationSqlClient implements NotificationSqlClient {
   }
 }
 
+/** Reads one required bounded runtime setting without exposing its value in errors. */
 function requireConfiguration(
   environment: RuntimeEnvironment,
   name: string,
@@ -99,6 +110,7 @@ function requireConfiguration(
   return value;
 }
 
+/** Accepts only a syntactically valid PostgreSQL connection URL. */
 function requireDatabaseUrl(value: string): string {
   let parsed: URL;
   try {
@@ -112,6 +124,7 @@ function requireDatabaseUrl(value: string): string {
   return value;
 }
 
+/** Parses one optional integer setting and enforces its documented inclusive range. */
 function requireBoundedInteger(
   value: string | undefined,
   defaultValue: number,
@@ -162,8 +175,10 @@ export function createNotificationPoolConfiguration(
   };
 }
 
+/** Creates the production node-postgres pool behind the runtime-owned pool boundary. */
 function defaultPoolFactory(configuration: PoolConfig): NotificationPool {
   const pool = new Pool(configuration);
+  /** Performs the register notification pool error handler operation while preserving bounded, tenant-safe notification behavior. */
   registerNotificationPoolErrorHandler(pool);
   return new NodePostgresNotificationPool(pool);
 }
@@ -172,6 +187,7 @@ function defaultPoolFactory(configuration: PoolConfig): NotificationPool {
 export class NotificationRuntime implements OnApplicationShutdown {
   private closed = false;
 
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(
     private readonly pool: NotificationPool,
     readonly repository: PostgresReminderRepository,
@@ -188,6 +204,7 @@ export class NotificationRuntime implements OnApplicationShutdown {
     await this.pool.end();
   }
 
+  /** Delegates the NestJS shutdown lifecycle to the idempotent runtime close operation. */
   async onApplicationShutdown(): Promise<void> {
     await this.close();
   }
