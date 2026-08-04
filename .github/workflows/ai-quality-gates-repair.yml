@@ -15,10 +15,14 @@ jobs:
   repair:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       AI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -57,7 +61,7 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Install dependencies
+      - name: Install dependencies and update the reviewed lockfile
         run: pnpm install --no-frozen-lockfile
 
       - name: Format reviewed sources
@@ -75,21 +79,37 @@ jobs:
             docs/superpowers/specs/2026-08-04-ai-service-quality-gates-design.md \
             docs/superpowers/plans/2026-08-04-ai-service-quality-gates.md
 
-      - name: Typecheck AI service
-        run: pnpm --filter @life-os/ai-service typecheck
+      - name: Verify complete repository
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          docker compose config --quiet
 
-      - name: Run AI service quality gates
-        run: pnpm --filter @life-os/ai-service test
-
-      - name: Upload detailed AI coverage evidence
-        if: always() && hashFiles('apps/ai-service/coverage/coverage-final.json') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ai-coverage-evidence
-          path: |
-            apps/ai-service/coverage/
-            apps/ai-service/src/
-            apps/ai-service/vitest.config.ts
-          if-no-files-found: error
-          retention-days: 3
-          overwrite: true
+      - name: Commit verified implementation and remove temporary automation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f \
+            .github/scripts/complete_ai_quality_gates.py \
+            .github/scripts/complete_ai_coverage.py \
+            .github/scripts/patch_ai_coverage_tests.py \
+            .github/workflows/ai-quality-gates-repair.yml
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No verified AI quality-gate implementation was produced.' >&2
+            exit 1
+          fi
+          git commit -m "test(ai): enforce complete audit assurance gates"
+          authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
+            push origin HEAD:chore/ai-service-quality-gates
