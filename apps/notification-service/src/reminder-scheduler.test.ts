@@ -289,4 +289,42 @@ describe('scheduler options and defensive failures', () => {
       formatter.mockRestore();
     }
   });
+
+  it('isolates delivered-count persistence failures and continues the batch', async () => {
+    const secondReminderId = '2f3d9a62-7169-4d5e-9b0e-8d2a4b62ccef';
+    const repository = new StaticRepository([
+      reminder({ quietHours: null }),
+      reminder({ id: secondReminderId, quietHours: null }),
+    ]);
+    const countDelivered = vi
+      .spyOn(repository, 'countDelivered')
+      .mockRejectedValueOnce(new Error('count unavailable'))
+      .mockResolvedValue(0);
+    const markDelivered = vi.spyOn(repository, 'markDelivered');
+    const gateway = new NoopGateway();
+    const deliver = vi.spyOn(gateway, 'deliver');
+
+    const report = await new ReminderScheduler(repository, gateway).run(
+      new Date('2026-08-04T12:00:00.000Z'),
+    );
+
+    expect(report).toEqual({
+      scanned: 2,
+      delivered: 1,
+      deferred: 0,
+      failed: 0,
+      persistenceFailures: 1,
+      duplicateClaims: 0,
+      invalid: 0,
+    });
+    expect(countDelivered).toHaveBeenCalledTimes(2);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(markDelivered).toHaveBeenCalledTimes(1);
+    expect(markDelivered).toHaveBeenCalledWith(
+      expect.objectContaining({ id: secondReminderId }),
+      '2026-08-04T12:00:00.000Z',
+      'noop-claim-key',
+      `${workspaceId}:${secondReminderId}:2026-08-04T12:00:00.000Z`,
+    );
+  });
 });
