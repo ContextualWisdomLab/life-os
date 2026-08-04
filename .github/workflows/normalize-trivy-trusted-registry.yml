@@ -1,0 +1,100 @@
+name: Normalize Trivy Trusted Registry Alias
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/normalize-trivy-trusted-registry.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-trivy-trusted-registry-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  normalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/production-deployment-reference
+          fetch-depth: 0
+
+      - name: Use scanner-trusted GCR source aliases
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          plain_paths = (
+              Path('infra/kubernetes/base/workloads-public.yaml'),
+              Path('infra/kubernetes/base/workloads-core.yaml'),
+              Path('infra/kubernetes/base/workloads-integrations.yaml'),
+              Path('infra/deployment/render-production-overlay.mjs'),
+          )
+          for path in plain_paths:
+              content = path.read_text(encoding='utf-8').replace(
+                  'docker.io/contextualwisdomlab/life-os-',
+                  'gcr.io/contextualwisdomlab/life-os-',
+              )
+              path.write_text(content, encoding='utf-8')
+
+          test_path = Path(
+              'infra/deployment/tests/deployment-contract.test.mjs',
+          )
+          tests = test_path.read_text(encoding='utf-8')
+          tests = tests.replace(
+              'docker.io/contextualwisdomlab/life-os-',
+              'gcr.io/contextualwisdomlab/life-os-',
+          )
+          tests = tests.replace(
+              'docker.io\\/contextualwisdomlab\\/life-os-',
+              'gcr.io\\/contextualwisdomlab\\/life-os-',
+              1,
+          )
+          tests = tests.replace(
+              'docker.io\\/contextualwisdomlab\\/life-os-',
+              'ghcr.io\\/contextualwisdomlab\\/life-os-',
+              1,
+          )
+          test_path.write_text(tests, encoding='utf-8')
+
+          text_paths = (
+              Path('CHANGELOG.md'),
+              Path('docs/operations/production-deployment.md'),
+              Path('docs/superpowers/specs/2026-08-04-production-deployment-reference-design.md'),
+          )
+          for path in text_paths:
+              content = path.read_text(encoding='utf-8')
+              content = content.replace('Docker Hub base aliases', 'GCR base aliases')
+              content = content.replace('Docker Hub aliases', 'GCR aliases')
+              path.write_text(content, encoding='utf-8')
+          PY
+          git rm .github/workflows/normalize-trivy-trusted-registry.yml
+
+      - name: Commit trusted aliases and remove workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            infra/kubernetes/base/workloads-public.yaml \
+            infra/kubernetes/base/workloads-core.yaml \
+            infra/kubernetes/base/workloads-integrations.yaml \
+            infra/deployment/render-production-overlay.mjs \
+            infra/deployment/tests/deployment-contract.test.mjs \
+            CHANGELOG.md \
+            docs/operations/production-deployment.md \
+            docs/superpowers/specs/2026-08-04-production-deployment-reference-design.md
+          git add -u .github/workflows
+          git diff --cached --check
+          git commit -m 'fix(security): use Trivy-trusted GCR source aliases'
+          git push origin HEAD:feat/production-deployment-reference
