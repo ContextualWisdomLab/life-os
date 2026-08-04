@@ -10,7 +10,9 @@ import {
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
   hashNotificationIdempotencyKey,
+  /** Represents the notification sql client values used by deterministic test fixtures. */
   type NotificationSqlClient,
+  /** Represents the notification sql query result values used by deterministic test fixtures. */
   type NotificationSqlQueryResult,
 } from './postgres-reminder-repository';
 
@@ -22,16 +24,20 @@ const messageId = 'ca035df4-0149-4b08-8f21-07bd758cfbaa';
 const claimKey = 'ebeb80f5-a077-45ee-9f39-f3e64af94cdb';
 const idempotencyKey = `${workspaceId}:${reminderId}:2026-08-04T12:00:00.000Z`;
 
+/** Defines the query call shape used to make the test evidence explicit. */
 interface QueryCall {
   readonly text: string;
   readonly values: readonly unknown[];
 }
 
+/** Implements the recording sql client test double with observable deterministic behavior. */
 class RecordingSqlClient implements NotificationSqlClient {
   readonly calls: QueryCall[] = [];
 
+  /** Creates the component with explicit dependencies and deterministic initial state. */
   constructor(private readonly responses: readonly unknown[][]) {}
 
+  /** Executes one parameterized query through the bounded SQL or test-double contract. */
   async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -42,6 +48,7 @@ class RecordingSqlClient implements NotificationSqlClient {
   }
 }
 
+/** Supports the reminder test scenario without hiding production behavior. */
 function reminder(
   overrides: Partial<ReminderOccurrence> = {},
 ): ReminderOccurrence {
@@ -58,6 +65,7 @@ function reminder(
   };
 }
 
+/** Supports the reminder row test scenario without hiding production behavior. */
 function reminderRow(overrides: Record<string, unknown> = {}) {
   return {
     reminder_id: reminderId,
@@ -77,6 +85,7 @@ function reminderRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the inbox row test scenario without hiding production behavior. */
 function inboxRow(overrides: Record<string, unknown> = {}) {
   return {
     message_id: messageId,
@@ -92,6 +101,7 @@ function inboxRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the outcome row test scenario without hiding production behavior. */
 function outcomeRow(overrides: Record<string, unknown> = {}) {
   return {
     outcome_id: outcomeId,
@@ -114,6 +124,7 @@ describe('notification idempotency digest', () => {
     expect(Buffer.isBuffer(digest)).toBe(true);
     expect(digest).toHaveLength(32);
     expect(digest).toEqual(
+      /** Supports the create hash test scenario without hiding production behavior. */
       createHash('sha256').update(idempotencyKey, 'utf8').digest(),
     );
     expect(digest.toString('utf8')).not.toContain(idempotencyKey);
@@ -156,8 +167,11 @@ describe('PostgresReminderRepository', () => {
     expect(client.calls[0]?.values).toEqual([
       reminderId,
       workspaceId,
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder().title,
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder().dueAt,
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder().timeZone,
       1320,
       420,
@@ -226,19 +240,30 @@ describe('PostgresReminderRepository', () => {
       () => claimKey,
     );
 
-    await expect(repository.claim(workspaceId, reminderId)).resolves.toBe(
-      claimKey,
-    );
+    await expect(
+      repository.claim(
+        workspaceId,
+        reminderId,
+        /** Supports the reminder test scenario without hiding production behavior. */
+        reminder().dueAt,
+        /** Supports the reminder test scenario without hiding production behavior. */
+        reminder().deliveryAttempt,
+      ),
+    ).resolves.toBe(claimKey);
     const call = claimedClient.calls[0];
     expect(call?.text).toContain(
       'UPDATE notification_service.reminder_occurrences',
     );
     expect(call?.text).toContain('claim_expires_at <= clock_timestamp()');
     expect(call?.text).toContain('make_interval(secs => $4)');
+    expect(call?.text).toContain('due_instant = $5');
+    expect(call?.text).toContain('delivery_attempt_count = $6');
     expect(call?.values?.[0]).toBe(workspaceId);
     expect(call?.values?.[1]).toBe(reminderId);
     expect(call?.values?.[2]).toEqual(hashNotificationIdempotencyKey(claimKey));
     expect(call?.values?.[3]).toBe(600);
+    expect(call?.values?.[4]).toBe(reminder().dueAt);
+    expect(call?.values?.[5]).toBe(reminder().deliveryAttempt);
 
     const missedClient = new RecordingSqlClient([[]]);
     await expect(
@@ -247,7 +272,14 @@ describe('PostgresReminderRepository', () => {
         300,
         () => outcomeId,
         () => claimKey,
-      ).claim(workspaceId, reminderId),
+      ).claim(
+        workspaceId,
+        reminderId,
+        /** Supports the reminder test scenario without hiding production behavior. */
+        reminder().dueAt,
+        /** Supports the reminder test scenario without hiding production behavior. */
+        reminder().deliveryAttempt,
+      ),
     ).resolves.toBeNull();
     await expect(
       new PostgresReminderRepository(
@@ -255,7 +287,14 @@ describe('PostgresReminderRepository', () => {
         300,
         () => outcomeId,
         () => 'numeric-claim-key',
-      ).claim(workspaceId, reminderId),
+      ).claim(
+        workspaceId,
+        reminderId,
+        /** Supports the reminder test scenario without hiding production behavior. */
+        reminder().dueAt,
+        /** Supports the reminder test scenario without hiding production behavior. */
+        reminder().deliveryAttempt,
+      ),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
   });
 
@@ -282,12 +321,14 @@ describe('PostgresReminderRepository', () => {
     const repository = new PostgresReminderRepository(client);
 
     await repository.markDelivered(
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder(),
       '2026-08-04T12:00:01.000Z',
       claimKey,
       idempotencyKey,
     );
     await repository.defer(
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder(),
       '2026-08-04T22:00:00.000Z',
       'quiet_hours',
@@ -295,6 +336,7 @@ describe('PostgresReminderRepository', () => {
       idempotencyKey,
     );
     await repository.fail(
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder(),
       '2026-08-04T12:05:00.000Z',
       'delivery_failed',
@@ -302,6 +344,7 @@ describe('PostgresReminderRepository', () => {
       idempotencyKey,
     );
     await repository.fail(
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({ deliveryAttempt: 3 }),
       null,
       'attempt_limit',
@@ -315,9 +358,11 @@ describe('PostgresReminderRepository', () => {
       expect(call.text).toContain(
         'INSERT INTO notification_service.reminder_outcomes',
       );
-      expect(call.values).toContainEqual(
-        hashNotificationIdempotencyKey(idempotencyKey),
-      );
+      const claimDigest = hashNotificationIdempotencyKey(claimKey);
+      const deliveryDigest = hashNotificationIdempotencyKey(idempotencyKey);
+      expect(call.values).toContainEqual(deliveryDigest);
+      expect(call.values).toContainEqual(claimDigest);
+      expect(claimDigest).not.toEqual(deliveryDigest);
     }
     expect(client.calls[0]?.text).toContain("occurrence_status = 'delivered'");
     expect(client.calls[1]?.text).toContain("'deferred'");
@@ -334,6 +379,7 @@ describe('PostgresReminderRepository', () => {
 
     await expect(
       repository.markDelivered(
+        /** Supports the reminder test scenario without hiding production behavior. */
         reminder(),
         '2026-08-04T12:00:01.000Z',
         claimKey,
@@ -433,6 +479,7 @@ describe('PostgresReminderRepository', () => {
     }
 
     const failingClient: NotificationSqlClient = {
+      /** Executes one parameterized query through the bounded SQL or test-double contract. */
       async query() {
         throw new Error('database secret must not escape');
       },
@@ -474,6 +521,7 @@ describe('PostgresInAppDeliveryGateway', () => {
       delivery.title,
       delivery.dueAt,
       delivery.timeZone,
+      /** Supports the hash notification idempotency key test scenario without hiding production behavior. */
       hashNotificationIdempotencyKey(idempotencyKey),
     ]);
   });

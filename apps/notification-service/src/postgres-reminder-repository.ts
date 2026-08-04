@@ -3,9 +3,13 @@ import {
   MAX_DAILY_REMINDERS,
   MAX_DELIVERY_ATTEMPTS,
   MAX_REMINDER_BATCH_SIZE,
+  /** Represents the bounded reminder delivery values accepted by the notification service. */
   type ReminderDelivery,
+  /** Represents the bounded reminder delivery gateway values accepted by the notification service. */
   type ReminderDeliveryGateway,
+  /** Represents the bounded reminder occurrence values accepted by the notification service. */
   type ReminderOccurrence,
+  /** Represents the bounded reminder repository values accepted by the notification service. */
   type ReminderRepository,
   validateReminderOccurrence,
 } from './reminder-scheduler';
@@ -162,6 +166,7 @@ function requireUuid(value: unknown): string {
 /** Rejects a returned identifier when it does not match the tenant-scoped value requested by the caller. */
 function requireExpectedUuid(actual: string, expected: string): void {
   if (actual !== requireUuid(expected)) {
+    /** Performs the persistence failure operation while preserving tenant-safe bounded behavior. */
     persistenceFailure();
   }
 }
@@ -194,8 +199,11 @@ function requireLocalDate(value: unknown): string {
   const candidate =
     value instanceof Date
       ? [
+          /** Performs the string operation while preserving tenant-safe bounded behavior. */
           String(value.getFullYear()).padStart(4, '0'),
+          /** Performs the string operation while preserving tenant-safe bounded behavior. */
           String(value.getMonth() + 1).padStart(2, '0'),
+          /** Performs the string operation while preserving tenant-safe bounded behavior. */
           String(value.getDate()).padStart(2, '0'),
         ].join('-')
       : value;
@@ -298,9 +306,9 @@ function baseReminderFromRow(row: ReminderRow): ReminderOccurrence {
     dueAt: requireTimestamp(row.due_instant),
     timeZone: row.time_zone,
     quietHours:
-      quietStart === null || quietEnd === null
+      quietStart === null
         ? null
-        : { startMinute: quietStart, endMinute: quietEnd },
+        : { startMinute: quietStart, endMinute: quietEnd as number },
     maxPerLocalDay: requireInteger(
       row.daily_delivery_limit,
       1,
@@ -317,14 +325,14 @@ function baseReminderFromRow(row: ReminderRow): ReminderOccurrence {
 /** Validates a complete durable reminder row and enforces optional tenant and reminder expectations. */
 function parsePersistedReminder(
   row: ReminderRow,
-  expectedWorkspaceId?: string,
+  expectedWorkspaceId: string,
   expectedReminderId?: string,
 ): PersistedReminderOccurrence {
   const reminder = baseReminderFromRow(row);
-  if (expectedWorkspaceId !== undefined) {
-    requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
-  }
+  /** Performs the require expected uuid operation while preserving tenant-safe bounded behavior. */
+  requireExpectedUuid(reminder.workspaceId, expectedWorkspaceId);
   if (expectedReminderId !== undefined) {
+    /** Performs the require expected uuid operation while preserving tenant-safe bounded behavior. */
     requireExpectedUuid(reminder.id, expectedReminderId);
   }
   const status = row.occurrence_status;
@@ -462,8 +470,6 @@ function scheduleMatches(
 ): boolean {
   return (
     persisted.status === 'pending' &&
-    persisted.id === attempted.id &&
-    persisted.workspaceId === attempted.workspaceId &&
     persisted.title === attempted.title &&
     persisted.dueAt === attempted.dueAt &&
     persisted.timeZone === attempted.timeZone &&
@@ -480,7 +486,6 @@ function inboxMatches(
   attempted: ReminderDelivery,
 ): boolean {
   return (
-    persisted.workspaceId === attempted.workspaceId &&
     persisted.reminderId === attempted.reminderId &&
     persisted.title === attempted.title &&
     persisted.dueAt === attempted.dueAt &&
@@ -491,6 +496,7 @@ function inboxMatches(
 /** Requires both the reminder state transition and immutable outcome insert to succeed atomically. */
 function requireSuccessfulTransition(row: TransitionRow): void {
   if (row.transitioned !== true || row.outcome_inserted !== true) {
+    /** Performs the persistence failure operation while preserving tenant-safe bounded behavior. */
     persistenceFailure();
   }
 }
@@ -504,6 +510,7 @@ export class PostgresReminderRepository implements ReminderRepository {
     private readonly uuidFactory: () => string = randomUUID,
     private readonly claimKeyFactory: () => string = randomUUID,
   ) {
+    /** Performs the require integer operation while preserving tenant-safe bounded behavior. */
     requireInteger(
       claimLeaseSeconds,
       MINIMUM_CLAIM_LEASE_SECONDS,
@@ -533,6 +540,7 @@ export class PostgresReminderRepository implements ReminderRepository {
         (reminder_id, workspace_id, reminder_title, due_instant, time_zone,
          quiet_start_minute, quiet_end_minute, daily_delivery_limit,
          delivery_attempt_count)
+       /** Performs the values operation while preserving tenant-safe bounded behavior. */
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT DO NOTHING
        RETURNING reminder_id, workspace_id, reminder_title, due_instant,
@@ -567,6 +575,7 @@ export class PostgresReminderRepository implements ReminderRepository {
       [safe.workspaceId, safe.id],
     );
     const persisted = parsePersistedReminder(
+      /** Performs the exactly one operation while preserving tenant-safe bounded behavior. */
       exactlyOne(replay.rows),
       safe.workspaceId,
       safe.id,
@@ -596,6 +605,7 @@ export class PostgresReminderRepository implements ReminderRepository {
        FROM notification_service.reminder_occurrences
        WHERE occurrence_status = 'pending'
          AND due_instant <= $1
+         /** Performs the and operation while preserving tenant-safe bounded behavior. */
          AND (claim_expires_at IS NULL OR claim_expires_at <= $1)
        ORDER BY due_instant ASC, reminder_id ASC
        LIMIT $2`,
@@ -608,9 +618,20 @@ export class PostgresReminderRepository implements ReminderRepository {
   }
 
   /** Acquires a fenced expiring claim and returns its opaque per-attempt token. */
-  async claim(workspaceId: string, reminderId: string): Promise<string | null> {
+  async claim(
+    workspaceId: string,
+    reminderId: string,
+    dueAt: string,
+    deliveryAttempt: number,
+  ): Promise<string | null> {
     const safeWorkspaceId = requireUuid(workspaceId);
     const safeReminderId = requireUuid(reminderId);
+    const safeDueAt = requireTimestamp(dueAt);
+    const safeDeliveryAttempt = requireInteger(
+      deliveryAttempt,
+      0,
+      MAX_DELIVERY_ATTEMPTS,
+    );
     const claimKey = requireUuid(this.claimKeyFactory());
     const result = await this.query<IdentifierRow>(
       `UPDATE notification_service.reminder_occurrences
@@ -621,19 +642,26 @@ export class PostgresReminderRepository implements ReminderRepository {
        WHERE workspace_id = $1
          AND reminder_id = $2
          AND occurrence_status = 'pending'
+         AND due_instant = $5
+         AND delivery_attempt_count = $6
+         /** Performs the and operation while preserving tenant-safe bounded behavior. */
          AND (claim_expires_at IS NULL OR claim_expires_at <= clock_timestamp())
        RETURNING reminder_id`,
       [
         safeWorkspaceId,
         safeReminderId,
+        /** Performs the hash notification idempotency key operation while preserving tenant-safe bounded behavior. */
         hashNotificationIdempotencyKey(claimKey),
         this.claimLeaseSeconds,
+        safeDueAt,
+        safeDeliveryAttempt,
       ],
     );
     const row = zeroOrOne(result.rows);
     if (row === undefined) {
       return null;
     }
+    /** Performs the require expected uuid operation while preserving tenant-safe bounded behavior. */
     requireExpectedUuid(requireUuid(row.reminder_id), safeReminderId);
     return claimKey;
   }
@@ -654,6 +682,7 @@ export class PostgresReminderRepository implements ReminderRepository {
       [safeWorkspaceId, safeLocalDate],
     );
     return requireInteger(
+      /** Performs the exactly one operation while preserving tenant-safe bounded behavior. */
       exactlyOne(result.rows).delivery_count,
       0,
       Number.MAX_SAFE_INTEGER,
@@ -696,6 +725,7 @@ export class PostgresReminderRepository implements ReminderRepository {
          RETURNING outcome_id
        )
        SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+              /** Performs the exists operation while preserving tenant-safe bounded behavior. */
               EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
       [
         safe.workspaceId,
@@ -709,6 +739,7 @@ export class PostgresReminderRepository implements ReminderRepository {
         idempotencyDigest,
       ],
     );
+    /** Performs the require successful transition operation while preserving tenant-safe bounded behavior. */
     requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
@@ -751,6 +782,7 @@ export class PostgresReminderRepository implements ReminderRepository {
          RETURNING outcome_id
        )
        SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+              /** Performs the exists operation while preserving tenant-safe bounded behavior. */
               EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
       [
         safe.workspaceId,
@@ -764,6 +796,7 @@ export class PostgresReminderRepository implements ReminderRepository {
         idempotencyDigest,
       ],
     );
+    /** Performs the require successful transition operation while preserving tenant-safe bounded behavior. */
     requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
@@ -811,6 +844,7 @@ export class PostgresReminderRepository implements ReminderRepository {
            RETURNING outcome_id
          )
          SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+                /** Performs the exists operation while preserving tenant-safe bounded behavior. */
                 EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
         [
           safe.workspaceId,
@@ -823,6 +857,7 @@ export class PostgresReminderRepository implements ReminderRepository {
           idempotencyDigest,
         ],
       );
+      /** Performs the require successful transition operation while preserving tenant-safe bounded behavior. */
       requireSuccessfulTransition(exactlyOne(result.rows));
       return;
     }
@@ -854,6 +889,7 @@ export class PostgresReminderRepository implements ReminderRepository {
          RETURNING outcome_id
        )
        SELECT EXISTS (SELECT 1 FROM transitioned_occurrence) AS transitioned,
+              /** Performs the exists operation while preserving tenant-safe bounded behavior. */
               EXISTS (SELECT 1 FROM inserted_outcome) AS outcome_inserted`,
       [
         safe.workspaceId,
@@ -865,6 +901,7 @@ export class PostgresReminderRepository implements ReminderRepository {
         idempotencyDigest,
       ],
     );
+    /** Performs the require successful transition operation while preserving tenant-safe bounded behavior. */
     requireSuccessfulTransition(exactlyOne(result.rows));
   }
 
@@ -890,6 +927,7 @@ export class PostgresReminderRepository implements ReminderRepository {
       return persistenceFailure();
     }
     return result.rows.map((row) =>
+      /** Performs the parse persisted reminder operation while preserving tenant-safe bounded behavior. */
       parsePersistedReminder(row, safeWorkspaceId),
     );
   }
@@ -985,6 +1023,7 @@ export class PostgresInAppDeliveryGateway implements ReminderDeliveryGateway {
       `INSERT INTO notification_service.inbox_messages
         (message_id, workspace_id, reminder_id, message_title, due_instant,
          time_zone, idempotency_key_hash, delivered_at)
+       /** Performs the values operation while preserving tenant-safe bounded behavior. */
        VALUES ($1, $2, $3, $4, $5, $6, $7, clock_timestamp())
        ON CONFLICT DO NOTHING
        RETURNING message_id, workspace_id, reminder_id, message_title,

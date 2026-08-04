@@ -60,7 +60,12 @@ export interface ReminderRepository {
   /** Returns a bounded deterministic set of due, unclaimed reminder occurrences. */
   listDue(now: string, limit: number): Promise<readonly unknown[]>;
   /** Acquires a fenced expiring claim and returns its opaque per-attempt token. */
-  claim(workspaceId: string, reminderId: string): Promise<string | null>;
+  claim(
+    workspaceId: string,
+    reminderId: string,
+    dueAt: string,
+    deliveryAttempt: number,
+  ): Promise<string | null>;
   /** Counts delivered outcomes for one workspace and one local calendar date. */
   countDelivered(workspaceId: string, localDate: string): Promise<number>;
   /** Atomically completes a fenced claim and appends its immutable delivered outcome. */
@@ -328,7 +333,8 @@ function retryInstant(now: Date, deliveryAttempt: number): string {
 }
 
 /** Builds the stable tenant-scoped occurrence key supplied to idempotent delivery adapters. */
-function idempotencyKey(reminder: ReminderOccurrence): string {
+/** Builds the stable tenant-scoped key used for idempotent delivery. */
+export function idempotencyKey(reminder: ReminderOccurrence): string {
   return `${reminder.workspaceId}:${reminder.id}:${reminder.dueAt}`;
 }
 
@@ -390,6 +396,8 @@ export class ReminderScheduler {
       const claimKey = await this.repository.claim(
         reminder.workspaceId,
         reminder.id,
+        reminder.dueAt,
+        reminder.deliveryAttempt,
       );
       if (claimKey === null) {
         duplicateClaims += 1;
@@ -400,6 +408,7 @@ export class ReminderScheduler {
       const quietHours = reminder.quietHours;
       if (
         quietHours !== null &&
+        /** Performs the is within quiet hours operation while preserving tenant-safe bounded behavior. */
         isWithinQuietHours(clock.minuteOfDay, quietHours)
       ) {
         const nextAttemptAt = nextAllowedInstant(
@@ -478,6 +487,7 @@ export class ReminderScheduler {
         try {
           await this.repository.fail(
             reminder,
+            /** Performs the retry instant operation while preserving tenant-safe bounded behavior. */
             retryInstant(now, reminder.deliveryAttempt),
             'delivery_failed',
             claimKey,

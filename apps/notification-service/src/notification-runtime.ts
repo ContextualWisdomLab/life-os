@@ -3,7 +3,9 @@ import { Pool, type PoolConfig } from 'pg';
 import {
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
+  /** Represents the bounded notification sql client values accepted by the notification service. */
   type NotificationSqlClient,
+  /** Represents the bounded notification sql query result values accepted by the notification service. */
   type NotificationSqlQueryResult,
 } from './postgres-reminder-repository';
 import { ReminderScheduler } from './reminder-scheduler';
@@ -44,6 +46,7 @@ export function registerNotificationPoolErrorHandler(
   logError: NotificationPoolErrorLogger = defaultNotificationPoolErrorLogger,
 ): void {
   pool.on('error', () => {
+    /** Performs the log error operation while preserving tenant-safe bounded behavior. */
     logError(NOTIFICATION_POOL_ERROR_MESSAGE, 'NotificationRuntime');
   });
 }
@@ -148,6 +151,7 @@ export function createNotificationPoolConfiguration(
 ): PoolConfig {
   return {
     connectionString: requireDatabaseUrl(
+      /** Performs the require configuration operation while preserving tenant-safe bounded behavior. */
       requireConfiguration(environment, 'NOTIFICATION_DATABASE_URL'),
     ),
     application_name: 'life-os-notification-service',

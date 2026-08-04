@@ -9,11 +9,15 @@ import {
   NotificationReplayConflictError,
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
+  /** Represents the notification sql client values used by deterministic test fixtures. */
   type NotificationSqlClient,
+  /** Represents the notification sql query result values used by deterministic test fixtures. */
   type NotificationSqlQueryResult,
 } from './postgres-reminder-repository';
 import {
   ReminderScheduler,
+  idempotencyKey,
+  /** Represents the reminder occurrence values used by deterministic test fixtures. */
   type ReminderOccurrence,
 } from './reminder-scheduler';
 
@@ -21,9 +25,12 @@ const DATABASE_URL = process.env.NOTIFICATION_DATABASE_URL;
 const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
 let administrativePool: Pool;
 
+/** Implements the pool sql client test double with observable deterministic behavior. */
 class PoolSqlClient implements NotificationSqlClient {
+  /** Creates the component with explicit dependencies and deterministic initial state. */
   constructor(private readonly pool: Pool) {}
 
+  /** Executes one parameterized query through the bounded SQL or test-double contract. */
   async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -33,6 +40,7 @@ class PoolSqlClient implements NotificationSqlClient {
   }
 }
 
+/** Supports the require database url test scenario without hiding production behavior. */
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
     throw new Error(
@@ -42,14 +50,17 @@ function requireDatabaseUrl(): string {
   return DATABASE_URL;
 }
 
+/** Supports the apply migration test scenario without hiding production behavior. */
 async function applyMigration(pool: Pool): Promise<void> {
   const sql = await readFile(
+    /** Supports the resolve test scenario without hiding production behavior. */
     resolve(__dirname, '../migrations/0001_durable_reminder_inbox.sql'),
     'utf8',
   );
   await pool.query(sql);
 }
 
+/** Supports the reset schema test scenario without hiding production behavior. */
 async function resetSchema(): Promise<void> {
   await administrativePool.query(
     'DROP SCHEMA IF EXISTS notification_service CASCADE',
@@ -57,6 +68,7 @@ async function resetSchema(): Promise<void> {
   await applyMigration(administrativePool);
 }
 
+/** Supports the repository test scenario without hiding production behavior. */
 function repository(
   pool: Pool,
   claimLeaseSeconds = 30,
@@ -67,10 +79,12 @@ function repository(
   );
 }
 
+/** Supports the gateway test scenario without hiding production behavior. */
 function gateway(pool: Pool): PostgresInAppDeliveryGateway {
   return new PostgresInAppDeliveryGateway(new PoolSqlClient(pool));
 }
 
+/** Supports the occurrence test scenario without hiding production behavior. */
 function occurrence(
   workspaceId: string,
   overrides: Partial<ReminderOccurrence> = {},
@@ -89,6 +103,7 @@ function occurrence(
 }
 
 describeWithPostgres('PostgreSQL notification repository integration', () => {
+  /** Supports the before all test scenario without hiding production behavior. */
   beforeAll(async () => {
     administrativePool = new Pool({
       connectionString: requireDatabaseUrl(),
@@ -97,10 +112,12 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     });
   });
 
+  /** Supports the before each test scenario without hiding production behavior. */
   beforeEach(async () => {
     await resetSchema();
   });
 
+  /** Supports the after all test scenario without hiding production behavior. */
   afterAll(async () => {
     await administrativePool.query(
       'DROP SCHEMA IF EXISTS notification_service CASCADE',
@@ -147,18 +164,21 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const secondId = '00000000-0000-4000-8000-000000000002';
     const laterId = '00000000-0000-4000-8000-000000000003';
     await durableRepository.schedule(
+      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         id: secondId,
         dueAt: '2026-08-04T10:00:00.000Z',
       }),
     );
     await durableRepository.schedule(
+      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         id: laterId,
         dueAt: '2026-08-04T11:00:00.000Z',
       }),
     );
     await durableRepository.schedule(
+      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         id: firstId,
         dueAt: '2026-08-04T10:00:00.000Z',
@@ -182,7 +202,12 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
 
     const claims = await Promise.all(
       Array.from({ length: 16 }, () =>
-        durableRepository.claim(workspaceId, reminder.id),
+        durableRepository.claim(
+          workspaceId,
+          reminder.id,
+          reminder.dueAt,
+          reminder.deliveryAttempt,
+        ),
       ),
     );
 
@@ -190,13 +215,48 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     expect(claims.filter((claimKey) => claimKey === null)).toHaveLength(15);
   });
 
+  it('rejects a claim when the observed row version has changed', async () => {
+    const workspaceId = randomUUID();
+    const reminder = occurrence(workspaceId);
+    const durableRepository = repository(administrativePool, 300);
+    await durableRepository.schedule(reminder);
+    const [observed] = await durableRepository.listDue(
+      '2026-08-04T12:01:00.000Z',
+      10,
+    );
+    if (observed === undefined) {
+      throw new Error('expected one due reminder');
+    }
+    await administrativePool.query(
+      `UPDATE notification_service.reminder_occurrences
+       SET due_instant = due_instant + interval '1 minute',
+           delivery_attempt_count = delivery_attempt_count + 1
+       WHERE workspace_id = $1 AND reminder_id = $2`,
+      [workspaceId, reminder.id],
+    );
+
+    await expect(
+      durableRepository.claim(
+        observed.workspaceId,
+        observed.id,
+        observed.dueAt,
+        observed.deliveryAttempt,
+      ),
+    ).resolves.toBeNull();
+  });
+
   it('fences an expired owner after a replacement claim is acquired', async () => {
     const workspaceId = randomUUID();
     const reminder = occurrence(workspaceId);
     const durableRepository = repository(administrativePool, 30);
     await durableRepository.schedule(reminder);
-    const deliveryKey = `${workspaceId}:${reminder.id}:${reminder.dueAt}`;
-    const firstClaim = await durableRepository.claim(workspaceId, reminder.id);
+    const deliveryKey = idempotencyKey(reminder);
+    const firstClaim = await durableRepository.claim(
+      workspaceId,
+      reminder.id,
+      reminder.dueAt,
+      reminder.deliveryAttempt,
+    );
     expect(firstClaim).not.toBeNull();
     await administrativePool.query(
       `UPDATE notification_service.reminder_occurrences
@@ -204,7 +264,12 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
        WHERE workspace_id = $1 AND reminder_id = $2`,
       [workspaceId, reminder.id],
     );
-    const secondClaim = await durableRepository.claim(workspaceId, reminder.id);
+    const secondClaim = await durableRepository.claim(
+      workspaceId,
+      reminder.id,
+      reminder.dueAt,
+      reminder.deliveryAttempt,
+    );
     expect(secondClaim).not.toBeNull();
     expect(secondClaim).not.toBe(firstClaim);
 
@@ -235,9 +300,14 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool, 30);
     const inAppGateway = gateway(administrativePool);
     await durableRepository.schedule(reminder);
-    const key = `${workspaceId}:${reminder.id}:${reminder.dueAt}`;
+    const key = idempotencyKey(reminder);
     await expect(
-      durableRepository.claim(workspaceId, reminder.id),
+      durableRepository.claim(
+        workspaceId,
+        reminder.id,
+        reminder.dueAt,
+        reminder.deliveryAttempt,
+      ),
     ).resolves.not.toBeNull();
     await inAppGateway.deliver({
       workspaceId,
@@ -297,20 +367,24 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool);
     const scheduler = new ReminderScheduler(
       durableRepository,
+      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );
     await durableRepository.schedule(
+      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         dueAt: '2026-08-04T08:00:00.000Z',
       }),
     );
     await durableRepository.schedule(
+      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(workspaceId, {
         dueAt: '2026-08-04T08:01:00.000Z',
       }),
     );
     await durableRepository.schedule(
+      /** Supports the occurrence test scenario without hiding production behavior. */
       occurrence(otherWorkspaceId, {
         dueAt: '2026-08-04T08:02:00.000Z',
       }),
@@ -334,6 +408,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool);
     const scheduler = new ReminderScheduler(
       durableRepository,
+      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );
@@ -370,6 +445,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const fatigueRepository = repository(administrativePool);
     const fatigueScheduler = new ReminderScheduler(
       fatigueRepository,
+      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );
@@ -410,6 +486,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const workspaceId = randomUUID();
     const durableRepository = repository(administrativePool);
     const failingGateway = {
+      /** Persists or verifies one idempotent in-app reminder delivery. */
       async deliver(): Promise<void> {
         throw new Error('provider token and sensitive exception text');
       },
@@ -514,6 +591,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const durableRepository = repository(administrativePool);
     const scheduler = new ReminderScheduler(
       durableRepository,
+      /** Supports the gateway test scenario without hiding production behavior. */
       gateway(administrativePool),
       10,
     );

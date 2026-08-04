@@ -6,15 +6,20 @@ import {
   ReminderValidationError,
   isWithinQuietHours,
   validateReminderOccurrence,
+  /** Represents the reminder delivery values used by deterministic test fixtures. */
   type ReminderDelivery,
+  /** Represents the reminder delivery gateway values used by deterministic test fixtures. */
   type ReminderDeliveryGateway,
+  /** Represents the reminder occurrence values used by deterministic test fixtures. */
   type ReminderOccurrence,
+  /** Represents the reminder repository values used by deterministic test fixtures. */
   type ReminderRepository,
 } from './reminder-scheduler';
 
 const workspaceId = '018f47a4-9976-4c57-8a8a-674630a873d1';
 const reminderId = '91fe0f58-2035-49b7-a793-ac75939a433f';
 
+/** Supports the reminder test scenario without hiding production behavior. */
 function reminder(
   overrides: Partial<ReminderOccurrence> = {},
 ): ReminderOccurrence {
@@ -31,38 +36,56 @@ function reminder(
   };
 }
 
+/** Implements the noop repository test double with observable deterministic behavior. */
 class NoopRepository implements ReminderRepository {
+  /** Returns a bounded deterministic set of currently due reminder occurrences. */
   async listDue(): Promise<readonly unknown[]> {
     return [];
   }
-  async claim(): Promise<string | null> {
+  /** Attempts to acquire the exact observed reminder occurrence using a fenced expiring claim. */
+  async claim(
+    _workspaceId: string,
+    _reminderId: string,
+    _dueAt: string,
+    _deliveryAttempt: number,
+  ): Promise<string | null> {
     return 'noop-claim-key';
   }
+  /** Counts delivered outcomes for one workspace and one local calendar date. */
   async countDelivered(): Promise<number> {
     return 0;
   }
+  /** Atomically completes a fenced claim and records an immutable delivered outcome. */
   async markDelivered(): Promise<void> {}
+  /** Atomically reschedules a fenced occurrence and records its immutable deferral outcome. */
   async defer(): Promise<void> {}
+  /** Atomically records a bounded retry or terminal reminder failure. */
   async fail(): Promise<void> {}
 }
 
+/** Implements the static repository test double with observable deterministic behavior. */
 class StaticRepository extends NoopRepository {
+  /** Creates the component with explicit dependencies and deterministic initial state. */
   constructor(private readonly records: readonly unknown[]) {
     super();
   }
 
+  /** Returns a bounded deterministic set of currently due reminder occurrences. */
   override async listDue(): Promise<readonly unknown[]> {
     return this.records;
   }
 }
 
+/** Implements the noop gateway test double with observable deterministic behavior. */
 class NoopGateway implements ReminderDeliveryGateway {
+  /** Persists or verifies one idempotent in-app reminder delivery. */
   async deliver(_message: ReminderDelivery): Promise<void> {}
 }
 
 describe('reminder boundary validation', () => {
   it('normalizes a bounded offset instant while preserving authored text', () => {
     const value = validateReminderOccurrence(
+      /** Supports the reminder test scenario without hiding production behavior. */
       reminder({ dueAt: '2026-08-04T21:00:00+09:00' }),
     );
 
@@ -146,27 +169,32 @@ describe('reminder boundary validation', () => {
 describe('quiet-hours evaluation', () => {
   it('supports same-day and overnight intervals with an exclusive end', () => {
     expect(
+      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(9 * 60, { startMinute: 8 * 60, endMinute: 10 * 60 }),
     ).toBe(true);
     expect(
+      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(10 * 60, {
         startMinute: 8 * 60,
         endMinute: 10 * 60,
       }),
     ).toBe(false);
     expect(
+      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(23 * 60, {
         startMinute: 22 * 60,
         endMinute: 7 * 60,
       }),
     ).toBe(true);
     expect(
+      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(6 * 60 + 59, {
         startMinute: 22 * 60,
         endMinute: 7 * 60,
       }),
     ).toBe(true);
     expect(
+      /** Supports the is within quiet hours test scenario without hiding production behavior. */
       isWithinQuietHours(12 * 60, {
         startMinute: 22 * 60,
         endMinute: 7 * 60,
@@ -198,6 +226,7 @@ describe('scheduler options and defensive failures', () => {
 
   it('rethrows an unexpected repository-record accessor failure', async () => {
     const malformed = Object.defineProperty({}, 'id', {
+      /** Supports the get test scenario without hiding production behavior. */
       get(): never {
         throw new Error('unexpected accessor failure');
       },

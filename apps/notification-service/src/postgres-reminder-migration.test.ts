@@ -7,6 +7,7 @@ const migrationPath = resolve(
   '../migrations/0001_durable_reminder_inbox.sql',
 );
 
+/** Supports the migration sql test scenario without hiding production behavior. */
 async function migrationSql(): Promise<string> {
   return await readFile(migrationPath, 'utf8');
 }

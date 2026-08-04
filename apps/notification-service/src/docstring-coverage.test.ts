@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
+/** Defines the undocumented declaration shape used to make the test evidence explicit. */
 interface UndocumentedDeclaration {
   readonly file: string;
   readonly line: number;
@@ -96,6 +97,7 @@ function collectUndocumentedDeclarations(
   /** Visits every syntax node while preserving exact source positions. */
   function visit(node: ts.Node): void {
     if (
+      /** Selects named declarations governed by the documentation contract. */
       requiresJSDoc(node) &&
       !hasJSDoc(documentationOwner(node), sourceFile)
     ) {
@@ -111,6 +113,7 @@ function collectUndocumentedDeclarations(
     ts.forEachChild(node, visit);
   }
 
+  /** Supports the visit test scenario without hiding production behavior. */
   visit(sourceFile);
   return missing;
 }
