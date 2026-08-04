@@ -68,7 +68,10 @@ describe('AI gateway key configuration', () => {
       failure = error;
     }
     expect(failure).toBeInstanceOf(AiGatewayKeyConfigurationError);
-    expect(String(failure)).not.toContain(String(value));
+    const rejectedValue = String(value);
+    if (rejectedValue.length > 0) {
+      expect(String(failure)).not.toContain(rejectedValue);
+    }
   });
 
   it('creates an immutable active-only keyring', () => {
@@ -158,7 +161,10 @@ describe('AI gateway verification key selection', () => {
         failure = error;
       }
       expect(failure).toBeInstanceOf(AiGatewayKeySelectionError);
-      expect(String(failure)).not.toContain(String(value));
+      const rejectedValue = String(value);
+      if (rejectedValue.length > 0) {
+        expect(String(failure)).not.toContain(rejectedValue);
+      }
     },
   );
 });
