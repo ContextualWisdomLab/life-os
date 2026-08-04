@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  KUBECTL_VERSION: v1.34.1
+  KUBECTL_VERSION: v1.36.2
   WEB_IMAGE_SENTINEL: ghcr.io/contextualwisdomlab/life-os-web@sha256:0000000000000000000000000000000000000000000000000000000000000000
   GATEWAY_IMAGE_SENTINEL: ghcr.io/contextualwisdomlab/life-os-gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
   WEB_ORIGIN_SENTINEL: https://life-os.invalid
@@ -74,17 +74,23 @@ jobs:
           from pathlib import Path
           from urllib.parse import urlsplit
 
-          image_pattern = re.compile(
-              r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{2,5})?"
-              r"/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$"
-          )
           images = {
               os.environ["WEB_IMAGE_SENTINEL"]: os.environ["WEB_IMAGE"],
               os.environ["GATEWAY_IMAGE_SENTINEL"]: os.environ["GATEWAY_IMAGE"],
           }
-          for image in images.values():
-              if image_pattern.fullmatch(image) is None:
-                  raise SystemExit("image reference must use a registry path and sha256 digest")
+          image_patterns = {
+              os.environ["WEB_IMAGE_SENTINEL"]: re.compile(
+                  r"^ghcr\.io/contextualwisdomlab/life-os-web@sha256:[0-9a-f]{64}$"
+              ),
+              os.environ["GATEWAY_IMAGE_SENTINEL"]: re.compile(
+                  r"^ghcr\.io/contextualwisdomlab/life-os-gateway@sha256:[0-9a-f]{64}$"
+              ),
+          }
+          for sentinel, image in images.items():
+              if image_patterns[sentinel].fullmatch(image) is None:
+                  raise SystemExit(
+                      "image reference must use the approved LifeOS GHCR path and sha256 digest"
+                  )
               if image.endswith("sha256:" + ("0" * 64)):
                   raise SystemExit("zero image digest is not deployable")
 
@@ -165,17 +171,24 @@ jobs:
           from pathlib import Path
           from urllib.parse import urlsplit
 
-          image_pattern = re.compile(
-              r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{2,5})?"
-              r"/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$"
-          )
-          replacements = {
+          images = {
               os.environ["WEB_IMAGE_SENTINEL"]: os.environ["WEB_IMAGE"],
               os.environ["GATEWAY_IMAGE_SENTINEL"]: os.environ["GATEWAY_IMAGE"],
           }
-          for image in replacements.values():
-              if image_pattern.fullmatch(image) is None or image.endswith("sha256:" + ("0" * 64)):
-                  raise SystemExit("invalid immutable image input")
+          image_patterns = {
+              os.environ["WEB_IMAGE_SENTINEL"]: re.compile(
+                  r"^ghcr\.io/contextualwisdomlab/life-os-web@sha256:[0-9a-f]{64}$"
+              ),
+              os.environ["GATEWAY_IMAGE_SENTINEL"]: re.compile(
+                  r"^ghcr\.io/contextualwisdomlab/life-os-gateway@sha256:[0-9a-f]{64}$"
+              ),
+          }
+          for sentinel, image in images.items():
+              if image_patterns[sentinel].fullmatch(image) is None:
+                  raise SystemExit("invalid approved immutable LifeOS image input")
+              if image.endswith("sha256:" + ("0" * 64)):
+                  raise SystemExit("zero image digest is not deployable")
+
           origin = urlsplit(os.environ["WEB_ORIGIN"])
           if (
               origin.scheme != "https"
@@ -189,7 +202,7 @@ jobs:
               raise SystemExit("invalid exact HTTPS web origin")
           manifest_path = Path(os.environ["RUNNER_TEMP"]) / "life-os-kubernetes/base/edge-workloads.yaml"
           manifest = manifest_path.read_text(encoding="utf-8")
-          for sentinel, image in replacements.items():
+          for sentinel, image in images.items():
               if manifest.count(sentinel) != 1:
                   raise SystemExit("deployment image sentinel is missing or duplicated")
               manifest = manifest.replace(sentinel, image)
