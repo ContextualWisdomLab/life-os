@@ -113,15 +113,7 @@ jobs:
           git rm .github/workflows/format-deployment-reference.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            infra/deployment/render-production-overlay.mjs \
-            infra/deployment/validate-rendered-manifest.mjs \
-            infra/deployment/create-provenance.mjs \
-            infra/deployment/tests/deployment-contract.test.mjs \
-            infra/kubernetes/base/workloads-public.yaml \
-            infra/kubernetes/base/workloads-core.yaml \
-            infra/kubernetes/base/workloads-integrations.yaml \
-            .github/workflows/format-deployment-reference.yml
+          git add -A
           git diff --cached --check
           git commit -m 'fix(deploy): format helpers and trust registry aliases'
           git push origin HEAD:feat/production-deployment-reference
