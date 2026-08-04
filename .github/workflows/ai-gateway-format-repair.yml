@@ -1,0 +1,66 @@
+name: AI gateway format repair
+
+on:
+  push:
+    branches: [feat/ai-authenticated-gateway-context]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-gateway-format-repair
+  cancel-in-progress: true
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/ai-authenticated-gateway-context
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install formatting toolchain
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Format failing AI gateway evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/ai-http-boundary.test.ts \
+            docs/research/2026-08-04-ai-gateway-context-standards.md
+
+      - name: Commit non-workflow formatting repair
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f pnpm-lock.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/ai-service/src/ai-http-boundary.test.ts \
+            docs/research/2026-08-04-ai-gateway-context-standards.md
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No AI gateway formatting repair was produced.' >&2
+            exit 1
+          fi
+          git commit -m "style(ai): format gateway boundary evidence"
+          authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
+            push origin HEAD:feat/ai-authenticated-gateway-context
