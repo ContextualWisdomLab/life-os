@@ -1,4 +1,8 @@
 import { HttpException } from '@nestjs/common';
+import {
+  PlanningSearchValidationError,
+  PlanningSearchPersistenceError,
+} from './search';
 
 export interface PlanningProblemDetails {
   type: 'about:blank';
@@ -43,11 +47,22 @@ export function toHttpException(error: unknown): HttpException {
     return problemException(404, 'Planning record not found', 'not_found');
   }
 
-  if (error instanceof Error && VALIDATION_MESSAGES.has(error.message)) {
+  if (
+    error instanceof PlanningSearchValidationError ||
+    (error instanceof Error && VALIDATION_MESSAGES.has(error.message))
+  ) {
     return problemException(
       400,
       'Planning request is invalid',
       'invalid_request',
+    );
+  }
+
+  if (error instanceof PlanningSearchPersistenceError) {
+    return problemException(
+      503,
+      'Planning persistence is unavailable',
+      'persistence_unavailable',
     );
   }
 
