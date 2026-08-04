@@ -1,0 +1,2 @@
+apps/ai-service/package.json
+apps/ai-service/vitest.config.ts
