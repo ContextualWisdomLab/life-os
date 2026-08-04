@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_DAILY_REMINDERS,
   MAX_DELIVERY_ATTEMPTS,
@@ -46,6 +46,16 @@ class NoopRepository implements ReminderRepository {
   async fail(): Promise<void> {}
 }
 
+class StaticRepository extends NoopRepository {
+  constructor(private readonly records: readonly unknown[]) {
+    super();
+  }
+
+  override async listDue(): Promise<readonly unknown[]> {
+    return this.records;
+  }
+}
+
 class NoopGateway implements ReminderDeliveryGateway {
   async deliver(_message: ReminderDelivery): Promise<void> {}
 }
@@ -60,11 +70,53 @@ describe('reminder boundary validation', () => {
     expect(value.title).toBe('Prepare the weekly review');
   });
 
+  it('treats an omitted quiet-hours policy as disabled', () => {
+    const value = { ...reminder() } as Record<string, unknown>;
+    delete value.quietHours;
+
+    expect(validateReminderOccurrence(value).quietHours).toBeNull();
+  });
+
   it.each([
+    [null, 'invalid_record'],
+    [[], 'invalid_record'],
     [{ ...reminder(), id: '1' }, 'invalid_identifier'],
+    [{ ...reminder(), id: null }, 'invalid_identifier'],
+    [{ ...reminder(), title: '' }, 'invalid_title'],
     [{ ...reminder(), title: ' trailing ' }, 'invalid_title'],
+    [{ ...reminder(), title: 'x'.repeat(161) }, 'invalid_title'],
+    [{ ...reminder(), title: 'unsafe\u0000title' }, 'invalid_title'],
+    [{ ...reminder(), title: 7 }, 'invalid_title'],
     [{ ...reminder(), dueAt: 'tomorrow' }, 'invalid_due_at'],
+    [{ ...reminder(), dueAt: 7 }, 'invalid_due_at'],
+    [{ ...reminder(), dueAt: 'x'.repeat(41) }, 'invalid_due_at'],
+    [{ ...reminder(), dueAt: '2026-13-01T00:00:00Z' }, 'invalid_due_at'],
     [{ ...reminder(), timeZone: 'Mars/Olympus' }, 'invalid_time_zone'],
+    [{ ...reminder(), timeZone: '' }, 'invalid_time_zone'],
+    [{ ...reminder(), timeZone: 7 }, 'invalid_time_zone'],
+    [{ ...reminder(), timeZone: 'x'.repeat(65) }, 'invalid_time_zone'],
+    [{ ...reminder(), quietHours: 'night' }, 'invalid_quiet_hours'],
+    [
+      {
+        ...reminder(),
+        quietHours: { startMinute: 1.5, endMinute: 60 },
+      },
+      'invalid_quiet_hours',
+    ],
+    [
+      {
+        ...reminder(),
+        quietHours: { startMinute: -1, endMinute: 60 },
+      },
+      'invalid_quiet_hours',
+    ],
+    [
+      {
+        ...reminder(),
+        quietHours: { startMinute: 60, endMinute: 1_440 },
+      },
+      'invalid_quiet_hours',
+    ],
     [
       {
         ...reminder(),
@@ -73,14 +125,30 @@ describe('reminder boundary validation', () => {
       'invalid_quiet_hours',
     ],
     [
+      { ...reminder(), maxPerLocalDay: 0 },
+      'invalid_daily_limit',
+    ],
+    [
+      { ...reminder(), maxPerLocalDay: 1.5 },
+      'invalid_daily_limit',
+    ],
+    [
       { ...reminder(), maxPerLocalDay: MAX_DAILY_REMINDERS + 1 },
       'invalid_daily_limit',
+    ],
+    [
+      { ...reminder(), deliveryAttempt: -1 },
+      'invalid_delivery_attempt',
+    ],
+    [
+      { ...reminder(), deliveryAttempt: 1.5 },
+      'invalid_delivery_attempt',
     ],
     [
       { ...reminder(), deliveryAttempt: MAX_DELIVERY_ATTEMPTS + 1 },
       'invalid_delivery_attempt',
     ],
-  ])('rejects malformed records with stable code %s', (value, code) => {
+  ])('rejects malformed records with stable code %#', (value, code) => {
     expect(() => validateReminderOccurrence(value)).toThrowError(
       new ReminderValidationError(code as never),
     );
@@ -110,16 +178,103 @@ describe('quiet-hours evaluation', () => {
         endMinute: 7 * 60,
       }),
     ).toBe(true);
+    expect(
+      isWithinQuietHours(12 * 60, {
+        startMinute: 22 * 60,
+        endMinute: 7 * 60,
+      }),
+    ).toBe(false);
   });
 });
 
-describe('scheduler options', () => {
-  it('rejects unbounded batch sizes', () => {
+describe('scheduler options and defensive failures', () => {
+  it('rejects non-integer and out-of-range batch sizes', () => {
     expect(
       () => new ReminderScheduler(new NoopRepository(), new NoopGateway(), 0),
     ).toThrow(RangeError);
     expect(
+      () =>
+        new ReminderScheduler(new NoopRepository(), new NoopGateway(), 1.5),
+    ).toThrow(RangeError);
+    expect(
       () => new ReminderScheduler(new NoopRepository(), new NoopGateway(), 101),
     ).toThrow(RangeError);
+  });
+
+  it('rejects an invalid scheduler instant before repository access', async () => {
+    await expect(
+      new ReminderScheduler(new NoopRepository(), new NoopGateway()).run(
+        new Date(Number.NaN),
+      ),
+    ).rejects.toThrow('now must be a valid instant');
+  });
+
+  it('rethrows an unexpected repository-record accessor failure', async () => {
+    const malformed = Object.defineProperty({}, 'id', {
+      get(): never {
+        throw new Error('unexpected accessor failure');
+      },
+    });
+
+    await expect(
+      new ReminderScheduler(
+        new StaticRepository([malformed]),
+        new NoopGateway(),
+      ).run(new Date('2026-08-04T12:00:00.000Z')),
+    ).rejects.toThrow('unexpected accessor failure');
+  });
+
+  it('fails closed when the platform omits required zoned-clock parts', async () => {
+    const formatter = vi
+      .spyOn(Intl, 'DateTimeFormat')
+      .mockImplementation(
+        () =>
+          ({
+            format: () => 'valid',
+            formatToParts: () => [
+              { type: 'year', value: '2026' },
+              { type: 'month', value: '08' },
+              { type: 'day', value: '04' },
+            ],
+          }) as Intl.DateTimeFormat,
+      );
+    try {
+      await expect(
+        new ReminderScheduler(
+          new StaticRepository([reminder({ quietHours: null })]),
+          new NoopGateway(),
+        ).run(new Date('2026-08-04T12:00:00.000Z')),
+      ).rejects.toThrowError(new ReminderValidationError('invalid_time_zone'));
+    } finally {
+      formatter.mockRestore();
+    }
+  });
+
+  it('keeps policy search bounded when local time never exits quiet hours', async () => {
+    const formatter = vi
+      .spyOn(Intl, 'DateTimeFormat')
+      .mockImplementation(
+        () =>
+          ({
+            format: () => 'valid',
+            formatToParts: () => [
+              { type: 'year', value: '2026' },
+              { type: 'month', value: '08' },
+              { type: 'day', value: '04' },
+              { type: 'hour', value: '23' },
+              { type: 'minute', value: '00' },
+            ],
+          }) as Intl.DateTimeFormat,
+      );
+    try {
+      await expect(
+        new ReminderScheduler(
+          new StaticRepository([reminder()]),
+          new NoopGateway(),
+        ).run(new Date('2026-08-04T12:00:00.000Z')),
+      ).rejects.toThrowError(new ReminderValidationError('invalid_time_zone'));
+    } finally {
+      formatter.mockRestore();
+    }
   });
 });
