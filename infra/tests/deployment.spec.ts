@@ -150,16 +150,21 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('kubectl diff --server-side');
   });
 
-  it('captures and verifies rollback state including an initial deployment', () => {
+  it('recovers captured state after rollout or partial apply failure', () => {
     expect(workflow).toContain('WEB_PRIOR_REVISION');
     expect(workflow).toContain('GATEWAY_PRIOR_REVISION');
+    expect(workflow).toContain(
+      "if: ${{ always() && steps.capture.outcome == 'success' }}",
+    );
+    expect(workflow).toContain('APPLY_OUTCOME: ${{ steps.apply.outcome }}');
+    expect(workflow).toContain('current_revision');
     expect(workflow).toContain('--to-revision="${prior_revision}"');
     expect(workflow).toContain(
       'kubectl delete "deployment/${deployment_name}"',
     );
     expect(workflow).toContain('recovery_failed=0');
     expect(workflow).toContain(
-      'Rollout and automatic workload-state recovery both failed.',
+      'Rollout or apply failed, and automatic workload-state recovery also failed.',
     );
   });
 
