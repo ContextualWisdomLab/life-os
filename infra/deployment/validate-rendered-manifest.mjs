@@ -95,7 +95,11 @@ export function validateRenderedProductionManifest(manifest) {
     'PodDisruptionBudget',
     'NetworkPolicy',
   ]);
-  if (documents.some((document) => !allowedKinds.has(readScalar(document, 'kind')))) {
+  if (
+    documents.some(
+      (document) => !allowedKinds.has(readScalar(document, 'kind')),
+    )
+  ) {
     throw new Error(INVALID_MANIFEST);
   }
 
@@ -168,7 +172,10 @@ async function runCli() {
   process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   runCli().catch((error) => {
     const message = error instanceof Error ? error.message : INVALID_MANIFEST;
     process.stderr.write(`${message}\n`);

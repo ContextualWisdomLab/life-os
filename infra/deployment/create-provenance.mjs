@@ -51,7 +51,13 @@ export async function createDeploymentProvenance({
 async function runCli() {
   const [manifestPath, outputPath, sourceCommit, repository, ...extra] =
     process.argv.slice(2);
-  if (!manifestPath || !outputPath || !sourceCommit || !repository || extra.length) {
+  if (
+    !manifestPath ||
+    !outputPath ||
+    !sourceCommit ||
+    !repository ||
+    extra.length
+  ) {
     throw new Error(
       'Usage: create-provenance.mjs <manifest> <output> <commit> <repository>',
     );
@@ -65,7 +71,10 @@ async function runCli() {
   process.stdout.write(`deployment_provenance=${resolve(outputPath)}\n`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   runCli().catch((error) => {
     const message =
       error instanceof Error ? error.message : 'Deployment provenance failed';

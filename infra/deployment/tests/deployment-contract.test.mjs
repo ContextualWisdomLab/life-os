@@ -38,7 +38,7 @@ async function readBaseManifest() {
   let manifest = contents.join('\n---\n');
   for (const serviceName of PRODUCTION_SERVICE_NAMES) {
     manifest = manifest.replaceAll(
-      `life-os/${serviceName}:local`,
+      `ghcr.io/contextualwisdomlab/life-os-${serviceName}:local`,
       imageMap[serviceName],
     );
   }
@@ -61,14 +61,25 @@ describe('production image renderer', () => {
     assert.match(first, /^apiVersion: kustomize\.config\.k8s\.io\/v1beta1/m);
     assert.equal((first.match(/@sha256:/g) ?? []).length, 0);
     assert.equal((first.match(/^\s+digest: sha256:/gm) ?? []).length, 9);
-    assert.equal((first.match(/^\s+- name: life-os\//gm) ?? []).length, 9);
+    assert.equal(
+      (
+        first.match(/^\s+- name: ghcr.io\/contextualwisdomlab\/life-os-/gm) ??
+        []
+      ).length,
+      9,
+    );
   });
 
   it('writes a private deterministic overlay file', async () => {
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'life-os-overlay-'));
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), 'life-os-overlay-'),
+    );
     try {
       const outputPath = join(temporaryDirectory, 'kustomization.yaml');
-      const rendered = await writeProductionOverlay(testImageMapPath, outputPath);
+      const rendered = await writeProductionOverlay(
+        testImageMapPath,
+        outputPath,
+      );
       assert.equal(await readFile(outputPath, 'utf8'), rendered);
     } finally {
       await rm(temporaryDirectory, { force: true, recursive: true });
@@ -252,7 +263,9 @@ describe('Kubernetes source and rendered manifest contracts', () => {
         new RegExp(`^kind: ${kind}$`, 'm').test(document),
       );
       assert.notEqual(index, -1);
-      const mutated = documents.filter((_, documentIndex) => documentIndex !== index);
+      const mutated = documents.filter(
+        (_, documentIndex) => documentIndex !== index,
+      );
       assert.throws(
         () => validateRenderedProductionManifest(mutated.join('\n---\n')),
         new Error('Rendered production manifest is invalid'),
@@ -263,7 +276,9 @@ describe('Kubernetes source and rendered manifest contracts', () => {
 
 describe('deployment provenance', () => {
   it('writes deterministic bounded provenance for the exact manifest bytes', async () => {
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'life-os-provenance-'));
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), 'life-os-provenance-'),
+    );
     try {
       const manifestPath = join(temporaryDirectory, 'life-os-production.yaml');
       const outputPath = join(temporaryDirectory, 'provenance.json');
@@ -284,7 +299,9 @@ describe('deployment provenance', () => {
   });
 
   it('rejects malformed identity and invalid manifest sizes', async () => {
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'life-os-provenance-'));
+    const temporaryDirectory = await mkdtemp(
+      join(tmpdir(), 'life-os-provenance-'),
+    );
     try {
       const emptyPath = join(temporaryDirectory, 'empty.yaml');
       await writeFile(emptyPath, '');
