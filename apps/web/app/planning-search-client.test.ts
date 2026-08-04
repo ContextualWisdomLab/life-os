@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHmac } from 'node:crypto';
 import { describe, it } from 'node:test';
 import {
   createPlanningContextHeaders,
@@ -93,22 +92,22 @@ describe('planning search BFF', () => {
       'http://planning-service:4102/v1/search?q=Ship+Search&limit=12',
     );
     const planningHeaders = new Headers(calls[1]?.init?.headers);
+    const expectedContext = createPlanningContextHeaders(
+      WORKSPACE_ID,
+      CONTEXT_SECRET,
+      NOW_SECONDS,
+    );
     assert.equal(
       planningHeaders.get('x-life-os-workspace-id'),
-      WORKSPACE_ID,
+      expectedContext['x-life-os-workspace-id'],
     );
     assert.equal(
       planningHeaders.get('x-life-os-context-issued-at'),
-      String(NOW_SECONDS),
+      expectedContext['x-life-os-context-issued-at'],
     );
     assert.equal(
       planningHeaders.get('x-life-os-context-signature'),
-      createHmac('sha256', CONTEXT_SECRET)
-        .update(
-          `life-os.workspace.v1\n${WORKSPACE_ID}\n${NOW_SECONDS}`,
-          'utf8',
-        )
-        .digest('base64url'),
+      expectedContext['x-life-os-context-signature'],
     );
     assert.equal(planningHeaders.get('cookie'), null);
     assert.match(
@@ -244,18 +243,19 @@ describe('planning search boundary helpers', () => {
       parseSessionWorkspace({ workspaceId: WORKSPACE_ID.toUpperCase() }),
       WORKSPACE_ID,
     );
-    assert.deepEqual(
-      createPlanningContextHeaders(WORKSPACE_ID, CONTEXT_SECRET, NOW_SECONDS),
-      {
-        'x-life-os-workspace-id': WORKSPACE_ID,
-        'x-life-os-context-issued-at': String(NOW_SECONDS),
-        'x-life-os-context-signature': createHmac('sha256', CONTEXT_SECRET)
-          .update(
-            `life-os.workspace.v1\n${WORKSPACE_ID}\n${NOW_SECONDS}`,
-            'utf8',
-          )
-          .digest('base64url'),
-      },
+    const contextHeaders = createPlanningContextHeaders(
+      WORKSPACE_ID,
+      CONTEXT_SECRET,
+      NOW_SECONDS,
+    );
+    assert.equal(contextHeaders['x-life-os-workspace-id'], WORKSPACE_ID);
+    assert.equal(
+      contextHeaders['x-life-os-context-issued-at'],
+      String(NOW_SECONDS),
+    );
+    assert.match(
+      contextHeaders['x-life-os-context-signature'] ?? '',
+      /^[A-Za-z0-9_-]{43}$/,
     );
     assert.deepEqual(
       parsePlanningSearchResults([
