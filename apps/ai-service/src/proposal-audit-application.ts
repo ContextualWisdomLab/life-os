@@ -32,7 +32,9 @@ export interface ProposalDecisionRequest {
   readonly decidedAt: string;
 }
 
+/** Supplies deterministic wall-clock time to the proposal audit application. */
 export type ProposalAuditClock = () => Date;
+/** Supplies opaque decision identifiers to the proposal audit application. */
 export type ProposalDecisionIdFactory = () => string;
 
 /** Stable tenant-scoped absence used by bounded HTTP problem mapping. */
@@ -43,10 +45,12 @@ export class ProposalAuditNotFoundError extends Error {
   }
 }
 
+/** Raises the shared bounded validation failure. */
 function invalid(): never {
   throw new ProposalAuditValidationError();
 }
 
+/** Requires an object-shaped untrusted payload. */
 function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return invalid();
@@ -54,6 +58,7 @@ function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
   return value as Readonly<Record<string, unknown>>;
 }
 
+/** Requires an exact closed set of object keys. */
 function requireExactKeys(
   record: Readonly<Record<string, unknown>>,
   expectedKeys: readonly string[],
@@ -68,6 +73,7 @@ function requireExactKeys(
   }
 }
 
+/** Requires a trimmed non-empty string within the supplied maximum length. */
 function requireString(value: unknown, maximumLength: number): string {
   if (typeof value !== 'string') {
     return invalid();
@@ -79,6 +85,7 @@ function requireString(value: unknown, maximumLength: number): string {
   return normalized;
 }
 
+/** Requires and canonicalizes an opaque UUIDv4 identifier. */
 function requireUuidV4(value: unknown): string {
   const normalized = requireString(value, 64).toLowerCase();
   if (!UUID_V4_PATTERN.test(normalized)) {
@@ -87,6 +94,7 @@ function requireUuidV4(value: unknown): string {
   return normalized;
 }
 
+/** Requires and canonicalizes a SHA-256 hexadecimal digest. */
 function requireDigest(value: unknown): string {
   const normalized = requireString(value, 64).toLowerCase();
   if (!SHA_256_PATTERN.test(normalized)) {
@@ -95,6 +103,7 @@ function requireDigest(value: unknown): string {
   return normalized;
 }
 
+/** Requires an RFC 3339 timestamp and normalizes it to UTC. */
 function requireTimestamp(value: unknown): string {
   if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
     return invalid();
@@ -106,6 +115,7 @@ function requireTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
+/** Reads a valid deterministic clock value as an ISO timestamp. */
 function now(clock: ProposalAuditClock): string {
   const value = clock();
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
@@ -136,20 +146,16 @@ export function validateProposalDecisionRequest(
   if (decision !== 'accepted' && decision !== 'rejected') {
     return invalid();
   }
-  const request = {
+  const request: ProposalDecisionRequest = {
     expectedContentDigest: requireDigest(record.expectedContentDigest),
     idempotencyKey: requireUuidV4(record.idempotencyKey),
     decision,
     decidedAt: requireTimestamp(record.decidedAt),
+    ...(hasReason
+      ? { reason: requireString(record.reason, MAXIMUM_REASON_LENGTH) }
+      : {}),
   };
-  return Object.freeze(
-    hasReason
-      ? {
-          ...request,
-          reason: requireString(record.reason, MAXIMUM_REASON_LENGTH),
-        }
-      : request,
-  );
+  return Object.freeze(request);
 }
 
 /**
@@ -160,6 +166,7 @@ export function validateProposalDecisionRequest(
  * write-capable dependency for user-owned data.
  */
 export class ProposalAuditApplication {
+  /** Creates an application graph with deterministic time and identifier seams. */
   constructor(
     private readonly proposalService: ProposalService,
     private readonly repository: ProposalAuditRepository,
@@ -168,6 +175,7 @@ export class ProposalAuditApplication {
     private readonly decisionIdFactory: ProposalDecisionIdFactory = randomUUID,
   ) {}
 
+  /** Generates an inert proposal and durably records its immutable evidence. */
   async generateProposal(
     workspaceId: string,
     request: ProposalRequest,
@@ -186,10 +194,12 @@ export class ProposalAuditApplication {
     return record.proposal;
   }
 
+  /** Lists deterministic proposal evidence for one validated workspace. */
   async listProposals(workspaceId: string): Promise<ProposalAuditRecord[]> {
     return await this.repository.listProposals(requireUuidV4(workspaceId));
   }
 
+  /** Returns one workspace-owned proposal or raises bounded tenant-safe absence. */
   async findProposal(
     workspaceId: string,
     proposalId: string,
@@ -204,6 +214,7 @@ export class ProposalAuditApplication {
     return record;
   }
 
+  /** Lists append-only decisions after proving proposal ownership. */
   async listDecisions(
     workspaceId: string,
     proposalId: string,
@@ -215,6 +226,7 @@ export class ProposalAuditApplication {
     );
   }
 
+  /** Appends one explicit decision against the exact immutable proposal digest. */
   async appendDecision(
     workspaceId: string,
     proposalId: string,
