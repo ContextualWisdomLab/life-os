@@ -130,7 +130,7 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       logger: false,
     });
     await firstApp.listen(0, '127.0.0.1');
-    let proposalId: string;
+    let proposalId: string | undefined;
     try {
       const address = firstApp.getHttpServer().address() as AddressInfo;
       const created = await requestJson(
@@ -169,6 +169,9 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       expect(unsupportedMutation.statusCode).toBe(404);
     } finally {
       await firstApp.close();
+    }
+    if (!proposalId) {
+      throw new Error('Expected generated proposal identifier');
     }
 
     const restartedApp = await NestFactory.create(AiProductionModule, {
