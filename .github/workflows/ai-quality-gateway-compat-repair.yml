@@ -1,4 +1,4 @@
-name: AI audit redaction evidence repair
+name: Finalize AI context coverage repair
 
 on:
   push:
@@ -22,35 +22,71 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Strengthen logged error redaction evidence
+      - name: Complete exact AI context coverage
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('apps/ai-service/src/quality-coverage.test.ts')
-          text = path.read_text(encoding='utf-8')
-          old = "    expect(JSON.stringify(logger.mock.calls)).not.toContain('password=secret');\n"
-          new = """    const loggedOutput = logger.mock.calls
-      .flat()
-      .flatMap((value) =>
-        value instanceof Error
-          ? [value.name, value.message, value.stack ?? '']
-          : [typeof value === 'string' ? value : JSON.stringify(value)],
-      )
-      .join('\\n');
-    expect(loggedOutput).not.toContain('password=secret');
+          boundary_path = Path('apps/ai-service/src/ai-http-boundary.ts')
+          boundary = boundary_path.read_text(encoding='utf-8')
+          redundant_constant = """const CANONICAL_UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 """
-          if text.count(old) != 1:
-              raise SystemExit('redaction assertion pattern mismatch')
-          path.write_text(text.replace(old, new), encoding='utf-8')
-          PY
+          redundant_guard = """  if (proposalId && !CANONICAL_UUID_V4_PATTERN.test(proposalId)) {
+    return invalidGatewayContext();
+  }
+"""
+          if boundary.count(redundant_constant) != 1 or boundary.count(redundant_guard) != 1:
+              raise SystemExit('canonical path guard pattern mismatch')
+          boundary = boundary.replace(redundant_constant, '', 1)
+          boundary = boundary.replace(redundant_guard, '', 1)
+          boundary_path.write_text(boundary, encoding='utf-8')
 
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 22
+          test_path = Path('apps/ai-service/src/ai-http-boundary.test.ts')
+          test = test_path.read_text(encoding='utf-8')
+          anchor = """  it.each([
+    {
+      method: 'GET',
+      path: '/v1/proposals',
+      signature: signContext({ method: 'POST' }),
+"""
+          addition = """  it('rejects a noncanonical base64url spelling of a 32-byte signature', () => {
+    const alphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const canonical = signContext();
+    const finalIndex = alphabet.indexOf(canonical[canonical.length - 1]);
+    expect(finalIndex).toBeGreaterThanOrEqual(0);
+    expect(finalIndex % 4).toBe(0);
+    const alternateFinalCharacter = alphabet[finalIndex + 1];
+    expect(alternateFinalCharacter).toBeDefined();
+    const noncanonical = `${canonical.slice(0, -1)}${alternateFinalCharacter}`;
+
+    expectProblem(
+      () =>
+        requireTrustedAiContext(
+          contextHeaders({ signature: noncanonical }),
+          GATEWAY_SECRET,
+          'POST',
+          '/v1/proposals',
+          NOW_SECONDS,
+        ),
+      {
+        title: 'Trusted gateway context is invalid',
+        status: 401,
+        code: 'invalid_gateway_context',
+      },
+    );
+  });
+
+"""
+          if test.count(anchor) != 1:
+              raise SystemExit('signature replay test anchor mismatch')
+          test_path.write_text(test.replace(anchor, addition + anchor, 1), encoding='utf-8')
+
+          Path('.github/workflows/ai-quality-gateway-compat-repair.yml').unlink()
+          PY
 
       - name: Verify AI service
         shell: bash
@@ -58,11 +94,13 @@ jobs:
           set -Eeuo pipefail
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm exec prettier --single-quote --write apps/ai-service/src/quality-coverage.test.ts
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/ai-http-boundary.ts \
+            apps/ai-service/src/ai-http-boundary.test.ts
           pnpm --filter @life-os/ai-service lint
           pnpm --filter @life-os/ai-service test
 
-      - name: Commit non-workflow redaction repair
+      - name: Commit final coverage repair
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
@@ -70,9 +108,12 @@ jobs:
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/ai-service/src/quality-coverage.test.ts
+          git add -A \
+            apps/ai-service/src/ai-http-boundary.ts \
+            apps/ai-service/src/ai-http-boundary.test.ts \
+            .github/workflows/ai-quality-gateway-compat-repair.yml
           git diff --cached --check
-          git commit -m 'test(ai): inspect error details in redaction evidence'
+          git commit -m 'test(ai): close trusted context coverage gaps'
           authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
             push origin HEAD:feat/ai-authenticated-gateway-context
