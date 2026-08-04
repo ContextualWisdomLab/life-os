@@ -53,10 +53,10 @@ The active pair is mandatory. Previous values are both absent or both present. A
 
 ## Failure mapping
 
-| Condition | Boundary classification |
-| --- | --- |
-| Missing/malformed/unknown request key identifier | `401 invalid_gateway_context` |
-| Signature mismatch, stale context, replayed method/path | `401 invalid_gateway_context` |
+| Condition                                                         | Boundary classification           |
+| ----------------------------------------------------------------- | --------------------------------- |
+| Missing/malformed/unknown request key identifier                  | `401 invalid_gateway_context`     |
+| Signature mismatch, stale context, replayed method/path           | `401 invalid_gateway_context`     |
 | Missing, partial, duplicate, or malformed local key configuration | `503 gateway_context_unavailable` |
 
 Responses remain RFC 9457-compatible, credential-free, and stable. Logs record only fixed failure classes and correlation metadata, never key identifiers, signatures, or secrets.

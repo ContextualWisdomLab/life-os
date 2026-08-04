@@ -16,7 +16,9 @@ This design supports a gradual write-new/read-old rotation pattern while limitin
 
 ### Key lifecycle and bounded overlap
 
-NIST SP 800-57 Part 1 Revision 5 treats cryptographic keys and their metadata as managed assets with defined lifecycle states, protection requirements, cryptoperiods, and accountability. The implementation therefore treats the identifier as protected key metadata, requires explicit active and previous roles, and documents deployment, activation, retirement, and emergency revocation.
+NIST SP 800-57 Part 1 Revision 5 remains the current final publication. NIST published Revision 6 as an Initial Public Draft in December 2025; its comment period closed in February 2026. LifeOS treats Revision 5 as the final normative baseline while tracking the newer draft's expanded keying-material storage and lifecycle direction so the implementation does not silently depend on draft status.
+
+Revision 5 treats cryptographic keys and their metadata as managed assets with defined lifecycle states, protection requirements, cryptoperiods, and accountability. The implementation therefore treats the identifier as protected key metadata, requires explicit active and previous roles, and documents deployment, activation, retirement, and emergency revocation.
 
 OWASP recommends automated secret rotation, gradual rotation strategies that introduce new credentials for write operations while temporarily retaining old credentials for read or verification operations, least privilege, lifecycle metadata, and immediate revocation of no-longer-required secrets. The two-slot keyring is a deliberately bounded realization of that guidance.
 
@@ -47,10 +49,12 @@ The existing boundary uses HMAC-SHA-256, constant-time comparison, a versioned c
 
 ## References
 
-Barker, E. (2020). *Recommendation for key management: Part 1—General* (NIST Special Publication 800-57 Part 1 Revision 5). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-57pt1r5
+Barker, E. (2020). _Recommendation for key management: Part 1—General_ (NIST Special Publication 800-57 Part 1 Revision 5). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.SP.800-57pt1r5
 
-Jones, M., Bradley, J., & Sakimura, N. (2015). *JSON Web Signature (JWS)* (RFC 7515). Internet Engineering Task Force. https://doi.org/10.17487/RFC7515
+Barker, E., & Barker, W. (2025). _Recommendation for key management: Part 1—General_ (Initial Public Draft, NIST Special Publication 800-57 Part 1 Revision 6). National Institute of Standards and Technology. https://csrc.nist.gov/pubs/sp/800/57/pt1/r6/ipd
 
-Sheffer, Y., Hardt, D., & Jones, M. (2020). *JSON Web Token best current practices* (RFC 8725). Internet Engineering Task Force. https://doi.org/10.17487/RFC8725
+Jones, M., Bradley, J., & Sakimura, N. (2015). _JSON Web Signature (JWS)_ (RFC 7515). Internet Engineering Task Force. https://doi.org/10.17487/RFC7515
 
-OWASP Foundation. (n.d.). *Secrets management cheat sheet*. OWASP Cheat Sheet Series. Retrieved August 4, 2026, from https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+Sheffer, Y., Hardt, D., & Jones, M. (2020). _JSON Web Token best current practices_ (RFC 8725). Internet Engineering Task Force. https://doi.org/10.17487/RFC8725
+
+OWASP Foundation. (n.d.). _Secrets management cheat sheet_. OWASP Cheat Sheet Series. Retrieved August 4, 2026, from https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html

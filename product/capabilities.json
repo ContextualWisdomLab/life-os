@@ -721,6 +721,24 @@
           "kind": "test",
           "mode": "exists",
           "path": "apps/ai-service/src/no-silent-mutation.integration.test.ts"
+        },
+        {
+          "maturity": "usable",
+          "kind": "implementation",
+          "mode": "exists",
+          "path": "apps/ai-service/src/ai-gateway-keyring.ts"
+        },
+        {
+          "maturity": "production",
+          "kind": "test",
+          "mode": "exists",
+          "path": "apps/ai-service/src/proposal-audit-http.integration.test.ts"
+        },
+        {
+          "maturity": "production",
+          "kind": "documentation",
+          "mode": "exists",
+          "path": "docs/operations/ai-gateway-key-rotation.md"
         }
       ]
     },

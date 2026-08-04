@@ -4,10 +4,10 @@ This runbook rotates the private web-gateway-to-AI-service context credential wi
 
 ## Configuration contract
 
-| Role | Identifier | Secret | Sign | Verify |
-| --- | --- | --- | --- | --- |
-| Active | `AI_GATEWAY_ACTIVE_KEY_ID` | `AI_GATEWAY_ACTIVE_KEY_SECRET` | Yes | Yes |
-| Previous | `AI_GATEWAY_PREVIOUS_KEY_ID` | `AI_GATEWAY_PREVIOUS_KEY_SECRET` | No | Yes |
+| Role     | Identifier                   | Secret                           | Sign | Verify |
+| -------- | ---------------------------- | -------------------------------- | ---- | ------ |
+| Active   | `AI_GATEWAY_ACTIVE_KEY_ID`   | `AI_GATEWAY_ACTIVE_KEY_SECRET`   | Yes  | Yes    |
+| Previous | `AI_GATEWAY_PREVIOUS_KEY_ID` | `AI_GATEWAY_PREVIOUS_KEY_SECRET` | No   | Yes    |
 
 The active pair is mandatory. The previous pair is optional but must be configured completely. Identifiers are case-sensitive and must be distinct. Secrets must be independently generated and delivered through the platform secret manager; never place them in Git, container images, command history, tickets, chat, or logs.
 
