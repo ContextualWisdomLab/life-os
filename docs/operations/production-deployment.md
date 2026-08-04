@@ -106,7 +106,7 @@ Apply the Prometheus and alerting contracts under `infra/observability/`. Route 
 
 ## Modular deployment
 
-A downstream Kustomize overlay may include a subset of objects from `workloads.yaml`, but it must also include the matching Service, PodDisruptionBudget, ServiceAccount, required NetworkPolicies, external configuration, and dependency endpoints. Standalone services retain their documented HTTP and database boundaries; direct cross-service database access remains prohibited.
+A downstream Kustomize overlay may include a subset of objects from the `workloads-*.yaml` resources, but it must also include the matching Service, PodDisruptionBudget, ServiceAccount, required NetworkPolicies, external configuration, and dependency endpoints. Standalone services retain their documented HTTP and database boundaries; direct cross-service database access remains prohibited.
 
 ## Standards references
 
