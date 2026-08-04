@@ -14,6 +14,11 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { AiRuntime, createAiRuntime } from './ai-runtime';
 import {
+  AiGatewayContextError,
+  requireTrustedAiContext,
+  type TrustedAiContext,
+} from './gateway-context';
+import {
   ProposalAuditApplication,
   ProposalAuditNotFoundError,
   validateProposalDecisionRequest,
@@ -74,8 +79,37 @@ function problem(status: number, title: string, code: string): HttpException {
   return new HttpException(details, status);
 }
 
-/** Maps proposal-audit failures to stable credential-free HTTP problems. */
+/** Derives actor and workspace scope only from the signed private-gateway context. */
+function trustedAiContext(
+  headers: Readonly<Record<string, unknown>>,
+): TrustedAiContext {
+  return requireTrustedAiContext(
+    {
+      workspaceId: headers['x-life-os-workspace-id'],
+      actorId: headers['x-life-os-actor-id'],
+      issuedAt: headers['x-life-os-context-issued-at'],
+      signature: headers['x-life-os-context-signature'],
+    },
+    process.env.AI_GATEWAY_CONTEXT_SECRET,
+  );
+}
+
+/** Maps proposal-audit and gateway failures to stable credential-free HTTP problems. */
 function mapAuditError(error: unknown): never {
+  if (error instanceof AiGatewayContextError) {
+    if (error.failure === 'invalid_gateway_context') {
+      throw problem(
+        401,
+        'Trusted gateway context is invalid',
+        'invalid_gateway_context',
+      );
+    }
+    throw problem(
+      503,
+      'Trusted gateway context is unavailable',
+      'gateway_context_unavailable',
+    );
+  }
   if (
     error instanceof ProposalValidationError ||
     error instanceof ProposalAuditValidationError
@@ -118,18 +152,16 @@ export class AiProposalController {
     return { status: 'ok', service: 'ai-service' };
   }
 
-  /** Generates and persists one inert proposal for the trusted workspace scope. */
+  /** Generates and persists one inert proposal for the authenticated workspace. */
   @Post('v1/proposals')
   async createProposal(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers() headers: Readonly<Record<string, unknown>>,
     @Body() body: unknown,
   ): Promise<AuditableProposal> {
     try {
-      if (!workspaceId) {
-        throw new ProposalValidationError();
-      }
+      const context = trustedAiContext(headers);
       return await this.proposalService.generateProposal(
-        workspaceId,
+        context.workspaceId,
         validateProposalRequest(body),
       );
     } catch (error) {
@@ -137,6 +169,7 @@ export class AiProposalController {
         throw problem(400, 'Proposal request is invalid', 'invalid_request');
       }
       if (
+        error instanceof AiGatewayContextError ||
         error instanceof ProposalAuditValidationError ||
         error instanceof ProposalAuditPersistenceError
       ) {
@@ -164,69 +197,65 @@ export class AiProposalAuditController {
     private readonly application: ProposalAuditApplication,
   ) {}
 
-  /** Lists deterministic proposal evidence for the trusted workspace. */
+  /** Lists deterministic proposal evidence for the authenticated workspace. */
   @Get('v1/proposals')
   async listProposals(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers() headers: Readonly<Record<string, unknown>>,
   ): Promise<ProposalAuditRecord[]> {
     try {
-      if (!workspaceId) {
-        throw new ProposalAuditValidationError();
-      }
-      return await this.application.listProposals(workspaceId);
+      return await this.application.listProposals(
+        trustedAiContext(headers).workspaceId,
+      );
     } catch (error) {
       return mapAuditError(error);
     }
   }
 
-  /** Returns one immutable proposal revision within the trusted workspace. */
+  /** Returns one immutable proposal revision within the authenticated workspace. */
   @Get('v1/proposals/:proposalId')
   async findProposal(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers() headers: Readonly<Record<string, unknown>>,
     @Param('proposalId') proposalId: string,
   ): Promise<ProposalAuditRecord> {
     try {
-      if (!workspaceId) {
-        throw new ProposalAuditValidationError();
-      }
-      return await this.application.findProposal(workspaceId, proposalId);
+      return await this.application.findProposal(
+        trustedAiContext(headers).workspaceId,
+        proposalId,
+      );
     } catch (error) {
       return mapAuditError(error);
     }
   }
 
-  /** Lists append-only decisions for one workspace-owned proposal revision. */
+  /** Lists append-only decisions for one authenticated workspace proposal. */
   @Get('v1/proposals/:proposalId/decisions')
   async listDecisions(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers() headers: Readonly<Record<string, unknown>>,
     @Param('proposalId') proposalId: string,
   ): Promise<ProposalDecisionEvent[]> {
     try {
-      if (!workspaceId) {
-        throw new ProposalAuditValidationError();
-      }
-      return await this.application.listDecisions(workspaceId, proposalId);
+      return await this.application.listDecisions(
+        trustedAiContext(headers).workspaceId,
+        proposalId,
+      );
     } catch (error) {
       return mapAuditError(error);
     }
   }
 
-  /** Appends an explicit accept or reject event without executing operations. */
+  /** Appends an explicit signed-actor decision without executing operations. */
   @Post('v1/proposals/:proposalId/decisions')
   async appendDecision(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
-    @Headers('x-actor-id') actorId: string | undefined,
+    @Headers() headers: Readonly<Record<string, unknown>>,
     @Param('proposalId') proposalId: string,
     @Body() body: unknown,
   ): Promise<ProposalDecisionEvent> {
     try {
-      if (!workspaceId || !actorId) {
-        throw new ProposalAuditValidationError();
-      }
+      const context = trustedAiContext(headers);
       return await this.application.appendDecision(
-        workspaceId,
+        context.workspaceId,
         proposalId,
-        actorId,
+        context.actorId,
         validateProposalDecisionRequest(body),
       );
     } catch (error) {
