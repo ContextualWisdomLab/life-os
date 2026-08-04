@@ -12,7 +12,7 @@ The production module requires `AI_DATABASE_URL` and accepts bounded optional po
 - `AI_DATABASE_CONNECT_TIMEOUT_MS`: integer from 100 through 30000; default `5000`
 - `AI_DATABASE_IDLE_TIMEOUT_MS`: integer from 1000 through 300000; default `30000`
 
-The node-postgres pool identifies itself as `life-os-ai-service` and is closed exactly once through the NestJS application-shutdown lifecycle. Startup fails closed when the URL is missing, oversized, malformed, or not PostgreSQL.
+The node-postgres pool identifies itself as `life-os-ai-service`, records idle-client failures through a credential-free listener, and is closed exactly once after successful cleanup through the NestJS application-shutdown lifecycle. Concurrent shutdown calls share one attempt; a failed attempt remains visible and permits a later retry. Startup fails closed when the URL is missing, oversized, malformed, or not PostgreSQL.
 
 ## Versioned audit routes
 
@@ -46,9 +46,13 @@ The application runtime role should receive only `SELECT` and `INSERT` on `ai.pr
 
 Database triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` even for overly broad roles. A separately authorized, audited data-rights erasure migration is required before production account deletion is enabled; application code must not bypass the append-only audit ledger.
 
+## Integration-test safety
+
+Destructive schema setup is permitted only through `AI_TEST_DATABASE_URL`. The URL must use PostgreSQL and its database name must contain `test`; otherwise the integration suite fails closed before opening an administrative pool. The suite temporarily points the application runtime at that disposable database and restores the original `AI_DATABASE_URL` after cleanup. Never set `AI_TEST_DATABASE_URL` to a shared development, staging, or production database.
+
 ## Validation evidence
 
-CI supplies `AI_DATABASE_URL`, applies the migration to a disposable PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, exactly-once shutdown, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
 
 ## Deferred work
 
