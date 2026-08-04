@@ -1,0 +1,134 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-web
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: web
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-gateway
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-identity-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: identity-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: identity-service
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-planning-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: planning-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: planning-service
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-habit-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: habit-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: habit-service
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-review-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: review-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: review-service
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-ai-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: ai-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-service
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-integration-calendar-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: integration-calendar-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: integration-calendar-service
+      app.kubernetes.io/part-of: life-os
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: life-os-integration-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: integration-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: integration-service
+      app.kubernetes.io/part-of: life-os
