@@ -92,7 +92,7 @@ ghcr.io/contextualwisdomlab/life-os-web@sha256:<64 lowercase hexadecimal charact
 ghcr.io/contextualwisdomlab/life-os-gateway@sha256:<64 lowercase hexadecimal characters>
 ```
 
-The workflow rejects alternate registries and repository paths. Moving image ownership requires a separately reviewed change to the renderer, manifests, provenance policy, and scanner annotation rather than an unreviewed deployment input. The two inline Trivy exceptions are attached only to those exact image fields; there is no repository-wide registry exception.
+The workflow rejects alternate registries and repository paths. Moving image ownership requires a separately reviewed change to the renderer, manifests, provenance policy, and Trivy policy data rather than an unreviewed deployment input. `trivy.yaml` loads repository-owned KSV-0125 data that recognizes `ghcr.io` as a trusted registry host. Because KSV-0125 evaluates only that host boundary, repository contract tests and the shared renderer separately require every Kubernetes image to use the exact `contextualwisdomlab/life-os-web` or `contextualwisdomlab/life-os-gateway` path and an immutable SHA-256 digest. No finding is ignored.
 
 The images must start as UID/GID `10001`, listen on ports `3000` and `4000`, work with a read-only root filesystem, and use `/tmp` for bounded temporary files. The web image must serve `/offline`; the gateway image must serve `/v1/health`. Do not change probes merely to make an incompatible image appear healthy.
 
