@@ -35,7 +35,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -f .github/scripts/document_notification_service.py ]]; then
+          if [[ -f .github/scripts/document_notification_service.py ]] && \
+             [[ ! -f .github/scripts/repair_notification_reliability.py ]]; then
             echo 'required=true' >> "$GITHUB_OUTPUT"
           else
             echo 'required=false' >> "$GITHUB_OUTPUT"
