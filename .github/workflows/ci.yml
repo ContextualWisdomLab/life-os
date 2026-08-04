@@ -57,19 +57,33 @@ jobs:
         run: pnpm format:check
 
       - name: Check planning search web sources
-        run: >-
-          pnpm exec prettier --single-quote --check
-          CHANGELOG.md
-          apps/web/package.json
-          apps/web/app/design-tokens.css
-          apps/web/app/layout.tsx
-          apps/web/app/planning-search-client.ts
-          apps/web/app/planning-search-client.test.ts
-          apps/web/app/api/planning/search/route.ts
-          apps/web/app/components/quick-capture.tsx
-          apps/web/app/components/quick-capture.module.css
-          apps/web/app/today-client.tsx
-          apps/web/e2e/quick-capture-search.spec.ts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            CHANGELOG.md \
+            apps/web/package.json \
+            apps/web/app/design-tokens.css \
+            apps/web/app/layout.tsx \
+            apps/web/app/planning-search-client.ts \
+            apps/web/app/planning-search-client.test.ts \
+            apps/web/app/api/planning/search/route.ts \
+            apps/web/app/components/quick-capture.tsx \
+            apps/web/app/components/quick-capture.module.css \
+            apps/web/app/today-client.tsx \
+            apps/web/e2e/quick-capture-search.spec.ts
+          git diff --exit-code -- \
+            CHANGELOG.md \
+            apps/web/package.json \
+            apps/web/app/design-tokens.css \
+            apps/web/app/layout.tsx \
+            apps/web/app/planning-search-client.ts \
+            apps/web/app/planning-search-client.test.ts \
+            apps/web/app/api/planning/search/route.ts \
+            apps/web/app/components/quick-capture.tsx \
+            apps/web/app/components/quick-capture.module.css \
+            apps/web/app/today-client.tsx \
+            apps/web/e2e/quick-capture-search.spec.ts
 
       - name: Check deployment reference sources
         shell: bash
