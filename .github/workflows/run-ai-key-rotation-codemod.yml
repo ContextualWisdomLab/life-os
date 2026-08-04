@@ -1,0 +1,74 @@
+name: Run AI Key Rotation Codemod
+
+on:
+  push:
+    branches:
+      - feat/ai-gateway-key-rotation
+    paths:
+      - '.github/workflows/run-ai-key-rotation-codemod.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/ai-gateway-key-rotation
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack and install dependencies
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+
+      - name: Extract and execute reviewed codemod
+        run: |
+          set -Eeuo pipefail
+          awk "/python3 - <<'PY'/{capture=1; next} /^          PY$/{capture=0} capture{sub(/^          /, \"\"); print}" \
+            .github/workflows/complete-ai-key-rotation.yml > /tmp/complete-ai-key-rotation.py
+          test -s /tmp/complete-ai-key-rotation.py
+          python3 /tmp/complete-ai-key-rotation.py
+
+      - name: Format modified sources
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/web/app/ai-proposal-client-core.ts \
+            apps/web/app/ai-proposal-client.ts \
+            apps/web/app/ai-proposal-client.test.ts \
+            apps/web/app/ai-proposal-scope-regression.test.ts \
+            apps/web/app/ai-proposal-identity-stream-regression.test.ts \
+            apps/web/app/api/ai/proposals/routes.test.ts \
+            apps/ai-service/src/quality-coverage.test.ts \
+            apps/ai-service/src/no-silent-mutation.integration.test.ts \
+            apps/ai-service/src/proposal-audit-http.integration.test.ts
+
+      - name: Commit codemod result
+        run: |
+          set -Eeuo pipefail
+          rm -f pnpm-lock.yaml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .env.example apps/web apps/ai-service
+          git diff --cached --check
+          git commit -m 'feat(ai): wire versioned keyed gateway context'
+          git push origin HEAD:feat/ai-gateway-key-rotation
+
+      - name: Verify AI and web boundaries
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+          pnpm --filter @life-os/web lint
+          pnpm --filter @life-os/web test
