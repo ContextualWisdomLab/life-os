@@ -10,6 +10,7 @@ All notable changes to LifeOS are documented in this file.
 - An authenticated same-origin planning-search boundary that signs the session-derived workspace context and forwards no browser credential to planning-service.
 - An accessible quick-capture and search surface that keeps browser-local Today drafts visibly separate from durable workspace records.
 - Complete English and Korean message catalogs, a persisted keyboard-operable language selector, localized live-region announcements, and accessibility browser journeys for the Today action loop.
+- A bounded notification scheduler with IANA time-zone quiet hours, per-local-day fatigue limits, tenant-scoped atomic claims, idempotent delivery keys, and credential-free retry outcomes.
 
 ### Fixed
 
