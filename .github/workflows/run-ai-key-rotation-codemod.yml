@@ -38,25 +38,20 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
 
           path = Path('apps/web/app/ai-proposal-client.test.ts')
           source = path.read_text(encoding='utf-8')
-          old = """        createAiContextHeaders(
-                    WORKSPACE_ID,
-                    ACTOR_ID,
-                    GATEWAY_SECRET,
-                    -1,
-          """.replace('          ', '')
-          new = """        createAiContextHeaders(
-                    WORKSPACE_ID,
-                    ACTOR_ID,
-                    { keyId: ACTIVE_KEY_ID, secret: GATEWAY_SECRET },
-                    -1,
-          """.replace('          ', '')
-          if source.count(old) != 1:
+          source, count = re.subn(
+              r'(createAiContextHeaders\(\s*WORKSPACE_ID,\s*ACTOR_ID,\s*)GATEWAY_SECRET,(\s*-1,)',
+              r'\1{ keyId: ACTIVE_KEY_ID, secret: GATEWAY_SECRET },\2',
+              source,
+              count=1,
+          )
+          if count != 1:
               raise SystemExit('Expected exactly one legacy signing-key test call')
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          path.write_text(source, encoding='utf-8')
           PY
 
       - name: Format complete keyed-context slice
