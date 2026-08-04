@@ -12,7 +12,7 @@ Before delivery, the scheduler obtains an atomic tenant-scoped claim keyed by wo
 
 ## Time-zone and fatigue policy
 
-Quiet hours are evaluated from the current absolute instant using `Intl.DateTimeFormat` and the reminder's IANA time zone. Deferral searches absolute minutes until it reaches the first permitted local minute, which preserves correctness across offset transitions, missing wall-clock times, and repeated wall-clock times. A 26-hour upper bound covers contemporary civil-time transitions without an unbounded search.
+Quiet hours are evaluated from the current absolute instant using `Intl.DateTimeFormat` and the reminder's IANA time zone. Deferral searches absolute minutes until it reaches the first permitted local minute, which preserves correctness across offset transitions, missing wall-clock times, and repeated wall-clock times. A 72-hour hard limit covers the next local date, a nearly full-day quiet interval, and large IANA offset discontinuities while keeping every scheduler evaluation bounded.
 
 Per-day limits are keyed by workspace and local calendar date. Once the configured limit is reached, the occurrence is deferred to the first permitted minute of the next local date. Limits are bounded from one to twenty deliveries per local day.
 

@@ -386,7 +386,7 @@
       "acquisition_impact": 4,
       "effort": 4,
       "dependencies": ["planning.durable-data", "habit.recurring-core"],
-      "tracking_issue": null,
+      "tracking_issue": 103,
       "evidence": [
         {
           "maturity": "prototype",
@@ -401,10 +401,28 @@
           "path": "apps/notification-service/src/reminder-scheduler.ts"
         },
         {
+          "maturity": "usable",
+          "kind": "implementation",
+          "mode": "exists",
+          "path": "apps/notification-service/src/postgres-reminder-repository.ts"
+        },
+        {
+          "maturity": "usable",
+          "kind": "implementation",
+          "mode": "exists",
+          "path": "apps/notification-service/src/notification-runtime.ts"
+        },
+        {
           "maturity": "production",
           "kind": "test",
           "mode": "exists",
-          "path": "apps/notification-service/src/reminder-scheduler.integration.test.ts"
+          "path": "apps/notification-service/src/postgres-reminder-repository.integration.test.ts"
+        },
+        {
+          "maturity": "production",
+          "kind": "documentation",
+          "mode": "exists",
+          "path": "docs/operations/notification-persistence.md"
         }
       ]
     },

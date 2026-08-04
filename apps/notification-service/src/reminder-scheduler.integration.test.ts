@@ -28,6 +28,7 @@ function reminder(
   };
 }
 
+/** Defines the outcome shape used to make the test evidence explicit. */
 interface Outcome {
   readonly kind: 'delivered' | 'deferred' | 'failed';
   readonly workspaceId: string;
@@ -48,37 +49,49 @@ function localDate(instant: string, timeZone: string): string {
   return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
 }
 
+/** Implements the in memory reminder repository test double with observable deterministic behavior. */
 class InMemoryReminderRepository implements ReminderRepository {
-  readonly claims = new Set<string>();
+  readonly claims = new Map<string, string>();
   readonly outcomes: Outcome[] = [];
   readonly deliveredByWorkspaceDate = new Map<string, number>();
+  private claimSequence = 0;
 
+  /** Creates the component with explicit dependencies and deterministic initial state. */
   constructor(readonly records: readonly unknown[]) {}
 
+  /** Returns a bounded deterministic set of currently due reminder occurrences. */
   async listDue(_now: string, limit: number): Promise<readonly unknown[]> {
     return this.records.slice(0, limit);
   }
 
+  /** Attempts to acquire the exact observed reminder occurrence using a fenced expiring claim. */
   async claim(
     workspaceId: string,
     reminderId: string,
-    idempotencyKey: string,
-  ): Promise<boolean> {
-    const key = `${workspaceId}:${reminderId}:${idempotencyKey}`;
-    if (this.claims.has(key)) return false;
-    this.claims.add(key);
-    return true;
+    _dueAt: string,
+    _deliveryAttempt: number,
+  ): Promise<string | null> {
+    const occurrenceKey = `${workspaceId}:${reminderId}`;
+    if (this.claims.has(occurrenceKey)) return null;
+    this.claimSequence += 1;
+    const claimKey = `${occurrenceKey}:claim:${this.claimSequence}`;
+    this.claims.set(occurrenceKey, claimKey);
+    return claimKey;
   }
 
+  /** Counts delivered outcomes for one workspace and one local calendar date. */
   async countDelivered(workspaceId: string, date: string): Promise<number> {
     return this.deliveredByWorkspaceDate.get(`${workspaceId}:${date}`) ?? 0;
   }
 
+  /** Atomically completes a fenced claim and records an immutable delivered outcome. */
   async markDelivered(
     value: ReminderOccurrence,
     deliveredAt: string,
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void> {
+    this.requireClaim(value, claimKey);
     const date = localDate(deliveredAt, value.timeZone);
     const key = `${value.workspaceId}:${date}`;
     this.deliveredByWorkspaceDate.set(
@@ -95,13 +108,15 @@ class InMemoryReminderRepository implements ReminderRepository {
     });
   }
 
+  /** Atomically reschedules a fenced occurrence and records its immutable deferral outcome. */
   async defer(
     value: ReminderOccurrence,
     nextAttemptAt: string,
     reason: 'quiet_hours' | 'daily_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void> {
-    this.release(value, idempotencyKey);
+    this.release(value, claimKey);
     this.outcomes.push({
       kind: 'deferred',
       workspaceId: value.workspaceId,
@@ -112,13 +127,16 @@ class InMemoryReminderRepository implements ReminderRepository {
     });
   }
 
+  /** Atomically records a bounded retry or terminal reminder failure. */
   async fail(
     value: ReminderOccurrence,
     retryAt: string | null,
     reason: 'delivery_failed' | 'attempt_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void> {
-    if (retryAt !== null) this.release(value, idempotencyKey);
+    this.requireClaim(value, claimKey);
+    if (retryAt !== null) this.release(value, claimKey);
     this.outcomes.push({
       kind: 'failed',
       workspaceId: value.workspaceId,
@@ -129,15 +147,104 @@ class InMemoryReminderRepository implements ReminderRepository {
     });
   }
 
-  private release(value: ReminderOccurrence, idempotencyKey: string): void {
-    this.claims.delete(`${value.workspaceId}:${value.id}:${idempotencyKey}`);
+  private occurrenceKey(value: ReminderOccurrence): string {
+    return `${value.workspaceId}:${value.id}`;
+  }
+
+  private requireClaim(value: ReminderOccurrence, claimKey: string): void {
+    if (this.claims.get(this.occurrenceKey(value)) !== claimKey) {
+      throw new Error('claim is not owned');
+    }
+  }
+
+  private release(value: ReminderOccurrence, claimKey: string): void {
+    this.requireClaim(value, claimKey);
+    this.claims.delete(this.occurrenceKey(value));
   }
 }
 
+type PersistenceOperation =
+  'countDelivered' | 'defer' | 'fail' | 'markDelivered';
+
+/** Implements the fail once reminder repository test double with observable deterministic behavior. */
+class FailOnceReminderRepository extends InMemoryReminderRepository {
+  private failureAvailable = true;
+
+  /** Creates the component with explicit dependencies and deterministic initial state. */
+  constructor(
+    records: readonly unknown[],
+    private readonly operation: PersistenceOperation,
+  ) {
+    super(records);
+  }
+
+  private consumeFailure(operation: PersistenceOperation): boolean {
+    if (this.failureAvailable && this.operation === operation) {
+      this.failureAvailable = false;
+      return true;
+    }
+    return false;
+  }
+
+  /** Counts delivered outcomes or simulates one transient persistence failure. */
+  override async countDelivered(
+    workspaceId: string,
+    date: string,
+  ): Promise<number> {
+    if (this.consumeFailure('countDelivered')) {
+      throw new Error('persistence unavailable');
+    }
+    return await super.countDelivered(workspaceId, date);
+  }
+
+  /** Atomically completes a fenced claim and records an immutable delivered outcome. */
+  override async markDelivered(
+    value: ReminderOccurrence,
+    deliveredAt: string,
+    claimKey: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (this.consumeFailure('markDelivered')) {
+      throw new Error('persistence unavailable');
+    }
+    await super.markDelivered(value, deliveredAt, claimKey, idempotencyKey);
+  }
+
+  /** Atomically reschedules a fenced occurrence and records its immutable deferral outcome. */
+  override async defer(
+    value: ReminderOccurrence,
+    nextAttemptAt: string,
+    reason: 'quiet_hours' | 'daily_limit',
+    claimKey: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (this.consumeFailure('defer')) {
+      throw new Error('persistence unavailable');
+    }
+    await super.defer(value, nextAttemptAt, reason, claimKey, idempotencyKey);
+  }
+
+  /** Atomically records a bounded retry or terminal reminder failure. */
+  override async fail(
+    value: ReminderOccurrence,
+    retryAt: string | null,
+    reason: 'delivery_failed' | 'attempt_limit',
+    claimKey: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    if (this.consumeFailure('fail')) {
+      throw new Error('persistence unavailable');
+    }
+    await super.fail(value, retryAt, reason, claimKey, idempotencyKey);
+  }
+}
+
+/** Implements the recording gateway test double with observable deterministic behavior. */
 class RecordingGateway implements ReminderDeliveryGateway {
   readonly messages: ReminderDelivery[] = [];
   shouldFail = false;
 
+  /** Persists or verifies one idempotent in-app reminder delivery. */
   async deliver(message: ReminderDelivery): Promise<void> {
     this.messages.push(message);
     if (this.shouldFail) throw new Error('provider secret must not escape');
@@ -165,6 +272,34 @@ describe('bounded reminder scheduling integration', () => {
     ).toBe(1);
     expect(gateway.messages[0]?.workspaceId).toBe(workspaceAlpha);
     expect(gateway.messages[0]?.idempotencyKey).toContain(workspaceAlpha);
+  });
+
+  it('creates a distinct opaque token for each released claim attempt', async () => {
+    const value = reminder({ quietHours: null });
+    const repository = new InMemoryReminderRepository([value]);
+    const firstClaim = await repository.claim(
+      value.workspaceId,
+      value.id,
+      value.dueAt,
+      value.deliveryAttempt,
+    );
+    if (firstClaim === null) throw new Error('expected the first claim');
+    await repository.defer(
+      value,
+      '2026-08-04T12:05:00.000Z',
+      'quiet_hours',
+      firstClaim,
+      'first-delivery-key',
+    );
+    const secondClaim = await repository.claim(
+      value.workspaceId,
+      value.id,
+      value.dueAt,
+      value.deliveryAttempt,
+    );
+
+    expect(secondClaim).not.toBeNull();
+    expect(secondClaim).not.toBe(firstClaim);
   });
 
   it('defers through a daylight-saving fallback until local quiet hours end', async () => {
@@ -299,6 +434,96 @@ describe('bounded reminder scheduling integration', () => {
       at: null,
       reason: 'attempt_limit',
     });
+  });
+
+  it('isolates transition persistence failures and continues the batch', async () => {
+    const secondReminderId = 'ee09fe10-2602-4d6c-b52a-e58cbf55ea41';
+    const deliveredRepository = new FailOnceReminderRepository(
+      [
+        reminder({ quietHours: null }),
+        reminder({ id: secondReminderId, quietHours: null }),
+      ],
+      'markDelivered',
+    );
+    const deliveredReport = await new ReminderScheduler(
+      deliveredRepository,
+      new RecordingGateway(),
+    ).run(new Date('2026-08-04T12:00:00.000Z'));
+    expect(deliveredReport).toMatchObject({
+      scanned: 2,
+      delivered: 1,
+      persistenceFailures: 1,
+    });
+
+    const deferredRepository = new FailOnceReminderRepository(
+      [
+        reminder({
+          quietHours: { startMinute: 20 * 60, endMinute: 22 * 60 },
+        }),
+      ],
+      'defer',
+    );
+    await expect(
+      new ReminderScheduler(deferredRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ deferred: 0, persistenceFailures: 1 });
+
+    const countRepository = new FailOnceReminderRepository(
+      [reminder({ quietHours: null })],
+      'countDelivered',
+    );
+    await expect(
+      new ReminderScheduler(countRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ delivered: 0, persistenceFailures: 1 });
+
+    const dailyLimitRepository = new FailOnceReminderRepository(
+      [
+        reminder({
+          quietHours: null,
+          maxPerLocalDay: 1,
+        }),
+      ],
+      'defer',
+    );
+    dailyLimitRepository.deliveredByWorkspaceDate.set(
+      `${workspaceAlpha}:2026-08-04`,
+      1,
+    );
+    await expect(
+      new ReminderScheduler(dailyLimitRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ deferred: 0, persistenceFailures: 1 });
+
+    const terminalRepository = new FailOnceReminderRepository(
+      [
+        reminder({
+          quietHours: null,
+          deliveryAttempt: MAX_DELIVERY_ATTEMPTS,
+        }),
+      ],
+      'fail',
+    );
+    await expect(
+      new ReminderScheduler(terminalRepository, new RecordingGateway()).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ failed: 0, persistenceFailures: 1 });
+
+    const retryRepository = new FailOnceReminderRepository(
+      [reminder({ quietHours: null })],
+      'fail',
+    );
+    const failingGateway = new RecordingGateway();
+    failingGateway.shouldFail = true;
+    await expect(
+      new ReminderScheduler(retryRepository, failingGateway).run(
+        new Date('2026-08-04T12:00:00.000Z'),
+      ),
+    ).resolves.toMatchObject({ failed: 0, persistenceFailures: 1 });
   });
 
   it('bounds untrusted repository output and reports invalid future records', async () => {

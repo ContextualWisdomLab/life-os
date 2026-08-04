@@ -48,6 +48,7 @@ export interface ReminderDelivery {
 
 /** Provider boundary. Implementations must honor the supplied idempotency key. */
 export interface ReminderDeliveryGateway {
+  /** Inserts one idempotent in-app message or verifies the exact persisted replay. */
   deliver(message: ReminderDelivery): Promise<void>;
 }
 
@@ -56,28 +57,38 @@ export interface ReminderDeliveryGateway {
  * reminder occurrence so repositories can implement atomic claims safely.
  */
 export interface ReminderRepository {
+  /** Returns a bounded deterministic set of due, unclaimed reminder occurrences. */
   listDue(now: string, limit: number): Promise<readonly unknown[]>;
+  /** Acquires a fenced expiring claim and returns its opaque per-attempt token. */
   claim(
     workspaceId: string,
     reminderId: string,
-    idempotencyKey: string,
-  ): Promise<boolean>;
+    dueAt: string,
+    deliveryAttempt: number,
+  ): Promise<string | null>;
+  /** Counts delivered outcomes for one workspace and one local calendar date. */
   countDelivered(workspaceId: string, localDate: string): Promise<number>;
+  /** Atomically completes a fenced claim and appends its immutable delivered outcome. */
   markDelivered(
     reminder: ReminderOccurrence,
     deliveredAt: string,
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void>;
+  /** Atomically releases a fenced claim, reschedules the occurrence, and appends a deferral outcome. */
   defer(
     reminder: ReminderOccurrence,
     nextAttemptAt: string,
     reason: 'quiet_hours' | 'daily_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void>;
+  /** Atomically records either a bounded retry or a terminal attempt-limit failure. */
   fail(
     reminder: ReminderOccurrence,
     retryAt: string | null,
     reason: 'delivery_failed' | 'attempt_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void>;
 }
@@ -95,6 +106,7 @@ export type ReminderValidationCode =
 
 /** Error raised when an untrusted reminder record violates the boundary. */
 export class ReminderValidationError extends Error {
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(readonly code: ReminderValidationCode) {
     super(code);
     this.name = 'ReminderValidationError';
@@ -107,19 +119,23 @@ export interface ReminderRunReport {
   readonly delivered: number;
   readonly deferred: number;
   readonly failed: number;
+  readonly persistenceFailures: number;
   readonly duplicateClaims: number;
   readonly invalid: number;
 }
 
+/** Defines the zoned clock contract used across notification-service boundaries. */
 interface ZonedClock {
   readonly localDate: string;
   readonly minuteOfDay: number;
 }
 
+/** Narrows an untrusted value to a non-array object before field validation. */
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** Validates and canonicalizes an untrusted UUIDv4 identifier before it reaches SQL. */
 function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new ReminderValidationError('invalid_identifier');
@@ -127,6 +143,7 @@ function requireUuid(value: unknown): string {
   return value;
 }
 
+/** Validates bounded user-authored reminder text without silently normalizing it. */
 function requireTitle(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -140,6 +157,7 @@ function requireTitle(value: unknown): string {
   return value;
 }
 
+/** Validates and canonicalizes an absolute RFC 3339 reminder instant. */
 function requireInstant(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -152,6 +170,7 @@ function requireInstant(value: unknown): string {
   return new Date(value).toISOString();
 }
 
+/** Validates an IANA time-zone identifier through the platform time-zone database. */
 function requireTimeZone(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 64) {
     throw new ReminderValidationError('invalid_time_zone');
@@ -164,6 +183,7 @@ function requireTimeZone(value: unknown): string {
   return value;
 }
 
+/** Parses one optional integer setting and enforces its documented inclusive range. */
 function requireBoundedInteger(
   value: unknown,
   minimum: number,
@@ -181,6 +201,7 @@ function requireBoundedInteger(
   return value;
 }
 
+/** Validates an optional non-empty local quiet-hours interval. */
 function requireQuietHours(value: unknown): QuietHours | null {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) {
@@ -231,6 +252,7 @@ export function validateReminderOccurrence(value: unknown): ReminderOccurrence {
   };
 }
 
+/** Projects an absolute instant into a validated local date and minute for one IANA time zone. */
 function zonedClock(instant: Date, timeZone: string): ZonedClock {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -278,6 +300,7 @@ export function isWithinQuietHours(
   );
 }
 
+/** Finds the first bounded absolute instant allowed by next-day and quiet-hours policy. */
 function nextAllowedInstant(
   now: Date,
   timeZone: string,
@@ -303,12 +326,14 @@ function nextAllowedInstant(
   throw new ReminderValidationError('invalid_time_zone');
 }
 
+/** Computes the bounded linear retry instant for the next delivery attempt. */
 function retryInstant(now: Date, deliveryAttempt: number): string {
   const boundedAttempt = Math.min(deliveryAttempt + 1, MAX_DELIVERY_ATTEMPTS);
   return new Date(now.getTime() + boundedAttempt * 5 * 60_000).toISOString();
 }
 
-function idempotencyKey(reminder: ReminderOccurrence): string {
+/** Builds the stable tenant-scoped occurrence key supplied to idempotent delivery adapters. */
+export function idempotencyKey(reminder: ReminderOccurrence): string {
   return `${reminder.workspaceId}:${reminder.id}:${reminder.dueAt}`;
 }
 
@@ -319,6 +344,7 @@ function idempotencyKey(reminder: ReminderOccurrence): string {
 export class ReminderScheduler {
   readonly batchSize: number;
 
+  /** Creates the component with validated dependencies and bounded configuration. */
   constructor(
     private readonly repository: ReminderRepository,
     private readonly gateway: ReminderDeliveryGateway,
@@ -334,6 +360,7 @@ export class ReminderScheduler {
     this.batchSize = batchSize;
   }
 
+  /** Processes one bounded scheduler iteration with fenced claims and deterministic outcome accounting. */
   async run(now = new Date()): Promise<ReminderRunReport> {
     if (Number.isNaN(now.getTime())) {
       throw new RangeError('now must be a valid instant');
@@ -345,6 +372,7 @@ export class ReminderScheduler {
     let delivered = 0;
     let deferred = 0;
     let failed = 0;
+    let persistenceFailures = 0;
     let duplicateClaims = 0;
     let invalid = 0;
 
@@ -364,12 +392,13 @@ export class ReminderScheduler {
         continue;
       }
       const deliveryKey = idempotencyKey(reminder);
-      const claimed = await this.repository.claim(
+      const claimKey = await this.repository.claim(
         reminder.workspaceId,
         reminder.id,
-        deliveryKey,
+        reminder.dueAt,
+        reminder.deliveryAttempt,
       );
-      if (!claimed) {
+      if (claimKey === null) {
         duplicateClaims += 1;
         continue;
       }
@@ -380,39 +409,72 @@ export class ReminderScheduler {
         quietHours !== null &&
         isWithinQuietHours(clock.minuteOfDay, quietHours)
       ) {
-        await this.repository.defer(
-          reminder,
-          nextAllowedInstant(now, reminder.timeZone, quietHours, false),
-          'quiet_hours',
-          deliveryKey,
+        const nextAttemptAt = nextAllowedInstant(
+          now,
+          reminder.timeZone,
+          quietHours,
+          false,
         );
-        deferred += 1;
+        try {
+          await this.repository.defer(
+            reminder,
+            nextAttemptAt,
+            'quiet_hours',
+            claimKey,
+            deliveryKey,
+          );
+          deferred += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
         continue;
       }
 
-      const deliveredToday = await this.repository.countDelivered(
-        reminder.workspaceId,
-        clock.localDate,
-      );
-      if (deliveredToday >= reminder.maxPerLocalDay) {
-        await this.repository.defer(
-          reminder,
-          nextAllowedInstant(now, reminder.timeZone, quietHours, true),
-          'daily_limit',
-          deliveryKey,
+      let deliveredToday: number;
+      try {
+        deliveredToday = await this.repository.countDelivered(
+          reminder.workspaceId,
+          clock.localDate,
         );
-        deferred += 1;
+      } catch {
+        persistenceFailures += 1;
+        continue;
+      }
+      if (deliveredToday >= reminder.maxPerLocalDay) {
+        const nextAttemptAt = nextAllowedInstant(
+          now,
+          reminder.timeZone,
+          quietHours,
+          true,
+        );
+        try {
+          await this.repository.defer(
+            reminder,
+            nextAttemptAt,
+            'daily_limit',
+            claimKey,
+            deliveryKey,
+          );
+          deferred += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
         continue;
       }
 
       if (reminder.deliveryAttempt >= MAX_DELIVERY_ATTEMPTS) {
-        await this.repository.fail(
-          reminder,
-          null,
-          'attempt_limit',
-          deliveryKey,
-        );
-        failed += 1;
+        try {
+          await this.repository.fail(
+            reminder,
+            null,
+            'attempt_limit',
+            claimKey,
+            deliveryKey,
+          );
+          failed += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
         continue;
       }
 
@@ -425,20 +487,31 @@ export class ReminderScheduler {
           timeZone: reminder.timeZone,
           idempotencyKey: deliveryKey,
         });
+      } catch {
+        try {
+          await this.repository.fail(
+            reminder,
+            retryInstant(now, reminder.deliveryAttempt),
+            'delivery_failed',
+            claimKey,
+            deliveryKey,
+          );
+          failed += 1;
+        } catch {
+          persistenceFailures += 1;
+        }
+        continue;
+      }
+      try {
         await this.repository.markDelivered(
           reminder,
           now.toISOString(),
+          claimKey,
           deliveryKey,
         );
         delivered += 1;
       } catch {
-        await this.repository.fail(
-          reminder,
-          retryInstant(now, reminder.deliveryAttempt),
-          'delivery_failed',
-          deliveryKey,
-        );
-        failed += 1;
+        persistenceFailures += 1;
       }
     }
 
@@ -447,6 +520,7 @@ export class ReminderScheduler {
       delivered,
       deferred,
       failed,
+      persistenceFailures,
       duplicateClaims,
       invalid,
     };
