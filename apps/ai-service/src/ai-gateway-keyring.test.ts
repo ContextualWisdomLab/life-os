@@ -115,11 +115,14 @@ describe('AI gateway key configuration', () => {
     {
       AI_GATEWAY_ACTIVE_KEY_SECRET: ACTIVE_SECRET,
     },
-  ])('rejects incomplete or conflicting keyring configuration %#', (environment) => {
-    expect(() => requireAiGatewayContextKeyRing(environment)).toThrow(
-      AiGatewayKeyConfigurationError,
-    );
-  });
+  ])(
+    'rejects incomplete or conflicting keyring configuration %#',
+    (environment) => {
+      expect(() => requireAiGatewayContextKeyRing(environment)).toThrow(
+        AiGatewayKeyConfigurationError,
+      );
+    },
+  );
 });
 
 describe('AI gateway verification key selection', () => {
@@ -145,21 +148,17 @@ describe('AI gateway verification key selection', () => {
     );
   });
 
-  it.each([
-    undefined,
-    null,
-    '',
-    '-leading',
-    'unknown-key',
-    'a'.repeat(65),
-  ])('rejects malformed, unknown, or retired identifier %#', (value) => {
-    let failure: unknown;
-    try {
-      selectAiGatewayVerificationKey(overlap, value);
-    } catch (error) {
-      failure = error;
-    }
-    expect(failure).toBeInstanceOf(AiGatewayKeySelectionError);
-    expect(String(failure)).not.toContain(String(value));
-  });
+  it.each([undefined, null, '', '-leading', 'unknown-key', 'a'.repeat(65)])(
+    'rejects malformed, unknown, or retired identifier %#',
+    (value) => {
+      let failure: unknown;
+      try {
+        selectAiGatewayVerificationKey(overlap, value);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(AiGatewayKeySelectionError);
+      expect(String(failure)).not.toContain(String(value));
+    },
+  );
 });
