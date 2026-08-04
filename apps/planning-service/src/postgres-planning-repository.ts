@@ -392,7 +392,7 @@ export class PostgresPlanningRepository implements PlanningRepository {
     input: PlanningSearchInput,
   ): Promise<PlanningSearchCandidate[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
-    const prefixPattern = `${escapeLikePattern(input.normalizedQuery)}%`;
+    const prefixPattern = `${escapeLikePattern(input.normalizedQuery)} %`;
     const result = await this.client.query<SearchRow>(
       `SELECT entity_type, id, workspace_id, parent_id, title, status, created_at
        FROM (
