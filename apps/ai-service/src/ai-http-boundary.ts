@@ -1,9 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import {
-  AiGatewayKeyConfigurationError,
   type AiGatewayContextKeyEnvironment,
-  AiGatewayKeySelectionError,
   requireAiGatewayContextKeyRing,
   selectAiGatewayVerificationKey,
 } from './ai-gateway-keyring';
@@ -169,21 +167,15 @@ export function requireTrustedAiContext(
   let keyRing;
   try {
     keyRing = requireAiGatewayContextKeyRing(keyEnvironment);
-  } catch (error) {
-    if (error instanceof AiGatewayKeyConfigurationError) {
-      return unavailableGatewayContext();
-    }
-    throw error;
+  } catch {
+    return unavailableGatewayContext();
   }
 
   let verificationKey;
   try {
     verificationKey = selectAiGatewayVerificationKey(keyRing, headers.keyId);
-  } catch (error) {
-    if (error instanceof AiGatewayKeySelectionError) {
-      return invalidGatewayContext();
-    }
-    throw error;
+  } catch {
+    return invalidGatewayContext();
   }
 
   const expected = contextDigest(
