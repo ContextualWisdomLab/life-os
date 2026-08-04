@@ -38,7 +38,7 @@ async function readBaseManifest() {
   let manifest = contents.join('\n---\n');
   for (const serviceName of PRODUCTION_SERVICE_NAMES) {
     manifest = manifest.replaceAll(
-      `ghcr.io/contextualwisdomlab/life-os-${serviceName}:local`,
+      `docker.io/contextualwisdomlab/life-os-${serviceName}:local`,
       imageMap[serviceName],
     );
   }

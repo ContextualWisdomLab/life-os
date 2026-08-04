@@ -47,7 +47,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: ai-service
-          image: ghcr.io/contextualwisdomlab/life-os-ai-service:local
+          image: docker.io/contextualwisdomlab/life-os-ai-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -171,7 +171,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: integration-calendar-service
-          image: ghcr.io/contextualwisdomlab/life-os-integration-calendar-service:local
+          image: docker.io/contextualwisdomlab/life-os-integration-calendar-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -295,7 +295,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: integration-service
-          image: ghcr.io/contextualwisdomlab/life-os-integration-service:local
+          image: docker.io/contextualwisdomlab/life-os-integration-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

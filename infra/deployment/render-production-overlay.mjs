@@ -102,7 +102,7 @@ export function renderProductionKustomization(imageMap) {
       throw new Error(INVALID_IMAGE_MAP);
     }
     lines.push(
-      `  - name: ghcr.io/contextualwisdomlab/life-os-${serviceName}`,
+      `  - name: docker.io/contextualwisdomlab/life-os-${serviceName}`,
       `    newName: ${image.name}`,
       `    digest: ${image.digest}`,
     );

@@ -47,7 +47,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: web
-          image: ghcr.io/contextualwisdomlab/life-os-web:local
+          image: docker.io/contextualwisdomlab/life-os-web:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -169,7 +169,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: gateway
-          image: ghcr.io/contextualwisdomlab/life-os-gateway:local
+          image: docker.io/contextualwisdomlab/life-os-gateway:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -291,7 +291,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: identity-service
-          image: ghcr.io/contextualwisdomlab/life-os-identity-service:local
+          image: docker.io/contextualwisdomlab/life-os-identity-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

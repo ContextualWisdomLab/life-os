@@ -47,7 +47,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: planning-service
-          image: ghcr.io/contextualwisdomlab/life-os-planning-service:local
+          image: docker.io/contextualwisdomlab/life-os-planning-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -171,7 +171,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: habit-service
-          image: ghcr.io/contextualwisdomlab/life-os-habit-service:local
+          image: docker.io/contextualwisdomlab/life-os-habit-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -295,7 +295,7 @@ spec:
               app.kubernetes.io/part-of: life-os
       containers:
         - name: review-service
-          image: ghcr.io/contextualwisdomlab/life-os-review-service:local
+          image: docker.io/contextualwisdomlab/life-os-review-service:local
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
