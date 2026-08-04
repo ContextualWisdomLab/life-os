@@ -4,6 +4,30 @@ Apply AI service SQL files in lexical order to the PostgreSQL database owned by 
 
 - `0001_proposal_audit.sql` creates immutable tenant-scoped proposal evidence and append-only accept/reject decision events.
 
+## Production runtime
+
+The production module requires `AI_DATABASE_URL` and accepts bounded optional pool controls:
+
+- `AI_DATABASE_POOL_MAX`: integer from 1 through 32; default `10`
+- `AI_DATABASE_CONNECT_TIMEOUT_MS`: integer from 100 through 30000; default `5000`
+- `AI_DATABASE_IDLE_TIMEOUT_MS`: integer from 1000 through 300000; default `30000`
+
+The node-postgres pool identifies itself as `life-os-ai-service` and is closed exactly once through the NestJS application-shutdown lifecycle. Startup fails closed when the URL is missing, oversized, malformed, or not PostgreSQL.
+
+## Versioned audit routes
+
+The production module exposes the inert proposal-generation route together with tenant-scoped audit history:
+
+- `POST /v1/proposals`
+- `GET /v1/proposals`
+- `GET /v1/proposals/:proposalId`
+- `GET /v1/proposals/:proposalId/decisions`
+- `POST /v1/proposals/:proposalId/decisions`
+
+Every route derives workspace scope only from `x-workspace-id`. Decision append additionally requires `x-actor-id` and a closed JSON body containing `expectedContentDigest`, `idempotencyKey`, `decision`, optional `reason`, and `decidedAt`. Workspace and actor identifiers are trusted only when supplied by an authenticated gateway; direct public exposure of the AI service is not supported.
+
+There is deliberately no apply, execute, command, or user-data mutation route. Proposal generation persists the complete verified audit record before returning the proposal. Validation, not-found, stale-digest, conflicting replay, persistence, and unknown failures are mapped to bounded credential-free problem details.
+
 ## Trust boundary
 
 The audit schema stores only validated proposal requests, model identity, inert proposed operations, explanatory rationale, canonical SHA-256 digests, timestamps, and explicit user decisions. It has no foreign key, repository dependency, database privilege, or command surface for planning, calendar, habit, identity, notification, or other user-owned state mutation.
@@ -24,7 +48,11 @@ Database triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` even for overly broa
 
 ## Validation evidence
 
-CI supplies `AI_DATABASE_URL`, applies the migration to a disposable PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, concurrent exact decision replay, stale-digest rejection, conflicting replay rejection, and append-only enforcement. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+CI supplies `AI_DATABASE_URL`, applies the migration to a disposable PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, exactly-once shutdown, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+
+## Deferred work
+
+Authenticated workspace and actor derivation belongs at the gateway. External model transport, prompt and context redaction, policy evaluation, model-quality evaluation, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.
 
 ## Rollback
 
