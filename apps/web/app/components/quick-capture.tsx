@@ -1,7 +1,12 @@
 'use client';
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import type { PlanningSearchView } from '../planning-search-client';
+import {
+  isPlanningSearchAbort,
+  LatestPlanningSearchRequest,
+  normalizePlanningSearchQuery,
+} from './planning-search-state';
 import styles from './quick-capture.module.css';
 
 interface QuickCaptureProps {
@@ -64,6 +69,14 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
     results: [],
     message: 'Durable workspace search is ready.',
   });
+  const latestSearch = useRef(new LatestPlanningSearchRequest());
+
+  useEffect(
+    () => () => {
+      latestSearch.current.cancel();
+    },
+    [],
+  );
 
   function capture(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -76,7 +89,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
 
   async function search(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const query = searchQuery.trim();
+    const query = normalizePlanningSearchQuery(searchQuery);
     if (query.length < 2) {
       setSearchState({
         status: 'error',
@@ -85,6 +98,8 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
       });
       return;
     }
+
+    const controller = latestSearch.current.begin();
     setSearchState({
       status: 'loading',
       results: [],
@@ -97,7 +112,9 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         headers: { accept: 'application/json' },
         credentials: 'same-origin',
         cache: 'no-store',
+        signal: controller.signal,
       });
+      if (!latestSearch.current.isCurrent(controller)) return;
       if (response.status === 401) {
         setSearchState({
           status: 'error',
@@ -110,6 +127,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         throw new Error('Search request failed');
       }
       const results = parseClientResults(await response.json());
+      if (!latestSearch.current.isCurrent(controller)) return;
       setSearchState({
         status: 'ready',
         results,
@@ -118,12 +136,20 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
             ? 'No durable workspace records matched.'
             : `${results.length} durable workspace result${results.length === 1 ? '' : 's'} found.`,
       });
-    } catch {
+    } catch (error) {
+      if (
+        isPlanningSearchAbort(error) ||
+        !latestSearch.current.isCurrent(controller)
+      ) {
+        return;
+      }
       setSearchState({
         status: 'error',
         results: [],
         message: 'Workspace search is temporarily unavailable.',
       });
+    } finally {
+      latestSearch.current.finish(controller);
     }
   }
 
