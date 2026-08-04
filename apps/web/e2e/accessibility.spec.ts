@@ -19,9 +19,7 @@ test('switches the complete core workflow to Korean and persists the choice', as
     page.getByRole('navigation', { name: '주요 탐색' }),
   ).toBeVisible();
 
-  await page
-    .getByLabel('오늘 할 일을 로컬에 기록')
-    .fill('한국어 접근성 점검');
+  await page.getByLabel('오늘 할 일을 로컬에 기록').fill('한국어 접근성 점검');
   await page.getByRole('button', { name: '기록', exact: true }).click();
   await expect(page.getByText('한국어 접근성 점검')).toBeVisible();
 
