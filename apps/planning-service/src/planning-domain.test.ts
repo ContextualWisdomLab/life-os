@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InMemoryPlanningRepository, PlanningService } from './planning-domain';
-import type {
-  PlanningSearchCandidate,
-  PlanningSearchInput,
-} from './search';
+import type { PlanningSearchCandidate, PlanningSearchInput } from './search';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -123,29 +120,31 @@ describe('PlanningService', () => {
       title: 'Draft the launch plan',
     });
 
-    await expect(service.search('workspace-a', 'launch plan')).resolves.toEqual([
-      {
-        entityType: 'goal',
-        id: goal.id,
-        title: goal.title,
-        createdAt: goal.createdAt,
-      },
-      {
-        entityType: 'project',
-        id: project.id,
-        parentId: goal.id,
-        title: project.title,
-        createdAt: project.createdAt,
-      },
-      {
-        entityType: 'task',
-        id: task.id,
-        parentId: project.id,
-        title: task.title,
-        status: task.status,
-        createdAt: task.createdAt,
-      },
-    ]);
+    await expect(service.search('workspace-a', 'launch plan')).resolves.toEqual(
+      [
+        {
+          entityType: 'goal',
+          id: goal.id,
+          title: goal.title,
+          createdAt: goal.createdAt,
+        },
+        {
+          entityType: 'project',
+          id: project.id,
+          parentId: goal.id,
+          title: project.title,
+          createdAt: project.createdAt,
+        },
+        {
+          entityType: 'task',
+          id: task.id,
+          parentId: project.id,
+          title: task.title,
+          status: task.status,
+          createdAt: task.createdAt,
+        },
+      ],
+    );
   });
 
   it('rejects invalid queries before repository search', async () => {
