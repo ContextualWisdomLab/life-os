@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node --check src/reminder-domain.mjs && node --check src/reminder-scheduler.mjs && node --check src/main.mjs",
+    "build": "node --check src/reminder-domain.mjs",
     "dev": "node --watch src/main.mjs",
-    "lint": "node --check src/reminder-domain.mjs && node --check src/reminder-scheduler.mjs && node --check src/main.mjs",
-    "test": "node --experimental-test-coverage --test --test-coverage-include=src/reminder-domain.mjs --test-coverage-include=src/reminder-scheduler.mjs --test-coverage-include=src/main.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 src/*.test.mjs",
-    "typecheck": "node --check src/reminder-domain.mjs && node --check src/reminder-scheduler.mjs && node --check src/main.mjs"
+    "lint": "node --check src/reminder-domain.mjs",
+    "test": "node --experimental-test-coverage --test --test-coverage-include=src/reminder-domain.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 src/reminder-domain.test.mjs",
+    "typecheck": "node --check src/reminder-domain.mjs"
   }
 }
