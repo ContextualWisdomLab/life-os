@@ -1,0 +1,119 @@
+name: Patch AI BFF Response Scope
+
+on:
+  push:
+    branches:
+      - feat/ai-authenticated-gateway-context
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-ai-bff-response-scope
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, 'fix(web): enforce authenticated AI response scope') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/ai-authenticated-gateway-context
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply authenticated response-scope patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source_path = Path('apps/web/app/ai-proposal-client-core.ts')
+          text = source_path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  "function parseProposal(value: unknown): Record<string, unknown> {",
+                  "function parseProposal(\n  value: unknown,\n  principal: AiSessionPrincipal,\n): Record<string, unknown> {",
+              ),
+              (
+                  "  return {\n    proposalId: requireUuid(record.proposalId, 'AI service response is invalid'),\n    workspaceId: requireUuid(record.workspaceId, 'AI service response is invalid'),",
+                  "  const workspaceId = requireUuid(\n    record.workspaceId,\n    'AI service response is invalid',\n  );\n  if (workspaceId !== principal.workspaceId) {\n    throw new Error('AI service response is invalid');\n  }\n  return {\n    proposalId: requireUuid(record.proposalId, 'AI service response is invalid'),\n    workspaceId,",
+              ),
+              (
+                  "function parseAuditRecord(value: unknown): Record<string, unknown> {",
+                  "function parseAuditRecord(\n  value: unknown,\n  principal: AiSessionPrincipal,\n): Record<string, unknown> {",
+              ),
+              (
+                  "    proposal: parseProposal(record.proposal),",
+                  "    proposal: parseProposal(record.proposal, principal),",
+              ),
+              (
+                  "function parseDecisionEvent(value: unknown): Record<string, unknown> {",
+                  "function parseDecisionEvent(\n  value: unknown,\n  principal: AiSessionPrincipal,\n): Record<string, unknown> {",
+              ),
+              (
+                  "  return {\n    id: requireUuid(record.id, 'AI service response is invalid'),\n    workspaceId: requireUuid(record.workspaceId, 'AI service response is invalid'),\n    proposalId: requireUuid(record.proposalId, 'AI service response is invalid'),\n    proposalContentDigest: record.proposalContentDigest,\n    actorId: requireUuid(record.actorId, 'AI service response is invalid'),",
+                  "  const workspaceId = requireUuid(\n    record.workspaceId,\n    'AI service response is invalid',\n  );\n  const actorId = requireUuid(record.actorId, 'AI service response is invalid');\n  if (\n    workspaceId !== principal.workspaceId ||\n    actorId !== principal.actorId\n  ) {\n    throw new Error('AI service response is invalid');\n  }\n  return {\n    id: requireUuid(record.id, 'AI service response is invalid'),\n    workspaceId,\n    proposalId: requireUuid(record.proposalId, 'AI service response is invalid'),\n    proposalContentDigest: record.proposalContentDigest,\n    actorId,",
+              ),
+              (
+                  "function parseSuccessfulResponse(\n  value: unknown,\n  route: AiProposalRoute,\n  method: AiMethod,\n): unknown {\n  if (route.kind === 'collection') {\n    if (method === 'POST') return parseProposal(value);\n    if (!Array.isArray(value) || value.length > MAXIMUM_LIST_RESULTS) {\n      throw new Error('AI service response is invalid');\n    }\n    return value.map(parseAuditRecord);\n  }\n  if (route.kind === 'proposal') return parseAuditRecord(value);\n  if (method === 'POST') return parseDecisionEvent(value);\n  if (!Array.isArray(value) || value.length > MAXIMUM_LIST_RESULTS) {\n    throw new Error('AI service response is invalid');\n  }\n  return value.map(parseDecisionEvent);\n}",
+                  "function parseSuccessfulResponse(\n  value: unknown,\n  route: AiProposalRoute,\n  method: AiMethod,\n  principal: AiSessionPrincipal,\n): unknown {\n  if (route.kind === 'collection') {\n    if (method === 'POST') return parseProposal(value, principal);\n    if (!Array.isArray(value) || value.length > MAXIMUM_LIST_RESULTS) {\n      throw new Error('AI service response is invalid');\n    }\n    return value.map((item) => parseAuditRecord(item, principal));\n  }\n  if (route.kind === 'proposal') return parseAuditRecord(value, principal);\n  if (method === 'POST') return parseDecisionEvent(value, principal);\n  if (!Array.isArray(value) || value.length > MAXIMUM_LIST_RESULTS) {\n    throw new Error('AI service response is invalid');\n  }\n  return value.map((item) => parseDecisionEvent(item, principal));\n}",
+              ),
+              (
+                  "      route,\n      parsedRequest.method,\n    );",
+                  "      route,\n      parsedRequest.method,\n      principal,\n    );",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected one exact match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          source_path.write_text(text, encoding='utf-8')
+
+          package_path = Path('apps/web/package.json')
+          package = package_path.read_text(encoding='utf-8')
+          old = 'app/ai-proposal-client.ts app/ai-proposal-client.test.ts'
+          new = 'app/ai-proposal-client-core.ts app/ai-proposal-client.ts app/ai-proposal-client.test.ts'
+          if package.count(old) != 1:
+              raise SystemExit('Expected one web lint target insertion point')
+          package_path.write_text(package.replace(old, new, 1), encoding='utf-8')
+
+      - name: Format and verify web package
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/web/app/ai-proposal-client-core.ts \
+            apps/web/app/ai-proposal-scope-regression.test.ts \
+            apps/web/package.json
+          pnpm --filter @life-os/web test
+          pnpm --filter @life-os/web lint
+          pnpm --filter @life-os/web typecheck
+
+      - name: Remove one-time workflow and commit verified patch
+        run: |
+          rm .github/workflows/patch-ai-bff-scope.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/patch-ai-bff-scope.yml \
+            apps/web/app/ai-proposal-client-core.ts \
+            apps/web/app/ai-proposal-scope-regression.test.ts \
+            apps/web/package.json
+          git commit -m "fix(web): enforce authenticated AI response scope"
+          git push origin HEAD:feat/ai-authenticated-gateway-context
