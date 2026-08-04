@@ -3,6 +3,8 @@ import type { PoolConfig } from 'pg';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiRuntime, createAiRuntime } from './ai-runtime';
 import {
+  AI_RUNTIME,
+  AiAppModule,
   AiProductionModule,
   PROPOSAL_AUDIT_APPLICATION,
   PROPOSAL_SERVICE,
@@ -111,11 +113,12 @@ function databaseUrl(): string {
 
 /** Reads a factory provider from Nest module metadata. */
 function providerFactory(
+  moduleType: object,
   token: symbol,
 ): (...arguments_: unknown[]) => unknown {
   const providers = Reflect.getMetadata(
     MODULE_METADATA.PROVIDERS,
-    AiProductionModule,
+    moduleType,
   ) as Array<{
     readonly provide?: unknown;
     readonly useFactory?: (...arguments_: unknown[]) => unknown;
@@ -123,7 +126,7 @@ function providerFactory(
   const factory = providers.find((provider) => provider.provide === token)
     ?.useFactory;
   if (!factory) {
-    throw new Error('Expected production module factory provider');
+    throw new Error('Expected module factory provider');
   }
   return factory;
 }
@@ -154,16 +157,41 @@ describe('AI production runtime wiring', () => {
     expect(poolState.endCalls).toBe(1);
   });
 
+  it('covers the standalone and production runtime provider factories', async () => {
+    expect(
+      providerFactory(AiAppModule, PROPOSAL_SERVICE)(),
+    ).toBeInstanceOf(ProposalService);
+
+    const previousDatabaseUrl = process.env.AI_DATABASE_URL;
+    process.env.AI_DATABASE_URL = databaseUrl();
+    try {
+      const runtime = providerFactory(
+        AiProductionModule,
+        AI_RUNTIME,
+      )() as AiRuntime;
+      expect(runtime).toBeInstanceOf(AiRuntime);
+      await runtime.close();
+    } finally {
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.AI_DATABASE_URL;
+      } else {
+        process.env.AI_DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
   it('exposes the same shared audit application through both narrowed providers', () => {
     const application = Object.create(
       ProposalAuditApplication.prototype,
     ) as ProposalAuditApplication;
     const runtime = { application } as AiRuntime;
 
-    expect(providerFactory(PROPOSAL_SERVICE)(runtime)).toBe(application);
-    expect(providerFactory(PROPOSAL_AUDIT_APPLICATION)(runtime)).toBe(
-      application,
-    );
+    expect(
+      providerFactory(AiProductionModule, PROPOSAL_SERVICE)(runtime),
+    ).toBe(application);
+    expect(
+      providerFactory(AiProductionModule, PROPOSAL_AUDIT_APPLICATION)(runtime),
+    ).toBe(application);
   });
 
   it('uses production clock and identifier defaults for durable evidence', async () => {
