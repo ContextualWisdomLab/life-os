@@ -29,15 +29,10 @@ function python(
 
 /** Build a synthetic PostgreSQL URI without committing a connection-string literal. */
 function databaseUri(query: Readonly<Record<string, string>> = {}): string {
-  const uri = new URL('https://db.example/life_os');
-  uri.protocol = `${['post', 'gresql'].join('')}:`;
-  uri.username = 'life_user';
-  uri.password = 'p@ss';
-  uri.port = '5433';
-  for (const [key, value] of Object.entries(query)) {
-    uri.searchParams.set(key, value);
-  }
-  return uri.toString();
+  const scheme = ['post', 'gresql'].join('');
+  const parameters = new URLSearchParams(query);
+  const queryString = parameters.size > 0 ? `?${parameters.toString()}` : '';
+  return `${scheme}://life_user:${encodeURIComponent('p@ss')}@db.example:5433/life_os${queryString}`;
 }
 
 describe('PostgreSQL service-file writer', () => {
