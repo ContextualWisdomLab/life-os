@@ -1,4 +1,0 @@
-# KSV-0125 treats GitHub Container Registry as untrusted even when the image is
-# constrained to the ContextualWisdomLab organization and pinned by SHA-256.
-# Revisit when Trivy's built-in trusted-registry policy supports GHCR context.
-KSV-0125 exp:2027-08-04
