@@ -26,6 +26,10 @@ describe('production Kubernetes reference contract', () => {
   const renderer = read(`${kubernetesRoot}/render-production-manifest.py`);
   const serviceWriter = read(`${kubernetesRoot}/write-pg-service.py`);
   const migrationRunner = read(`${kubernetesRoot}/run-migrations.sh`);
+  const trivyConfig = read('trivy.yaml');
+  const trustedRegistryData = read(
+    'infra/trivy-data/trusted-registries.yaml',
+  );
 
   it('composes one production overlay from the reviewed base', () => {
     expect(base).toContain('kind: Kustomization');
@@ -87,13 +91,27 @@ describe('production Kubernetes reference contract', () => {
       'ghcr\\.io/contextualwisdomlab/life-os-gateway@sha256:[0-9a-f]{64}',
     );
     expect(renderer).toContain('zero image digest is not deployable');
+    expect(renderer).toContain('timeout=KUSTOMIZE_TIMEOUT_SECONDS');
     expect(count(workflow, /render-production-manifest\.py/g)).toBe(2);
     expect(workflow).not.toContain("python - <<'PY'");
   });
 
-  it('scopes the registry exception to the two reviewed image fields', () => {
-    expect(count(workloads, /trivy:ignore:KSV-0125/g)).toBe(2);
+  it('trusts GHCR through policy data while constraining every Kubernetes image', () => {
+    const imageLines = workloads
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('image: '));
+    const approvedImage =
+      /^image: ghcr\.io\/contextualwisdomlab\/life-os-(web|gateway)@sha256:[0-9a-f]{64}$/;
+
+    expect(trivyConfig).toContain('data:\n    - infra/trivy-data');
+    expect(trustedRegistryData).toContain('ksv0125:');
+    expect(trustedRegistryData).toContain('trusted_registries:\n    - ghcr.io');
+    expect(imageLines).toHaveLength(2);
+    expect(imageLines.every((line) => approvedImage.test(line))).toBe(true);
+    expect(workloads).not.toContain('trivy:ignore:KSV-0125');
     expect(existsSync(resolve(repositoryRoot, '.trivyignore'))).toBe(false);
+    expect(existsSync(resolve(repositoryRoot, '.trivyignore.yaml'))).toBe(false);
   });
 
   it('denies ambient access while permitting bounded internal data paths', () => {
