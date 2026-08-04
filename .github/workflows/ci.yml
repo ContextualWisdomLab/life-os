@@ -51,7 +51,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          if [[ -f .github/scripts/finalize_notification_review.py ]]; then
+          if [[ -f .github/scripts/finalize_notification_review.py ]] || \
+             [[ -f .github/scripts/complete_notification_docstrings.py ]]; then
             echo 'required=true' >> "$GITHUB_OUTPUT"
           else
             echo 'required=false' >> "$GITHUB_OUTPUT"
@@ -73,7 +74,15 @@ jobs:
 
       - name: Apply reviewed notification fixes
         if: steps.repair_state.outputs.required == 'true'
-        run: python3 .github/scripts/finalize_notification_review.py
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f .github/scripts/finalize_notification_review.py ]]; then
+            python3 .github/scripts/finalize_notification_review.py
+          fi
+          if [[ -f .github/scripts/complete_notification_docstrings.py ]]; then
+            python3 .github/scripts/complete_notification_docstrings.py
+          fi
 
       - name: Format and validate reviewed fixes
         if: steps.repair_state.outputs.required == 'true'
@@ -100,7 +109,13 @@ jobs:
           git restore --worktree pnpm-lock.yaml 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f .github/scripts/finalize_notification_review.py
+          for temporary_script in \
+            .github/scripts/finalize_notification_review.py \
+            .github/scripts/complete_notification_docstrings.py; do
+            if [[ -f "$temporary_script" ]]; then
+              git rm -f "$temporary_script"
+            fi
+          done
           git add \
             .github/workflows/ci.yml \
             apps/notification-service/package.json \
@@ -109,7 +124,7 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "fix(notification): close remaining reliability review gaps"
+          git commit -m "fix(notification): close review and documentation gaps"
           git push origin HEAD:feat/notification-postgres-inbox
 
   validate:
