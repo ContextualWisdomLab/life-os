@@ -4,6 +4,12 @@ import type {
   Project,
   Task,
 } from './planning-domain';
+import {
+  escapeLikePattern,
+  type PlanningSearchCandidate,
+  type PlanningSearchEntityType,
+  type PlanningSearchInput,
+} from './search';
 
 export interface PlanningSqlQueryResult<Row> {
   rows: Row[];
@@ -34,10 +40,18 @@ interface TaskRow extends GoalRow {
   status: unknown;
 }
 
+interface SearchRow extends GoalRow {
+  entity_type: unknown;
+  parent_id: unknown;
+  status: unknown;
+}
+
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const NORMALIZED_TITLE_SQL =
+  "lower(normalize(regexp_replace(trim(title), '\\s+', ' ', 'g'), NFKC))";
 
 export class PlanningPersistenceError extends Error {
   constructor() {
@@ -83,6 +97,13 @@ function requireTimestamp(value: unknown): string {
 
 function requireStatus(value: unknown): Task['status'] {
   if (value !== 'todo' && value !== 'done') {
+    return invalidRow();
+  }
+  return value;
+}
+
+function requireEntityType(value: unknown): PlanningSearchEntityType {
+  if (value !== 'goal' && value !== 'project' && value !== 'task') {
     return invalidRow();
   }
   return value;
@@ -151,6 +172,34 @@ function parseTask(
   return task;
 }
 
+function parseSearchCandidate(
+  row: SearchRow,
+  expectedWorkspaceId: string,
+): PlanningSearchCandidate {
+  const base = parseGoal(row, expectedWorkspaceId);
+  const entityType = requireEntityType(row.entity_type);
+  if (entityType === 'goal') {
+    if (row.parent_id !== null || row.status !== null) {
+      return invalidRow();
+    }
+    return { entityType, ...base };
+  }
+
+  const parentId = requireUuidV4(row.parent_id);
+  if (entityType === 'project') {
+    if (row.status !== null) {
+      return invalidRow();
+    }
+    return { entityType, ...base, parentId };
+  }
+  return {
+    entityType,
+    ...base,
+    parentId,
+    status: requireStatus(row.status),
+  };
+}
+
 function validateGoal(goal: Goal): Goal {
   return parseGoal({
     id: goal.id,
@@ -190,6 +239,7 @@ function oneOrUndefined<Row>(rows: Row[]): Row | undefined {
   return rows[0];
 }
 
+/** Durable PostgreSQL adapter with parameterized tenant-scoped operations. */
 export class PostgresPlanningRepository implements PlanningRepository {
   constructor(private readonly client: PlanningSqlClient) {}
 
@@ -333,6 +383,82 @@ export class PostgresPlanningRepository implements PlanningRepository {
     );
     return result.rows.map((row) =>
       parseTask(row, safeWorkspaceId, safeProjectId),
+    );
+  }
+
+  /** Returns a bounded candidate set for deterministic application ranking. */
+  async searchCandidates(
+    workspaceId: string,
+    input: PlanningSearchInput,
+  ): Promise<PlanningSearchCandidate[]> {
+    const safeWorkspaceId = requireUuidV4(workspaceId);
+    const prefixPattern = `${escapeLikePattern(input.normalizedQuery)}%`;
+    const result = await this.client.query<SearchRow>(
+      `SELECT entity_type, id, workspace_id, parent_id, title, status, created_at
+       FROM (
+         (SELECT 'goal'::text AS entity_type, id, workspace_id,
+                 NULL::uuid AS parent_id, title, NULL::text AS status, created_at,
+                 CASE
+                   WHEN ${NORMALIZED_TITLE_SQL} = $2 THEN 0
+                   WHEN ${NORMALIZED_TITLE_SQL} LIKE $3 ESCAPE E'\\\\' THEN 1
+                   ELSE 2
+                 END AS match_rank
+          FROM planning.goals
+          WHERE workspace_id = $1
+            AND (
+              ${NORMALIZED_TITLE_SQL} = $2
+              OR ${NORMALIZED_TITLE_SQL} LIKE $3 ESCAPE E'\\\\'
+              OR to_tsvector('simple', ${NORMALIZED_TITLE_SQL})
+                 @@ plainto_tsquery('simple', $2)
+            )
+          ORDER BY match_rank ASC, created_at DESC, id ASC
+          LIMIT $4)
+         UNION ALL
+         (SELECT 'project'::text AS entity_type, id, workspace_id,
+                 goal_id AS parent_id, title, NULL::text AS status, created_at,
+                 CASE
+                   WHEN ${NORMALIZED_TITLE_SQL} = $2 THEN 0
+                   WHEN ${NORMALIZED_TITLE_SQL} LIKE $3 ESCAPE E'\\\\' THEN 1
+                   ELSE 2
+                 END AS match_rank
+          FROM planning.projects
+          WHERE workspace_id = $1
+            AND (
+              ${NORMALIZED_TITLE_SQL} = $2
+              OR ${NORMALIZED_TITLE_SQL} LIKE $3 ESCAPE E'\\\\'
+              OR to_tsvector('simple', ${NORMALIZED_TITLE_SQL})
+                 @@ plainto_tsquery('simple', $2)
+            )
+          ORDER BY match_rank ASC, created_at DESC, id ASC
+          LIMIT $4)
+         UNION ALL
+         (SELECT 'task'::text AS entity_type, id, workspace_id,
+                 project_id AS parent_id, title, status, created_at,
+                 CASE
+                   WHEN ${NORMALIZED_TITLE_SQL} = $2 THEN 0
+                   WHEN ${NORMALIZED_TITLE_SQL} LIKE $3 ESCAPE E'\\\\' THEN 1
+                   ELSE 2
+                 END AS match_rank
+          FROM planning.tasks
+          WHERE workspace_id = $1
+            AND (
+              ${NORMALIZED_TITLE_SQL} = $2
+              OR ${NORMALIZED_TITLE_SQL} LIKE $3 ESCAPE E'\\\\'
+              OR to_tsvector('simple', ${NORMALIZED_TITLE_SQL})
+                 @@ plainto_tsquery('simple', $2)
+            )
+          ORDER BY match_rank ASC, created_at DESC, id ASC
+          LIMIT $4)
+       ) AS candidates
+       ORDER BY match_rank ASC,
+                CASE entity_type WHEN 'goal' THEN 0 WHEN 'project' THEN 1 ELSE 2 END,
+                created_at DESC,
+                id ASC
+       LIMIT $4`,
+      [safeWorkspaceId, input.normalizedQuery, prefixPattern, input.limit],
+    );
+    return result.rows.map((row) =>
+      parseSearchCandidate(row, safeWorkspaceId),
     );
   }
 }
