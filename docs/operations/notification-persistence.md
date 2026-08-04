@@ -45,6 +45,10 @@ A worker may process an occurrence only when its claim update returns a unique o
 
 If a worker exits after claiming but before a terminal transition, another worker can claim the occurrence after `claim_expires_at`. Operators should not clear active claims manually during normal operation. For urgent recovery, first confirm that the original worker is no longer running and that no delivery provider request remains in flight. Prefer waiting for the bounded lease to expire.
 
+Repository failures are isolated per occurrence. A delivered-count read or transition failure increments the scheduler's `persistenceFailures` aggregate and processing continues with the remaining bounded batch. Alert on any non-zero value and investigate PostgreSQL health; do not classify it as a provider delivery failure or manually release the active claim.
+
+Runtime shutdown shares one in-flight close operation across concurrent callers. If pool closure rejects, the runtime preserves the error and permits a later shutdown attempt instead of reporting a false closed state.
+
 To inspect overdue pending work without exposing message text, use an aggregate query such as:
 
 ```sql
