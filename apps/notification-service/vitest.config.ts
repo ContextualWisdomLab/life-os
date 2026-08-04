@@ -1,5 +1,11 @@
 import { defineConfig } from 'vitest/config';
 
+const integrationDatabaseUrl =
+  process.env.NOTIFICATION_DATABASE_URL ?? process.env.PLANNING_DATABASE_URL;
+if (integrationDatabaseUrl !== undefined) {
+  process.env.NOTIFICATION_DATABASE_URL = integrationDatabaseUrl;
+}
+
 /** Complete notification-service coverage gate. */
 export default defineConfig({
   test: {
