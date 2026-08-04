@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS notification_service.reminder_occurrences (
       AND octet_length(claim_key_hash) = 32
     )
   ),
+  CONSTRAINT reminder_occurrences_terminal_claim CHECK (
+    occurrence_status = 'pending'
+    OR (claim_key_hash IS NOT NULL AND claim_expires_at IS NOT NULL)
+  ),
   CONSTRAINT reminder_occurrences_timestamp_order CHECK (
     updated_at >= created_at
   )
@@ -74,6 +78,14 @@ CREATE INDEX IF NOT EXISTS reminder_occurrences_due_index
     reminder_id ASC
   )
   WHERE occurrence_status = 'pending';
+
+CREATE INDEX IF NOT EXISTS reminder_occurrences_claim_expiry_index
+  ON notification_service.reminder_occurrences (
+    claim_expires_at ASC,
+    workspace_id ASC,
+    reminder_id ASC
+  )
+  WHERE occurrence_status = 'pending' AND claim_key_hash IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS reminder_occurrences_workspace_index
   ON notification_service.reminder_occurrences (
@@ -152,7 +164,7 @@ CREATE TABLE IF NOT EXISTS notification_service.reminder_outcomes (
   CONSTRAINT reminder_outcomes_occurrence_foreign_key
     FOREIGN KEY (workspace_id, reminder_id)
     REFERENCES notification_service.reminder_occurrences (workspace_id, reminder_id)
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT reminder_outcomes_idempotency_unique
     UNIQUE (workspace_id, idempotency_key_hash, outcome_kind)
 );
@@ -163,6 +175,13 @@ CREATE INDEX IF NOT EXISTS reminder_outcomes_workspace_index
     occurred_at DESC,
     outcome_id ASC
   );
+
+CREATE INDEX IF NOT EXISTS reminder_outcomes_delivery_date_index
+  ON notification_service.reminder_outcomes (
+    workspace_id,
+    delivery_local_date
+  )
+  WHERE outcome_kind = 'delivered';
 
 CREATE TABLE IF NOT EXISTS notification_service.inbox_messages (
   message_id uuid NOT NULL,
@@ -175,6 +194,7 @@ CREATE TABLE IF NOT EXISTS notification_service.inbox_messages (
   delivered_at timestamptz NOT NULL,
   read_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   CONSTRAINT inbox_messages_primary_key PRIMARY KEY (message_id),
   CONSTRAINT inbox_messages_id_uuid_v4 CHECK (
     get_byte(uuid_send(message_id), 6) >> 4 = 4
@@ -206,10 +226,13 @@ CREATE TABLE IF NOT EXISTS notification_service.inbox_messages (
   CONSTRAINT inbox_messages_read_order CHECK (
     read_at IS NULL OR read_at >= delivered_at
   ),
+  CONSTRAINT inbox_messages_timestamp_order CHECK (
+    updated_at >= created_at
+  ),
   CONSTRAINT inbox_messages_occurrence_foreign_key
     FOREIGN KEY (workspace_id, reminder_id)
     REFERENCES notification_service.reminder_occurrences (workspace_id, reminder_id)
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT inbox_messages_idempotency_unique
     UNIQUE (workspace_id, idempotency_key_hash)
 );
@@ -220,3 +243,27 @@ CREATE INDEX IF NOT EXISTS inbox_messages_workspace_index
     delivered_at DESC,
     message_id ASC
   );
+
+CREATE OR REPLACE FUNCTION notification_service.reject_reminder_outcome_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'reminder outcomes are immutable'
+    USING ERRCODE = '55000';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS reminder_outcomes_row_mutation_guard
+  ON notification_service.reminder_outcomes;
+CREATE TRIGGER reminder_outcomes_row_mutation_guard
+BEFORE UPDATE OR DELETE ON notification_service.reminder_outcomes
+FOR EACH ROW
+EXECUTE FUNCTION notification_service.reject_reminder_outcome_mutation();
+
+DROP TRIGGER IF EXISTS reminder_outcomes_truncate_guard
+  ON notification_service.reminder_outcomes;
+CREATE TRIGGER reminder_outcomes_truncate_guard
+BEFORE TRUNCATE ON notification_service.reminder_outcomes
+FOR EACH STATEMENT
+EXECUTE FUNCTION notification_service.reject_reminder_outcome_mutation();
