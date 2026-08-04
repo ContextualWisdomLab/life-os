@@ -14,18 +14,23 @@ type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
 /** Bounded PostgreSQL pool boundary used by the AI production runtime. */
 export interface AiPool {
+  /** Executes one parameterized SQL statement and returns validated row storage. */
   query<Row>(
     text: string,
     values?: readonly unknown[],
   ): Promise<ProposalAuditSqlQueryResult<Row>>;
+  /** Releases every PostgreSQL resource owned by this pool. */
   end(): Promise<void>;
 }
 
+/** Factory seam used to construct the bounded runtime pool in tests and production. */
 export type AiPoolFactory = (configuration: PoolConfig) => AiPool;
 
+/** Adapts node-postgres to the minimal pool contract required by the AI service. */
 class NodePostgresAiPool implements AiPool {
   constructor(private readonly pool: Pool) {}
 
+  /** Executes SQL without exposing the wider node-postgres client surface. */
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
@@ -34,14 +39,17 @@ class NodePostgresAiPool implements AiPool {
     return { rows: result.rows as Row[] };
   }
 
+  /** Closes the underlying node-postgres pool. */
   async end(): Promise<void> {
     await this.pool.end();
   }
 }
 
+/** Narrows the runtime pool to the repository's parameterized SQL contract. */
 class NodePostgresProposalAuditSqlClient implements ProposalAuditSqlClient {
   constructor(private readonly pool: AiPool) {}
 
+  /** Delegates one parameterized query through the bounded pool interface. */
   async query<Row>(
     text: string,
     values: readonly unknown[],
@@ -50,6 +58,7 @@ class NodePostgresProposalAuditSqlClient implements ProposalAuditSqlClient {
   }
 }
 
+/** Reads one required bounded environment value without retaining surrounding space. */
 function requireConfiguration(
   environment: RuntimeEnvironment,
   name: string,
@@ -61,6 +70,7 @@ function requireConfiguration(
   return value;
 }
 
+/** Requires a syntactically valid PostgreSQL connection URL. */
 function requireDatabaseUrl(value: string): string {
   let parsed: URL;
   try {
@@ -74,6 +84,7 @@ function requireDatabaseUrl(value: string): string {
   return value;
 }
 
+/** Parses an optional integer configuration within an explicit inclusive range. */
 function requireBoundedInteger(
   value: string | undefined,
   defaultValue: number,
@@ -124,6 +135,7 @@ export function createAiPoolConfiguration(
   };
 }
 
+/** Constructs the production node-postgres pool behind its minimal adapter. */
 function defaultPoolFactory(configuration: PoolConfig): AiPool {
   return new NodePostgresAiPool(new Pool(configuration));
 }
@@ -132,11 +144,13 @@ function defaultPoolFactory(configuration: PoolConfig): AiPool {
 export class AiRuntime implements OnApplicationShutdown {
   private closed = false;
 
+  /** Creates one runtime around one pool and one audit application graph. */
   constructor(
     private readonly pool: AiPool,
     readonly application: ProposalAuditApplication,
   ) {}
 
+  /** Releases the pool once even when multiple shutdown paths converge. */
   async close(): Promise<void> {
     if (this.closed) {
       return;
@@ -145,6 +159,7 @@ export class AiRuntime implements OnApplicationShutdown {
     await this.pool.end();
   }
 
+  /** Integrates exactly-once pool closure with NestJS application shutdown. */
   async onApplicationShutdown(): Promise<void> {
     await this.close();
   }
