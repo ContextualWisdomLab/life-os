@@ -6,10 +6,12 @@ const repositoryRoot = resolve(process.cwd(), '../..');
 const kubernetesRoot = 'infra/kubernetes';
 const baseRoot = `${kubernetesRoot}/base`;
 
+/** Read one repository-relative UTF-8 file for deterministic contract assertions. */
 function read(path: string): string {
   return readFileSync(resolve(repositoryRoot, path), 'utf8');
 }
 
+/** Count every match of a global regular expression in the supplied document. */
 function count(value: string, pattern: RegExp): number {
   return value.match(pattern)?.length ?? 0;
 }
