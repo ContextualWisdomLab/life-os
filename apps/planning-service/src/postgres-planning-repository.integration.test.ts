@@ -160,4 +160,82 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
       new Set(created.map((task) => task.title)),
     );
   });
+
+  it('searches exact, prefix, token, Unicode, and literal wildcard matches within one tenant', async () => {
+    const workspaceId = randomUUID();
+    const otherWorkspaceId = randomUUID();
+    const runtime = createRuntime();
+
+    const exactGoal = await runtime.service.createGoal(workspaceId, {
+      title: 'Release Search',
+    });
+    const prefixProject = await runtime.service.createProject(workspaceId, {
+      goalId: exactGoal.id,
+      title: 'Release Search Project',
+    });
+    const tokenTask = await runtime.service.createTask(workspaceId, {
+      projectId: prefixProject.id,
+      title: 'Review release evidence for search',
+    });
+    const wildcardGoal = await runtime.service.createGoal(workspaceId, {
+      title: 'Capacity 50% ready',
+    });
+    await runtime.service.createGoal(workspaceId, {
+      title: 'Capacity 500 ready',
+    });
+    const unicodeGoal = await runtime.service.createGoal(workspaceId, {
+      title: 'Ｆｕｌｌｗｉｄｔｈ Plan',
+    });
+    await runtime.service.createGoal(otherWorkspaceId, {
+      title: 'Release Search',
+    });
+
+    await expect(
+      runtime.searchService.search(workspaceId, 'release search', 10),
+    ).resolves.toEqual([
+      {
+        entityType: 'goal',
+        id: exactGoal.id,
+        title: exactGoal.title,
+        createdAt: exactGoal.createdAt,
+      },
+      {
+        entityType: 'project',
+        id: prefixProject.id,
+        title: prefixProject.title,
+        parentId: exactGoal.id,
+        createdAt: prefixProject.createdAt,
+      },
+      {
+        entityType: 'task',
+        id: tokenTask.id,
+        title: tokenTask.title,
+        parentId: prefixProject.id,
+        status: 'todo',
+        createdAt: tokenTask.createdAt,
+      },
+    ]);
+
+    await expect(
+      runtime.searchService.search(workspaceId, '50%', 10),
+    ).resolves.toEqual([
+      {
+        entityType: 'goal',
+        id: wildcardGoal.id,
+        title: wildcardGoal.title,
+        createdAt: wildcardGoal.createdAt,
+      },
+    ]);
+
+    await expect(
+      runtime.searchService.search(workspaceId, 'fullwidth plan', 10),
+    ).resolves.toEqual([
+      {
+        entityType: 'goal',
+        id: unicodeGoal.id,
+        title: unicodeGoal.title,
+        createdAt: unicodeGoal.createdAt,
+      },
+    ]);
+  });
 });
