@@ -139,7 +139,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
 
       <div className={styles.grid}>
         <form
-          className="capture-bar"
+          className={styles.capture}
           onSubmit={capture}
           aria-label="Capture a browser-local action"
         >
