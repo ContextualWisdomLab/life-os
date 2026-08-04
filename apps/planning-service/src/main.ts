@@ -10,10 +10,15 @@ import {
   Module,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
-import { requireTitle, toHttpException } from './http-boundary';
+import {
+  requireTitle,
+  requireTrustedWorkspaceContext,
+  toHttpException,
+} from './http-boundary';
 import {
   planningMetrics,
   planningObservabilityMiddleware,
@@ -21,13 +26,14 @@ import {
 import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
+import type { PlanningSearchResult } from './search';
 
 /** Dependency-injection token for the production planning runtime. */
 export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
 /** Dependency-injection token for the planning domain service. */
 export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
 
-/** Requires the tenant workspace boundary used by every planning operation. */
+/** Requires the tenant workspace boundary used by legacy planning operations. */
 function requireWorkspaceId(value: string | undefined): string {
   const workspaceId = value?.trim();
   if (!workspaceId) {
@@ -55,6 +61,30 @@ export class PlanningController {
   @Header('Content-Type', PROMETHEUS_CONTENT_TYPE)
   metrics(): string {
     return planningMetrics.renderPrometheus();
+  }
+
+  /** Searches planning records inside a short-lived authenticated gateway scope. */
+  @Get('search')
+  async search(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Query('q') query: string | undefined,
+    @Query('limit') limit: string | undefined,
+  ): Promise<PlanningSearchResult[]> {
+    try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+      );
+      return await this.planningService.search(
+        trustedWorkspaceId,
+        query,
+        limit,
+      );
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   /** Creates a goal inside the caller's required workspace. */
@@ -173,8 +203,7 @@ export class PlanningController {
     {
       provide: PLANNING_SERVICE,
       inject: [PLANNING_RUNTIME],
-      useFactory: (runtime: PlanningRuntime): PlanningService =>
-        runtime.service,
+      useFactory: (runtime: PlanningRuntime): PlanningService => runtime.service,
     },
   ],
 })
