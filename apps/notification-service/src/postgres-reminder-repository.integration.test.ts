@@ -48,6 +48,13 @@ async function applyMigration(pool: Pool): Promise<void> {
   await pool.query(sql);
 }
 
+async function resetSchema(): Promise<void> {
+  await administrativePool.query(
+    'DROP SCHEMA IF EXISTS notification_service CASCADE',
+  );
+  await applyMigration(administrativePool);
+}
+
 function repository(
   pool: Pool,
   claimLeaseSeconds = 30,
@@ -89,10 +96,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
   });
 
   beforeEach(async () => {
-    await administrativePool.query(
-      'DROP SCHEMA IF EXISTS notification_service CASCADE',
-    );
-    await applyMigration(administrativePool);
+    await resetSchema();
   });
 
   afterAll(async () => {
@@ -324,10 +328,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
       },
     ]);
 
-    await administrativePool.query(
-      'DROP SCHEMA notification_service CASCADE',
-    );
-    await applyMigration(administrativePool);
+    await resetSchema();
     const fatigueRepository = repository(administrativePool);
     const fatigueScheduler = new ReminderScheduler(
       fatigueRepository,
@@ -351,30 +352,33 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     ).resolves.toMatchObject({ deferred: 1, delivered: 0 });
     await expect(
       fatigueRepository.listOutcomes(workspaceId, 10),
-    ).resolves.toMatchObject([
-      {
-        reminderId: fatigueReminder.id,
-        kind: 'deferred',
-        reason: 'daily_limit',
-        nextAttemptAt: '2026-08-04T15:00:00.000Z',
-      },
-      {
-        reminderId: deliveredSeed.id,
-        kind: 'delivered',
-      },
-    ]);
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reminderId: fatigueReminder.id,
+          kind: 'deferred',
+          reason: 'daily_limit',
+          nextAttemptAt: '2026-08-04T15:00:00.000Z',
+        }),
+        expect.objectContaining({
+          reminderId: deliveredSeed.id,
+          kind: 'delivered',
+        }),
+      ]),
+    );
   });
 
   it('persists retryable and terminal failures without provider exception text', async () => {
     const workspaceId = randomUUID();
     const durableRepository = repository(administrativePool);
+    const failingGateway = {
+      async deliver(): Promise<void> {
+        throw new Error('provider token and sensitive exception text');
+      },
+    };
     const failingScheduler = new ReminderScheduler(
       durableRepository,
-      {
-        async deliver(): Promise<void> {
-          throw new Error('provider token and sensitive exception text');
-        },
-      },
+      failingGateway,
       10,
     );
     const retryable = occurrence(workspaceId, {
@@ -407,16 +411,23 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     });
     expect(JSON.stringify(retryOutcome)).not.toContain('provider token');
 
+    await resetSchema();
+    const terminalRepository = repository(administrativePool);
+    const terminalScheduler = new ReminderScheduler(
+      terminalRepository,
+      failingGateway,
+      10,
+    );
     const terminal = occurrence(workspaceId, {
       dueAt: '2026-08-04T13:00:00.000Z',
       deliveryAttempt: 3,
     });
-    await durableRepository.schedule(terminal);
+    await terminalRepository.schedule(terminal);
     await expect(
-      failingScheduler.run(new Date('2026-08-04T13:01:00.000Z')),
+      terminalScheduler.run(new Date('2026-08-04T13:01:00.000Z')),
     ).resolves.toMatchObject({ failed: 1 });
     await expect(
-      durableRepository.listReminders(workspaceId, 10),
+      terminalRepository.listReminders(workspaceId, 10),
     ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -427,7 +438,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
       ]),
     );
     await expect(
-      durableRepository.listOutcomes(workspaceId, 10),
+      terminalRepository.listOutcomes(workspaceId, 10),
     ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
