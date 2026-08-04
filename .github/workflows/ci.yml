@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  repair-test-fixture:
+  repair-test-fixtures:
     if: >-
       github.head_ref == 'feat/ai-authenticated-gateway-context' &&
       github.actor != 'github-actions[bot]'
@@ -34,13 +34,24 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('apps/ai-service/src/quality-coverage.test.ts')
-          text = path.read_text(encoding='utf-8')
+          quality_path = Path('apps/ai-service/src/quality-coverage.test.ts')
+          quality = quality_path.read_text(encoding='utf-8')
           old_secret = "const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';"
           new_secret = "const GATEWAY_SECRET = Buffer.alloc(32, 0x51).toString('base64url');"
-          if text.count(old_secret) != 1:
-              raise SystemExit(f'expected one hardcoded fixture, found {text.count(old_secret)}')
-          path.write_text(text.replace(old_secret, new_secret, 1), encoding='utf-8')
+          if quality.count(old_secret) != 1:
+              raise SystemExit(f'expected one hardcoded fixture, found {quality.count(old_secret)}')
+          quality_path.write_text(quality.replace(old_secret, new_secret, 1), encoding='utf-8')
+
+          boundary_test_path = Path('apps/ai-service/src/ai-http-boundary.test.ts')
+          boundary_test = boundary_test_path.read_text(encoding='utf-8')
+          old_index = 'alphabet.indexOf(canonical[canonical.length - 1]);'
+          new_index = 'alphabet.indexOf(canonical[canonical.length - 1]!);'
+          if boundary_test.count(old_index) != 1:
+              raise SystemExit(f'expected one signature index, found {boundary_test.count(old_index)}')
+          boundary_test_path.write_text(
+              boundary_test.replace(old_index, new_index, 1),
+              encoding='utf-8',
+          )
           PY
 
       - name: Verify AI service
@@ -49,7 +60,9 @@ jobs:
           set -Eeuo pipefail
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm exec prettier --single-quote --write apps/ai-service/src/quality-coverage.test.ts
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/quality-coverage.test.ts \
+            apps/ai-service/src/ai-http-boundary.test.ts
           pnpm --filter @life-os/ai-service lint
           pnpm --filter @life-os/ai-service test
 
@@ -63,9 +76,12 @@ jobs:
           git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add apps/ai-service/src/quality-coverage.test.ts .github/workflows/ci.yml
+          git add \
+            apps/ai-service/src/quality-coverage.test.ts \
+            apps/ai-service/src/ai-http-boundary.test.ts \
+            .github/workflows/ci.yml
           git diff --cached --check
-          git commit -m 'test(ai): derive gateway fixture without a hardcoded key'
+          git commit -m 'test(ai): derive gateway fixtures without hardcoded keys'
           authorization=$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
             push origin HEAD:feat/ai-authenticated-gateway-context
