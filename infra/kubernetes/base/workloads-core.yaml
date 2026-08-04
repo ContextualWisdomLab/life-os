@@ -1,0 +1,371 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: life-os-planning-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: planning-service
+    app.kubernetes.io/part-of: life-os
+    app.kubernetes.io/component: application
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: planning-service
+      app.kubernetes.io/part-of: life-os
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: planning-service
+        app.kubernetes.io/part-of: life-os
+        app.kubernetes.io/component: application
+    spec:
+      serviceAccountName: life-os-runtime
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: planning-service
+              app.kubernetes.io/part-of: life-os
+      containers:
+        - name: planning-service
+          image: life-os/planning-service:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: PLANNING_SERVICE_PORT
+              value: '4102'
+          envFrom:
+            - configMapRef:
+                name: life-os-runtime-config
+            - secretRef:
+                name: life-os-runtime-secrets
+          ports:
+            - name: http
+              containerPort: 4102
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 150m
+              memory: 192Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+          volumeMounts:
+            - name: runtime-tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: life-os-planning-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: planning-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: planning-service
+    app.kubernetes.io/part-of: life-os
+  ports:
+    - name: http
+      port: 4102
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: life-os-habit-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: habit-service
+    app.kubernetes.io/part-of: life-os
+    app.kubernetes.io/component: application
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: habit-service
+      app.kubernetes.io/part-of: life-os
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: habit-service
+        app.kubernetes.io/part-of: life-os
+        app.kubernetes.io/component: application
+    spec:
+      serviceAccountName: life-os-runtime
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: habit-service
+              app.kubernetes.io/part-of: life-os
+      containers:
+        - name: habit-service
+          image: life-os/habit-service:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: HABIT_SERVICE_PORT
+              value: '4103'
+          envFrom:
+            - configMapRef:
+                name: life-os-runtime-config
+            - secretRef:
+                name: life-os-runtime-secrets
+          ports:
+            - name: http
+              containerPort: 4103
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          volumeMounts:
+            - name: runtime-tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: life-os-habit-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: habit-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: habit-service
+    app.kubernetes.io/part-of: life-os
+  ports:
+    - name: http
+      port: 4103
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: life-os-review-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: review-service
+    app.kubernetes.io/part-of: life-os
+    app.kubernetes.io/component: application
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: review-service
+      app.kubernetes.io/part-of: life-os
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: review-service
+        app.kubernetes.io/part-of: life-os
+        app.kubernetes.io/component: application
+    spec:
+      serviceAccountName: life-os-runtime
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: review-service
+              app.kubernetes.io/part-of: life-os
+      containers:
+        - name: review-service
+          image: life-os/review-service:local
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: REVIEW_SERVICE_PORT
+              value: '4104'
+          envFrom:
+            - configMapRef:
+                name: life-os-runtime-config
+            - secretRef:
+                name: life-os-runtime-secrets
+          ports:
+            - name: http
+              containerPort: 4104
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          volumeMounts:
+            - name: runtime-tmp
+              mountPath: /tmp
+      volumes:
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: life-os-review-service
+  namespace: life-os
+  labels:
+    app.kubernetes.io/name: review-service
+    app.kubernetes.io/part-of: life-os
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: review-service
+    app.kubernetes.io/part-of: life-os
+  ports:
+    - name: http
+      port: 4104
+      targetPort: http
+      protocol: TCP
