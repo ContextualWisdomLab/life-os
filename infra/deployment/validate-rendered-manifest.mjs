@@ -4,6 +4,8 @@ import { PRODUCTION_SERVICE_NAMES } from './render-production-overlay.mjs';
 
 const INVALID_MANIFEST = 'Rendered production manifest is invalid';
 const IMMUTABLE_IMAGE_LINE = /^\s*image:\s+[^\s@]+@sha256:[a-f0-9]{64}\s*$/m;
+const RESOURCE_KIND_LINE = /^kind:\s+([^#\n]+?)\s*$/m;
+const METADATA_NAME_LINE = /^ {2}name:\s+([^#\n]+?)\s*$/m;
 
 /** Splits a bounded Kubernetes YAML stream into non-empty documents. */
 export function splitYamlDocuments(manifest) {
@@ -20,12 +22,14 @@ export function splitYamlDocuments(manifest) {
     .filter(Boolean);
 }
 
-/** Reads one scalar field from a controlled Kubernetes document. */
-function readScalar(document, fieldName) {
-  const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^\\s*${escapedName}:\\s*([^#\\n]+?)\\s*$`, 'm')
-    .exec(document)?.[1]
-    ?.trim();
+/** Reads one top-level Kubernetes resource kind from a controlled document. */
+function readResourceKind(document) {
+  return RESOURCE_KIND_LINE.exec(document)?.[1]?.trim();
+}
+
+/** Reads the first two-space-indented metadata name from a controlled document. */
+function readMetadataName(document) {
+  return METADATA_NAME_LINE.exec(document)?.[1]?.trim();
 }
 
 /** Requires one security or reliability fragment without echoing manifest data. */
@@ -97,23 +101,23 @@ export function validateRenderedProductionManifest(manifest) {
   ]);
   if (
     documents.some(
-      (document) => !allowedKinds.has(readScalar(document, 'kind')),
+      (document) => !allowedKinds.has(readResourceKind(document)),
     )
   ) {
     throw new Error(INVALID_MANIFEST);
   }
 
   const deployments = documents.filter(
-    (document) => readScalar(document, 'kind') === 'Deployment',
+    (document) => readResourceKind(document) === 'Deployment',
   );
   const services = documents.filter(
-    (document) => readScalar(document, 'kind') === 'Service',
+    (document) => readResourceKind(document) === 'Service',
   );
   const budgets = documents.filter(
-    (document) => readScalar(document, 'kind') === 'PodDisruptionBudget',
+    (document) => readResourceKind(document) === 'PodDisruptionBudget',
   );
   const policies = documents.filter(
-    (document) => readScalar(document, 'kind') === 'NetworkPolicy',
+    (document) => readResourceKind(document) === 'NetworkPolicy',
   );
 
   if (
@@ -127,13 +131,13 @@ export function validateRenderedProductionManifest(manifest) {
 
   for (const serviceName of PRODUCTION_SERVICE_NAMES) {
     const deployment = deployments.find(
-      (document) => readScalar(document, 'name') === `life-os-${serviceName}`,
+      (document) => readMetadataName(document) === `life-os-${serviceName}`,
     );
     const service = services.find(
-      (document) => readScalar(document, 'name') === `life-os-${serviceName}`,
+      (document) => readMetadataName(document) === `life-os-${serviceName}`,
     );
     const budget = budgets.find(
-      (document) => readScalar(document, 'name') === `life-os-${serviceName}`,
+      (document) => readMetadataName(document) === `life-os-${serviceName}`,
     );
     if (!deployment || !service || !budget) {
       throw new Error(INVALID_MANIFEST);
@@ -144,7 +148,7 @@ export function validateRenderedProductionManifest(manifest) {
   }
 
   const defaultDeny = policies.find(
-    (document) => readScalar(document, 'name') === 'life-os-default-deny',
+    (document) => readMetadataName(document) === 'life-os-default-deny',
   );
   if (!defaultDeny) {
     throw new Error(INVALID_MANIFEST);
