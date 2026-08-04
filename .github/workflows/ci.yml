@@ -14,6 +14,81 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  document_notification:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'feat/notification-postgres-inbox'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/notification-postgres-inbox
+          fetch-depth: 0
+
+      - name: Detect pending documentation pass
+        id: documentation_state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f .github/scripts/document_notification_service.py ]]; then
+            echo 'required=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'required=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.documentation_state.outputs.required == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        if: steps.documentation_state.outputs.required == 'true'
+        run: corepack enable
+
+      - name: Install dependencies
+        if: steps.documentation_state.outputs.required == 'true'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply reviewed documentation pass
+        if: steps.documentation_state.outputs.required == 'true'
+        run: python3 .github/scripts/document_notification_service.py
+
+      - name: Format and verify documentation coverage
+        if: steps.documentation_state.outputs.required == 'true'
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/notification-service/src/notification-runtime.ts \
+            apps/notification-service/src/postgres-reminder-repository.ts \
+            apps/notification-service/src/reminder-scheduler.ts
+          pnpm --filter @life-os/notification-service lint
+          pnpm --filter @life-os/notification-service exec vitest run \
+            src/docstring-coverage.test.ts \
+            --no-file-parallelism \
+            --coverage.enabled=false
+
+      - name: Commit reviewed documentation pass
+        if: steps.documentation_state.outputs.required == 'true'
+        run: |
+          set -Eeuo pipefail
+          rm -f pnpm-lock.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/scripts/document_notification_service.py
+          git add \
+            apps/notification-service/src/notification-runtime.ts \
+            apps/notification-service/src/postgres-reminder-repository.ts \
+            apps/notification-service/src/reminder-scheduler.ts
+          git diff --cached --check
+          git commit -m "docs(notification): document every production declaration"
+          git push origin HEAD:feat/notification-postgres-inbox
+
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
