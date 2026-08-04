@@ -8,11 +8,11 @@ const MAXIMUM_COOKIE_BYTES = 4 * 1024;
 const MAXIMUM_RESPONSE_BYTES = 16 * 1024;
 const MAXIMUM_QUERY_CHARACTERS = 120;
 const MAXIMUM_TITLE_CHARACTERS = 160;
-const MAXIMUM_RESULTS = 50;
+const MAXIMUM_RESULTS = 25;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 const UPSTREAM_TIMEOUT_MS = 3_000;
 
-/** Credential-free planning result returned to the authenticated browser. */
+/** Credential-free planning record exposed to the browser. */
 export interface PlanningSearchView {
   entityType: 'goal' | 'project' | 'task';
   id: string;
@@ -22,7 +22,7 @@ export interface PlanningSearchView {
   createdAt: string;
 }
 
-/** Injectable fetch contract used to test the same-origin BFF without networking. */
+/** Minimal fetch surface used by the production BFF and deterministic tests. */
 export type PlanningSearchFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -30,7 +30,7 @@ export type PlanningSearchFetch = (
 
 type WebEnvironment = Readonly<Record<string, string | undefined>>;
 
-/** Builds a bounded RFC 9457-compatible response without reflecting secrets. */
+/** Builds a no-store RFC 9457-compatible response without upstream details. */
 function problemResponse(
   status: number,
   title: string,
@@ -48,7 +48,7 @@ function problemResponse(
   );
 }
 
-/** Returns the stable client error for malformed browser search input. */
+/** Returns the stable browser-facing validation failure. */
 function invalidSearchRequest(): Response {
   return problemResponse(
     400,
@@ -57,7 +57,7 @@ function invalidSearchRequest(): Response {
   );
 }
 
-/** Returns a generic response for unavailable or invalid trusted services. */
+/** Returns the stable browser-facing upstream failure. */
 function unavailableSearch(): Response {
   return problemResponse(
     503,
@@ -66,7 +66,7 @@ function unavailableSearch(): Response {
   );
 }
 
-/** Narrows untrusted JSON values to plain records. */
+/** Narrows untrusted JSON to a non-array record. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -76,7 +76,7 @@ function codePointLength(value: string): number {
   return [...value].length;
 }
 
-/** Requires a canonical opaque UUIDv4 identifier. */
+/** Requires one canonical opaque UUIDv4 value. */
 function requireUuid(value: unknown, message: string): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new Error(message);
@@ -84,7 +84,7 @@ function requireUuid(value: unknown, message: string): string {
   return value.toLowerCase();
 }
 
-/** Requires a parseable RFC 3339 timestamp and returns canonical UTC text. */
+/** Requires one valid timestamp and returns canonical UTC ISO 8601. */
 function requireTimestamp(value: unknown): string {
   if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
     throw new Error('Planning search response is invalid');
@@ -96,7 +96,7 @@ function requireTimestamp(value: unknown): string {
   return new Date(parsed).toISOString();
 }
 
-/** Requires a bounded display title without control characters. */
+/** Requires a bounded, nonblank, control-free display title. */
 function requireTitle(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -110,11 +110,8 @@ function requireTitle(value: unknown): string {
   return value;
 }
 
-/** Validates a fixed internal service origin without credentials or redirects. */
-export function requireServiceOrigin(
-  value: string | undefined,
-  _serviceName: string,
-): string {
+/** Requires a fixed service origin with no credentials, path, query, or fragment. */
+export function requireServiceOrigin(value: string | undefined): string {
   if (!value || value.length > 2048 || /[\u0000-\u001f\u007f]/.test(value)) {
     throw new Error('Service origin is invalid');
   }
@@ -137,50 +134,18 @@ export function requireServiceOrigin(
   return parsed.origin;
 }
 
-/** Requires the shared HMAC secret used only by trusted server-side components. */
-export function requireGatewayContextSecret(value: unknown): string {
+/** Requires the shared HMAC secret used only between the BFF and planning service. */
+export function requireGatewaySecret(value: string | undefined): string {
   if (
     typeof value !== 'string' ||
-    Buffer.byteLength(value, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES ||
-    Buffer.byteLength(value, 'utf8') > 4096 ||
-    /[\r\n\u0000]/.test(value)
+    Buffer.byteLength(value, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
   ) {
     throw new Error('Gateway context secret is invalid');
   }
   return value;
 }
 
-/**
- * Signs the canonical short-lived workspace context consumed by planning-service.
- * The workspace identity is derived from the authenticated session, never the browser.
- */
-export function createWorkspaceContextHeaders(
-  workspaceId: string,
-  secret: string,
-  issuedAtSeconds = Math.floor(Date.now() / 1000),
-): Readonly<Record<string, string>> {
-  const canonicalWorkspaceId = requireUuid(
-    workspaceId,
-    'Identity session response is invalid',
-  );
-  if (!Number.isSafeInteger(issuedAtSeconds) || issuedAtSeconds < 0) {
-    throw new Error('Gateway context timestamp is invalid');
-  }
-  const issuedAt = String(issuedAtSeconds);
-  const signature = createHmac('sha256', requireGatewayContextSecret(secret))
-    .update(
-      `life-os.workspace.v1\n${canonicalWorkspaceId}\n${issuedAt}`,
-      'utf8',
-    )
-    .digest('base64url');
-  return {
-    'x-life-os-workspace-id': canonicalWorkspaceId,
-    'x-life-os-context-issued-at': issuedAt,
-    'x-life-os-context-signature': signature,
-  };
-}
-
-/** Extracts the workspace identifier from a validated identity session response. */
+/** Extracts the authorized workspace from identity-session introspection. */
 export function parseSessionWorkspace(value: unknown): string {
   if (!isPlainObject(value)) {
     throw new Error('Identity session response is invalid');
@@ -188,7 +153,32 @@ export function parseSessionWorkspace(value: unknown): string {
   return requireUuid(value.workspaceId, 'Identity session response is invalid');
 }
 
-/** Validates one planning result and strips all fields outside the response contract. */
+/** Creates the exact short-lived context verified by planning-service. */
+export function createPlanningContextHeaders(
+  workspaceId: string,
+  secret: string,
+  nowSeconds: number,
+): Readonly<Record<string, string>> {
+  const safeWorkspaceId = requireUuid(
+    workspaceId,
+    'Identity session response is invalid',
+  );
+  const safeSecret = requireGatewaySecret(secret);
+  if (!Number.isSafeInteger(nowSeconds) || nowSeconds < 0) {
+    throw new Error('Gateway context timestamp is invalid');
+  }
+  const issuedAt = String(nowSeconds);
+  const signature = createHmac('sha256', safeSecret)
+    .update(`life-os.workspace.v1\n${safeWorkspaceId}\n${issuedAt}`, 'utf8')
+    .digest('base64url');
+  return Object.freeze({
+    'x-life-os-workspace-id': safeWorkspaceId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  });
+}
+
+/** Parses one untrusted planning result into its entity-specific browser shape. */
 function parseResult(value: unknown): PlanningSearchView {
   if (!isPlainObject(value)) {
     throw new Error('Planning search response is invalid');
@@ -230,7 +220,7 @@ function parseResult(value: unknown): PlanningSearchView {
   return result;
 }
 
-/** Validates and bounds the complete planning-service response. */
+/** Validates the complete bounded planning response before returning it. */
 export function parsePlanningSearchResults(
   value: unknown,
 ): PlanningSearchView[] {
@@ -240,55 +230,7 @@ export function parsePlanningSearchResults(
   return value.map(parseResult);
 }
 
-/** Reads a response stream while enforcing the byte limit before buffering it. */
-async function readBoundedText(response: Response): Promise<string> {
-  const declaredLength = response.headers.get('content-length');
-  if (
-    declaredLength !== null &&
-    (/^\d+$/.test(declaredLength) === false ||
-      Number(declaredLength) > MAXIMUM_RESPONSE_BYTES)
-  ) {
-    throw new Error('Upstream response is invalid');
-  }
-  if (!response.body) {
-    throw new Error('Upstream response is invalid');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let byteLength = 0;
-  let body = '';
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      if (!chunk.value) continue;
-      byteLength += chunk.value.byteLength;
-      if (byteLength > MAXIMUM_RESPONSE_BYTES) {
-        await reader.cancel('Upstream response exceeds byte limit');
-        throw new Error('Upstream response is invalid');
-      }
-      body += decoder.decode(chunk.value, { stream: true });
-    }
-    body += decoder.decode();
-  } catch {
-    try {
-      await reader.cancel('Upstream response is invalid');
-    } catch {
-      // Cancellation is best-effort after a malformed or failed stream.
-    }
-    throw new Error('Upstream response is invalid');
-  } finally {
-    reader.releaseLock();
-  }
-
-  if (!body) {
-    throw new Error('Upstream response is invalid');
-  }
-  return body;
-}
-
-/** Reads JSON only from an allowlisted content type and bounded body. */
+/** Reads JSON only from allowed media types and within a fixed byte budget. */
 async function readBoundedJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type')?.split(';', 1)[0];
   if (
@@ -297,7 +239,10 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   ) {
     throw new Error('Upstream response is invalid');
   }
-  const body = await readBoundedText(response);
+  const body = await response.text();
+  if (!body || Buffer.byteLength(body, 'utf8') > MAXIMUM_RESPONSE_BYTES) {
+    throw new Error('Upstream response is invalid');
+  }
   try {
     return JSON.parse(body) as unknown;
   } catch {
@@ -305,7 +250,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-/** Parses the browser-controlled query while rejecting ownership injection. */
+/** Accepts only one bounded query and optional bounded limit. */
 function parseBrowserQuery(
   url: URL,
 ): { query: string; limit: number } | undefined {
@@ -321,6 +266,7 @@ function parseBrowserQuery(
   const query = queryValues[0]?.normalize('NFKC').trim().replace(/\s+/gu, ' ');
   if (
     !query ||
+    codePointLength(query) < 2 ||
     /[\u0000-\u001f\u007f]/.test(query) ||
     /^\d+(?:\s+\d+)*$/u.test(query) ||
     codePointLength(query) > MAXIMUM_QUERY_CHARACTERS ||
@@ -339,7 +285,7 @@ function parseBrowserQuery(
   return { query, limit };
 }
 
-/** Validates the browser cookie before forwarding it only to identity-service. */
+/** Accepts a browser cookie only within one bounded, injection-safe header. */
 function requireCookieHeader(request: Request): string | undefined {
   const cookie = request.headers.get('cookie') ?? undefined;
   if (
@@ -352,7 +298,7 @@ function requireCookieHeader(request: Request): string | undefined {
   return cookie;
 }
 
-/** Creates an allowlisted header set while omitting absent optional values. */
+/** Creates a header collection without undefined entries. */
 function requestHeaders(entries: Record<string, string | undefined>): Headers {
   const headers = new Headers({ accept: 'application/json' });
   for (const [name, value] of Object.entries(entries)) {
@@ -364,13 +310,15 @@ function requestHeaders(entries: Record<string, string | undefined>): Headers {
 }
 
 /**
- * Authenticates the browser session, signs its workspace scope, and proxies search.
- * Browser credentials are never forwarded to planning-service.
+ * Authenticates through identity, derives workspace ownership, signs a short-lived
+ * service context, and returns validated planning results without forwarding the
+ * browser credential to planning-service.
  */
 export async function handlePlanningSearchRequest(
   request: Request,
   environment: WebEnvironment,
   fetcher: PlanningSearchFetch = fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<Response> {
   const parsedQuery = parseBrowserQuery(new URL(request.url));
   if (!parsedQuery) {
@@ -380,13 +328,11 @@ export async function handlePlanningSearchRequest(
   try {
     const identityOrigin = requireServiceOrigin(
       environment.IDENTITY_SERVICE_ORIGIN,
-      'identity',
     );
     const planningOrigin = requireServiceOrigin(
       environment.PLANNING_SERVICE_ORIGIN,
-      'planning',
     );
-    const gatewaySecret = requireGatewayContextSecret(
+    const contextSecret = requireGatewaySecret(
       environment.PLANNING_GATEWAY_CONTEXT_SECRET,
     );
     const cookie = requireCookieHeader(request);
@@ -417,14 +363,15 @@ export async function handlePlanningSearchRequest(
     const workspaceId = parseSessionWorkspace(
       await readBoundedJson(identityResponse),
     );
+    const contextHeaders = createPlanningContextHeaders(
+      workspaceId,
+      contextSecret,
+      nowSeconds,
+    );
 
     const planningUrl = new URL('/v1/search', planningOrigin);
     planningUrl.searchParams.set('q', parsedQuery.query);
     planningUrl.searchParams.set('limit', String(parsedQuery.limit));
-    const contextHeaders = createWorkspaceContextHeaders(
-      workspaceId,
-      gatewaySecret,
-    );
     const planningResponse = await fetcher(planningUrl, {
       method: 'GET',
       headers: requestHeaders({
