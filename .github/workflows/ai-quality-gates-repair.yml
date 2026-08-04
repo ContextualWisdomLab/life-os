@@ -72,3 +72,13 @@ jobs:
 
       - name: Run AI service quality gates
         run: pnpm --filter @life-os/ai-service test
+
+      - name: Upload detailed AI coverage evidence
+        if: always() && hashFiles('apps/ai-service/coverage/coverage-final.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ai-coverage-evidence
+          path: apps/ai-service/coverage/
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
