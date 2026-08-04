@@ -1,0 +1,11 @@
+{
+  "ai-service": "ghcr.io/contextualwisdomlab/life-os-ai-service@sha256:fb66c753f1d7c216caf7cbe5595251e64110d94cbbf918e809919b43caad9d86",
+  "gateway": "ghcr.io/contextualwisdomlab/life-os-gateway@sha256:1c262da712d8e065e68155bfbaa896f78e354b9dc0ab8162af20874906fba09b",
+  "habit-service": "ghcr.io/contextualwisdomlab/life-os-habit-service@sha256:dd61d217785bac0731686ecdaa58cf1e93eb6c834daf7babe80bfcda2cdbdba2",
+  "identity-service": "ghcr.io/contextualwisdomlab/life-os-identity-service@sha256:f6325bc36cbac396ab59b269aed619277cd26e38e2a16d2138ebdf25ca9d5710",
+  "integration-calendar-service": "ghcr.io/contextualwisdomlab/life-os-integration-calendar-service@sha256:88d9b07c71723f1752986eebe4f9915babdc6c76cee9630f70e1b15f05f442fc",
+  "integration-service": "ghcr.io/contextualwisdomlab/life-os-integration-service@sha256:72b3f0629cf4166e1d52277a3a9f3edb7b4104a4238ad515d4e096d40b17ba6c",
+  "planning-service": "ghcr.io/contextualwisdomlab/life-os-planning-service@sha256:a9072e5aeb2039a9a5b5fd37d196c7a9550b1de78e6a26f57b38f05f56fe2482",
+  "review-service": "ghcr.io/contextualwisdomlab/life-os-review-service@sha256:84ccb3b6d3a1061ebba098462de3e073f68cdf73453d91255a64475187aea77c",
+  "web": "ghcr.io/contextualwisdomlab/life-os-web@sha256:8dd78750fb45d04e56b5e3bd8d801e7bdac930269e8e4e67116086b503b23e3b"
+}
