@@ -141,6 +141,7 @@ jobs:
           bash infra/kubernetes/run-migrations.sh
 
       - name: Prepare namespace and capture prior revisions
+        id: capture
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -183,6 +184,7 @@ jobs:
           capture_deployment life-os-gateway GATEWAY
 
       - name: Review and apply exact manifest
+        id: apply
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -197,10 +199,14 @@ jobs:
             --filename "${rendered_manifest}"
 
       - name: Verify rollout or restore captured state
+        if: ${{ always() && steps.capture.outcome == 'success' }}
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          if kubectl rollout status deployment/life-os-web --namespace life-os --timeout=10m && \
+          if [[ "${APPLY_OUTCOME}" == 'success' ]] && \
+            kubectl rollout status deployment/life-os-web --namespace life-os --timeout=10m && \
             kubectl rollout status deployment/life-os-gateway --namespace life-os --timeout=10m; then
             kubectl get deployment/life-os-web deployment/life-os-gateway \
               --namespace life-os \
@@ -212,12 +218,20 @@ jobs:
             local deployment_name="$1"
             local existed="$2"
             local prior_revision="$3"
-            local remaining
+            local current_revision remaining
             if [[ "${existed}" == 'true' ]]; then
               [[ "${prior_revision}" =~ ^[0-9]+$ ]] || return 1
-              kubectl rollout undo "deployment/${deployment_name}" \
-                --namespace life-os \
-                --to-revision="${prior_revision}"
+              current_revision="$(
+                kubectl get deployment "${deployment_name}" \
+                  --namespace life-os \
+                  --output=jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}'
+              )"
+              [[ "${current_revision}" =~ ^[0-9]+$ ]] || return 1
+              if [[ "${current_revision}" != "${prior_revision}" ]]; then
+                kubectl rollout undo "deployment/${deployment_name}" \
+                  --namespace life-os \
+                  --to-revision="${prior_revision}"
+              fi
               kubectl rollout status "deployment/${deployment_name}" \
                 --namespace life-os \
                 --timeout=5m
@@ -243,8 +257,8 @@ jobs:
           restore_deployment life-os-gateway "${GATEWAY_EXISTED}" \
             "${GATEWAY_PRIOR_REVISION}" || recovery_failed=1
           if ((recovery_failed != 0)); then
-            printf 'Rollout and automatic workload-state recovery both failed.\n' >&2
+            printf 'Rollout or apply failed, and automatic workload-state recovery also failed.\n' >&2
             exit 2
           fi
-          printf 'Rollout failed; captured workload state was restored.\n' >&2
+          printf 'Rollout or apply failed; captured workload state was restored.\n' >&2
           exit 1
