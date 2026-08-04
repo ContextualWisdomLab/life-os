@@ -1,9 +1,8 @@
 name: Format Production Deployment Reference
 
 on:
-  push:
-    branches:
-      - feat/production-deployment-reference
+  pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/format-deployment-reference.yml'
       - 'infra/deployment/**'
@@ -13,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: format-production-deployment-reference
+  group: format-production-deployment-reference-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -21,7 +20,7 @@ env:
 
 jobs:
   format:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -92,11 +91,26 @@ jobs:
             infra/deployment/validate-rendered-manifest.mjs \
             infra/deployment/create-provenance.mjs \
             infra/deployment/tests/deployment-contract.test.mjs
-          git rm .github/workflows/format-deployment-reference.yml
+
+      - name: Upload formatted and hardened sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: formatted-production-deployment-reference
+          path: |
+            infra/deployment/render-production-overlay.mjs
+            infra/deployment/validate-rendered-manifest.mjs
+            infra/deployment/create-provenance.mjs
+            infra/deployment/tests/deployment-contract.test.mjs
+            infra/kubernetes/base/workloads-public.yaml
+            infra/kubernetes/base/workloads-core.yaml
+            infra/kubernetes/base/workloads-integrations.yaml
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Commit formatted and hardened sources
         run: |
           set -euo pipefail
+          git rm .github/workflows/format-deployment-reference.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
