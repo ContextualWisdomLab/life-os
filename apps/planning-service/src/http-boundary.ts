@@ -112,7 +112,7 @@ export function requireTrustedWorkspaceContext(
     secret,
   );
   const actual = Buffer.from(headers.signature, 'base64url');
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+  if (!timingSafeEqual(actual, expected)) {
     return invalidGatewayContext();
   }
   return workspaceId;
