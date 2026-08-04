@@ -39,26 +39,31 @@
   gap: 1rem;
 }
 
+.capture,
 .search {
   display: grid;
   align-content: start;
   gap: 0.55rem;
+  margin: 0;
   padding: 1rem;
   border: 1px solid var(--line);
   border-radius: 1rem;
   background: var(--panel-strong);
 }
 
+.capture label,
 .search label {
   font-weight: 750;
 }
 
+.capture > div,
 .search > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.6rem;
 }
 
+.capture input,
 .search input {
   min-width: 0;
   padding: 0.75rem 0.85rem;
@@ -69,6 +74,7 @@
   font: inherit;
 }
 
+.capture button,
 .search button {
   padding: 0.75rem 1rem;
   border: 0;
@@ -85,6 +91,7 @@
   opacity: 0.62;
 }
 
+.capture small,
 .search small,
 .status,
 .results small {
@@ -133,6 +140,7 @@
     grid-template-columns: 1fr;
   }
 
+  .capture > div,
   .search > div {
     grid-template-columns: 1fr;
   }
