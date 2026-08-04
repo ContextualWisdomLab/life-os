@@ -76,9 +76,7 @@ describe('planning search request validation', () => {
   });
 
   it('escapes SQL LIKE metacharacters without altering ordinary text', () => {
-    expect(escapeLikePattern('100%_ready\\now')).toBe(
-      '100\\%\\_ready\\\\now',
-    );
+    expect(escapeLikePattern('100%_ready\\now')).toBe('100\\%\\_ready\\\\now');
     expect(escapeLikePattern('launch plan')).toBe('launch plan');
   });
 });
