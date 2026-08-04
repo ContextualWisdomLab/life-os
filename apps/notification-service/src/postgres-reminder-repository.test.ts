@@ -19,6 +19,7 @@ const otherWorkspaceId = '69b8f6fb-c65a-462e-b5e7-1b21808db998';
 const reminderId = '91fe0f58-2035-49b7-a793-ac75939a433f';
 const outcomeId = 'fa6d0f3e-337c-4d94-b17d-4afcf6bf79c1';
 const messageId = 'ca035df4-0149-4b08-8f21-07bd758cfbaa';
+const claimKey = 'ebeb80f5-a077-45ee-9f39-f3e64af94cdb';
 const idempotencyKey = `${workspaceId}:${reminderId}:2026-08-04T12:00:00.000Z`;
 
 interface QueryCall {
@@ -41,7 +42,9 @@ class RecordingSqlClient implements NotificationSqlClient {
   }
 }
 
-function reminder(overrides: Partial<ReminderOccurrence> = {}): ReminderOccurrence {
+function reminder(
+  overrides: Partial<ReminderOccurrence> = {},
+): ReminderOccurrence {
   return {
     id: reminderId,
     workspaceId,
@@ -117,7 +120,13 @@ describe('notification idempotency digest', () => {
   });
 
   it('rejects empty, control-bearing, non-string, and oversized keys', () => {
-    for (const value of ['', 'key\nvalue', 42, 'x'.repeat(1025)]) {
+    for (const value of [
+      '',
+      'key\nvalue',
+      42,
+      'x'.repeat(1025),
+      'é'.repeat(600),
+    ]) {
       expect(() => hashNotificationIdempotencyKey(value)).toThrowError(
         NotificationPersistenceError,
       );
@@ -193,10 +202,7 @@ describe('PostgresReminderRepository', () => {
       'ORDER BY due_instant ASC, reminder_id ASC',
     );
     expect(client.calls[0]?.text).toContain('LIMIT $2');
-    expect(client.calls[0]?.values).toEqual([
-      '2026-08-04T12:00:00.000Z',
-      20,
-    ]);
+    expect(client.calls[0]?.values).toEqual(['2026-08-04T12:00:00.000Z', 20]);
 
     const invalidClient = new RecordingSqlClient([
       [reminderRow({ workspace_id: 'numeric-1' })],
@@ -209,32 +215,48 @@ describe('PostgresReminderRepository', () => {
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
   });
 
-  it('claims once with a SHA-256 digest and a bounded lease', async () => {
-    const claimedClient = new RecordingSqlClient([[{ reminder_id: reminderId }]]);
-    const repository = new PostgresReminderRepository(claimedClient, 600);
+  it('returns one opaque claim key and null when the lease is unavailable', async () => {
+    const claimedClient = new RecordingSqlClient([
+      [{ reminder_id: reminderId }],
+    ]);
+    const repository = new PostgresReminderRepository(
+      claimedClient,
+      600,
+      () => outcomeId,
+      () => claimKey,
+    );
 
-    await expect(
-      repository.claim(workspaceId, reminderId, idempotencyKey),
-    ).resolves.toBe(true);
+    await expect(repository.claim(workspaceId, reminderId)).resolves.toBe(
+      claimKey,
+    );
     const call = claimedClient.calls[0];
-    expect(call?.text).toContain('UPDATE notification_service.reminder_occurrences');
+    expect(call?.text).toContain(
+      'UPDATE notification_service.reminder_occurrences',
+    );
     expect(call?.text).toContain('claim_expires_at <= clock_timestamp()');
     expect(call?.text).toContain('make_interval(secs => $4)');
     expect(call?.values?.[0]).toBe(workspaceId);
     expect(call?.values?.[1]).toBe(reminderId);
-    expect(call?.values?.[2]).toEqual(
-      hashNotificationIdempotencyKey(idempotencyKey),
-    );
+    expect(call?.values?.[2]).toEqual(hashNotificationIdempotencyKey(claimKey));
     expect(call?.values?.[3]).toBe(600);
 
     const missedClient = new RecordingSqlClient([[]]);
     await expect(
-      new PostgresReminderRepository(missedClient).claim(
-        workspaceId,
-        reminderId,
-        idempotencyKey,
-      ),
-    ).resolves.toBe(false);
+      new PostgresReminderRepository(
+        missedClient,
+        300,
+        () => outcomeId,
+        () => claimKey,
+      ).claim(workspaceId, reminderId),
+    ).resolves.toBeNull();
+    await expect(
+      new PostgresReminderRepository(
+        new RecordingSqlClient([]),
+        300,
+        () => outcomeId,
+        () => 'numeric-claim-key',
+      ).claim(workspaceId, reminderId),
+    ).rejects.toBeInstanceOf(NotificationPersistenceError);
   });
 
   it('counts delivered outcomes by tenant and validated local date', async () => {
@@ -251,35 +273,45 @@ describe('PostgresReminderRepository', () => {
 
   it('persists delivered, deferred, retryable, and terminal transitions atomically', async () => {
     const response = [{ transitioned: true, outcome_inserted: true }];
-    const client = new RecordingSqlClient([response, response, response, response]);
+    const client = new RecordingSqlClient([
+      response,
+      response,
+      response,
+      response,
+    ]);
     const repository = new PostgresReminderRepository(client);
 
     await repository.markDelivered(
       reminder(),
       '2026-08-04T12:00:01.000Z',
+      claimKey,
       idempotencyKey,
     );
     await repository.defer(
       reminder(),
       '2026-08-04T22:00:00.000Z',
       'quiet_hours',
+      claimKey,
       idempotencyKey,
     );
     await repository.fail(
       reminder(),
       '2026-08-04T12:05:00.000Z',
       'delivery_failed',
+      claimKey,
       idempotencyKey,
     );
     await repository.fail(
       reminder({ deliveryAttempt: 3 }),
       null,
       'attempt_limit',
+      claimKey,
       idempotencyKey,
     );
 
     for (const call of client.calls) {
       expect(call.text).toContain('WITH transitioned_occurrence AS');
+      expect(call.text).toContain('claim_expires_at > clock_timestamp()');
       expect(call.text).toContain(
         'INSERT INTO notification_service.reminder_outcomes',
       );
@@ -304,6 +336,7 @@ describe('PostgresReminderRepository', () => {
       repository.markDelivered(
         reminder(),
         '2026-08-04T12:00:01.000Z',
+        claimKey,
         idempotencyKey,
       ),
     ).rejects.toBeInstanceOf(NotificationPersistenceError);
@@ -317,9 +350,9 @@ describe('PostgresReminderRepository', () => {
     ]);
     const repository = new PostgresReminderRepository(client);
 
-    await expect(repository.listReminders(workspaceId, 10)).resolves.toHaveLength(
-      1,
-    );
+    await expect(
+      repository.listReminders(workspaceId, 10),
+    ).resolves.toHaveLength(1);
     await expect(repository.listOutcomes(workspaceId, 10)).resolves.toEqual([
       {
         id: outcomeId,
@@ -354,16 +387,19 @@ describe('PostgresReminderRepository', () => {
   });
 
   it('rejects invalid limits, dates, identifiers, lease values, and SQL failures', async () => {
-    expect(() => new PostgresReminderRepository(new RecordingSqlClient([]), 29)).toThrowError(
-      NotificationPersistenceError,
-    );
-    expect(() => new PostgresReminderRepository(new RecordingSqlClient([]), 3601)).toThrowError(
-      NotificationPersistenceError,
-    );
+    expect(
+      () => new PostgresReminderRepository(new RecordingSqlClient([]), 29),
+    ).toThrowError(NotificationPersistenceError);
+    expect(
+      () => new PostgresReminderRepository(new RecordingSqlClient([]), 3601),
+    ).toThrowError(NotificationPersistenceError);
 
-    const repository = new PostgresReminderRepository(new RecordingSqlClient([]));
+    const repository = new PostgresReminderRepository(
+      new RecordingSqlClient([]),
+    );
     for (const operation of [
       () => repository.listDue('invalid', 10),
+      () => repository.listDue('2026-08-04', 10),
       () => repository.listDue('2026-08-04T12:00:00.000Z', 0),
       () => repository.countDelivered('123', '2026-08-04'),
       () => repository.countDelivered(workspaceId, '08/04/2026'),

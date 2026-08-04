@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  NotificationPersistenceError,
   NotificationReplayConflictError,
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
@@ -163,10 +164,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
       }),
     );
 
-    const due = await durableRepository.listDue(
-      '2026-08-04T12:00:00.000Z',
-      10,
-    );
+    const due = await durableRepository.listDue('2026-08-04T12:00:00.000Z', 10);
 
     expect(due.map((reminder) => reminder.id)).toEqual([
       firstId,
@@ -180,16 +178,54 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     const reminder = occurrence(workspaceId);
     const durableRepository = repository(administrativePool, 300);
     await durableRepository.schedule(reminder);
-    const key = `${workspaceId}:${reminder.id}:${reminder.dueAt}`;
 
     const claims = await Promise.all(
       Array.from({ length: 16 }, () =>
-        durableRepository.claim(workspaceId, reminder.id, key),
+        durableRepository.claim(workspaceId, reminder.id),
       ),
     );
 
-    expect(claims.filter(Boolean)).toHaveLength(1);
-    expect(claims.filter((claimed) => !claimed)).toHaveLength(15);
+    expect(claims.filter((claimKey) => claimKey !== null)).toHaveLength(1);
+    expect(claims.filter((claimKey) => claimKey === null)).toHaveLength(15);
+  });
+
+  it('fences an expired owner after a replacement claim is acquired', async () => {
+    const workspaceId = randomUUID();
+    const reminder = occurrence(workspaceId);
+    const durableRepository = repository(administrativePool, 30);
+    await durableRepository.schedule(reminder);
+    const deliveryKey = `${workspaceId}:${reminder.id}:${reminder.dueAt}`;
+    const firstClaim = await durableRepository.claim(workspaceId, reminder.id);
+    expect(firstClaim).not.toBeNull();
+    await administrativePool.query(
+      `UPDATE notification_service.reminder_occurrences
+       SET claim_expires_at = clock_timestamp() - interval '1 second'
+       WHERE workspace_id = $1 AND reminder_id = $2`,
+      [workspaceId, reminder.id],
+    );
+    const secondClaim = await durableRepository.claim(workspaceId, reminder.id);
+    expect(secondClaim).not.toBeNull();
+    expect(secondClaim).not.toBe(firstClaim);
+
+    await expect(
+      durableRepository.markDelivered(
+        reminder,
+        '2026-08-04T12:00:01.000Z',
+        firstClaim as string,
+        deliveryKey,
+      ),
+    ).rejects.toBeInstanceOf(NotificationPersistenceError);
+    await expect(
+      durableRepository.markDelivered(
+        reminder,
+        '2026-08-04T12:00:01.000Z',
+        secondClaim as string,
+        deliveryKey,
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      durableRepository.listOutcomes(workspaceId, 10),
+    ).resolves.toHaveLength(1);
   });
 
   it('recovers an expired lease and completes an exact inbox replay once', async () => {
@@ -200,8 +236,8 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     await durableRepository.schedule(reminder);
     const key = `${workspaceId}:${reminder.id}:${reminder.dueAt}`;
     await expect(
-      durableRepository.claim(workspaceId, reminder.id, key),
-    ).resolves.toBe(true);
+      durableRepository.claim(workspaceId, reminder.id),
+    ).resolves.not.toBeNull();
     await inAppGateway.deliver({
       workspaceId,
       reminderId: reminder.id,

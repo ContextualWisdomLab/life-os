@@ -136,9 +136,8 @@ describe('Notification runtime', () => {
       runtime.repository.claim(
         '018f47a4-9976-4c57-8a8a-674630a873d1',
         '91fe0f58-2035-49b7-a793-ac75939a433f',
-        'runtime-claim-key',
       ),
-    ).resolves.toBe(false);
+    ).resolves.toBeNull();
     expect(pool.calls).toHaveLength(1);
     expect(pool.calls[0]?.text).toContain(
       'UPDATE notification_service.reminder_occurrences',

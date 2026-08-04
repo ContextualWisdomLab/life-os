@@ -26,9 +26,9 @@ The repository also exposes bounded service-facing methods to create an occurren
 
 ## Atomic claims and recovery
 
-`claim` hashes the scheduler idempotency key with SHA-256 and performs one conditional `UPDATE ... RETURNING`. A claim succeeds only when the occurrence is pending and its prior lease is absent or expired. The lease duration is fixed and bounded in the repository constructor. Concurrent workers may observe the same due row, but only one conditional update succeeds.
+`claim` creates a unique per-attempt opaque token and hashes it with SHA-256 and performs one conditional `UPDATE ... RETURNING`. A claim succeeds only when the occurrence is pending and its prior lease is absent or expired. The lease duration is fixed and bounded in the repository constructor. Concurrent workers may observe the same due row, but only one conditional update succeeds.
 
-Completion statements use data-modifying common table expressions so the occurrence transition and immutable outcome insertion succeed or fail as one PostgreSQL statement. Retryable deferrals and failures clear the claim; terminal delivered and attempt-limit outcomes retain terminal state. An expired claim is recoverable by another worker.
+The stable delivery idempotency key remains separate from the claim token. Every completion statement requires the exact claim digest and an unexpired lease, then uses data-modifying common table expressions so the occurrence transition and immutable outcome insertion succeed or fail as one PostgreSQL statement. Retryable deferrals and failures clear the claim; terminal delivered and attempt-limit outcomes retain terminal state. An expired claim is recoverable by another worker.
 
 PostgreSQL documents `SKIP LOCKED` as suitable for queue-like consumers but as an intentionally inconsistent view. This design does not depend on a long-lived selection lock: listing is advisory and the conditional claim update is authoritative.
 
@@ -72,5 +72,5 @@ No cookie, bearer value, provider token, arbitrary URL, exception text, or raw c
 ## Primary references
 
 - PostgreSQL current documentation: transactions, row locks, queue-like `SKIP LOCKED`, data-modifying common table expressions, and `INSERT ... ON CONFLICT`;
-- RFC 3339, *Date and Time on the Internet: Timestamps*;
+- RFC 3339, _Date and Time on the Internet: Timestamps_;
 - IANA Time Zone Database and ECMA-402 named-time-zone projection.

@@ -70,18 +70,22 @@ describe('durable notification database contract', () => {
   it('enforces UUIDv4, policy, state, and digest invariants', async () => {
     const sql = await migrationSql();
 
-    expect(sql).toContain("get_byte(uuid_send(reminder_id), 6) >> 4 = 4");
-    expect(sql).toContain("get_byte(uuid_send(workspace_id), 6) >> 4 = 4");
-    expect(sql).toContain("get_byte(uuid_send(outcome_id), 6) >> 4 = 4");
-    expect(sql).toContain("get_byte(uuid_send(message_id), 6) >> 4 = 4");
+    expect(sql).toContain('get_byte(uuid_send(reminder_id), 6) >> 4 = 4');
+    expect(sql).toContain('get_byte(uuid_send(workspace_id), 6) >> 4 = 4');
+    expect(sql).toContain('get_byte(uuid_send(outcome_id), 6) >> 4 = 4');
+    expect(sql).toContain('get_byte(uuid_send(message_id), 6) >> 4 = 4');
     expect(sql).toContain('char_length(reminder_title) BETWEEN 1 AND 160');
     expect(sql).toContain('octet_length(reminder_title) <= 1024');
     expect(sql).toContain('quiet_start_minute BETWEEN 0 AND 1439');
     expect(sql).toContain('quiet_end_minute BETWEEN 0 AND 1439');
     expect(sql).toContain('daily_delivery_limit BETWEEN 1 AND 20');
     expect(sql).toContain('delivery_attempt_count BETWEEN 0 AND 3');
-    expect(sql).toContain("occurrence_status IN ('pending', 'delivered', 'failed')");
-    expect(sql).toContain("outcome_kind IN ('delivered', 'deferred', 'failed')");
+    expect(sql).toContain(
+      "occurrence_status IN ('pending', 'delivered', 'failed')",
+    );
+    expect(sql).toContain(
+      "outcome_kind IN ('delivered', 'deferred', 'failed')",
+    );
     expect(sql).toMatch(
       /outcome_reason\s+IN\s*\(\s*'quiet_hours'\s*,\s*'daily_limit'\s*,\s*'delivery_failed'\s*,\s*'attempt_limit'\s*\)/u,
     );

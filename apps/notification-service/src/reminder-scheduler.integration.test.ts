@@ -49,7 +49,7 @@ function localDate(instant: string, timeZone: string): string {
 }
 
 class InMemoryReminderRepository implements ReminderRepository {
-  readonly claims = new Set<string>();
+  readonly claims = new Map<string, string>();
   readonly outcomes: Outcome[] = [];
   readonly deliveredByWorkspaceDate = new Map<string, number>();
 
@@ -59,15 +59,12 @@ class InMemoryReminderRepository implements ReminderRepository {
     return this.records.slice(0, limit);
   }
 
-  async claim(
-    workspaceId: string,
-    reminderId: string,
-    idempotencyKey: string,
-  ): Promise<boolean> {
-    const key = `${workspaceId}:${reminderId}:${idempotencyKey}`;
-    if (this.claims.has(key)) return false;
-    this.claims.add(key);
-    return true;
+  async claim(workspaceId: string, reminderId: string): Promise<string | null> {
+    const occurrenceKey = `${workspaceId}:${reminderId}`;
+    if (this.claims.has(occurrenceKey)) return null;
+    const claimKey = `${occurrenceKey}:claim`;
+    this.claims.set(occurrenceKey, claimKey);
+    return claimKey;
   }
 
   async countDelivered(workspaceId: string, date: string): Promise<number> {
@@ -77,8 +74,10 @@ class InMemoryReminderRepository implements ReminderRepository {
   async markDelivered(
     value: ReminderOccurrence,
     deliveredAt: string,
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void> {
+    this.requireClaim(value, claimKey);
     const date = localDate(deliveredAt, value.timeZone);
     const key = `${value.workspaceId}:${date}`;
     this.deliveredByWorkspaceDate.set(
@@ -99,9 +98,10 @@ class InMemoryReminderRepository implements ReminderRepository {
     value: ReminderOccurrence,
     nextAttemptAt: string,
     reason: 'quiet_hours' | 'daily_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void> {
-    this.release(value, idempotencyKey);
+    this.release(value, claimKey);
     this.outcomes.push({
       kind: 'deferred',
       workspaceId: value.workspaceId,
@@ -116,9 +116,11 @@ class InMemoryReminderRepository implements ReminderRepository {
     value: ReminderOccurrence,
     retryAt: string | null,
     reason: 'delivery_failed' | 'attempt_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void> {
-    if (retryAt !== null) this.release(value, idempotencyKey);
+    this.requireClaim(value, claimKey);
+    if (retryAt !== null) this.release(value, claimKey);
     this.outcomes.push({
       kind: 'failed',
       workspaceId: value.workspaceId,
@@ -129,8 +131,19 @@ class InMemoryReminderRepository implements ReminderRepository {
     });
   }
 
-  private release(value: ReminderOccurrence, idempotencyKey: string): void {
-    this.claims.delete(`${value.workspaceId}:${value.id}:${idempotencyKey}`);
+  private occurrenceKey(value: ReminderOccurrence): string {
+    return `${value.workspaceId}:${value.id}`;
+  }
+
+  private requireClaim(value: ReminderOccurrence, claimKey: string): void {
+    if (this.claims.get(this.occurrenceKey(value)) !== claimKey) {
+      throw new Error('claim is not owned');
+    }
+  }
+
+  private release(value: ReminderOccurrence, claimKey: string): void {
+    this.requireClaim(value, claimKey);
+    this.claims.delete(this.occurrenceKey(value));
   }
 }
 

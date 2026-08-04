@@ -57,27 +57,26 @@ export interface ReminderDeliveryGateway {
  */
 export interface ReminderRepository {
   listDue(now: string, limit: number): Promise<readonly unknown[]>;
-  claim(
-    workspaceId: string,
-    reminderId: string,
-    idempotencyKey: string,
-  ): Promise<boolean>;
+  claim(workspaceId: string, reminderId: string): Promise<string | null>;
   countDelivered(workspaceId: string, localDate: string): Promise<number>;
   markDelivered(
     reminder: ReminderOccurrence,
     deliveredAt: string,
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void>;
   defer(
     reminder: ReminderOccurrence,
     nextAttemptAt: string,
     reason: 'quiet_hours' | 'daily_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void>;
   fail(
     reminder: ReminderOccurrence,
     retryAt: string | null,
     reason: 'delivery_failed' | 'attempt_limit',
+    claimKey: string,
     idempotencyKey: string,
   ): Promise<void>;
 }
@@ -364,12 +363,11 @@ export class ReminderScheduler {
         continue;
       }
       const deliveryKey = idempotencyKey(reminder);
-      const claimed = await this.repository.claim(
+      const claimKey = await this.repository.claim(
         reminder.workspaceId,
         reminder.id,
-        deliveryKey,
       );
-      if (!claimed) {
+      if (claimKey === null) {
         duplicateClaims += 1;
         continue;
       }
@@ -384,6 +382,7 @@ export class ReminderScheduler {
           reminder,
           nextAllowedInstant(now, reminder.timeZone, quietHours, false),
           'quiet_hours',
+          claimKey,
           deliveryKey,
         );
         deferred += 1;
@@ -399,6 +398,7 @@ export class ReminderScheduler {
           reminder,
           nextAllowedInstant(now, reminder.timeZone, quietHours, true),
           'daily_limit',
+          claimKey,
           deliveryKey,
         );
         deferred += 1;
@@ -410,6 +410,7 @@ export class ReminderScheduler {
           reminder,
           null,
           'attempt_limit',
+          claimKey,
           deliveryKey,
         );
         failed += 1;
@@ -425,21 +426,24 @@ export class ReminderScheduler {
           timeZone: reminder.timeZone,
           idempotencyKey: deliveryKey,
         });
-        await this.repository.markDelivered(
-          reminder,
-          now.toISOString(),
-          deliveryKey,
-        );
-        delivered += 1;
       } catch {
         await this.repository.fail(
           reminder,
           retryInstant(now, reminder.deliveryAttempt),
           'delivery_failed',
+          claimKey,
           deliveryKey,
         );
         failed += 1;
+        continue;
       }
+      await this.repository.markDelivered(
+        reminder,
+        now.toISOString(),
+        claimKey,
+        deliveryKey,
+      );
+      delivered += 1;
     }
 
     return {

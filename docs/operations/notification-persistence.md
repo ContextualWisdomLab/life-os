@@ -26,22 +26,22 @@ Before rollout, verify that the target database is PostgreSQL 16 or a compatibil
 
 The service validates all configuration before allocating a pool.
 
-| Variable | Default | Accepted boundary |
-| --- | ---: | --- |
-| `NOTIFICATION_DATABASE_URL` | none | required `postgres:` or `postgresql:` URL |
-| `NOTIFICATION_DATABASE_POOL_MAX` | `10` | integer `1`–`32` |
-| `NOTIFICATION_DATABASE_CONNECT_TIMEOUT_MS` | `5000` | integer `100`–`30000` |
-| `NOTIFICATION_DATABASE_IDLE_TIMEOUT_MS` | `30000` | integer `1000`–`300000` |
-| `NOTIFICATION_CLAIM_LEASE_SECONDS` | `300` | integer `30`–`3600` |
-| `NOTIFICATION_REMINDER_BATCH_SIZE` | `50` | integer `1`–`100` |
+| Variable                                   | Default | Accepted boundary                         |
+| ------------------------------------------ | ------: | ----------------------------------------- |
+| `NOTIFICATION_DATABASE_URL`                |    none | required `postgres:` or `postgresql:` URL |
+| `NOTIFICATION_DATABASE_POOL_MAX`           |    `10` | integer `1`–`32`                          |
+| `NOTIFICATION_DATABASE_CONNECT_TIMEOUT_MS` |  `5000` | integer `100`–`30000`                     |
+| `NOTIFICATION_DATABASE_IDLE_TIMEOUT_MS`    | `30000` | integer `1000`–`300000`                   |
+| `NOTIFICATION_CLAIM_LEASE_SECONDS`         |   `300` | integer `30`–`3600`                       |
+| `NOTIFICATION_REMINDER_BATCH_SIZE`         |    `50` | integer `1`–`100`                         |
 
 The pool sets `application_name` to `life-os-notification-service`. Use this value to distinguish service connections in PostgreSQL activity and connection metrics.
 
 ## Claim and recovery model
 
-Due-row selection is advisory. The authoritative ownership boundary is one tenant-scoped conditional update that writes the SHA-256 claim digest and a bounded expiration time.
+Due-row selection is advisory. The authoritative ownership boundary is one tenant-scoped conditional update that writes a SHA-256 digest of a unique per-attempt claim token and a bounded expiration time.
 
-A worker may process an occurrence only when its claim update returns the expected reminder identifier. Concurrent workers can observe the same due row, but only one unexpired claim succeeds.
+A worker may process an occurrence only when its claim update returns a unique opaque claim token. Concurrent workers can observe the same due row, but only one unexpired claim succeeds.
 
 If a worker exits after claiming but before a terminal transition, another worker can claim the occurrence after `claim_expires_at`. Operators should not clear active claims manually during normal operation. For urgent recovery, first confirm that the original worker is no longer running and that no delivery provider request remains in flight. Prefer waiting for the bounded lease to expire.
 
@@ -72,7 +72,7 @@ Do not log `reminder_title`, raw idempotency keys, database URLs, or provider cr
 
 The in-app gateway stores only a 32-byte SHA-256 digest of the composite idempotency key. A repeated insert is accepted only when the persisted workspace, reminder, title, due instant, and time zone match the attempted message.
 
-A mismatched replay raises `NotificationReplayConflictError` and must be treated as an integrity incident. Do not delete the existing inbox row to force the retry through. Preserve the row and the corresponding occurrence for investigation.
+Claim tokens are separate from stable delivery idempotency keys, and every transition requires both the exact token digest and an unexpired lease. A mismatched replay raises `NotificationReplayConflictError` and must be treated as an integrity incident. Do not delete the existing inbox row to force the retry through. Preserve the row and the corresponding occurrence for investigation.
 
 A provider success followed by a repository failure can therefore be retried safely: the inbox insert resolves as an exact replay, and the repository can complete the terminal occurrence transition after reacquiring an expired lease.
 

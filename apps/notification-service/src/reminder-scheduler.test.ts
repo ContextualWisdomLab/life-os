@@ -35,8 +35,8 @@ class NoopRepository implements ReminderRepository {
   async listDue(): Promise<readonly unknown[]> {
     return [];
   }
-  async claim(): Promise<boolean> {
-    return true;
+  async claim(): Promise<string | null> {
+    return 'noop-claim-key';
   }
   async countDelivered(): Promise<number> {
     return 0;
