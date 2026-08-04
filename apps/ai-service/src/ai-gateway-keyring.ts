@@ -74,11 +74,14 @@ function contextKey(keyId: unknown, secret: unknown): AiGatewayContextKey {
 
 /**
  * Parses exactly one active signing key and at most one complete previous key.
- * Partial or duplicate overlap configuration fails closed before verification.
+ * Partial, duplicate, or reused-secret overlap configuration fails closed.
  */
 export function requireAiGatewayContextKeyRing(
   environment: AiGatewayContextKeyEnvironment,
 ): AiGatewayContextKeyRing {
+  if (!environment || typeof environment !== 'object') {
+    throw new AiGatewayKeyConfigurationError();
+  }
   const active = contextKey(
     environment.AI_GATEWAY_ACTIVE_KEY_ID,
     environment.AI_GATEWAY_ACTIVE_KEY_SECRET,
@@ -94,7 +97,10 @@ export function requireAiGatewayContextKeyRing(
     return Object.freeze({ active });
   }
   const previous = contextKey(previousId, previousSecret);
-  if (previous.keyId === active.keyId) {
+  if (
+    previous.keyId === active.keyId ||
+    previous.secret === active.secret
+  ) {
     throw new AiGatewayKeyConfigurationError();
   }
   return Object.freeze({ active, previous });
