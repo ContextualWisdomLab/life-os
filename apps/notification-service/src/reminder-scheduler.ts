@@ -1,0 +1,450 @@
+/** Maximum number of reminders evaluated by one scheduler run. */
+export const MAX_REMINDER_BATCH_SIZE = 100;
+/** Maximum reminder title length accepted at the scheduling boundary. */
+export const MAX_REMINDER_TITLE_LENGTH = 160;
+/** Maximum number of reminders that may be delivered per local calendar day. */
+export const MAX_DAILY_REMINDERS = 20;
+/** Maximum provider delivery attempts allowed for one reminder occurrence. */
+export const MAX_DELIVERY_ATTEMPTS = 3;
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const ISO_INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u;
+
+/** Local quiet-hours interval expressed as minute-of-day values. */
+export interface QuietHours {
+  readonly startMinute: number;
+  readonly endMinute: number;
+}
+
+/** A validated reminder occurrence ready for bounded scheduling. */
+export interface ReminderOccurrence {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly title: string;
+  readonly dueAt: string;
+  readonly timeZone: string;
+  readonly quietHours: QuietHours | null;
+  readonly maxPerLocalDay: number;
+  readonly deliveryAttempt: number;
+}
+
+/** Credential-free message passed to a delivery adapter. */
+export interface ReminderDelivery {
+  readonly workspaceId: string;
+  readonly reminderId: string;
+  readonly title: string;
+  readonly dueAt: string;
+  readonly timeZone: string;
+  readonly idempotencyKey: string;
+}
+
+/** Provider boundary. Implementations must honor the supplied idempotency key. */
+export interface ReminderDeliveryGateway {
+  deliver(message: ReminderDelivery): Promise<void>;
+}
+
+/**
+ * Persistence boundary. Every mutation is tenant-scoped and includes the exact
+ * reminder occurrence so repositories can implement atomic claims safely.
+ */
+export interface ReminderRepository {
+  listDue(now: string, limit: number): Promise<readonly unknown[]>;
+  claim(
+    workspaceId: string,
+    reminderId: string,
+    idempotencyKey: string,
+  ): Promise<boolean>;
+  countDelivered(workspaceId: string, localDate: string): Promise<number>;
+  markDelivered(
+    reminder: ReminderOccurrence,
+    deliveredAt: string,
+    idempotencyKey: string,
+  ): Promise<void>;
+  defer(
+    reminder: ReminderOccurrence,
+    nextAttemptAt: string,
+    reason: 'quiet_hours' | 'daily_limit',
+    idempotencyKey: string,
+  ): Promise<void>;
+  fail(
+    reminder: ReminderOccurrence,
+    retryAt: string | null,
+    reason: 'delivery_failed' | 'attempt_limit',
+    idempotencyKey: string,
+  ): Promise<void>;
+}
+
+/** Stable validation codes suitable for logs and RFC 9457 mappings. */
+export type ReminderValidationCode =
+  | 'invalid_identifier'
+  | 'invalid_title'
+  | 'invalid_due_at'
+  | 'invalid_time_zone'
+  | 'invalid_quiet_hours'
+  | 'invalid_daily_limit'
+  | 'invalid_delivery_attempt'
+  | 'invalid_record';
+
+/** Error raised when an untrusted reminder record violates the boundary. */
+export class ReminderValidationError extends Error {
+  constructor(readonly code: ReminderValidationCode) {
+    super(code);
+    this.name = 'ReminderValidationError';
+  }
+}
+
+/** Aggregate result for one bounded scheduler iteration. */
+export interface ReminderRunReport {
+  readonly scanned: number;
+  readonly delivered: number;
+  readonly deferred: number;
+  readonly failed: number;
+  readonly duplicateClaims: number;
+  readonly invalid: number;
+}
+
+interface ZonedClock {
+  readonly localDate: string;
+  readonly minuteOfDay: number;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function requireUuid(value: unknown): string {
+  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+    throw new ReminderValidationError('invalid_identifier');
+  }
+  return value;
+}
+
+function requireTitle(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > MAX_REMINDER_TITLE_LENGTH ||
+    value.trim() !== value ||
+    /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
+    throw new ReminderValidationError('invalid_title');
+  }
+  return value;
+}
+
+function requireInstant(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.length > 40 ||
+    !ISO_INSTANT_PATTERN.test(value) ||
+    Number.isNaN(Date.parse(value))
+  ) {
+    throw new ReminderValidationError('invalid_due_at');
+  }
+  return new Date(value).toISOString();
+}
+
+function requireTimeZone(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 64) {
+    throw new ReminderValidationError('invalid_time_zone');
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format(0);
+  } catch {
+    throw new ReminderValidationError('invalid_time_zone');
+  }
+  return value;
+}
+
+function requireBoundedInteger(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  code: ReminderValidationCode,
+): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < minimum ||
+    value > maximum
+  ) {
+    throw new ReminderValidationError(code);
+  }
+  return value;
+}
+
+function requireQuietHours(value: unknown): QuietHours | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) {
+    throw new ReminderValidationError('invalid_quiet_hours');
+  }
+  const startMinute = requireBoundedInteger(
+    value.startMinute,
+    0,
+    1_439,
+    'invalid_quiet_hours',
+  );
+  const endMinute = requireBoundedInteger(
+    value.endMinute,
+    0,
+    1_439,
+    'invalid_quiet_hours',
+  );
+  if (startMinute === endMinute) {
+    throw new ReminderValidationError('invalid_quiet_hours');
+  }
+  return { startMinute, endMinute };
+}
+
+/** Validates and normalizes an untrusted reminder record. */
+export function validateReminderOccurrence(value: unknown): ReminderOccurrence {
+  if (!isRecord(value)) {
+    throw new ReminderValidationError('invalid_record');
+  }
+  return {
+    id: requireUuid(value.id),
+    workspaceId: requireUuid(value.workspaceId),
+    title: requireTitle(value.title),
+    dueAt: requireInstant(value.dueAt),
+    timeZone: requireTimeZone(value.timeZone),
+    quietHours: requireQuietHours(value.quietHours),
+    maxPerLocalDay: requireBoundedInteger(
+      value.maxPerLocalDay,
+      1,
+      MAX_DAILY_REMINDERS,
+      'invalid_daily_limit',
+    ),
+    deliveryAttempt: requireBoundedInteger(
+      value.deliveryAttempt,
+      0,
+      MAX_DELIVERY_ATTEMPTS,
+      'invalid_delivery_attempt',
+    ),
+  };
+}
+
+function zonedClock(instant: Date, timeZone: string): ZonedClock {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+  const year = values.get('year');
+  const month = values.get('month');
+  const day = values.get('day');
+  const hour = Number(values.get('hour'));
+  const minute = Number(values.get('minute'));
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute)
+  ) {
+    throw new ReminderValidationError('invalid_time_zone');
+  }
+  return {
+    localDate: `${year}-${month}-${day}`,
+    minuteOfDay: hour * 60 + minute,
+  };
+}
+
+/** Returns whether a local minute falls inside a possibly overnight interval. */
+export function isWithinQuietHours(
+  minuteOfDay: number,
+  quietHours: QuietHours,
+): boolean {
+  if (quietHours.startMinute < quietHours.endMinute) {
+    return (
+      minuteOfDay >= quietHours.startMinute &&
+      minuteOfDay < quietHours.endMinute
+    );
+  }
+  return (
+    minuteOfDay >= quietHours.startMinute ||
+    minuteOfDay < quietHours.endMinute
+  );
+}
+
+function nextAllowedInstant(
+  now: Date,
+  timeZone: string,
+  quietHours: QuietHours | null,
+  requireNextLocalDay: boolean,
+): string {
+  const initialDate = zonedClock(now, timeZone).localDate;
+  for (let offsetMinutes = 1; offsetMinutes <= 26 * 60; offsetMinutes += 1) {
+    const candidate = new Date(now.getTime() + offsetMinutes * 60_000);
+    const clock = zonedClock(candidate, timeZone);
+    if (
+      (!requireNextLocalDay || clock.localDate !== initialDate) &&
+      (quietHours === null ||
+        !isWithinQuietHours(clock.minuteOfDay, quietHours))
+    ) {
+      return candidate.toISOString();
+    }
+  }
+  throw new ReminderValidationError('invalid_time_zone');
+}
+
+function retryInstant(now: Date, deliveryAttempt: number): string {
+  const boundedAttempt = Math.min(deliveryAttempt + 1, MAX_DELIVERY_ATTEMPTS);
+  return new Date(now.getTime() + boundedAttempt * 5 * 60_000).toISOString();
+}
+
+function idempotencyKey(reminder: ReminderOccurrence): string {
+  return `${reminder.workspaceId}:${reminder.id}:${reminder.dueAt}`;
+}
+
+/**
+ * Evaluates due reminders in deterministic order while enforcing tenant-scoped
+ * claims, local quiet hours, daily limits, bounded retries, and idempotent delivery.
+ */
+export class ReminderScheduler {
+  readonly batchSize: number;
+
+  constructor(
+    private readonly repository: ReminderRepository,
+    private readonly gateway: ReminderDeliveryGateway,
+    batchSize = 50,
+  ) {
+    if (
+      !Number.isInteger(batchSize) ||
+      batchSize < 1 ||
+      batchSize > MAX_REMINDER_BATCH_SIZE
+    ) {
+      throw new RangeError('batchSize must be between 1 and 100');
+    }
+    this.batchSize = batchSize;
+  }
+
+  async run(now = new Date()): Promise<ReminderRunReport> {
+    if (Number.isNaN(now.getTime())) {
+      throw new RangeError('now must be a valid instant');
+    }
+    const records = await this.repository.listDue(
+      now.toISOString(),
+      this.batchSize,
+    );
+    let delivered = 0;
+    let deferred = 0;
+    let failed = 0;
+    let duplicateClaims = 0;
+    let invalid = 0;
+
+    for (const record of records.slice(0, this.batchSize)) {
+      let reminder: ReminderOccurrence;
+      try {
+        reminder = validateReminderOccurrence(record);
+      } catch (error) {
+        if (error instanceof ReminderValidationError) {
+          invalid += 1;
+          continue;
+        }
+        throw error;
+      }
+      if (Date.parse(reminder.dueAt) > now.getTime()) {
+        invalid += 1;
+        continue;
+      }
+      const deliveryKey = idempotencyKey(reminder);
+      const claimed = await this.repository.claim(
+        reminder.workspaceId,
+        reminder.id,
+        deliveryKey,
+      );
+      if (!claimed) {
+        duplicateClaims += 1;
+        continue;
+      }
+
+      const clock = zonedClock(now, reminder.timeZone);
+      const quietHours = reminder.quietHours;
+      if (
+        quietHours !== null &&
+        isWithinQuietHours(clock.minuteOfDay, quietHours)
+      ) {
+        await this.repository.defer(
+          reminder,
+          nextAllowedInstant(now, reminder.timeZone, quietHours, false),
+          'quiet_hours',
+          deliveryKey,
+        );
+        deferred += 1;
+        continue;
+      }
+
+      const deliveredToday = await this.repository.countDelivered(
+        reminder.workspaceId,
+        clock.localDate,
+      );
+      if (deliveredToday >= reminder.maxPerLocalDay) {
+        await this.repository.defer(
+          reminder,
+          nextAllowedInstant(
+            now,
+            reminder.timeZone,
+            quietHours,
+            true,
+          ),
+          'daily_limit',
+          deliveryKey,
+        );
+        deferred += 1;
+        continue;
+      }
+
+      if (reminder.deliveryAttempt >= MAX_DELIVERY_ATTEMPTS) {
+        await this.repository.fail(
+          reminder,
+          null,
+          'attempt_limit',
+          deliveryKey,
+        );
+        failed += 1;
+        continue;
+      }
+
+      try {
+        await this.gateway.deliver({
+          workspaceId: reminder.workspaceId,
+          reminderId: reminder.id,
+          title: reminder.title,
+          dueAt: reminder.dueAt,
+          timeZone: reminder.timeZone,
+          idempotencyKey: deliveryKey,
+        });
+        await this.repository.markDelivered(
+          reminder,
+          now.toISOString(),
+          deliveryKey,
+        );
+        delivered += 1;
+      } catch {
+        await this.repository.fail(
+          reminder,
+          retryInstant(now, reminder.deliveryAttempt),
+          'delivery_failed',
+          deliveryKey,
+        );
+        failed += 1;
+      }
+    }
+
+    return {
+      scanned: Math.min(records.length, this.batchSize),
+      delivered,
+      deferred,
+      failed,
+      duplicateClaims,
+      invalid,
+    };
+  }
+}
