@@ -42,7 +42,11 @@ jobs:
           persist-credentials: false
 
       - name: Apply reviewed quality-gate implementation
-        run: python3 .github/scripts/complete_ai_quality_gates.py
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/complete_ai_quality_gates.py
+          python3 .github/scripts/complete_ai_coverage.py
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -69,6 +73,9 @@ jobs:
             docs/operations/ai-proposal-audit-assurance.md \
             docs/superpowers/specs/2026-08-04-ai-service-quality-gates-design.md \
             docs/superpowers/plans/2026-08-04-ai-service-quality-gates.md
+
+      - name: Typecheck AI service
+        run: pnpm --filter @life-os/ai-service typecheck
 
       - name: Run AI service quality gates
         run: pnpm --filter @life-os/ai-service test
