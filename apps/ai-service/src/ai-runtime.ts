@@ -1,4 +1,4 @@
-import type { OnApplicationShutdown } from '@nestjs/common';
+import { Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolConfig } from 'pg';
 import { ProposalAuditApplication } from './proposal-audit-application';
 import {
@@ -9,6 +9,7 @@ import {
 import { ProposalService, RuleBasedProposalModel } from './proposal-service';
 
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
+const databaseLogger = new Logger('AiDatabasePool');
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -23,8 +24,23 @@ export interface AiPool {
   end(): Promise<void>;
 }
 
+/** Minimal sanitized logging boundary for idle database-client failures. */
+export interface AiRuntimeLogger {
+  /** Records a fixed credential-free database-pool failure message. */
+  error(message: string): void;
+}
+
 /** Factory seam used to construct the bounded runtime pool in tests and production. */
 export type AiPoolFactory = (configuration: PoolConfig) => AiPool;
+
+/** Creates a credential-free listener for node-postgres idle-client errors. */
+export function createAiPoolErrorListener(
+  logger: AiRuntimeLogger,
+): (_error: Error) => void {
+  return (_error: Error): void => {
+    logger.error('Unexpected idle PostgreSQL client error');
+  };
+}
 
 /** Adapts node-postgres to the minimal pool contract required by the AI service. */
 class NodePostgresAiPool implements AiPool {
@@ -135,14 +151,17 @@ export function createAiPoolConfiguration(
   };
 }
 
-/** Constructs the production node-postgres pool behind its minimal adapter. */
+/** Constructs a recoverable node-postgres pool with an idle-client error listener. */
 function defaultPoolFactory(configuration: PoolConfig): AiPool {
-  return new NodePostgresAiPool(new Pool(configuration));
+  const pool = new Pool(configuration);
+  pool.on('error', createAiPoolErrorListener(databaseLogger));
+  return new NodePostgresAiPool(pool);
 }
 
-/** Owns the production audit pool and closes it exactly once. */
+/** Owns the production audit pool and closes it exactly once after a successful end. */
 export class AiRuntime implements OnApplicationShutdown {
   private closed = false;
+  private closing: Promise<void> | undefined;
 
   /** Creates one runtime around one pool and one audit application graph. */
   constructor(
@@ -150,16 +169,32 @@ export class AiRuntime implements OnApplicationShutdown {
     readonly application: ProposalAuditApplication,
   ) {}
 
-  /** Releases the pool once even when multiple shutdown paths converge. */
+  /**
+   * Shares concurrent shutdown attempts, preserves rejection, and permits a later
+   * retry when pool shutdown fails before successful cleanup.
+   */
   async close(): Promise<void> {
     if (this.closed) {
       return;
     }
-    this.closed = true;
-    await this.pool.end();
+    if (!this.closing) {
+      const attempt = this.pool.end();
+      this.closing = attempt;
+      try {
+        await attempt;
+        this.closed = true;
+      } catch (error) {
+        if (this.closing === attempt) {
+          this.closing = undefined;
+        }
+        throw error;
+      }
+      return;
+    }
+    await this.closing;
   }
 
-  /** Integrates exactly-once pool closure with NestJS application shutdown. */
+  /** Integrates exactly-once successful pool closure with NestJS shutdown. */
   async onApplicationShutdown(): Promise<void> {
     await this.close();
   }
