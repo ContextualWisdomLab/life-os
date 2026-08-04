@@ -268,8 +268,7 @@ export function isWithinQuietHours(
     );
   }
   return (
-    minuteOfDay >= quietHours.startMinute ||
-    minuteOfDay < quietHours.endMinute
+    minuteOfDay >= quietHours.startMinute || minuteOfDay < quietHours.endMinute
   );
 }
 
@@ -388,12 +387,7 @@ export class ReminderScheduler {
       if (deliveredToday >= reminder.maxPerLocalDay) {
         await this.repository.defer(
           reminder,
-          nextAllowedInstant(
-            now,
-            reminder.timeZone,
-            quietHours,
-            true,
-          ),
+          nextAllowedInstant(now, reminder.timeZone, quietHours, true),
           'daily_limit',
           deliveryKey,
         );
