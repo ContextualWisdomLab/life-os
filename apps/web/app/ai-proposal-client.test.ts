@@ -18,7 +18,7 @@ const PROPOSAL_ID = '44444444-4444-4444-8444-444444444444';
 const TASK_ID = '55555555-5555-4555-8555-555555555555';
 const DECISION_ID = '66666666-6666-4666-8666-666666666666';
 const IDEMPOTENCY_KEY = '77777777-7777-4777-8777-777777777777';
-const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
+const GATEWAY_SECRET = Buffer.alloc(32, 7).toString('base64url');
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
@@ -332,12 +332,9 @@ describe('authenticated AI proposal BFF', () => {
         route: { kind: 'decisions', proposalId: PROPOSAL_ID },
       },
       {
-        request: browserRequest(
-          'POST',
-          '/api/ai/proposals',
-          proposalRequest,
-          { 'content-type': 'text/plain' },
-        ),
+        request: browserRequest('POST', '/api/ai/proposals', proposalRequest, {
+          'content-type': 'text/plain',
+        }),
         route: { kind: 'collection' },
       },
       {
@@ -370,20 +367,28 @@ describe('authenticated AI proposal BFF', () => {
   });
 
   it('rejects oversized cookies and bodies before dependency calls', async () => {
-    const oversizedCookie = browserRequest('GET', '/api/ai/proposals', undefined, {
-      cookie: `life_os_session=${'x'.repeat(4096)}`,
-    });
-    const oversizedBody = new Request('https://life-os.example/api/ai/proposals', {
-      method: 'POST',
-      headers: {
-        cookie: 'life_os_session=opaque',
-        'content-type': 'application/json',
+    const oversizedCookie = browserRequest(
+      'GET',
+      '/api/ai/proposals',
+      undefined,
+      {
+        cookie: `life_os_session=${'x'.repeat(4096)}`,
       },
-      body: JSON.stringify({
-        objective: 'x'.repeat(33 * 1024),
-        context: [],
-      }),
-    });
+    );
+    const oversizedBody = new Request(
+      'https://life-os.example/api/ai/proposals',
+      {
+        method: 'POST',
+        headers: {
+          cookie: 'life_os_session=opaque',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          objective: 'x'.repeat(33 * 1024),
+          context: [],
+        }),
+      },
+    );
 
     for (const request of [oversizedCookie, oversizedBody]) {
       let called = false;
@@ -586,10 +591,7 @@ describe('AI proposal BFF helpers', () => {
     );
     assert.equal(headers['x-life-os-workspace-id'], WORKSPACE_ID);
     assert.equal(headers['x-life-os-actor-id'], ACTOR_ID);
-    assert.equal(
-      headers['x-life-os-context-issued-at'],
-      String(NOW_SECONDS),
-    );
+    assert.equal(headers['x-life-os-context-issued-at'], String(NOW_SECONDS));
     assert.equal(
       headers['x-life-os-context-signature'],
       expectedSignature('POST', `/v1/proposals/${PROPOSAL_ID}/decisions`),

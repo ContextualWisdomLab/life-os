@@ -14,7 +14,7 @@ const WORKSPACE_ID = '43eab0ee-0f7b-4c7f-9331-b133f2647675';
 const ACTOR_ID = 'd19b6077-2baa-4f84-97f6-c138b1d6ba34';
 const TASK_ID = 'e29c36af-999a-407f-9ca9-cfe194ab51f4';
 const PROPOSAL_ID = 'aedcb1d1-cc60-42c6-9357-ec90821fce1b';
-const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
+const GATEWAY_SECRET = Buffer.alloc(32, 7).toString('base64url');
 
 interface JsonHttpResponse {
   statusCode: number;

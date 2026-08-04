@@ -45,10 +45,12 @@
 ### Task 1: AI Service Context Verifier — RED
 
 **Files:**
+
 - Create: `apps/ai-service/src/ai-http-boundary.test.ts`
 - Test: `apps/ai-service/src/ai-http-boundary.test.ts`
 
 **Interfaces:**
+
 - Produces the wished-for signatures:
   - `requireTrustedAiContext(headers, secret, method, path, nowSeconds?): TrustedAiContext`
   - `mapAiHttpError(error): HttpException`
@@ -63,7 +65,7 @@ import { requireTrustedAiContext } from './ai-http-boundary';
 
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const actorId = '22222222-2222-4222-8222-222222222222';
-const secret = '0123456789abcdef0123456789abcdef';
+const secret = Buffer.alloc(32, 7).toString('base64url');
 const issuedAt = '1785806400';
 const path = '/v1/proposals';
 
@@ -108,7 +110,11 @@ Add cases for:
 ```ts
 it.each([
   ['GET', path, signature('POST')],
-  ['POST', '/v1/proposals/33333333-3333-4333-8333-333333333333', signature('POST')],
+  [
+    'POST',
+    '/v1/proposals/33333333-3333-4333-8333-333333333333',
+    signature('POST'),
+  ],
 ])('rejects method/path replay: %s %s', (method, targetPath, forged) => {
   expect(() =>
     requireTrustedAiContext(
@@ -151,10 +157,12 @@ git commit -m "test(ai): define authenticated service context contract"
 ### Task 2: AI Service Context Verifier — GREEN
 
 **Files:**
+
 - Create: `apps/ai-service/src/ai-http-boundary.ts`
 - Test: `apps/ai-service/src/ai-http-boundary.test.ts`
 
 **Interfaces:**
+
 - Produces:
 
 ```ts
@@ -236,11 +244,13 @@ git commit -m "feat(ai): verify signed gateway context"
 ### Task 3: Enforce Verified Context in AI Controllers
 
 **Files:**
+
 - Modify: `apps/ai-service/src/main.ts`
 - Modify: `apps/ai-service/src/proposal-audit-http.integration.test.ts`
 - Test: `apps/ai-service/src/proposal-audit-http.integration.test.ts`
 
 **Interfaces:**
+
 - Consumes `requireTrustedAiContext` from Task 2.
 - Produces controller methods that use only `TrustedAiContext.workspaceId/actorId`.
 
@@ -280,7 +290,12 @@ In `main.ts`, add a private helper or small function:
 
 ```ts
 function trustedContext(
-  headers: { workspaceId: unknown; actorId: unknown; issuedAt: unknown; signature: unknown },
+  headers: {
+    workspaceId: unknown;
+    actorId: unknown;
+    issuedAt: unknown;
+    signature: unknown;
+  },
   method: 'GET' | 'POST',
   path: string,
 ): TrustedAiContext {
@@ -322,10 +337,12 @@ git commit -m "fix(ai): reject unsigned ownership context"
 ### Task 4: Same-Origin AI BFF — RED
 
 **Files:**
+
 - Create: `apps/web/app/ai-proposal-client.test.ts`
 - Test: `apps/web/app/ai-proposal-client.test.ts`
 
 **Interfaces:**
+
 - Produces wished-for API:
 
 ```ts
@@ -403,10 +420,12 @@ git commit -m "test(web): define authenticated AI proposal BFF"
 ### Task 5: Same-Origin AI BFF — GREEN
 
 **Files:**
+
 - Create: `apps/web/app/ai-proposal-client.ts`
 - Test: `apps/web/app/ai-proposal-client.test.ts`
 
 **Interfaces:**
+
 - Produces `handleAiProposalRequest` used by route handlers.
 
 - [ ] **Step 1: Implement fixed configuration and session parsing**
@@ -457,12 +476,14 @@ git commit -m "feat(web): add authenticated AI proposal BFF"
 ### Task 6: Next.js Route Handlers
 
 **Files:**
+
 - Create: `apps/web/app/api/ai/proposals/route.ts`
 - Create: `apps/web/app/api/ai/proposals/[proposalId]/route.ts`
 - Create: `apps/web/app/api/ai/proposals/[proposalId]/decisions/route.ts`
 - Create: `apps/web/app/api/ai/proposals/routes.test.ts`
 
 **Interfaces:**
+
 - Consumes `handleAiProposalRequest` and `AiProposalRoute`.
 - Produces browser routes from the design.
 
@@ -537,6 +558,7 @@ git commit -m "feat(web): expose same-origin AI audit routes"
 ### Task 7: Package Gates, Operations, and Changelog
 
 **Files:**
+
 - Modify: `apps/web/package.json`
 - Modify: root `package.json`
 - Modify: `.env.example`
@@ -544,6 +566,7 @@ git commit -m "feat(web): expose same-origin AI audit routes"
 - Modify: `CHANGELOG.md`
 
 **Interfaces:**
+
 - Produces complete CI discoverability and operator configuration.
 
 - [ ] **Step 1: Add new web files to lint/test commands**
@@ -594,9 +617,11 @@ git commit -m "docs(ai): document authenticated gateway context"
 ### Task 8: Pull Request Review and Merge Loop
 
 **Files:**
+
 - No new production files unless review identifies a valid defect.
 
 **Interfaces:**
+
 - Produces a merged exact-head PR and zero open PRs before the next slice.
 
 - [ ] **Step 1: Create draft PR**

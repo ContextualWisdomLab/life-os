@@ -65,10 +65,7 @@ function signedContextHeaders(input: {
   const workspaceId = input.workspaceId.toLowerCase();
   const actorId = input.actorId.toLowerCase();
   const issuedAt = String(input.issuedAt ?? Math.floor(Date.now() / 1000));
-  const signature = createHmac(
-    'sha256',
-    input.secret ?? GATEWAY_CONTEXT_SECRET,
-  )
+  const signature = createHmac('sha256', input.secret ?? GATEWAY_CONTEXT_SECRET)
     .update(
       `life-os.ai-context.v1\n${workspaceId}\n${actorId}\n${issuedAt}\n${input.method}\n${input.path}`,
       'utf8',
