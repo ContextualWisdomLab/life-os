@@ -10,6 +10,7 @@ import {
   Module,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
@@ -21,6 +22,7 @@ import {
 import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
+import type { PlanningSearchResult } from './search';
 
 /** Dependency-injection token for the production planning runtime. */
 export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
@@ -55,6 +57,24 @@ export class PlanningController {
   @Header('Content-Type', PROMETHEUS_CONTENT_TYPE)
   metrics(): string {
     return planningMetrics.renderPrometheus();
+  }
+
+  /** Searches goals, projects, and tasks inside the trusted workspace header. */
+  @Get('search')
+  async search(
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Query('q') query: string | undefined,
+    @Query('limit') limit: string | undefined,
+  ): Promise<PlanningSearchResult[]> {
+    try {
+      return await this.planningService.search(
+        requireWorkspaceId(workspaceHeader),
+        query,
+        limit,
+      );
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   /** Creates a goal inside the caller's required workspace. */
