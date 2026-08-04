@@ -231,6 +231,34 @@ describe('trusted AI service context', () => {
     );
   });
 
+  it('rejects a noncanonical base64url spelling of a 32-byte signature', () => {
+    const alphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const canonical = signContext();
+    const finalIndex = alphabet.indexOf(canonical[canonical.length - 1]);
+    expect(finalIndex).toBeGreaterThanOrEqual(0);
+    expect(finalIndex % 4).toBe(0);
+    const alternateFinalCharacter = alphabet[finalIndex + 1];
+    expect(alternateFinalCharacter).toBeDefined();
+    const noncanonical = `${canonical.slice(0, -1)}${alternateFinalCharacter}`;
+
+    expectProblem(
+      () =>
+        requireTrustedAiContext(
+          contextHeaders({ signature: noncanonical }),
+          GATEWAY_SECRET,
+          'POST',
+          '/v1/proposals',
+          NOW_SECONDS,
+        ),
+      {
+        title: 'Trusted gateway context is invalid',
+        status: 401,
+        code: 'invalid_gateway_context',
+      },
+    );
+  });
+
   it.each([
     {
       method: 'GET',
