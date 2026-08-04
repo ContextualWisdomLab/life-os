@@ -1,0 +1,76 @@
+name: Normalize Production Deployment Registry
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/normalize-deployment-registry.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: normalize-production-deployment-registry-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  normalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/production-deployment-reference
+          fetch-depth: 0
+
+      - name: Normalize trusted base aliases
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          paths = (
+              Path('infra/kubernetes/base/workloads-public.yaml'),
+              Path('infra/kubernetes/base/workloads-core.yaml'),
+              Path('infra/kubernetes/base/workloads-integrations.yaml'),
+              Path('infra/deployment/render-production-overlay.mjs'),
+              Path('infra/deployment/tests/deployment-contract.test.mjs'),
+              Path('CHANGELOG.md'),
+              Path('docs/superpowers/specs/2026-08-04-production-deployment-reference-design.md'),
+          )
+          for path in paths:
+              content = path.read_text(encoding='utf-8')
+              content = content.replace(
+                  'ghcr.io/contextualwisdomlab/life-os-',
+                  'docker.io/contextualwisdomlab/life-os-',
+              )
+              content = content.replace(
+                  'trusted GHCR image aliases',
+                  'trusted Docker Hub base aliases',
+              )
+              path.write_text(content, encoding='utf-8')
+          PY
+          git rm .github/workflows/normalize-deployment-registry.yml
+
+      - name: Commit normalized aliases and remove workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            infra/kubernetes/base/workloads-public.yaml \
+            infra/kubernetes/base/workloads-core.yaml \
+            infra/kubernetes/base/workloads-integrations.yaml \
+            infra/deployment/render-production-overlay.mjs \
+            infra/deployment/tests/deployment-contract.test.mjs \
+            CHANGELOG.md \
+            docs/superpowers/specs/2026-08-04-production-deployment-reference-design.md
+          git add -u .github/workflows
+          git diff --cached --check
+          git commit -m 'fix(deploy): use trusted Docker Hub base aliases'
+          git push origin HEAD:feat/production-deployment-reference
