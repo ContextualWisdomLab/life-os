@@ -8,7 +8,7 @@ Close the highest-weight unresolved buyer gap `deployment.production-reference` 
 
 1. Add a Kustomize base and production overlay for only the current web and gateway edge workloads.
 2. Encode Restricted Pod Security, non-root/read-only execution, dropped capabilities, seccomp, resource bounds, probes, rolling updates, disruption budgets, topology spread, disabled service-account tokens, ClusterIP exposure, default-deny networking, and bounded internal data paths.
-3. Keep immutable image digests and the exact HTTPS web origin as mandatory deployment inputs. Commit only non-deployable sentinels and scope scanner exceptions to the two reviewed image fields.
+3. Keep immutable image digests and the exact HTTPS web origin as mandatory deployment inputs. Commit only non-deployable sentinels, load KSV-0125 trusted-registry data through Trivy's supported configuration mechanism, and enforce exact organization-owned image paths in repository tests and the shared renderer.
 4. Provide a manual workflow protected by the `production` environment. Use one renderer in validation and deployment, optionally apply forward-only migrations, perform server-side dry-run and diff, apply, and verify rollout.
 5. Add a migration runner that creates a private libpq service file, discovers registered service migrations lexically, serializes application, records sequence and SHA-256 evidence, replays exact migrations idempotently, and blocks changed, duplicate, or retrograde migrations.
 6. Add deterministic repository tests for security, workflow, renderer, connection, migration, and rollback invariants.
@@ -24,6 +24,7 @@ Close the highest-weight unresolved buyer gap `deployment.production-reference` 
 - No broad external egress; managed data endpoints require an operator-reviewed policy.
 - No database-backed service deployment until image packaging and service-specific probes/configuration are reviewed.
 - No tag-only image reference; the deployment workflow accepts SHA-256 digests only.
+- No finding suppression for KSV-0125; GHCR is declared through Trivy check data and every Kubernetes image remains constrained to reviewed LifeOS paths and digests.
 - No database URI in a process argument or `PGDATABASE`; use an ephemeral mode-`0600` libpq service file.
 - No mutable, duplicate-numbered, or retroactively inserted migration after application.
 - No destructive automated schema rollback.
