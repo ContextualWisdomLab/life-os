@@ -2,6 +2,7 @@
 
 import { type FormEvent, useState } from 'react';
 import type { PlanningSearchView } from '../planning-search-client';
+import styles from './quick-capture.module.css';
 
 interface QuickCaptureProps {
   readonly onCapture: (title: string) => boolean;
@@ -115,8 +116,8 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
   }
 
   return (
-    <section className="quick-capture" aria-labelledby="quick-capture-heading">
-      <div className="quick-capture-heading">
+    <section className={styles.shell} aria-labelledby="quick-capture-heading">
+      <div className={styles.heading}>
         <div>
           <p className="eyebrow">Capture and retrieve</p>
           <h2 id="quick-capture-heading">Find the next visible action.</h2>
@@ -124,7 +125,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         <span>Local + durable</span>
       </div>
 
-      <div className="quick-capture-grid">
+      <div className={styles.grid}>
         <form
           className="capture-bar"
           onSubmit={capture}
@@ -148,7 +149,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         </form>
 
         <form
-          className="workspace-search"
+          className={styles.search}
           onSubmit={(event) => void search(event)}
           role="search"
           aria-label="Search durable workspace planning records"
@@ -170,16 +171,12 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         </form>
       </div>
 
-      <p
-        className="workspace-search-status"
-        role="status"
-        aria-live="polite"
-      >
+      <p className={styles.status} role="status" aria-live="polite">
         {searchState.message}
       </p>
 
       {searchState.status === 'ready' && searchState.results.length > 0 ? (
-        <ul className="workspace-search-results" aria-label="Workspace search results">
+        <ul className={styles.results} aria-label="Workspace search results">
           {searchState.results.map((result) => (
             <li key={`${result.entityType}:${result.id}`}>
               <span>{resultTypeLabel(result)}</span>
