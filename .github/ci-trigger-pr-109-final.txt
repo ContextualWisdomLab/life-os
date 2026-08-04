@@ -1,1 +1,0 @@
-Retrigger exact-head validation after formatting repair.
