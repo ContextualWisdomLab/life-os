@@ -54,6 +54,22 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Check deployment reference formatting and shell syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --check \
+            .github/workflows/deploy.yml \
+            infra/kubernetes/base/kustomization.yaml \
+            infra/kubernetes/base/namespace.yaml \
+            infra/kubernetes/base/edge-workloads.yaml \
+            infra/kubernetes/base/network-policies.yaml \
+            infra/kubernetes/overlays/production/kustomization.yaml \
+            infra/tests/deployment.spec.ts \
+            docs/operations/production-deployment.md \
+            docs/superpowers/plans/2026-08-04-production-kubernetes-reference-slice.md
+          bash -n infra/kubernetes/run-migrations.sh
+
       - name: Lint
         run: pnpm lint
 
