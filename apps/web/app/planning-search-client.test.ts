@@ -52,7 +52,7 @@ function searchResponse(status = 200): Response {
 }
 
 describe('planning search BFF', () => {
-  it('derives and signs workspace context without forwarding browser credentials', async () => {
+  it('signs context without forwarding browser credentials', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetcher: PlanningSearchFetch = async (input, init) => {
       const url = String(input);
@@ -119,7 +119,7 @@ describe('planning search BFF', () => {
     assert.equal(calls[1]?.init?.redirect, 'error');
   });
 
-  it('rejects ownership injection and malformed bounded inputs before fetch', async () => {
+  it('rejects injected ownership and malformed inputs before fetch', async () => {
     const unsafeUrls = [
       'https://life-os.example/api/planning/search',
       'https://life-os.example/api/planning/search?q=x',
@@ -151,7 +151,7 @@ describe('planning search BFF', () => {
     }
   });
 
-  it('fails closed when gateway configuration is missing or invalid', async () => {
+  it('fails closed on invalid gateway configuration', async () => {
     for (const secret of [undefined, 'too-short']) {
       let called = false;
       const response = await handlePlanningSearchRequest(
@@ -189,7 +189,7 @@ describe('planning search BFF', () => {
     });
   });
 
-  it('maps malformed identity, planning, transport, and oversized responses generically', async () => {
+  it('maps malformed upstream responses generically', async () => {
     const malformedResponses: PlanningSearchFetch[] = [
       async () =>
         new Response('{}', { headers: { 'content-type': 'text/plain' } }),
@@ -234,7 +234,7 @@ describe('planning search BFF', () => {
 });
 
 describe('planning search boundary helpers', () => {
-  it('validates origins, secrets, session ownership, signed context, and results', () => {
+  it('validates boundary helpers', () => {
     assert.equal(
       requireServiceOrigin('https://identity.example.test'),
       'https://identity.example.test',
@@ -277,7 +277,7 @@ describe('planning search boundary helpers', () => {
     );
   });
 
-  it('rejects unsafe origins, secrets, sessions, timestamps, and result shapes', () => {
+  it('rejects unsafe boundary values', () => {
     for (const origin of [
       '',
       'ftp://identity.example.test',
