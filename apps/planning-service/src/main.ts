@@ -10,6 +10,7 @@ import {
   Module,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
@@ -21,11 +22,18 @@ import {
 import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
+import {
+  parsePlanningSearchRequest,
+  type PlanningSearchResult,
+  PlanningSearchService,
+} from './search';
 
 /** Dependency-injection token for the production planning runtime. */
 export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
 /** Dependency-injection token for the planning domain service. */
 export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
+/** Dependency-injection token for tenant-safe planning search. */
+export const PLANNING_SEARCH_SERVICE = Symbol('PLANNING_SEARCH_SERVICE');
 
 /** Requires the tenant workspace boundary used by every planning operation. */
 function requireWorkspaceId(value: string | undefined): string {
@@ -42,6 +50,8 @@ export class PlanningController {
   constructor(
     @Inject(PLANNING_SERVICE)
     private readonly planningService: PlanningService,
+    @Inject(PLANNING_SEARCH_SERVICE)
+    private readonly planningSearchService: PlanningSearchService,
   ) {}
 
   /** Returns a credential-free liveness response for the planning service. */
@@ -55,6 +65,24 @@ export class PlanningController {
   @Header('Content-Type', PROMETHEUS_CONTENT_TYPE)
   metrics(): string {
     return planningMetrics.renderPrometheus();
+  }
+
+  /** Searches workspace-owned goals, projects, and tasks through one bounded query. */
+  @Get('search')
+  async search(
+    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Query() query: Readonly<Record<string, unknown>>,
+  ): Promise<PlanningSearchResult[]> {
+    try {
+      const request = parsePlanningSearchRequest(query);
+      return await this.planningSearchService.search(
+        requireWorkspaceId(workspaceHeader),
+        request.query,
+        request.limit,
+      );
+    } catch (error) {
+      throw toHttpException(error);
+    }
   }
 
   /** Creates a goal inside the caller's required workspace. */
@@ -173,8 +201,13 @@ export class PlanningController {
     {
       provide: PLANNING_SERVICE,
       inject: [PLANNING_RUNTIME],
-      useFactory: (runtime: PlanningRuntime): PlanningService =>
-        runtime.service,
+      useFactory: (runtime: PlanningRuntime): PlanningService => runtime.service,
+    },
+    {
+      provide: PLANNING_SEARCH_SERVICE,
+      inject: [PLANNING_RUNTIME],
+      useFactory: (runtime: PlanningRuntime): PlanningSearchService =>
+        runtime.searchService,
     },
   ],
 })
