@@ -102,7 +102,7 @@ describe('PostgresPlanningRepository search', () => {
     expect(client.values).toEqual([
       WORKSPACE_ID,
       '100%_ launch',
-      '100\\%\\_ launch%',
+      '100\\%\\_ launch %',
       3,
     ]);
   });
