@@ -47,7 +47,7 @@ function searchResponse(status = 200): Response {
 
 describe('planning search BFF', () => {
   it('derives the workspace from identity and forwards no browser credential to planning', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetcher: PlanningSearchFetch = async (input, init) => {
       const url = String(input);
       calls.push({ url, init });
