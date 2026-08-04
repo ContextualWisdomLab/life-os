@@ -206,6 +206,8 @@ describe('Notification runtime', () => {
       runtime.repository.claim(
         '018f47a4-9976-4c57-8a8a-674630a873d1',
         '91fe0f58-2035-49b7-a793-ac75939a433f',
+        '2026-08-04T12:00:00.000Z',
+        0,
       ),
     ).resolves.toBeNull();
     expect(pool.calls).toHaveLength(1);
@@ -213,6 +215,8 @@ describe('Notification runtime', () => {
       'UPDATE notification_service.reminder_occurrences',
     );
     expect(pool.calls[0]?.values?.[3]).toBe(600);
+    expect(pool.calls[0]?.values?.[4]).toBe('2026-08-04T12:00:00.000Z');
+    expect(pool.calls[0]?.values?.[5]).toBe(0);
 
     await runtime.onApplicationShutdown();
     await runtime.close();
