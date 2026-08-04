@@ -25,8 +25,6 @@ interface AiProblemDetails {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const CANONICAL_UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const PROPOSAL_PATH_PATTERN =
@@ -105,9 +103,6 @@ function requireMethodAndPath(
   }
   const proposalId = match[1];
   const decisionsSuffix = match[2];
-  if (proposalId && !CANONICAL_UUID_V4_PATTERN.test(proposalId)) {
-    return invalidGatewayContext();
-  }
   if (proposalId && !decisionsSuffix && method !== 'GET') {
     return invalidGatewayContext();
   }
