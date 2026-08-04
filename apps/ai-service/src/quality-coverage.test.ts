@@ -1,6 +1,7 @@
+import { createHmac } from 'node:crypto';
 import { HttpException, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   type AiBootstrapApplication,
   AiProposalAuditController,
@@ -53,6 +54,35 @@ const EVENT_ID = '55555555-5555-4555-8555-555555555555';
 const IDEMPOTENCY_KEY = '66666666-6666-4666-8666-666666666666';
 const OTHER_EVENT_ID = '77777777-7777-4777-8777-777777777777';
 const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';
+const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
+
+/** Exact signed headers accepted by one method-and-path-bound controller call. */
+interface SignedControllerContext {
+  readonly workspaceId: string;
+  readonly actorId: string;
+  readonly issuedAt: string;
+  readonly signature: string;
+}
+
+/** Signs fresh service context for one controller-owned route. */
+function signedControllerContext(
+  method: 'GET' | 'POST',
+  path: string,
+): SignedControllerContext {
+  const issuedAt = String(Math.floor(Date.now() / 1_000));
+  const signature = createHmac('sha256', GATEWAY_SECRET)
+    .update(
+      `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\n${method}\n${path}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    workspaceId: WORKSPACE_ID,
+    actorId: ACTOR_ID,
+    issuedAt,
+    signature,
+  };
+}
 
 function request(overrides: Partial<ProposalRequest> = {}): ProposalRequest {
   return {
@@ -769,27 +799,54 @@ describe('PostgreSQL proposal audit residual safety branches', () => {
 });
 
 describe('AI controllers and bootstrap error contracts', () => {
+  beforeEach(() => {
+    vi.stubEnv('AI_GATEWAY_CONTEXT_SECRET', GATEWAY_SECRET);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('covers health, successful generation, and all generation failures', async () => {
     const generated = proposal();
     const generator = {
       generateProposal: vi.fn().mockResolvedValue(generated),
     };
     const controller = new AiProposalController(generator);
+    const proposalContext = signedControllerContext('POST', '/v1/proposals');
     expect(controller.health()).toEqual({
       status: 'ok',
       service: 'ai-service',
     });
     await expect(
-      controller.createProposal(WORKSPACE_ID, request()),
+      controller.createProposal(
+        proposalContext.workspaceId,
+        proposalContext.actorId,
+        proposalContext.issuedAt,
+        proposalContext.signature,
+        request(),
+      ),
     ).resolves.toEqual(generated);
 
     await expectProblem(
-      controller.createProposal(undefined, request()),
-      400,
-      'invalid_request',
+      controller.createProposal(
+        undefined,
+        proposalContext.actorId,
+        proposalContext.issuedAt,
+        proposalContext.signature,
+        request(),
+      ),
+      401,
+      'invalid_gateway_context',
     );
     await expectProblem(
-      controller.createProposal(WORKSPACE_ID, null),
+      controller.createProposal(
+        proposalContext.workspaceId,
+        proposalContext.actorId,
+        proposalContext.issuedAt,
+        proposalContext.signature,
+        null,
+      ),
       400,
       'invalid_request',
     );
@@ -804,7 +861,13 @@ describe('AI controllers and bootstrap error contracts', () => {
           async generateProposal(): Promise<AuditableProposal> {
             throw error;
           },
-        }).createProposal(WORKSPACE_ID, request()),
+        }).createProposal(
+          proposalContext.workspaceId,
+          proposalContext.actorId,
+          proposalContext.issuedAt,
+          proposalContext.signature,
+          request(),
+        ),
         status,
         code,
       );
@@ -821,49 +884,113 @@ describe('AI controllers and bootstrap error contracts', () => {
       appendDecision: vi.fn().mockResolvedValue(event),
     } as unknown as ProposalAuditApplication;
     const controller = new AiProposalAuditController(application);
+    const listContext = signedControllerContext('GET', '/v1/proposals');
+    const proposalPath = `/v1/proposals/${PROPOSAL_ID}`;
+    const detailContext = signedControllerContext('GET', proposalPath);
+    const decisionsPath = `${proposalPath}/decisions`;
+    const decisionsReadContext = signedControllerContext('GET', decisionsPath);
+    const decisionsWriteContext = signedControllerContext(
+      'POST',
+      decisionsPath,
+    );
 
-    await expect(controller.listProposals(WORKSPACE_ID)).resolves.toEqual([
-      audit,
-    ]);
     await expect(
-      controller.findProposal(WORKSPACE_ID, PROPOSAL_ID),
+      controller.listProposals(
+        listContext.workspaceId,
+        listContext.actorId,
+        listContext.issuedAt,
+        listContext.signature,
+      ),
+    ).resolves.toEqual([audit]);
+    await expect(
+      controller.findProposal(
+        detailContext.workspaceId,
+        detailContext.actorId,
+        detailContext.issuedAt,
+        detailContext.signature,
+        PROPOSAL_ID,
+      ),
     ).resolves.toEqual(audit);
     await expect(
-      controller.listDecisions(WORKSPACE_ID, PROPOSAL_ID),
+      controller.listDecisions(
+        decisionsReadContext.workspaceId,
+        decisionsReadContext.actorId,
+        decisionsReadContext.issuedAt,
+        decisionsReadContext.signature,
+        PROPOSAL_ID,
+      ),
     ).resolves.toEqual([event]);
     await expect(
-      controller.appendDecision(WORKSPACE_ID, ACTOR_ID, PROPOSAL_ID, {
-        expectedContentDigest: audit.contentDigest,
-        idempotencyKey: IDEMPOTENCY_KEY,
-        decision: 'accepted',
-        decidedAt: '2026-08-04T00:00:02Z',
-      }),
+      controller.appendDecision(
+        decisionsWriteContext.workspaceId,
+        decisionsWriteContext.actorId,
+        decisionsWriteContext.issuedAt,
+        decisionsWriteContext.signature,
+        PROPOSAL_ID,
+        {
+          expectedContentDigest: audit.contentDigest,
+          idempotencyKey: IDEMPOTENCY_KEY,
+          decision: 'accepted',
+          decidedAt: '2026-08-04T00:00:02Z',
+        },
+      ),
     ).resolves.toEqual(event);
 
     await expectProblem(
-      controller.listProposals(undefined),
-      400,
-      'invalid_request',
+      controller.listProposals(
+        undefined,
+        listContext.actorId,
+        listContext.issuedAt,
+        listContext.signature,
+      ),
+      401,
+      'invalid_gateway_context',
     );
     await expectProblem(
-      controller.findProposal(undefined, PROPOSAL_ID),
-      400,
-      'invalid_request',
+      controller.findProposal(
+        undefined,
+        detailContext.actorId,
+        detailContext.issuedAt,
+        detailContext.signature,
+        PROPOSAL_ID,
+      ),
+      401,
+      'invalid_gateway_context',
     );
     await expectProblem(
-      controller.listDecisions(undefined, PROPOSAL_ID),
-      400,
-      'invalid_request',
+      controller.listDecisions(
+        undefined,
+        decisionsReadContext.actorId,
+        decisionsReadContext.issuedAt,
+        decisionsReadContext.signature,
+        PROPOSAL_ID,
+      ),
+      401,
+      'invalid_gateway_context',
     );
     await expectProblem(
-      controller.appendDecision(undefined, ACTOR_ID, PROPOSAL_ID, {}),
-      400,
-      'invalid_request',
+      controller.appendDecision(
+        undefined,
+        decisionsWriteContext.actorId,
+        decisionsWriteContext.issuedAt,
+        decisionsWriteContext.signature,
+        PROPOSAL_ID,
+        {},
+      ),
+      401,
+      'invalid_gateway_context',
     );
     await expectProblem(
-      controller.appendDecision(WORKSPACE_ID, undefined, PROPOSAL_ID, {}),
-      400,
-      'invalid_request',
+      controller.appendDecision(
+        decisionsWriteContext.workspaceId,
+        undefined,
+        decisionsWriteContext.issuedAt,
+        decisionsWriteContext.signature,
+        PROPOSAL_ID,
+        {},
+      ),
+      401,
+      'invalid_gateway_context',
     );
   });
 
@@ -881,10 +1008,14 @@ describe('AI controllers and bootstrap error contracts', () => {
       [new Error('password=secret'), 503, 'audit_unavailable'],
       ['password=secret', 503, 'audit_unavailable'],
     ];
+    const listContext = signedControllerContext('GET', '/v1/proposals');
     for (const [error, status, code] of cases) {
       await expectProblem(
         new AiProposalAuditController(throwingApplication(error)).listProposals(
-          WORKSPACE_ID,
+          listContext.workspaceId,
+          listContext.actorId,
+          listContext.issuedAt,
+          listContext.signature,
         ),
         status,
         code,
