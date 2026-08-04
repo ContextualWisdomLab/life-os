@@ -11,6 +11,12 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const ISO_INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/u;
+/**
+ * Hard policy-search horizon. Seventy-two hours covers the next local date,
+ * a nearly full-day quiet interval, and large IANA offset discontinuities
+ * while keeping every scheduler evaluation bounded.
+ */
+const MAX_POLICY_SEARCH_MINUTES = 72 * 60;
 
 /** Local quiet-hours interval expressed as minute-of-day values. */
 export interface QuietHours {
@@ -279,7 +285,11 @@ function nextAllowedInstant(
   requireNextLocalDay: boolean,
 ): string {
   const initialDate = zonedClock(now, timeZone).localDate;
-  for (let offsetMinutes = 1; offsetMinutes <= 26 * 60; offsetMinutes += 1) {
+  for (
+    let offsetMinutes = 1;
+    offsetMinutes <= MAX_POLICY_SEARCH_MINUTES;
+    offsetMinutes += 1
+  ) {
     const candidate = new Date(now.getTime() + offsetMinutes * 60_000);
     const clock = zonedClock(candidate, timeZone);
     if (

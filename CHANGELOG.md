@@ -15,6 +15,7 @@ All notable changes to LifeOS are documented in this file.
 ### Fixed
 
 - Planning search now normalizes browser query text and prevents stale or unmounted requests from replacing the latest visible result state.
+- Reminder fatigue deferral now crosses long IANA offset fallbacks and next-day quiet hours without abandoning the claimed occurrence.
 
 ### Security
 
