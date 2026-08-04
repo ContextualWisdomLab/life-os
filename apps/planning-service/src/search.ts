@@ -52,6 +52,7 @@ export function tokenizeSearchText(value: string): string[] {
   return normalizeSearchText(value).match(SEARCH_TOKEN_PATTERN) ?? [];
 }
 
+/** Rejects an untrusted query or result limit that violates the search contract. */
 function invalidSearchRequest(): never {
   throw new Error('Planning search request is invalid');
 }
@@ -116,6 +117,7 @@ export function matchesPlanningSearchTokens(
   return input.tokens.every((token) => titleTokens.has(token));
 }
 
+/** Assigns exact, whole-prefix, or whole-token relevance to one normalized title. */
 function matchRank(
   normalizedTitle: string,
   input: PlanningSearchInput,
