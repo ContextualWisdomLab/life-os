@@ -86,6 +86,7 @@ jobs:
           if [[ -f .github/scripts/complete_notification_docstrings.py ]]; then
             python3 .github/scripts/complete_notification_docstrings.py
           fi
+          git restore --source=HEAD --worktree .github/workflows/ci.yml
 
       - name: Format and validate reviewed fixes
         if: steps.repair_state.outputs.required == 'true'
@@ -93,7 +94,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           pnpm exec prettier --single-quote --write \
-            .github/workflows/ci.yml \
             apps/notification-service/package.json \
             apps/notification-service/tsconfig.json \
             apps/notification-service/vitest.config.ts \
@@ -120,7 +120,6 @@ jobs:
             fi
           done
           git add \
-            .github/workflows/ci.yml \
             apps/notification-service/package.json \
             apps/notification-service/src
           git diff --cached --check
