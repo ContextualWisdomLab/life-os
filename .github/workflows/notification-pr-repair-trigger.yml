@@ -1,0 +1,97 @@
+name: Notification reliability repair
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notification-pr-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'feat/notification-postgres-inbox'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/notification-postgres-inbox
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply reviewed reliability repairs
+        run: python3 .github/scripts/repair_notification_reliability.py
+
+      - name: Format and validate notification service
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/notification-service/src/notification-runtime.ts \
+            apps/notification-service/src/notification-runtime.test.ts \
+            apps/notification-service/src/postgres-reminder-repository.ts \
+            apps/notification-service/src/postgres-reminder-repository.test.ts \
+            apps/notification-service/src/postgres-reminder-repository.integration.test.ts \
+            apps/notification-service/src/reminder-scheduler.ts \
+            apps/notification-service/src/reminder-scheduler.integration.test.ts
+          pnpm --filter @life-os/notification-service lint
+          pnpm --filter @life-os/notification-service typecheck
+          pnpm --filter @life-os/notification-service exec vitest run \
+            --no-file-parallelism \
+            --coverage.enabled=false
+
+      - name: Commit repaired branch and remove temporary automation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git restore --worktree pnpm-lock.yaml 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f \
+            .github/scripts/repair_notification_reliability.py \
+            .github/workflows/notification-pr-repair.yml \
+            .github/workflows/notification-pr-repair-trigger.yml
+          git add \
+            apps/notification-service/src/notification-runtime.ts \
+            apps/notification-service/src/notification-runtime.test.ts \
+            apps/notification-service/src/postgres-reminder-repository.ts \
+            apps/notification-service/src/postgres-reminder-repository.test.ts \
+            apps/notification-service/src/postgres-reminder-repository.integration.test.ts \
+            apps/notification-service/src/reminder-scheduler.ts \
+            apps/notification-service/src/reminder-scheduler.integration.test.ts
+          git diff --cached --check
+          git commit -m "fix(notification): isolate persistence and pool failures"
+          git push origin HEAD:feat/notification-postgres-inbox
