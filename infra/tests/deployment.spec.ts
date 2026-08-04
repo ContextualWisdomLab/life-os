@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -23,6 +23,8 @@ describe('production Kubernetes reference contract', () => {
     `${kubernetesRoot}/overlays/production/kustomization.yaml`,
   );
   const workflow = read('.github/workflows/deploy.yml');
+  const renderer = read(`${kubernetesRoot}/render-production-manifest.py`);
+  const serviceWriter = read(`${kubernetesRoot}/write-pg-service.py`);
   const migrationRunner = read(`${kubernetesRoot}/run-migrations.sh`);
 
   it('composes one production overlay from the reviewed base', () => {
@@ -68,36 +70,46 @@ describe('production Kubernetes reference contract', () => {
     expect(count(workloads, /topologySpreadConstraints:/g)).toBe(2);
   });
 
-  it('rejects unapproved or mutable deployment images', () => {
+  it('rejects unapproved or mutable deployment images through one renderer', () => {
     const zeroDigest = '0'.repeat(64);
     const webSentinel = `ghcr.io/contextualwisdomlab/life-os-web@sha256:${zeroDigest}`;
     const gatewaySentinel = `ghcr.io/contextualwisdomlab/life-os-gateway@sha256:${zeroDigest}`;
-    const approvedImageError =
-      'image reference must use the approved LifeOS GHCR path and sha256 digest';
-    const unresolvedSentinel =
-      "! grep --quiet 'sha256:0000000000000000000000000000000000000000000000000000000000000000'";
 
     expect(workloads).toContain(webSentinel);
     expect(workloads).toContain(gatewaySentinel);
-    expect(workflow).toContain(approvedImageError);
-    expect(workflow).toContain(
+    expect(renderer).toContain(
+      'image reference must use the approved LifeOS GHCR path and sha256 digest',
+    );
+    expect(renderer).toContain(
       'ghcr\\.io/contextualwisdomlab/life-os-web@sha256:[0-9a-f]{64}',
     );
-    expect(workflow).toContain(
+    expect(renderer).toContain(
       'ghcr\\.io/contextualwisdomlab/life-os-gateway@sha256:[0-9a-f]{64}',
     );
-    expect(workflow).toContain('zero image digest is not deployable');
-    expect(workflow).toContain(unresolvedSentinel);
+    expect(renderer).toContain('zero image digest is not deployable');
+    expect(count(workflow, /render-production-manifest\.py/g)).toBe(2);
+    expect(workflow).not.toContain("python - <<'PY'");
   });
 
-  it('denies ambient network access and public exposure', () => {
+  it('scopes the registry exception to the two reviewed image fields', () => {
+    expect(count(workloads, /trivy:ignore:KSV-0125/g)).toBe(2);
+    expect(existsSync(resolve(repositoryRoot, '.trivyignore'))).toBe(false);
+  });
+
+  it('denies ambient access while permitting bounded internal data paths', () => {
     expect(count(workloads, /type: ClusterIP/g)).toBe(2);
     expect(workloads).not.toContain('type: LoadBalancer');
     expect(workloads).not.toContain('kind: Ingress');
     expect(workloads).not.toContain('kind: Secret');
     expect(networkPolicies).toContain('name: default-deny');
-    expect(networkPolicies).toContain('- Ingress');
-    expect(networkPolicies).toContain('- Egress');
+    expect(networkPolicies).toContain('name: allow-web-gateway-egress');
+    expect(networkPolicies).toContain('name: allow-web-gateway-ingress');
+    expect(networkPolicies).toContain('name: allow-gateway-internal-egress');
+    expect(networkPolicies).toContain('life-os-postgres');
+    expect(networkPolicies).toContain('life-os-nats');
+    expect(networkPolicies).toContain('port: 4000');
+    expect(networkPolicies).toContain('port: 4222');
+    expect(networkPolicies).toContain('port: 5432');
     expect(networkPolicies).toContain("life-os.io/edge-access: 'true'");
     expect(networkPolicies).toContain(
       'kubernetes.io/metadata.name: kube-system',
@@ -112,42 +124,51 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('cancel-in-progress: false');
     expect(workflow).toContain('environment: production');
     expect(workflow).toContain('permissions:\n  contents: read');
-    expect(workflow).toContain(
-      'actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
-    );
+    expect(count(workflow, /persist-credentials: false/g)).toBe(2);
     expect(workflow).toContain('LIFE_OS_KUBE_CONFIG_B64');
     expect(workflow).toContain('--dry-run=server');
     expect(workflow).toContain('kubectl diff --server-side');
-    expect(workflow).toContain('kubectl rollout status deployment/life-os-web');
+  });
+
+  it('captures and verifies rollback state including an initial deployment', () => {
+    expect(workflow).toContain('WEB_PRIOR_REVISION');
+    expect(workflow).toContain('GATEWAY_PRIOR_REVISION');
+    expect(workflow).toContain('--to-revision="${prior_revision}"');
+    expect(workflow).toContain('kubectl delete "deployment/${deployment_name}"');
+    expect(workflow).toContain('recovery_failed=0');
     expect(workflow).toContain(
-      'kubectl rollout undo deployment/life-os-gateway',
+      'Rollout and automatic workload-state recovery both failed.',
     );
   });
 
-  it('tracks forward-only migrations without URL arguments', () => {
+  it('uses a private service file instead of a database URI argument', () => {
+    expect(serviceWriter).toContain('PGSERVICE');
+    expect(serviceWriter).toContain('destination.chmod(0o600)');
+    expect(serviceWriter).toContain('ALLOWED_QUERY_PARAMETERS');
+    expect(migrationRunner).toContain('PGSERVICEFILE="${service_file}"');
+    expect(migrationRunner).toContain('PGSERVICE="${service_name}"');
+    expect(migrationRunner).not.toContain('PGDATABASE="${database_url}"');
+    expect(migrationRunner).not.toContain('--dbname "${database_url}"');
+  });
+
+  it('blocks duplicate and retrograde migration sequences', () => {
+    expect(migrationRunner).toContain('migration_sequence integer NOT NULL');
     expect(migrationRunner).toContain(
-      "readonly MIGRATION_SCHEMA='life_os_deployment'",
+      'schema_migrations_service_sequence_unique',
     );
+    expect(migrationRunner).toContain('MAX(migration_sequence)');
     expect(migrationRunner).toContain(
-      "readonly MIGRATION_TABLE='schema_migrations'",
-    );
-    expect(migrationRunner).toContain(
-      'migration_sha256 character(64) NOT NULL',
-    );
-    expect(migrationRunner).toContain("pg_advisory_lock(hashtextextended('");
-    expect(migrationRunner).toContain(
-      'migration_error=migration_digest_changed',
+      'migration_error=migration_sequence_not_forward',
     );
     expect(migrationRunner).toContain(
       'migration_error=incomplete_migration_requires_reconciliation',
     );
     expect(migrationRunner).toContain(
-      "migration_status IN ('applying', 'applied')",
+      'migration_error=migration_digest_changed',
     );
-    expect(migrationRunner).toContain('LIFE_OS_MIGRATION_CONFIRMATION');
-    expect(migrationRunner).toContain('PGDATABASE="${database_url}" psql');
-    expect(migrationRunner).not.toContain('--dbname "${database_url}"');
+  });
 
+  it('registers every database-backed bounded context', () => {
     const databaseVariables = [
       'IDENTITY_DATABASE_URL',
       'PLANNING_DATABASE_URL',
