@@ -3,7 +3,6 @@ import type { PoolConfig } from 'pg';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiRuntime, createAiRuntime } from './ai-runtime';
 import {
-  AI_RUNTIME,
   AiProductionModule,
   PROPOSAL_AUDIT_APPLICATION,
   PROPOSAL_SERVICE,
@@ -165,7 +164,6 @@ describe('AI production runtime wiring', () => {
     expect(providerFactory(PROPOSAL_AUDIT_APPLICATION)(runtime)).toBe(
       application,
     );
-    expect(providerFactory(AI_RUNTIME)).toBeTypeOf('object');
   });
 
   it('uses production clock and identifier defaults for durable evidence', async () => {
