@@ -303,7 +303,7 @@ describeWithPostgres('PostgreSQL notification repository integration', () => {
     });
     await administrativePool.query(
       `UPDATE notification_service.reminder_occurrences
-       SET claim_expires_at = clock_timestamp() - interval '1 second'
+       SET claim_expires_at = TIMESTAMPTZ '2000-01-01 00:00:00+00'
        WHERE workspace_id = $1 AND reminder_id = $2`,
       [workspaceId, reminder.id],
     );

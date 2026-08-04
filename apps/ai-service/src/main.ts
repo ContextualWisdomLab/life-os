@@ -26,6 +26,7 @@ import {
 import {
   type ProposalAuditRecord,
   ProposalAuditValidationError,
+  ProposalDigestMismatchError,
   type ProposalDecisionEvent,
 } from './proposal-audit-domain';
 import {
@@ -39,7 +40,6 @@ import {
 import {
   ProposalAuditPersistenceError,
   ProposalDecisionConflictError,
-  ProposalDigestMismatchError,
 } from './postgres-proposal-audit-repository';
 
 /** Injection token for the narrowed inert proposal-generation contract. */
@@ -52,7 +52,7 @@ export const AI_RUNTIME = Symbol('AI_RUNTIME');
 const auditLogger = new Logger('AiProposalAudit');
 
 /** Narrow read-only proposal-generation contract exposed to the legacy controller. */
-interface ProposalGenerator {
+export interface ProposalGenerator {
   /** Generates an inert proposal without executing any proposed operation. */
   generateProposal(
     workspaceId: string,
@@ -339,13 +339,41 @@ export class AiAppModule {}
 })
 export class AiProductionModule {}
 
-/** Boots the production AI process with exactly-once shutdown hooks. */
-async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AiProductionModule);
-  app.enableShutdownHooks();
-  await app.listen(Number(process.env.AI_SERVICE_PORT ?? 4105), '0.0.0.0');
+/** Minimal Nest application behavior needed by the AI process bootstrap. */
+export interface AiBootstrapApplication {
+  /** Enables Nest-managed lifecycle shutdown hooks. */
+  enableShutdownHooks(): void;
+  /** Starts the HTTP server on one validated port and fixed host. */
+  listen(port: number, host: string): Promise<unknown>;
 }
 
-if (require.main === module) {
-  void bootstrap();
+/** Factory used to construct the production Nest application. */
+export type AiApplicationFactory = () => Promise<AiBootstrapApplication>;
+
+/** Creates the production Nest application without starting its listener. */
+export async function createAiApplication(): Promise<AiBootstrapApplication> {
+  return await NestFactory.create(AiProductionModule);
+}
+
+/** Parses the optional AI service port into the supported TCP range. */
+export function resolveAiServicePort(value: string | undefined): number {
+  if (value === undefined || value.trim() === '') {
+    return 4_105;
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error('AI service port is invalid');
+  }
+  return parsed;
+}
+
+/** Boots the production AI process with exactly-once shutdown hooks. */
+export async function bootstrapAiService(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  applicationFactory: AiApplicationFactory = createAiApplication,
+): Promise<void> {
+  const port = resolveAiServicePort(environment.AI_SERVICE_PORT);
+  const app = await applicationFactory();
+  app.enableShutdownHooks();
+  await app.listen(port, '0.0.0.0');
 }

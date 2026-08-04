@@ -11,6 +11,7 @@ import { ProposalService, RuleBasedProposalModel } from './proposal-service';
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
 const databaseLogger = new Logger('AiDatabasePool');
 
+/** Bounded environment values accepted by the AI production runtime. */
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
 /** Bounded PostgreSQL pool boundary used by the AI production runtime. */
@@ -44,6 +45,7 @@ export function createAiPoolErrorListener(
 
 /** Adapts node-postgres to the minimal pool contract required by the AI service. */
 class NodePostgresAiPool implements AiPool {
+  /** Creates the bounded adapter around one owned node-postgres pool. */
   constructor(private readonly pool: Pool) {}
 
   /** Executes SQL without exposing the wider node-postgres client surface. */
@@ -63,6 +65,7 @@ class NodePostgresAiPool implements AiPool {
 
 /** Narrows the runtime pool to the repository's parameterized SQL contract. */
 class NodePostgresProposalAuditSqlClient implements ProposalAuditSqlClient {
+  /** Creates the repository SQL adapter over the runtime-owned pool. */
   constructor(private readonly pool: AiPool) {}
 
   /** Delegates one parameterized query through the bounded pool interface. */
