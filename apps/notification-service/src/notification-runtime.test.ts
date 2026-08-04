@@ -51,15 +51,36 @@ describe('Notification runtime', () => {
     });
   });
 
-  it('fails closed on missing, non-PostgreSQL, or unbounded pool configuration', () => {
+  it('fails closed on missing, malformed, non-PostgreSQL, or oversized database configuration', () => {
     expect(() => createNotificationPoolConfiguration({})).toThrowError(
       'Required notification configuration is missing: NOTIFICATION_DATABASE_URL',
     );
     expect(() =>
       createNotificationPoolConfiguration({
+        NOTIFICATION_DATABASE_URL: 'not a URL',
+      }),
+    ).toThrowError('Notification database URL is invalid');
+    expect(() =>
+      createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: 'https://database.example.test/life_os',
       }),
     ).toThrowError('Notification database URL must use PostgreSQL');
+    expect(() =>
+      createNotificationPoolConfiguration({
+        NOTIFICATION_DATABASE_URL: `postgresql://${'a'.repeat(8 * 1024)}`,
+      }),
+    ).toThrowError(
+      'Required notification configuration is missing: NOTIFICATION_DATABASE_URL',
+    );
+  });
+
+  it('fails closed on non-integer or out-of-range pool configuration', () => {
+    expect(() =>
+      createNotificationPoolConfiguration({
+        NOTIFICATION_DATABASE_URL: DATABASE_URL,
+        NOTIFICATION_DATABASE_POOL_MAX: '1.5',
+      }),
+    ).toThrowError('Notification database pool size is invalid');
     expect(() =>
       createNotificationPoolConfiguration({
         NOTIFICATION_DATABASE_URL: DATABASE_URL,
@@ -78,6 +99,19 @@ describe('Notification runtime', () => {
         NOTIFICATION_DATABASE_IDLE_TIMEOUT_MS: '300001',
       }),
     ).toThrowError('Notification database idle timeout is invalid');
+  });
+
+  it('uses defaults for absent and blank optional integer configuration', () => {
+    expect(
+      createNotificationPoolConfiguration({
+        NOTIFICATION_DATABASE_URL: DATABASE_URL,
+        NOTIFICATION_DATABASE_POOL_MAX: '   ',
+      }),
+    ).toMatchObject({
+      max: 10,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+    });
   });
 
   it('fails before allocating a pool for invalid scheduler bounds', () => {
