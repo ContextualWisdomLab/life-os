@@ -38,9 +38,6 @@ describe('localized message catalogs', () => {
       formatMessage(english, 'completedCountLabel', { count: 3 }),
       '3 actions completed',
     );
-    assert.equal(
-      formatMessage(english, 'todayDate'),
-      'Today · {date}',
-    );
+    assert.equal(formatMessage(english, 'todayDate'), 'Today · {date}');
   });
 });
