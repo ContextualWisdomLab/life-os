@@ -1,13 +1,7 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-
-const DOCUMENTED_SOURCE_FILES = [
-  'notification-runtime.ts',
-  'postgres-reminder-repository.ts',
-  'reminder-scheduler.ts',
-] as const;
 
 interface UndocumentedDeclaration {
   readonly file: string;
@@ -24,6 +18,17 @@ function hasJSDoc(node: ts.Node, sourceFile: ts.SourceFile): boolean {
   return /\/\*\*[\s\S]*?\*\/\s*$/u.test(leadingTrivia);
 }
 
+/** Returns whether a variable or property stores a named callable value. */
+function hasCallableInitializer(
+  node: ts.VariableDeclaration | ts.PropertyDeclaration,
+): boolean {
+  return (
+    node.initializer !== undefined &&
+    (ts.isArrowFunction(node.initializer) ||
+      ts.isFunctionExpression(node.initializer))
+  );
+}
+
 /** Names one declaration precisely enough for an actionable failure message. */
 function declarationName(node: ts.Node): string {
   if (ts.isConstructorDeclaration(node)) {
@@ -33,6 +38,8 @@ function declarationName(node: ts.Node): string {
       : 'constructor';
   }
   if (
+    ts.isVariableDeclaration(node) ||
+    ts.isPropertyDeclaration(node) ||
     ts.isFunctionDeclaration(node) ||
     ts.isClassDeclaration(node) ||
     ts.isInterfaceDeclaration(node) ||
@@ -45,7 +52,7 @@ function declarationName(node: ts.Node): string {
   return node.kind.toString();
 }
 
-/** Selects declarations that require beginner-readable JSDoc coverage. */
+/** Selects every named callable or structural declaration governed by JSDoc. */
 function requiresJSDoc(node: ts.Node): boolean {
   return (
     ts.isFunctionDeclaration(node) ||
@@ -54,11 +61,13 @@ function requiresJSDoc(node: ts.Node): boolean {
     ts.isTypeAliasDeclaration(node) ||
     ts.isMethodDeclaration(node) ||
     ts.isMethodSignature(node) ||
-    ts.isConstructorDeclaration(node)
+    ts.isConstructorDeclaration(node) ||
+    (ts.isVariableDeclaration(node) && hasCallableInitializer(node)) ||
+    (ts.isPropertyDeclaration(node) && hasCallableInitializer(node))
   );
 }
 
-/** Collects every undocumented production declaration in one source file. */
+/** Collects every undocumented named declaration in one TypeScript source. */
 function collectUndocumentedDeclarations(
   file: string,
   source: string,
@@ -72,6 +81,7 @@ function collectUndocumentedDeclarations(
   );
   const missing: UndocumentedDeclaration[] = [];
 
+  /** Visits every syntax node while preserving exact source positions. */
   function visit(node: ts.Node): void {
     if (requiresJSDoc(node) && !hasJSDoc(node, sourceFile)) {
       const position = sourceFile.getLineAndCharacterOfPosition(
@@ -90,13 +100,29 @@ function collectUndocumentedDeclarations(
   return missing;
 }
 
+/** Discovers all notification-service TypeScript files deterministically. */
+async function discoverSourceFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        return await discoverSourceFiles(path);
+      }
+      return entry.isFile() && entry.name.endsWith('.ts') ? [path] : [];
+    }),
+  );
+  return files.flat().sort();
+}
+
 describe('notification-service source documentation', () => {
-  it('documents every production declaration with JSDoc', async () => {
+  it('documents every named declaration with JSDoc', async () => {
+    const sourceFiles = await discoverSourceFiles(__dirname);
     const missing = (
       await Promise.all(
-        DOCUMENTED_SOURCE_FILES.map(async (file) => {
-          const source = await readFile(resolve(__dirname, file), 'utf8');
-          return collectUndocumentedDeclarations(file, source);
+        sourceFiles.map(async (path) => {
+          const source = await readFile(path, 'utf8');
+          return collectUndocumentedDeclarations(path, source);
         }),
       )
     ).flat();
