@@ -1,0 +1,142 @@
+name: Repair AI quality coverage
+
+on:
+  push:
+    branches:
+      - feat/ai-authenticated-gateway-context
+
+permissions: {}
+
+jobs:
+  repair:
+    if: github.repository == 'ContextualWisdomLab/life-os'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/ai-authenticated-gateway-context
+          fetch-depth: 1
+
+      - name: Align quality coverage tests with signed gateway context
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ai-service/src/quality-coverage.test.ts')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "import { HttpException, Logger } from '@nestjs/common';",
+              "import { createHmac } from 'node:crypto';\nimport { HttpException, Logger } from '@nestjs/common';",
+          )
+          replace_once(
+              "const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';\n",
+              "const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';\n"
+              "const GATEWAY_SECRET = 'quality-coverage-ai-gateway-secret-32-bytes';\n\n"
+              "/** Creates fresh signed controller headers for one exact method and path. */\n"
+              "function signedContext(\n"
+              "  method: 'GET' | 'POST',\n"
+              "  path: string,\n"
+              "): [string, string, string, string] {\n"
+              "  const issuedAt = String(Math.floor(Date.now() / 1000));\n"
+              "  process.env.AI_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;\n"
+              "  const signature = createHmac('sha256', GATEWAY_SECRET)\n"
+              "    .update(\n"
+              "      `life-os.ai-context.v1\\n${WORKSPACE_ID}\\n${ACTOR_ID}\\n${issuedAt}\\n${method}\\n${path}`,\n"
+              "      'utf8',\n"
+              "    )\n"
+              "    .digest('base64url');\n"
+              "  return [WORKSPACE_ID, ACTOR_ID, issuedAt, signature];\n"
+              "}\n",
+          )
+
+          replace_once(
+              "      controller.createProposal(WORKSPACE_ID, request()),",
+              "      controller.createProposal(\n        ...signedContext('POST', '/v1/proposals'),\n        request(),\n      ),",
+          )
+          replace_once(
+              "      controller.createProposal(undefined, request()),\n      400,\n      'invalid_request',",
+              "      controller.createProposal(\n        undefined,\n        undefined,\n        undefined,\n        undefined,\n        request(),\n      ),\n      401,\n      'invalid_gateway_context',",
+          )
+          replace_once(
+              "      controller.createProposal(WORKSPACE_ID, null),",
+              "      controller.createProposal(\n        ...signedContext('POST', '/v1/proposals'),\n        null,\n      ),",
+          )
+          replace_once(
+              "        }).createProposal(WORKSPACE_ID, request()),",
+              "        }).createProposal(\n          ...signedContext('POST', '/v1/proposals'),\n          request(),\n        ),",
+          )
+
+          replace_once(
+              "    await expect(controller.listProposals(WORKSPACE_ID)).resolves.toEqual([\n      audit,\n    ]);",
+              "    await expect(\n      controller.listProposals(...signedContext('GET', '/v1/proposals')),\n    ).resolves.toEqual([audit]);",
+          )
+          replace_once(
+              "      controller.findProposal(WORKSPACE_ID, PROPOSAL_ID),",
+              "      controller.findProposal(\n        ...signedContext('GET', `/v1/proposals/${PROPOSAL_ID}`),\n        PROPOSAL_ID,\n      ),",
+          )
+          replace_once(
+              "      controller.listDecisions(WORKSPACE_ID, PROPOSAL_ID),",
+              "      controller.listDecisions(\n        ...signedContext(\n          'GET',\n          `/v1/proposals/${PROPOSAL_ID}/decisions`,\n        ),\n        PROPOSAL_ID,\n      ),",
+          )
+          replace_once(
+              "      controller.appendDecision(WORKSPACE_ID, ACTOR_ID, PROPOSAL_ID, {",
+              "      controller.appendDecision(\n        ...signedContext(\n          'POST',\n          `/v1/proposals/${PROPOSAL_ID}/decisions`,\n        ),\n        PROPOSAL_ID,\n        {",
+          )
+          replace_once(
+              "        decidedAt: '2026-08-04T00:00:02Z',\n      }),",
+              "          decidedAt: '2026-08-04T00:00:02Z',\n        },\n      ),",
+          )
+
+          replace_once(
+              "      controller.listProposals(undefined),\n      400,\n      'invalid_request',",
+              "      controller.listProposals(undefined, undefined, undefined, undefined),\n      401,\n      'invalid_gateway_context',",
+          )
+          replace_once(
+              "      controller.findProposal(undefined, PROPOSAL_ID),\n      400,\n      'invalid_request',",
+              "      controller.findProposal(\n        undefined,\n        undefined,\n        undefined,\n        undefined,\n        PROPOSAL_ID,\n      ),\n      401,\n      'invalid_gateway_context',",
+          )
+          replace_once(
+              "      controller.listDecisions(undefined, PROPOSAL_ID),\n      400,\n      'invalid_request',",
+              "      controller.listDecisions(\n        undefined,\n        undefined,\n        undefined,\n        undefined,\n        PROPOSAL_ID,\n      ),\n      401,\n      'invalid_gateway_context',",
+          )
+          replace_once(
+              "      controller.appendDecision(undefined, ACTOR_ID, PROPOSAL_ID, {}),\n      400,\n      'invalid_request',",
+              "      controller.appendDecision(\n        undefined,\n        undefined,\n        undefined,\n        undefined,\n        PROPOSAL_ID,\n        {},\n      ),\n      401,\n      'invalid_gateway_context',",
+          )
+          replace_once(
+              "      controller.appendDecision(WORKSPACE_ID, undefined, PROPOSAL_ID, {}),\n      400,\n      'invalid_request',",
+              "      controller.appendDecision(\n        WORKSPACE_ID,\n        undefined,\n        undefined,\n        undefined,\n        PROPOSAL_ID,\n        {},\n      ),\n      401,\n      'invalid_gateway_context',",
+          )
+          replace_once(
+              "        new AiProposalAuditController(throwingApplication(error)).listProposals(\n          WORKSPACE_ID,\n        ),",
+              "        new AiProposalAuditController(throwingApplication(error)).listProposals(\n          ...signedContext('GET', '/v1/proposals'),\n        ),",
+          )
+
+          path.write_text(text, encoding='utf-8')
+          Path('.github/workflows/repair-ai-quality-coverage.yml').unlink()
+          PY
+
+          corepack enable
+          pnpm exec prettier --single-quote --write apps/ai-service/src/quality-coverage.test.ts
+          pnpm --filter @life-os/ai-service lint
+
+      - name: Commit repaired tests
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ai-service/src/quality-coverage.test.ts .github/workflows/repair-ai-quality-coverage.yml
+          git commit -m 'test(ai): align quality coverage with signed context'
+          git push origin HEAD:feat/ai-authenticated-gateway-context
