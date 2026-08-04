@@ -4,6 +4,7 @@ import {
   type AiPool,
   AiRuntime,
   createAiPoolConfiguration,
+  createAiPoolErrorListener,
   createAiRuntime,
 } from './ai-runtime';
 import type { ProposalAuditSqlQueryResult } from './postgres-proposal-audit-repository';
@@ -19,6 +20,7 @@ function testDatabaseUrl(
 /** Minimal deterministic pool used to verify runtime wiring and shutdown ownership. */
 class FakeAiPool implements AiPool {
   endCalls = 0;
+  remainingEndFailures = 0;
   readonly queries: Array<{
     text: string;
     values: readonly unknown[];
@@ -33,9 +35,13 @@ class FakeAiPool implements AiPool {
     return { rows: [] };
   }
 
-  /** Records pool shutdown calls for exactly-once verification. */
+  /** Records pool shutdown calls and can inject bounded transient failure. */
   async end(): Promise<void> {
     this.endCalls += 1;
+    if (this.remainingEndFailures > 0) {
+      this.remainingEndFailures -= 1;
+      throw new Error('Synthetic pool shutdown failure');
+    }
   }
 }
 
@@ -122,10 +128,22 @@ describe('AI runtime configuration', () => {
       expect(() => createAiPoolConfiguration(environment)).toThrow(message);
     },
   );
+
+  it('records idle-client failures without exposing the original error', () => {
+    const messages: string[] = [];
+    const listener = createAiPoolErrorListener({
+      error: (message) => messages.push(message),
+    });
+
+    listener(new Error('password=secret'));
+
+    expect(messages).toEqual(['Unexpected idle PostgreSQL client error']);
+    expect(messages.join(' ')).not.toContain('secret');
+  });
 });
 
 describe('AiRuntime', () => {
-  it('wires one shared audit application and closes its pool exactly once', async () => {
+  it('wires one shared audit application and shares successful pool shutdown', async () => {
     const pool = new FakeAiPool();
     let configuration: PoolConfig | undefined;
     const runtime = createAiRuntime(
@@ -143,10 +161,26 @@ describe('AiRuntime', () => {
       max: 10,
     });
 
-    await runtime.close();
-    await runtime.close();
+    await Promise.all([runtime.close(), runtime.close()]);
     await runtime.onApplicationShutdown();
 
     expect(pool.endCalls).toBe(1);
+  });
+
+  it('surfaces shutdown failure and permits a later cleanup retry', async () => {
+    const pool = new FakeAiPool();
+    pool.remainingEndFailures = 1;
+    const runtime = createAiRuntime(
+      { AI_DATABASE_URL: testDatabaseUrl('postgresql') },
+      () => pool,
+    );
+
+    await expect(runtime.close()).rejects.toThrow(
+      'Synthetic pool shutdown failure',
+    );
+    await expect(runtime.onApplicationShutdown()).resolves.toBeUndefined();
+    await expect(runtime.close()).resolves.toBeUndefined();
+
+    expect(pool.endCalls).toBe(2);
   });
 });
