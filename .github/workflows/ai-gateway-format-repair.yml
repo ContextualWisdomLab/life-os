@@ -1,0 +1,52 @@
+name: AI gateway format repair
+
+on:
+  push:
+    branches:
+      - feat/ai-authenticated-gateway-context
+
+permissions: {}
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/ai-authenticated-gateway-context
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Apply Prettier formatting
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/ai-service/src/ai-http-boundary.test.ts
+          docs/research/2026-08-04-ai-gateway-context-standards.md
+
+      - name: Commit formatted sources and remove repair workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/ai-gateway-format-repair.yml
+          git add \
+            apps/ai-service/src/ai-http-boundary.test.ts \
+            docs/research/2026-08-04-ai-gateway-context-standards.md \
+            .github/workflows/ai-gateway-format-repair.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'style: format authenticated AI gateway slice'
+          git push origin HEAD:feat/ai-authenticated-gateway-context
