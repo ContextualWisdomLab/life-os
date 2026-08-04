@@ -41,12 +41,8 @@ describe('production Kubernetes reference contract', () => {
     expect(namespace).toContain(
       'pod-security.kubernetes.io/enforce: restricted',
     );
-    expect(namespace).toContain(
-      'pod-security.kubernetes.io/audit: restricted',
-    );
-    expect(namespace).toContain(
-      'pod-security.kubernetes.io/warn: restricted',
-    );
+    expect(namespace).toContain('pod-security.kubernetes.io/audit: restricted');
+    expect(namespace).toContain('pod-security.kubernetes.io/warn: restricted');
     expect(namespace).toMatch(
       /pod-security\.kubernetes\.io\/enforce-version: v1\.\d+/,
     );
@@ -74,10 +70,8 @@ describe('production Kubernetes reference contract', () => {
 
   it('rejects unapproved or mutable deployment images', () => {
     const zeroDigest = '0'.repeat(64);
-    const webSentinel =
-      `ghcr.io/contextualwisdomlab/life-os-web@sha256:${zeroDigest}`;
-    const gatewaySentinel =
-      `ghcr.io/contextualwisdomlab/life-os-gateway@sha256:${zeroDigest}`;
+    const webSentinel = `ghcr.io/contextualwisdomlab/life-os-web@sha256:${zeroDigest}`;
+    const gatewaySentinel = `ghcr.io/contextualwisdomlab/life-os-gateway@sha256:${zeroDigest}`;
     const approvedImageError =
       'image reference must use the approved LifeOS GHCR path and sha256 digest';
     const unresolvedSentinel =
@@ -124,9 +118,7 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('LIFE_OS_KUBE_CONFIG_B64');
     expect(workflow).toContain('--dry-run=server');
     expect(workflow).toContain('kubectl diff --server-side');
-    expect(workflow).toContain(
-      'kubectl rollout status deployment/life-os-web',
-    );
+    expect(workflow).toContain('kubectl rollout status deployment/life-os-web');
     expect(workflow).toContain(
       'kubectl rollout undo deployment/life-os-gateway',
     );
