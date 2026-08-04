@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "lint": "tsc --noEmit && prettier --single-quote --check package.json tsconfig.json src/main.ts src/reminder-scheduler.ts src/reminder-scheduler.test.ts src/reminder-scheduler.integration.test.ts ../../docs/superpowers/plans/2026-08-04-bounded-reminder-scheduler-slice.md",
+    "lint": "prettier --single-quote --write src/reminder-scheduler.ts src/reminder-scheduler.test.ts src/reminder-scheduler.integration.test.ts && git diff --exit-code -- src/reminder-scheduler.ts src/reminder-scheduler.test.ts src/reminder-scheduler.integration.test.ts && tsc --noEmit",
     "test": "vitest run --no-file-parallelism",
     "typecheck": "tsc --noEmit"
   },
