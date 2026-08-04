@@ -20,6 +20,7 @@ export interface AiGatewayContextKeyEnvironment {
 
 /** Sanitized configuration failure that never retains key material. */
 export class AiGatewayKeyConfigurationError extends Error {
+  /** Creates one stable configuration failure without interpolating input. */
   constructor() {
     super('AI gateway key configuration is invalid');
     this.name = 'AiGatewayKeyConfigurationError';
@@ -28,6 +29,7 @@ export class AiGatewayKeyConfigurationError extends Error {
 
 /** Sanitized request failure for malformed, unknown, or retired key identifiers. */
 export class AiGatewayKeySelectionError extends Error {
+  /** Creates one stable selection failure without interpolating input. */
   constructor() {
     super('AI gateway key identifier is invalid');
     this.name = 'AiGatewayKeySelectionError';
