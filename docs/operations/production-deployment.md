@@ -16,7 +16,7 @@ The repository does not claim that committing these manifests creates a producti
 
 ## Cluster prerequisites
 
-Use a supported Kubernetes release compatible with the `v1.34` Restricted Pod Security policy label in `namespace.yaml`. The cluster must provide:
+Use a supported Kubernetes release compatible with the `v1.36` Restricted Pod Security policy label in `namespace.yaml`. The cluster must provide:
 
 1. at least two schedulable worker nodes for useful disruption and topology-spread behavior;
 2. a NetworkPolicy implementation that enforces ingress and egress policy;
@@ -30,12 +30,14 @@ The deployment identity needs only the verbs required to server-side apply and i
 
 ## Immutable application images
 
-The base deliberately contains all-zero SHA-256 sentinels. They cannot pass the deployment workflow. Supply two image references in registry-path plus digest form:
+The base deliberately contains all-zero SHA-256 sentinels. They cannot pass the deployment workflow. Supply the two approved organization-owned GHCR image paths with immutable digests:
 
 ```text
-registry.example.com/life-os/web@sha256:<64 lowercase hexadecimal characters>
-registry.example.com/life-os/gateway@sha256:<64 lowercase hexadecimal characters>
+ghcr.io/contextualwisdomlab/life-os-web@sha256:<64 lowercase hexadecimal characters>
+ghcr.io/contextualwisdomlab/life-os-gateway@sha256:<64 lowercase hexadecimal characters>
 ```
+
+The workflow rejects alternate registries and repository paths. Moving image ownership requires a separately reviewed change to the workflow, manifests, provenance policy, and bounded scanner exception rather than an unreviewed deployment input.
 
 The images must start as UID/GID `10001`, listen on ports `3000` and `4000`, work with a read-only root filesystem, and use `/tmp` for bounded temporary files. The web image must serve `/offline`; the gateway image must serve `/v1/health`. Do not change probes merely to make an incompatible image appear healthy.
 
@@ -61,7 +63,7 @@ Kubernetes Secret values are not encrypted merely because they are base64 encode
 
 ## Forward-only migrations
 
-Application processes never apply SQL at startup. Before rolling out a database-backed service image, execute the migration runner from the repository root with `psql` and `sha256sum` available:
+Application processes never apply SQL at startup. Before rolling out a database-backed service image, execute the migration runner from the repository root with `psql`, `sha256sum`, and `mktemp` available:
 
 ```bash
 export LIFE_OS_MIGRATION_CONFIRMATION=apply-forward-only
@@ -73,7 +75,9 @@ export REVIEW_DATABASE_URL='postgresql://...'
 bash infra/kubernetes/run-migrations.sh
 ```
 
-The runner discovers SQL files lexically under each registered service migration directory. For each database, it creates `life_os_deployment.schema_migrations`, records the service name, migration filename, SHA-256 digest, and application timestamp, and serializes changes with PostgreSQL advisory locks. An exact replay is skipped. A previously applied filename whose digest changed fails closed.
+The runner discovers SQL files lexically under each registered service migration directory. For each database, it creates `life_os_deployment.schema_migrations`, records the service name, migration filename, SHA-256 digest, status, and application timestamp, and serializes changes with a PostgreSQL advisory lock. An exact completed replay is skipped. A previously recorded filename whose digest changed fails closed.
+
+The ledger records `applying` before a migration file is executed and `applied` only after the file succeeds. Because service migration files retain their own transaction boundaries, an interrupted or failed run can leave an `applying` record. A later run refuses to guess whether the schema changed. An operator must inspect the database and migration evidence, then complete or reconcile the migration through a reviewed repair procedure.
 
 Database URLs are passed through `PGDATABASE`, not command arguments. The runner does not print credentials. The `run_migrations` workflow input invokes this same runner using secrets from the protected production environment. Leave the input disabled for the current web/gateway-only edge rollout unless database migrations are intentionally part of the reviewed release.
 
@@ -82,10 +86,10 @@ Migrations are forward-only. Back up and rehearse restore before applying a migr
 ## Deployment procedure
 
 1. Merge only after CI, security, commercial-readiness, CodeRabbit, and human review gates pass on the exact head.
-2. Build and scan the web and gateway images through a separate reviewed image pipeline. Record their immutable digests.
+2. Build and scan the web and gateway images through a separate reviewed image pipeline. Publish them only to the approved organization-owned GHCR paths and record their immutable digests.
 3. Confirm the `production` environment approval policy and least-privilege environment secrets.
 4. Review the Kustomize diff locally with `kubectl kustomize infra/kubernetes/overlays/production` while remembering that the committed image and origin values are non-deployable sentinels.
-5. Manually run **Deploy Production Reference** for the intended Git commit. Supply both image digests and the exact HTTPS origin. Enable migrations only when the release plan requires them.
+5. Manually run **Deploy Production Reference** for the intended Git commit. Supply both approved image digests and the exact HTTPS origin. Enable migrations only when the release plan requires them.
 6. Approve the protected environment after reviewing the selected revision and validation job.
 7. Review the workflow's server-side diff. The workflow applies with field manager `life-os-deployer` and waits up to ten minutes for both deployments.
 8. Confirm two ready and available replicas for each workload, health responses, ingress routing, CORS behavior, metrics access restrictions, and absence of unexpected egress.
