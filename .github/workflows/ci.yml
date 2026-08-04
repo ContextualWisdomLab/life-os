@@ -62,6 +62,8 @@ jobs:
           set -Eeuo pipefail
           pnpm exec prettier --single-quote --check \
             .github/workflows/deploy.yml \
+            trivy.yaml \
+            infra/trivy-data/trusted-registries.yaml \
             infra/kubernetes/base/kustomization.yaml \
             infra/kubernetes/base/namespace.yaml \
             infra/kubernetes/base/edge-workloads.yaml \
