@@ -333,7 +333,6 @@ function retryInstant(now: Date, deliveryAttempt: number): string {
 }
 
 /** Builds the stable tenant-scoped occurrence key supplied to idempotent delivery adapters. */
-/** Builds the stable tenant-scoped key used for idempotent delivery. */
 export function idempotencyKey(reminder: ReminderOccurrence): string {
   return `${reminder.workspaceId}:${reminder.id}:${reminder.dueAt}`;
 }
