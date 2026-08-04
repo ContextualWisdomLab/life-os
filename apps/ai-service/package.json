@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "lint": "tsc --noEmit",
+    "lint": "prettier --single-quote --check \"src/**/*.ts\" ../../docs/superpowers/plans/2026-08-04-ai-signed-gateway-context-slice.md && tsc --noEmit",
     "test": "vitest run --passWithNoTests --no-file-parallelism",
     "typecheck": "tsc --noEmit"
   },
