@@ -143,6 +143,7 @@ describe('Notification runtime', () => {
 
   it('fails before allocating a pool for invalid scheduler bounds', () => {
     let poolFactoryCalls = 0;
+    /** Creates a deterministic pool factory that records allocation attempts. */
     const poolFactory = (): NotificationPool => {
       poolFactoryCalls += 1;
       return new FakeNotificationPool();
