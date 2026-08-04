@@ -52,8 +52,8 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Check formatting
         run: pnpm format:check
