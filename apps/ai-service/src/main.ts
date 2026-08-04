@@ -143,7 +143,9 @@ export class AiProposalController {
         return mapAuditError(error);
       }
       const errorKind = error instanceof Error ? error.name : typeof error;
-      auditLogger.error(`Unclassified proposal generation failure (${errorKind})`);
+      auditLogger.error(
+        `Unclassified proposal generation failure (${errorKind})`,
+      );
       throw problem(
         503,
         'Proposal generation is unavailable',
@@ -257,7 +259,8 @@ export class AiAppModule {}
     {
       provide: PROPOSAL_SERVICE,
       // Expose only ProposalGenerator while reusing the shared audit application.
-      useFactory: (runtime: AiRuntime): ProposalGenerator => runtime.application,
+      useFactory: (runtime: AiRuntime): ProposalGenerator =>
+        runtime.application,
       inject: [AI_RUNTIME],
     },
     {
