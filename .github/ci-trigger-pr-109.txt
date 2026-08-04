@@ -1,1 +1,0 @@
-Retrigger exact-head pull request validation after automated formatting.
