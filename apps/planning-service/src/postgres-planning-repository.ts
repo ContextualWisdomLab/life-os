@@ -457,8 +457,6 @@ export class PostgresPlanningRepository implements PlanningRepository {
        LIMIT $4`,
       [safeWorkspaceId, input.normalizedQuery, prefixPattern, input.limit],
     );
-    return result.rows.map((row) =>
-      parseSearchCandidate(row, safeWorkspaceId),
-    );
+    return result.rows.map((row) => parseSearchCandidate(row, safeWorkspaceId));
   }
 }
