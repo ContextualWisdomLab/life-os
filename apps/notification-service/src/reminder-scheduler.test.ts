@@ -15,7 +15,9 @@ import {
 const workspaceId = '018f47a4-9976-4c57-8a8a-674630a873d1';
 const reminderId = '91fe0f58-2035-49b7-a793-ac75939a433f';
 
-function reminder(overrides: Partial<ReminderOccurrence> = {}): ReminderOccurrence {
+function reminder(
+  overrides: Partial<ReminderOccurrence> = {},
+): ReminderOccurrence {
   return {
     id: reminderId,
     workspaceId,
