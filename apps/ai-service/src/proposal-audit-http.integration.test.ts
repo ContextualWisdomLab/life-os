@@ -10,8 +10,14 @@ import { AiProductionModule } from './main';
 
 const TEST_DATABASE_URL = process.env.AI_TEST_DATABASE_URL;
 const ORIGINAL_APPLICATION_DATABASE_URL = process.env.AI_DATABASE_URL;
-const ORIGINAL_GATEWAY_CONTEXT_SECRET = process.env.AI_GATEWAY_CONTEXT_SECRET;
-const GATEWAY_CONTEXT_SECRET = 'ai-http-integration-gateway-secret-32-bytes';
+const ORIGINAL_ACTIVE_KEY_ID = process.env.AI_GATEWAY_ACTIVE_KEY_ID;
+const ORIGINAL_ACTIVE_KEY_SECRET = process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
+const ORIGINAL_PREVIOUS_KEY_ID = process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+const ORIGINAL_PREVIOUS_KEY_SECRET = process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
+const ACTIVE_KEY_ID = 'gateway-2026-08-b';
+const PREVIOUS_KEY_ID = 'gateway-2026-07-a';
+const ACTIVE_KEY_SECRET = Buffer.alloc(32, 0x41).toString('base64url');
+const PREVIOUS_KEY_SECRET = Buffer.alloc(32, 0x42).toString('base64url');
 const describeWithPostgres = TEST_DATABASE_URL ? describe : describe.skip;
 let administrativePool: Pool;
 
@@ -60,18 +66,21 @@ function signedContextHeaders(input: {
   method: 'GET' | 'POST';
   path: string;
   issuedAt?: number;
+  keyId?: string;
   secret?: string;
 }): Readonly<Record<string, string>> {
   const workspaceId = input.workspaceId.toLowerCase();
   const actorId = input.actorId.toLowerCase();
   const issuedAt = String(input.issuedAt ?? Math.floor(Date.now() / 1000));
-  const signature = createHmac('sha256', input.secret ?? GATEWAY_CONTEXT_SECRET)
+  const keyId = input.keyId ?? ACTIVE_KEY_ID;
+  const signature = createHmac('sha256', input.secret ?? ACTIVE_KEY_SECRET)
     .update(
-      `life-os.ai-context.v1\n${workspaceId}\n${actorId}\n${issuedAt}\n${input.method}\n${input.path}`,
+      `life-os.ai-context.v2\n${keyId}\n${workspaceId}\n${actorId}\n${issuedAt}\n${input.method}\n${input.path}`,
       'utf8',
     )
     .digest('base64url');
   return {
+    'x-life-os-context-key-id': keyId,
     'x-life-os-workspace-id': workspaceId,
     'x-life-os-actor-id': actorId,
     'x-life-os-context-issued-at': issuedAt,
@@ -156,7 +165,10 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
   beforeAll(async () => {
     const testDatabaseUrl = requireTestDatabaseUrl();
     process.env.AI_DATABASE_URL = testDatabaseUrl;
-    process.env.AI_GATEWAY_CONTEXT_SECRET = GATEWAY_CONTEXT_SECRET;
+    process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+    process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = ACTIVE_KEY_SECRET;
+    delete process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+    delete process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
     administrativePool = new Pool({
       connectionString: testDatabaseUrl,
       application_name: 'life-os-ai-http-integration-admin',
@@ -176,10 +188,17 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       } else {
         process.env.AI_DATABASE_URL = ORIGINAL_APPLICATION_DATABASE_URL;
       }
-      if (ORIGINAL_GATEWAY_CONTEXT_SECRET === undefined) {
-        delete process.env.AI_GATEWAY_CONTEXT_SECRET;
-      } else {
-        process.env.AI_GATEWAY_CONTEXT_SECRET = ORIGINAL_GATEWAY_CONTEXT_SECRET;
+      for (const [name, value] of [
+        ['AI_GATEWAY_ACTIVE_KEY_ID', ORIGINAL_ACTIVE_KEY_ID],
+        ['AI_GATEWAY_ACTIVE_KEY_SECRET', ORIGINAL_ACTIVE_KEY_SECRET],
+        ['AI_GATEWAY_PREVIOUS_KEY_ID', ORIGINAL_PREVIOUS_KEY_ID],
+        ['AI_GATEWAY_PREVIOUS_KEY_SECRET', ORIGINAL_PREVIOUS_KEY_SECRET],
+      ] as const) {
+        if (value === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = value;
+        }
       }
     }
   });
@@ -239,6 +258,76 @@ describeWithPostgres('AI production proposal audit HTTP API', () => {
       });
     } finally {
       await app.close();
+    }
+  });
+
+  it('accepts the previous key during overlap and rejects it immediately after retirement', async () => {
+    const workspaceId = randomUUID();
+    const actorId = randomUUID();
+    process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+    process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = ACTIVE_KEY_SECRET;
+    process.env.AI_GATEWAY_PREVIOUS_KEY_ID = PREVIOUS_KEY_ID;
+    process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET = PREVIOUS_KEY_SECRET;
+    const app = await NestFactory.create(AiProductionModule, { logger: false });
+    await app.listen(0, '127.0.0.1');
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const previousAccepted = await requestJson(
+        address,
+        'POST',
+        '/v1/proposals',
+        proposalRequest(randomUUID()),
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'POST',
+          path: '/v1/proposals',
+          keyId: PREVIOUS_KEY_ID,
+          secret: PREVIOUS_KEY_SECRET,
+        }),
+      );
+      expect(previousAccepted.statusCode).toBe(201);
+
+      delete process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+      delete process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
+      const retiredRejected = await requestJson(
+        address,
+        'POST',
+        '/v1/proposals',
+        proposalRequest(randomUUID()),
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'POST',
+          path: '/v1/proposals',
+          keyId: PREVIOUS_KEY_ID,
+          secret: PREVIOUS_KEY_SECRET,
+        }),
+      );
+      expect(retiredRejected).toMatchObject({
+        statusCode: 401,
+        body: { code: 'invalid_gateway_context' },
+      });
+
+      const activeAccepted = await requestJson(
+        address,
+        'POST',
+        '/v1/proposals',
+        proposalRequest(randomUUID()),
+        signedContextHeaders({
+          workspaceId,
+          actorId,
+          method: 'POST',
+          path: '/v1/proposals',
+        }),
+      );
+      expect(activeAccepted.statusCode).toBe(201);
+    } finally {
+      await app.close();
+      process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
+      process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = ACTIVE_KEY_SECRET;
+      delete process.env.AI_GATEWAY_PREVIOUS_KEY_ID;
+      delete process.env.AI_GATEWAY_PREVIOUS_KEY_SECRET;
     }
   });
 

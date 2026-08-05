@@ -1,8 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
+import {
+  type AiGatewayContextKeyEnvironment,
+  requireAiGatewayContextKeyRing,
+  selectAiGatewayVerificationKey,
+} from './ai-gateway-keyring';
 
 /** Headers emitted by a private gateway after session authentication and authorization. */
 export interface TrustedAiContextHeaders {
+  keyId: unknown;
   workspaceId: unknown;
   actorId: unknown;
   issuedAt: unknown;
@@ -29,8 +35,6 @@ const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const PROPOSAL_PATH_PATTERN =
   /^\/v1\/proposals(?:\/([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/decisions)?)?$/u;
-const MINIMUM_GATEWAY_SECRET_BYTES = 32;
-const MAXIMUM_GATEWAY_SECRET_BYTES = 4096;
 const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
 const MAXIMUM_PATH_CHARACTERS = 256;
@@ -50,7 +54,7 @@ function problemException(
   return new HttpException(details, status);
 }
 
-/** Rejects malformed, stale, replayed, or forged service context. */
+/** Rejects malformed, stale, replayed, forged, unknown, or retired service context. */
 function invalidGatewayContext(): never {
   throw problemException(
     401,
@@ -66,22 +70,6 @@ function unavailableGatewayContext(): never {
     'Trusted gateway context is unavailable',
     'gateway_context_unavailable',
   );
-}
-
-/** Requires a bounded secret appropriate for the shared HMAC trust boundary. */
-function requireGatewaySecret(value: unknown): string {
-  if (typeof value !== 'string') {
-    return unavailableGatewayContext();
-  }
-  const byteLength = Buffer.byteLength(value, 'utf8');
-  if (
-    byteLength < MINIMUM_GATEWAY_SECRET_BYTES ||
-    byteLength > MAXIMUM_GATEWAY_SECRET_BYTES ||
-    /[\r\n\u0000]/u.test(value)
-  ) {
-    return unavailableGatewayContext();
-  }
-  return value;
 }
 
 /** Requires one exact supported uppercase method and canonical proposal path. */
@@ -111,6 +99,7 @@ function requireMethodAndPath(
 
 /** Computes the exact versioned HMAC shared by the BFF and AI service. */
 function contextDigest(
+  keyId: string,
   workspaceId: string,
   actorId: string,
   issuedAt: string,
@@ -120,7 +109,7 @@ function contextDigest(
 ): Buffer {
   return createHmac('sha256', secret)
     .update(
-      `life-os.ai-context.v1\n${workspaceId}\n${actorId}\n${issuedAt}\n${method}\n${path}`,
+      `life-os.ai-context.v2\n${keyId}\n${workspaceId}\n${actorId}\n${issuedAt}\n${method}\n${path}`,
       'utf8',
     )
     .digest();
@@ -128,18 +117,20 @@ function contextDigest(
 
 /**
  * Verifies a fresh method-and-path-bound service context created only after
- * gateway session authentication and workspace authorization.
+ * gateway session authentication and workspace authorization. Exactly the key
+ * identified by the signed request is selected; verification never tries every
+ * configured key.
  */
 export function requireTrustedAiContext(
   headers: TrustedAiContextHeaders,
-  secretValue: unknown,
+  keyEnvironment: AiGatewayContextKeyEnvironment,
   methodValue: unknown,
   pathValue: unknown,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): TrustedAiContext {
-  const secret = requireGatewaySecret(secretValue);
   const { method, path } = requireMethodAndPath(methodValue, pathValue);
   if (
+    typeof headers.keyId !== 'string' ||
     typeof headers.workspaceId !== 'string' ||
     typeof headers.actorId !== 'string' ||
     typeof headers.issuedAt !== 'string' ||
@@ -172,13 +163,29 @@ export function requireTrustedAiContext(
   ) {
     return invalidGatewayContext();
   }
+
+  let keyRing;
+  try {
+    keyRing = requireAiGatewayContextKeyRing(keyEnvironment);
+  } catch {
+    return unavailableGatewayContext();
+  }
+
+  let verificationKey;
+  try {
+    verificationKey = selectAiGatewayVerificationKey(keyRing, headers.keyId);
+  } catch {
+    return invalidGatewayContext();
+  }
+
   const expected = contextDigest(
+    verificationKey.keyId,
     workspaceId,
     actorId,
     headers.issuedAt,
     method,
     path,
-    secret,
+    verificationKey.secret,
   );
   if (!timingSafeEqual(actual, expected)) {
     return invalidGatewayContext();

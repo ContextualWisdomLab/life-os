@@ -54,10 +54,12 @@ const EVENT_ID = '55555555-5555-4555-8555-555555555555';
 const IDEMPOTENCY_KEY = '66666666-6666-4666-8666-666666666666';
 const OTHER_EVENT_ID = '77777777-7777-4777-8777-777777777777';
 const OTHER_ACTOR_ID = '88888888-8888-4888-8888-888888888888';
+const GATEWAY_KEY_ID = 'gateway-2026-08-a';
 const GATEWAY_SECRET = Buffer.alloc(32, 0x51).toString('base64url');
 
 /** Exact signed headers accepted by one method-and-path-bound controller call. */
 interface SignedControllerContext {
+  readonly keyId: string;
   readonly workspaceId: string;
   readonly actorId: string;
   readonly issuedAt: string;
@@ -72,11 +74,12 @@ function signedControllerContext(
   const issuedAt = String(Math.floor(Date.now() / 1_000));
   const signature = createHmac('sha256', GATEWAY_SECRET)
     .update(
-      `life-os.ai-context.v1\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\n${method}\n${path}`,
+      `life-os.ai-context.v2\n${GATEWAY_KEY_ID}\n${WORKSPACE_ID}\n${ACTOR_ID}\n${issuedAt}\n${method}\n${path}`,
       'utf8',
     )
     .digest('base64url');
   return {
+    keyId: GATEWAY_KEY_ID,
     workspaceId: WORKSPACE_ID,
     actorId: ACTOR_ID,
     issuedAt,
@@ -800,7 +803,8 @@ describe('PostgreSQL proposal audit residual safety branches', () => {
 
 describe('AI controllers and bootstrap error contracts', () => {
   beforeEach(() => {
-    vi.stubEnv('AI_GATEWAY_CONTEXT_SECRET', GATEWAY_SECRET);
+    vi.stubEnv('AI_GATEWAY_ACTIVE_KEY_ID', GATEWAY_KEY_ID);
+    vi.stubEnv('AI_GATEWAY_ACTIVE_KEY_SECRET', GATEWAY_SECRET);
   });
 
   afterEach(() => {
@@ -820,6 +824,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     });
     await expect(
       controller.createProposal(
+        proposalContext.keyId,
         proposalContext.workspaceId,
         proposalContext.actorId,
         proposalContext.issuedAt,
@@ -830,6 +835,7 @@ describe('AI controllers and bootstrap error contracts', () => {
 
     await expectProblem(
       controller.createProposal(
+        proposalContext.keyId,
         undefined,
         proposalContext.actorId,
         proposalContext.issuedAt,
@@ -841,6 +847,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     );
     await expectProblem(
       controller.createProposal(
+        proposalContext.keyId,
         proposalContext.workspaceId,
         proposalContext.actorId,
         proposalContext.issuedAt,
@@ -862,6 +869,7 @@ describe('AI controllers and bootstrap error contracts', () => {
             throw error;
           },
         }).createProposal(
+          proposalContext.keyId,
           proposalContext.workspaceId,
           proposalContext.actorId,
           proposalContext.issuedAt,
@@ -896,6 +904,7 @@ describe('AI controllers and bootstrap error contracts', () => {
 
     await expect(
       controller.listProposals(
+        listContext.keyId,
         listContext.workspaceId,
         listContext.actorId,
         listContext.issuedAt,
@@ -904,6 +913,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     ).resolves.toEqual([audit]);
     await expect(
       controller.findProposal(
+        detailContext.keyId,
         detailContext.workspaceId,
         detailContext.actorId,
         detailContext.issuedAt,
@@ -913,6 +923,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     ).resolves.toEqual(audit);
     await expect(
       controller.listDecisions(
+        decisionsReadContext.keyId,
         decisionsReadContext.workspaceId,
         decisionsReadContext.actorId,
         decisionsReadContext.issuedAt,
@@ -922,6 +933,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     ).resolves.toEqual([event]);
     await expect(
       controller.appendDecision(
+        decisionsWriteContext.keyId,
         decisionsWriteContext.workspaceId,
         decisionsWriteContext.actorId,
         decisionsWriteContext.issuedAt,
@@ -938,6 +950,7 @@ describe('AI controllers and bootstrap error contracts', () => {
 
     await expectProblem(
       controller.listProposals(
+        listContext.keyId,
         undefined,
         listContext.actorId,
         listContext.issuedAt,
@@ -948,6 +961,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     );
     await expectProblem(
       controller.findProposal(
+        detailContext.keyId,
         undefined,
         detailContext.actorId,
         detailContext.issuedAt,
@@ -959,6 +973,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     );
     await expectProblem(
       controller.listDecisions(
+        decisionsReadContext.keyId,
         undefined,
         decisionsReadContext.actorId,
         decisionsReadContext.issuedAt,
@@ -970,6 +985,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     );
     await expectProblem(
       controller.appendDecision(
+        decisionsWriteContext.keyId,
         undefined,
         decisionsWriteContext.actorId,
         decisionsWriteContext.issuedAt,
@@ -982,6 +998,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     );
     await expectProblem(
       controller.appendDecision(
+        decisionsWriteContext.keyId,
         decisionsWriteContext.workspaceId,
         undefined,
         decisionsWriteContext.issuedAt,
@@ -1012,6 +1029,7 @@ describe('AI controllers and bootstrap error contracts', () => {
     for (const [error, status, code] of cases) {
       await expectProblem(
         new AiProposalAuditController(throwingApplication(error)).listProposals(
+          listContext.keyId,
           listContext.workspaceId,
           listContext.actorId,
           listContext.issuedAt,

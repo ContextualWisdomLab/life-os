@@ -4,6 +4,7 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const CANONICAL_UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const AI_GATEWAY_KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
@@ -39,6 +40,12 @@ type AiMethod = 'GET' | 'POST';
 export interface AiSessionPrincipal {
   readonly workspaceId: string;
   readonly actorId: string;
+}
+
+/** Active server-only key used to sign one exact AI service request. */
+export interface AiGatewaySigningKey {
+  readonly keyId: string;
+  readonly secret: string;
 }
 
 /** Internal marker distinguishing invalid browser input from dependency failures. */
@@ -204,6 +211,24 @@ export function requireAiGatewaySecret(value: string | undefined): string {
   return value;
 }
 
+/** Requires one bounded case-sensitive key identifier. */
+export function requireAiGatewayKeyId(value: string | undefined): string {
+  if (typeof value !== 'string' || !AI_GATEWAY_KEY_ID_PATTERN.test(value)) {
+    throw new Error('AI gateway context key identifier is invalid');
+  }
+  return value;
+}
+
+/** Parses exactly the active web signing pair and exposes no previous key. */
+export function requireAiGatewaySigningKey(
+  environment: WebEnvironment,
+): AiGatewaySigningKey {
+  return Object.freeze({
+    keyId: requireAiGatewayKeyId(environment.AI_GATEWAY_ACTIVE_KEY_ID),
+    secret: requireAiGatewaySecret(environment.AI_GATEWAY_ACTIVE_KEY_SECRET),
+  });
+}
+
 /** Extracts only workspace and actor identity from identity-service session data. */
 export function parseAiSessionPrincipal(value: unknown): AiSessionPrincipal {
   if (!isPlainObject(value)) {
@@ -249,7 +274,7 @@ function requireAiTarget(
 export function createAiContextHeaders(
   workspaceId: string,
   actorId: string,
-  secretValue: string,
+  signingKeyValue: AiGatewaySigningKey,
   nowSeconds: number,
   methodValue: unknown,
   pathValue: unknown,
@@ -259,19 +284,23 @@ export function createAiContextHeaders(
     'AI gateway context is invalid',
   );
   const safeActorId = requireUuid(actorId, 'AI gateway context is invalid');
-  const secret = requireAiGatewaySecret(secretValue);
+  const signingKey = Object.freeze({
+    keyId: requireAiGatewayKeyId(signingKeyValue?.keyId),
+    secret: requireAiGatewaySecret(signingKeyValue?.secret),
+  });
   const { method, path } = requireAiTarget(methodValue, pathValue);
   if (!Number.isSafeInteger(nowSeconds) || nowSeconds < 0) {
     throw new Error('AI gateway context is invalid');
   }
   const issuedAt = String(nowSeconds);
-  const signature = createHmac('sha256', secret)
+  const signature = createHmac('sha256', signingKey.secret)
     .update(
-      `life-os.ai-context.v1\n${safeWorkspaceId}\n${safeActorId}\n${issuedAt}\n${method}\n${path}`,
+      `life-os.ai-context.v2\n${signingKey.keyId}\n${safeWorkspaceId}\n${safeActorId}\n${issuedAt}\n${method}\n${path}`,
       'utf8',
     )
     .digest('base64url');
   return Object.freeze({
+    'x-life-os-context-key-id': signingKey.keyId,
     'x-life-os-workspace-id': safeWorkspaceId,
     'x-life-os-actor-id': safeActorId,
     'x-life-os-context-issued-at': issuedAt,
@@ -819,9 +848,7 @@ export async function handleAiProposalRequest(
       environment.IDENTITY_SERVICE_ORIGIN,
     );
     const aiOrigin = requireAiServiceOrigin(environment.AI_SERVICE_ORIGIN);
-    const secret = requireAiGatewaySecret(
-      environment.AI_GATEWAY_CONTEXT_SECRET,
-    );
+    const signingKey = requireAiGatewaySigningKey(environment);
     const identityResponse = await fetcher(
       new URL('/v1/session', identityOrigin),
       {
@@ -852,7 +879,7 @@ export async function handleAiProposalRequest(
     const contextHeaders = createAiContextHeaders(
       principal.workspaceId,
       principal.actorId,
-      secret,
+      signingKey,
       nowSeconds,
       parsedRequest.method,
       parsedRequest.path,

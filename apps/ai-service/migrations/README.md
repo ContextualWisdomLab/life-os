@@ -24,7 +24,9 @@ The production module exposes the inert proposal-generation route together with 
 - `GET /v1/proposals/:proposalId/decisions`
 - `POST /v1/proposals/:proposalId/decisions`
 
-Every route requires a short-lived signed service context produced only after a trusted proxy authenticates a session and authorizes workspace membership. The headers are `x-life-os-workspace-id`, `x-life-os-actor-id`, `x-life-os-context-issued-at`, and `x-life-os-context-signature`. The HMAC-SHA-256 payload binds canonical workspace and actor UUIDv4 values to issuance time, uppercase HTTP method, and the exact `/v1/...` path. The shared `AI_GATEWAY_CONTEXT_SECRET` must contain 32–4096 UTF-8 bytes, remain server-only, and be identical in the trusted proxy and AI service.
+Every route requires a short-lived signed service context produced only after a trusted proxy authenticates a session and authorizes workspace membership. The headers are `x-life-os-context-key-id`, `x-life-os-workspace-id`, `x-life-os-actor-id`, `x-life-os-context-issued-at`, and `x-life-os-context-signature`. The version 2 HMAC-SHA-256 payload binds the case-sensitive key identifier, canonical workspace and actor UUIDv4 values, issuance time, uppercase HTTP method, and exact `/v1/...` path.
+
+The trusted web boundary requires `AI_GATEWAY_ACTIVE_KEY_ID` and `AI_GATEWAY_ACTIVE_KEY_SECRET` and signs only with that pair. AI service requires the same active pair and may additionally receive the complete verification-only overlap pair `AI_GATEWAY_PREVIOUS_KEY_ID` and `AI_GATEWAY_PREVIOUS_KEY_SECRET`. Each secret must contain 32–4096 UTF-8 bytes, active and previous identifiers and secrets must be distinct, and all material remains server-only.
 
 Direct `x-workspace-id` and `x-actor-id` headers never authorize a route. Browser cookies, bearer material, client-selected ownership fields, and the HMAC secret must never be forwarded to or exposed by AI service. Missing, malformed, stale, future-dated, method-replayed, path-replayed, or forged context fails closed before the proposal or audit application receives tenant scope.
 
@@ -60,10 +62,10 @@ CI supplies separate application and disposable-test variables, applies the migr
 
 ## Secret rotation and rollback
 
-This contract currently supports one active secret. Rotation requires a coordinated trusted-proxy and AI-service deployment; zero-downtime overlapping verification keys are deferred. If signer and verifier become incompatible, disable external AI proposal traffic rather than falling back to unsigned ownership headers. Secret compromise requires coordinated replacement, waiting at least the 60-second context lifetime before treating old tags as expired, and reviewing proposal/decision audit evidence for forged activity.
+LifeOS supports one active signing key and one bounded previous verification key. Follow `docs/operations/ai-gateway-key-rotation.md` to expand verifier configuration, switch the signer, retain the former active key only through the request-validity and deployment overlap window, and retire it by removing the previous pair. Unknown and retired identifiers fail closed immediately; the verifier never trials every configured secret. If signer and verifier become incompatible, disable external AI proposal traffic rather than falling back to unsigned ownership headers. Suspected compromise requires immediate revocation rather than a normal overlap.
 
 The database migration is forward-only in automated environments. An operator-approved rollback must export and verify proposal and decision evidence before dropping `ai.proposal_decision_events`, `ai.proposal_audit_records`, `ai.reject_proposal_audit_mutation()`, and the `ai` schema. Do not roll back after recording production decisions unless legal, retention, and audit requirements have been reviewed and documented.
 
 ## Deferred work
 
-External model transport, prompt and context redaction, policy evaluation, model-quality evaluation, multi-secret rotation windows, asymmetric workload identity, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.
+External model transport, prompt and context redaction, policy evaluation, model-quality evaluation, asymmetric workload identity, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.
