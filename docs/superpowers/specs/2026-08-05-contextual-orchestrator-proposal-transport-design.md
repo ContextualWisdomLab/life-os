@@ -90,12 +90,12 @@ Update `.env.example`, AI service runtime documentation, `CHANGELOG.md`, package
 
 ## References
 
-Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). *Artificial intelligence risk management framework: Generative artificial intelligence profile* (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
+Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). _Artificial intelligence risk management framework: Generative artificial intelligence profile_ (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
 
-Fielding, R., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110; STD 97). Internet Engineering Task Force. https://doi.org/10.17487/RFC9110
+Fielding, R., Nottingham, M., & Reschke, J. (2022). _HTTP semantics_ (RFC 9110; STD 97). Internet Engineering Task Force. https://doi.org/10.17487/RFC9110
 
-Open Worldwide Application Security Project. (2025). *LLM01:2025 prompt injection*. OWASP GenAI Security Project. https://genai.owasp.org/llmrisk/llm01-prompt-injection/
+Open Worldwide Application Security Project. (2025). _LLM01:2025 prompt injection_. OWASP GenAI Security Project. https://genai.owasp.org/llmrisk/llm01-prompt-injection/
 
-Wright, A., Andrews, H., Hutton, B., & Dennis, G. (2022). *JSON Schema: A media type for describing JSON documents* (Draft 2020-12). JSON Schema. https://json-schema.org/draft/2020-12/json-schema-core.html
+Wright, A., Andrews, H., Hutton, B., & Dennis, G. (2022). _JSON Schema: A media type for describing JSON documents_ (Draft 2020-12). JSON Schema. https://json-schema.org/draft/2020-12/json-schema-core.html
 
-Wright, A., Andrews, H., & Hutton, B. (2022). *JSON Schema validation: A vocabulary for structural validation of JSON* (Draft 2020-12). JSON Schema. https://json-schema.org/draft/2020-12/json-schema-validation.html
+Wright, A., Andrews, H., & Hutton, B. (2022). _JSON Schema validation: A vocabulary for structural validation of JSON_ (Draft 2020-12). JSON Schema. https://json-schema.org/draft/2020-12/json-schema-validation.html
