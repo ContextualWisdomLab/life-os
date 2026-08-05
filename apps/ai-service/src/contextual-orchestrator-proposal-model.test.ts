@@ -58,9 +58,7 @@ describe('contextual orchestrator configuration', () => {
       environment({ AI_MODEL_REQUEST_TIMEOUT_MS: '30000' }),
     );
 
-    expect(configured.origin.href).toBe(
-      'https://orchestrator.example.test/',
-    );
+    expect(configured.origin.href).toBe('https://orchestrator.example.test/');
     expect(configured.token).toBe(TOKEN);
     expect(configured.timeoutMilliseconds).toBe(30_000);
     expect(Object.isFrozen(configured)).toBe(true);
@@ -77,6 +75,13 @@ describe('contextual orchestrator configuration', () => {
 
   it.each([
     {},
+    environment({ CONTEXTUAL_ORCHESTRATOR_URL: '' }),
+    environment({
+      CONTEXTUAL_ORCHESTRATOR_URL: ' https://orchestrator.example.test',
+    }),
+    environment({
+      CONTEXTUAL_ORCHESTRATOR_URL: 'https://orchestrator.example.test ',
+    }),
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'not a url' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'http://example.test' }),
     environment({
@@ -96,6 +101,8 @@ describe('contextual orchestrator configuration', () => {
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'https://127.0.0.1' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'https://[::1]' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: undefined }),
+    environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: ' short' }),
+    environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: 'short ' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: 'short' }),
     environment({
       CONTEXTUAL_ORCHESTRATOR_TOKEN: `x${String.fromCharCode(0)}${'y'.repeat(31)}`,
@@ -188,6 +195,12 @@ describe('ContextualOrchestratorProposalModel', () => {
     }
   });
 
+  it('constructs with the production Fetch default without performing I/O', () => {
+    expect(
+      new ContextualOrchestratorProposalModel(configuration()),
+    ).toBeInstanceOf(ContextualOrchestratorProposalModel);
+  });
+
   it.each([
     new Response('upstream body must remain private', {
       status: 429,
@@ -195,6 +208,7 @@ describe('ContextualOrchestratorProposalModel', () => {
     }),
     new Response(null, { status: 200 }),
     new Response('x'.repeat(65_537), { status: 200 }),
+    new Response(new Uint8Array([0xff]), { status: 200 }),
   ])('rejects bounded HTTP and body failures %#', async (response) => {
     const fetcher: ContextualOrchestratorFetch = async () => response;
     const model = new ContextualOrchestratorProposalModel(
@@ -215,13 +229,23 @@ describe('ContextualOrchestratorProposalModel', () => {
   });
 
   it.each([
+    'null',
+    '[]',
+    '42',
     '{}',
     JSON.stringify({ choices: [] }),
+    JSON.stringify({ choices: [null] }),
+    JSON.stringify({ choices: [[]] }),
     JSON.stringify({ choices: [{}] }),
+    JSON.stringify({ choices: [{ message: null }] }),
+    JSON.stringify({ choices: [{ message: [] }] }),
     JSON.stringify({ choices: [{ message: {} }] }),
     JSON.stringify({ choices: [{ message: { content: 42 } }] }),
     JSON.stringify({ choices: [{ message: { content: ' ' } }] }),
     JSON.stringify({ choices: [{ message: { content: '{' } }] }),
+    JSON.stringify({ choices: [{ message: { content: 'null' } }] }),
+    JSON.stringify({ choices: [{ message: { content: '[]' } }] }),
+    JSON.stringify({ choices: [{ message: { content: '42' } }] }),
   ])('rejects malformed completion envelope or content %#', async (body) => {
     const fetcher: ContextualOrchestratorFetch = async () =>
       new Response(body, { status: 200 });
