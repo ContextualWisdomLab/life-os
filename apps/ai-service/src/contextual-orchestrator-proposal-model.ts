@@ -20,7 +20,7 @@ type ProposalModelEnvironment = Readonly<Record<string, string | undefined>>;
 
 /** Immutable configuration for one trusted contextual-orchestrator origin. */
 export interface ContextualOrchestratorConfiguration {
-  readonly origin: URL;
+  readonly origin: string;
   readonly token: string;
   readonly timeoutMilliseconds: number;
 }
@@ -46,7 +46,7 @@ function unavailable(): never {
 }
 
 /** Requires one exact HTTPS origin with no alternate route or embedded authority data. */
-function requireOrigin(value: string | undefined): URL {
+function requireOrigin(value: string | undefined): string {
   if (typeof value !== 'string' || value.trim() !== value || value === '') {
     return unavailable();
   }
@@ -72,7 +72,7 @@ function requireOrigin(value: string | undefined): URL {
   ) {
     return unavailable();
   }
-  return Object.freeze(origin);
+  return origin.href;
 }
 
 /** Requires one bounded server-only bearer token without header delimiters. */
