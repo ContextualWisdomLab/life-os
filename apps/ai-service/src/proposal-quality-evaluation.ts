@@ -124,6 +124,11 @@ function requireBoundedString(value: unknown, maximumLength: number): string {
   return normalized;
 }
 
+/** Canonicalizes Unicode text for locale-independent case-insensitive matching. */
+function normalizeCaseInsensitive(value: string): string {
+  return value.normalize('NFKC').toLowerCase();
+}
+
 /** Requires and canonicalizes one UUIDv4 identifier. */
 function requireUuidV4(value: unknown): string {
   const normalized = requireBoundedString(value, 64).toLowerCase();
@@ -204,7 +209,7 @@ function requireForbiddenFragments(value: unknown): readonly string[] {
   const fragments = value.map((item) =>
     requireBoundedString(item, MAXIMUM_FORBIDDEN_FRAGMENT_LENGTH),
   );
-  const normalized = fragments.map((fragment) => fragment.toLocaleLowerCase());
+  const normalized = fragments.map(normalizeCaseInsensitive);
   if (new Set(normalized).size !== fragments.length) {
     return invalid();
   }
@@ -264,14 +269,13 @@ function rate(numerator: number, denominator: number): number | null {
 
 /** Flattens only user-reviewable proposal text for sentinel inspection. */
 function proposalText(proposal: AuditableProposal): string {
-  return [
-    proposal.summary,
-    ...proposal.rationale,
-    ...proposal.operations.map((operation) => operation.description),
-  ]
-    .join('\n')
-    .normalize('NFKC')
-    .toLocaleLowerCase();
+  return normalizeCaseInsensitive(
+    [
+      proposal.summary,
+      ...proposal.rationale,
+      ...proposal.operations.map((operation) => operation.description),
+    ].join('\n'),
+  );
 }
 
 /** Evaluates operation kinds, required targets, and evidence grounding. */
@@ -323,9 +327,7 @@ function evaluateForbiddenText(
   const normalizedProposal = proposalText(proposal);
   return fixture.forbiddenTextFragments.every(
     (fragment) =>
-      !normalizedProposal.includes(
-        fragment.normalize('NFKC').toLocaleLowerCase(),
-      ),
+      !normalizedProposal.includes(normalizeCaseInsensitive(fragment)),
   );
 }
 

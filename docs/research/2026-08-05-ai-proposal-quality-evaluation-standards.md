@@ -48,7 +48,7 @@ The suite version changes whenever scenario content or labels change. Model resu
 
 ### Unicode normalization
 
-Forbidden text is compared after NFKC normalization and locale-aware lowercase conversion. This catches harmless compatibility-character variants in evaluation sentinels without claiming general semantic-equivalence detection.
+Forbidden text is compared after NFKC normalization and locale-independent Unicode lowercase conversion. Fixture uniqueness uses the same canonicalization as proposal matching, preventing compatibility-equivalent sentinels from being labeled as distinct. This catches harmless compatibility-character variants without claiming general semantic-equivalence detection.
 
 ### Immutable reports
 
