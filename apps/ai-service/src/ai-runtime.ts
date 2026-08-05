@@ -1,12 +1,14 @@
 import { Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolConfig } from 'pg';
+import type { ContextualOrchestratorFetch } from './contextual-orchestrator-proposal-model';
+import { createProposalModelRuntime } from './ai-model-runtime';
 import { ProposalAuditApplication } from './proposal-audit-application';
 import {
   type ProposalAuditSqlClient,
   type ProposalAuditSqlQueryResult,
   PostgresProposalAuditRepository,
 } from './postgres-proposal-audit-repository';
-import { ProposalService, RuleBasedProposalModel } from './proposal-service';
+import { ProposalService } from './proposal-service';
 
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
 const databaseLogger = new Logger('AiDatabasePool');
@@ -203,18 +205,27 @@ export class AiRuntime implements OnApplicationShutdown {
   }
 }
 
-/** Wires the production rule-based proposal model to append-only PostgreSQL audit. */
+/** Wires one explicitly selected proposal model to append-only PostgreSQL audit. */
 export function createAiRuntime(
   environment: RuntimeEnvironment = process.env,
   poolFactory: AiPoolFactory = defaultPoolFactory,
+  modelFetcher: ContextualOrchestratorFetch = fetch,
 ): AiRuntime {
+  const proposalModelRuntime = createProposalModelRuntime(
+    environment,
+    modelFetcher,
+  );
   const pool = poolFactory(createAiPoolConfiguration(environment));
   const repository = new PostgresProposalAuditRepository(
     new NodePostgresProposalAuditSqlClient(pool),
   );
-  const proposalService = new ProposalService(new RuleBasedProposalModel());
+  const proposalService = new ProposalService(proposalModelRuntime.model);
   return new AiRuntime(
     pool,
-    new ProposalAuditApplication(proposalService, repository, 'rule-based-v1'),
+    new ProposalAuditApplication(
+      proposalService,
+      repository,
+      proposalModelRuntime.modelId,
+    ),
   );
 }

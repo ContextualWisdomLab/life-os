@@ -14,6 +14,27 @@ The production module requires `AI_DATABASE_URL` and accepts bounded optional po
 
 The node-postgres pool identifies itself as `life-os-ai-service`, records idle-client failures through a credential-free listener, and is closed exactly once after successful cleanup through the NestJS application-shutdown lifecycle. Concurrent shutdown calls share one attempt; a failed attempt remains visible and permits a later retry. Startup fails closed when the URL is missing, oversized, malformed, or not PostgreSQL.
 
+## Proposal model runtime
+
+The AI service remains independently usable with the deterministic local model:
+
+```dotenv
+AI_PROPOSAL_MODEL=rule-based
+```
+
+This is the default and records `rule-based-v1` in proposal evidence. To use the separately deployable contextual orchestrator, configure:
+
+```dotenv
+AI_PROPOSAL_MODEL=contextual-orchestrator
+CONTEXTUAL_ORCHESTRATOR_URL=https://orchestrator.example.com
+CONTEXTUAL_ORCHESTRATOR_TOKEN=<server-only-token>
+AI_MODEL_REQUEST_TIMEOUT_MS=10000
+```
+
+External mode accepts one exact HTTPS origin, a 32–4096-byte token without header delimiters, and a timeout from 100 through 30000 milliseconds. AI service calls only `POST /v1/chat/completions`, supplies no tools, caps the streamed response at 65536 bytes, parses one schema-constrained JSON draft, and records `contextual-orchestrator-v1` in proposal evidence.
+
+Provider selection, retries, circuit breaking, spend policy, and free-model-first fallback belong to contextual-orchestrator. LifeOS does not silently switch to the local model after external mode is selected. A model or transport failure returns a bounded unavailable response so audit provenance remains explicit. See `docs/operations/contextual-orchestrator-proposal-transport.md`.
+
 ## Versioned audit routes
 
 The production module exposes the inert proposal-generation route together with tenant-scoped audit history:
@@ -58,14 +79,16 @@ Destructive schema setup is permitted only through `AI_TEST_DATABASE_URL`. The U
 
 ## Validation evidence
 
-CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, unsigned ownership rejection, method/path replay rejection, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, unsigned ownership rejection, method/path replay rejection, explicit model selection, bounded external transport, sanitized failures, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
 
 ## Secret rotation and rollback
 
 LifeOS supports one active signing key and one bounded previous verification key. Follow `docs/operations/ai-gateway-key-rotation.md` to expand verifier configuration, switch the signer, retain the former active key only through the request-validity and deployment overlap window, and retire it by removing the previous pair. Unknown and retired identifiers fail closed immediately; the verifier never trials every configured secret. If signer and verifier become incompatible, disable external AI proposal traffic rather than falling back to unsigned ownership headers. Suspected compromise requires immediate revocation rather than a normal overlap.
 
+The contextual-orchestrator token has a separate lifecycle from gateway signing keys. Revoke and replace it at the orchestrator boundary. To stop external generation, explicitly redeploy with `AI_PROPOSAL_MODEL=rule-based`; existing audit records retain their original model identifiers and content digests.
+
 The database migration is forward-only in automated environments. An operator-approved rollback must export and verify proposal and decision evidence before dropping `ai.proposal_decision_events`, `ai.proposal_audit_records`, `ai.reject_proposal_audit_mutation()`, and the `ai` schema. Do not roll back after recording production decisions unless legal, retention, and audit requirements have been reviewed and documented.
 
 ## Deferred work
 
-External model transport, prompt and context redaction, policy evaluation, model-quality evaluation, asymmetric workload identity, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.
+Prompt and context redaction, policy evaluation, model-quality and fairness evaluation, asymmetric workload identity, live NVIDIA NIM conformance testing, and separately authorized action execution remain independent reviewed capabilities. The audit service must not gain planning, calendar, habit, identity, notification, or generic command dependencies when those slices are added.

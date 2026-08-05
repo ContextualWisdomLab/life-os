@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- An explicit `contextual-orchestrator` proposal-model mode with bounded OpenAI-compatible transport, strict structured output, model provenance, and an independent local rule-based default.
 - Executable AI-service JSDoc and exact 100% statement, branch, function, and line coverage gates, with an operator-facing governance assurance boundary.
 - Tenant-safe durable planning search across goals, projects, and tasks, with Unicode-normalized exact, prefix, and whole-token matching.
 - An authenticated same-origin planning-search boundary that signs the session-derived workspace context and forwards no browser credential to planning-service.
@@ -28,6 +29,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- External proposal generation now accepts only one credential-free HTTPS orchestrator origin, stops responses at 65536 bytes, enforces a bounded abort timeout, supplies no tools, treats planning context as untrusted data, and exposes only sanitized failures.
 - AI gateway service-context authentication now carries an integrity-protected key identifier, signs only with one active key, verifies one explicitly selected active or previous key during a bounded overlap, and rejects retired identifiers immediately without trial verification.
 - Planning-search upstream responses are stopped at a fixed byte limit before they can be fully buffered by the web boundary.
 - Notification persistence stores SHA-256 idempotency digests instead of raw delivery keys, validates every untrusted row, and keeps all SQL tenant-scoped and parameterized.
