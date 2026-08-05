@@ -45,6 +45,21 @@ function unavailable(): never {
   throw new ProposalModelTransportError();
 }
 
+/** Detects direct, named, IPv6, and IPv4-mapped IPv6 loopback hosts. */
+function isLoopbackHostname(hostname: string): boolean {
+  const unbracketedHostname =
+    hostname.startsWith('[') && hostname.endsWith(']')
+      ? hostname.slice(1, -1)
+      : hostname;
+  return (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.startsWith('127.') ||
+    unbracketedHostname === '::1' ||
+    /^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/u.test(unbracketedHostname)
+  );
+}
+
 /** Requires one exact HTTPS origin with no alternate route or embedded authority data. */
 function requireOrigin(value: string | undefined): string {
   if (typeof value !== 'string' || value.trim() !== value || value === '') {
@@ -64,11 +79,7 @@ function requireOrigin(value: string | undefined): string {
     origin.pathname !== '/' ||
     origin.search !== '' ||
     origin.hash !== '' ||
-    hostname === 'localhost' ||
-    hostname.endsWith('.localhost') ||
-    hostname.startsWith('127.') ||
-    hostname === '::1' ||
-    hostname === '[::1]'
+    isLoopbackHostname(hostname)
   ) {
     return unavailable();
   }
