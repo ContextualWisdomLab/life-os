@@ -281,6 +281,7 @@ export class ContextualOrchestratorProposalModel implements ProposalModel {
       const target = new URL('/v1/chat/completions', this.configuration.origin);
       const response = await this.fetcher(target, {
         method: 'POST',
+        redirect: 'error',
         headers: {
           authorization: `Bearer ${this.configuration.token}`,
           'content-type': 'application/json',
