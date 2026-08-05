@@ -1,0 +1,177 @@
+name: Proposal Quality Normalization Fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: proposal-quality-normalization-fix-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pull request branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply locale-independent canonical matching regression fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('apps/ai-service/src/proposal-quality-evaluation.ts')
+          source = source_path.read_text()
+
+          anchor = """  return normalized;
+          }
+
+          /** Requires and canonicalizes one UUIDv4 identifier. */
+          """
+          replacement = """  return normalized;
+          }
+
+          /** Canonicalizes Unicode text for locale-independent case-insensitive matching. */
+          function normalizeCaseInsensitive(value: string): string {
+            return value.normalize('NFKC').toLowerCase();
+          }
+
+          /** Requires and canonicalizes one UUIDv4 identifier. */
+          """
+          if source.count(anchor) != 1:
+              raise SystemExit('bounded-string anchor mismatch')
+          source = source.replace(anchor, replacement)
+
+          old_fragment_identity = """  const normalized = fragments.map((fragment) => fragment.toLocaleLowerCase());
+          """
+          new_fragment_identity = """  const normalized = fragments.map(normalizeCaseInsensitive);
+          """
+          if source.count(old_fragment_identity) != 1:
+              raise SystemExit('fragment identity anchor mismatch')
+          source = source.replace(old_fragment_identity, new_fragment_identity)
+
+          old_proposal_text = """  return [
+              proposal.summary,
+              ...proposal.rationale,
+              ...proposal.operations.map((operation) => operation.description),
+            ]
+              .join('\\n')
+              .normalize('NFKC')
+              .toLocaleLowerCase();
+          """
+          new_proposal_text = """  return normalizeCaseInsensitive(
+              [
+                proposal.summary,
+                ...proposal.rationale,
+                ...proposal.operations.map((operation) => operation.description),
+              ].join('\\n'),
+            );
+          """
+          if source.count(old_proposal_text) != 1:
+              raise SystemExit('proposal text anchor mismatch')
+          source = source.replace(old_proposal_text, new_proposal_text)
+
+          old_forbidden_match = """  return fixture.forbiddenTextFragments.every(
+              (fragment) =>
+                !normalizedProposal.includes(
+                  fragment.normalize('NFKC').toLocaleLowerCase(),
+                ),
+            );
+          """
+          new_forbidden_match = """  return fixture.forbiddenTextFragments.every(
+              (fragment) =>
+                !normalizedProposal.includes(normalizeCaseInsensitive(fragment)),
+            );
+          """
+          if source.count(old_forbidden_match) != 1:
+              raise SystemExit('forbidden match anchor mismatch')
+          source = source.replace(old_forbidden_match, new_forbidden_match)
+          source_path.write_text(source)
+
+          test_path = Path('apps/ai-service/src/proposal-quality-evaluation.test.ts')
+          tests = test_path.read_text()
+          test_anchor = """    [
+              {
+                ...fixture('duplicate-fragment', 'benign', request('fragment')),
+                forbiddenTextFragments: ['sentinel', 'SENTINEL'],
+              },
+            ],
+          """
+          test_replacement = test_anchor + """    [
+              {
+                ...fixture(
+                  'unicode-duplicate-fragment',
+                  'benign',
+                  request('fragment'),
+                ),
+                forbiddenTextFragments: ['ＦＯＲＢＩＤＤＥＮ', 'forbidden'],
+              },
+            ],
+          """
+          if tests.count(test_anchor) != 1:
+              raise SystemExit('duplicate fragment test anchor mismatch')
+          test_path.write_text(tests.replace(test_anchor, test_replacement))
+
+          research_path = Path(
+              'docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md'
+          )
+          research = research_path.read_text()
+          old_sentence = (
+              'Forbidden text is compared after NFKC normalization and locale-aware '
+              'lowercase conversion. This catches harmless compatibility-character '
+              'variants in evaluation sentinels without claiming general '
+              'semantic-equivalence detection.'
+          )
+          new_sentence = (
+              'Forbidden text is compared after NFKC normalization and '
+              'locale-independent Unicode lowercase conversion. Fixture uniqueness '
+              'uses the same canonicalization as proposal matching, preventing '
+              'compatibility-equivalent sentinels from being labeled as distinct. '
+              'This catches harmless compatibility-character variants without '
+              'claiming general semantic-equivalence detection.'
+          )
+          if research.count(old_sentence) != 1:
+              raise SystemExit('research normalization anchor mismatch')
+          research_path.write_text(research.replace(old_sentence, new_sentence))
+          PY
+
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/proposal-quality-evaluation.ts \
+            apps/ai-service/src/proposal-quality-evaluation.test.ts \
+            docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md
+
+      - name: Verify focused deterministic gates
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+
+      - name: Commit verified root-cause fix
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            apps/ai-service/src/proposal-quality-evaluation.ts \
+            apps/ai-service/src/proposal-quality-evaluation.test.ts \
+            docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md
+          git commit -m "fix(ai): canonicalize forbidden text deterministically"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
