@@ -47,10 +47,7 @@ function unavailable(): never {
 
 /** Detects direct, named, IPv6, and IPv4-mapped IPv6 loopback hosts. */
 function isLoopbackHostname(hostname: string): boolean {
-  const unbracketedHostname =
-    hostname.startsWith('[') && hostname.endsWith(']')
-      ? hostname.slice(1, -1)
-      : hostname;
+  const unbracketedHostname = hostname.replace(/^\[|\]$/gu, '');
   return (
     hostname === 'localhost' ||
     hostname.endsWith('.localhost') ||
