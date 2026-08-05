@@ -16,11 +16,13 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
     steps:
-      - name: Checkout exact pull request branch
+      - name: Checkout exact pull request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -34,7 +36,7 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Apply locale-independent canonical matching regression fix
+      - name: Apply deterministic canonical matching regression fix
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -42,12 +44,14 @@ jobs:
           source_path = Path('apps/ai-service/src/proposal-quality-evaluation.ts')
           source = source_path.read_text()
 
-          anchor = """  return normalized;
+          replacements = [
+              (
+                  """  return normalized;
           }
 
           /** Requires and canonicalizes one UUIDv4 identifier. */
-          """
-          replacement = """  return normalized;
+          """,
+                  """  return normalized;
           }
 
           /** Canonicalizes Unicode text for locale-independent case-insensitive matching. */
@@ -56,20 +60,14 @@ jobs:
           }
 
           /** Requires and canonicalizes one UUIDv4 identifier. */
-          """
-          if source.count(anchor) != 1:
-              raise SystemExit('bounded-string anchor mismatch')
-          source = source.replace(anchor, replacement)
-
-          old_fragment_identity = """  const normalized = fragments.map((fragment) => fragment.toLocaleLowerCase());
-          """
-          new_fragment_identity = """  const normalized = fragments.map(normalizeCaseInsensitive);
-          """
-          if source.count(old_fragment_identity) != 1:
-              raise SystemExit('fragment identity anchor mismatch')
-          source = source.replace(old_fragment_identity, new_fragment_identity)
-
-          old_proposal_text = """  return [
+          """,
+              ),
+              (
+                  "const normalized = fragments.map((fragment) => fragment.toLocaleLowerCase());",
+                  "const normalized = fragments.map(normalizeCaseInsensitive);",
+              ),
+              (
+                  """  return [
               proposal.summary,
               ...proposal.rationale,
               ...proposal.operations.map((operation) => operation.description),
@@ -77,59 +75,68 @@ jobs:
               .join('\\n')
               .normalize('NFKC')
               .toLocaleLowerCase();
-          """
-          new_proposal_text = """  return normalizeCaseInsensitive(
+          """,
+                  """  return normalizeCaseInsensitive(
               [
                 proposal.summary,
                 ...proposal.rationale,
                 ...proposal.operations.map((operation) => operation.description),
               ].join('\\n'),
             );
-          """
-          if source.count(old_proposal_text) != 1:
-              raise SystemExit('proposal text anchor mismatch')
-          source = source.replace(old_proposal_text, new_proposal_text)
-
-          old_forbidden_match = """  return fixture.forbiddenTextFragments.every(
+          """,
+              ),
+              (
+                  """  return fixture.forbiddenTextFragments.every(
               (fragment) =>
                 !normalizedProposal.includes(
                   fragment.normalize('NFKC').toLocaleLowerCase(),
                 ),
             );
-          """
-          new_forbidden_match = """  return fixture.forbiddenTextFragments.every(
+          """,
+                  """  return fixture.forbiddenTextFragments.every(
               (fragment) =>
                 !normalizedProposal.includes(normalizeCaseInsensitive(fragment)),
             );
-          """
-          if source.count(old_forbidden_match) != 1:
-              raise SystemExit('forbidden match anchor mismatch')
-          source = source.replace(old_forbidden_match, new_forbidden_match)
+          """,
+              ),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f'source replacement anchor mismatch: {old[:40]!r}')
+              source = source.replace(old, new)
           source_path.write_text(source)
 
-          test_path = Path('apps/ai-service/src/proposal-quality-evaluation.test.ts')
-          tests = test_path.read_text()
-          test_anchor = """    [
-              {
-                ...fixture('duplicate-fragment', 'benign', request('fragment')),
-                forbiddenTextFragments: ['sentinel', 'SENTINEL'],
-              },
-            ],
+          regression_path = Path(
+              'apps/ai-service/src/proposal-quality-normalization.test.ts'
+          )
+          regression_path.write_text(
+              """import { describe, expect, it } from 'vitest';
+          import {
+            ProposalQualityEvaluationError,
+            validateProposalEvaluationFixtures,
+          } from './proposal-quality-evaluation';
+
+          describe('proposal quality canonical normalization', () => {
+            it('rejects compatibility-equivalent forbidden fragments', () => {
+              expect(() =>
+                validateProposalEvaluationFixtures([
+                  {
+                    id: 'unicode_duplicate_fragment',
+                    category: 'benign',
+                    request: {
+                      objective: 'Create one safe task',
+                      context: [],
+                    },
+                    allowedOperationKinds: ['create_task'],
+                    requiredTargetIds: [],
+                    forbiddenTextFragments: ['ＦＯＲＢＩＤＤＥＮ', 'forbidden'],
+                  },
+                ]),
+              ).toThrow(ProposalQualityEvaluationError);
+            });
+          });
           """
-          test_replacement = test_anchor + """    [
-              {
-                ...fixture(
-                  'unicode-duplicate-fragment',
-                  'benign',
-                  request('fragment'),
-                ),
-                forbiddenTextFragments: ['ＦＯＲＢＩＤＤＥＮ', 'forbidden'],
-              },
-            ],
-          """
-          if tests.count(test_anchor) != 1:
-              raise SystemExit('duplicate fragment test anchor mismatch')
-          test_path.write_text(tests.replace(test_anchor, test_replacement))
+          )
 
           research_path = Path(
               'docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md'
@@ -152,11 +159,13 @@ jobs:
           if research.count(old_sentence) != 1:
               raise SystemExit('research normalization anchor mismatch')
           research_path.write_text(research.replace(old_sentence, new_sentence))
+
+          Path('.github/workflows/proposal-quality-normalization-fix.yml').unlink()
           PY
 
           pnpm exec prettier --single-quote --write \
             apps/ai-service/src/proposal-quality-evaluation.ts \
-            apps/ai-service/src/proposal-quality-evaluation.test.ts \
+            apps/ai-service/src/proposal-quality-normalization.test.ts \
             docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md
 
       - name: Verify focused deterministic gates
@@ -169,9 +178,6 @@ jobs:
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            apps/ai-service/src/proposal-quality-evaluation.ts \
-            apps/ai-service/src/proposal-quality-evaluation.test.ts \
-            docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md
+          git add -A
           git commit -m "fix(ai): canonicalize forbidden text deterministically"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin "HEAD:${PR_HEAD_REF}"
