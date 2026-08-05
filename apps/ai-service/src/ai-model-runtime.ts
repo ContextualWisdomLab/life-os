@@ -3,15 +3,10 @@ import {
   ContextualOrchestratorProposalModel,
   createContextualOrchestratorConfiguration,
 } from './contextual-orchestrator-proposal-model';
-import {
-  type ProposalModel,
-  RuleBasedProposalModel,
-} from './proposal-service';
+import { type ProposalModel, RuleBasedProposalModel } from './proposal-service';
 
 /** Supported immutable audit identifiers for proposal model implementations. */
-export type ProposalModelId =
-  | 'rule-based-v1'
-  | 'contextual-orchestrator-v1';
+export type ProposalModelId = 'rule-based-v1' | 'contextual-orchestrator-v1';
 
 /** Selected proposal model and the exact identifier persisted with its output. */
 export interface ProposalModelRuntime {
