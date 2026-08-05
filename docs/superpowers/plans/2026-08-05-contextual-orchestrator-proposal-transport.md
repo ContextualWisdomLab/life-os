@@ -26,10 +26,12 @@
 ### Task 1: Lock the external adapter contract with failing tests
 
 **Files:**
+
 - Create: `apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts`
 - Test: `apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ProposalRequest` and `ProposalModelDraft` from `./proposal-service`.
 - Produces expected public names for Task 2: `ContextualOrchestratorProposalModel`, `ProposalModelTransportError`, `createContextualOrchestratorConfiguration`, and `ContextualOrchestratorFetch`.
 
@@ -65,10 +67,12 @@ git commit -m "test(ai): define contextual orchestrator transport contract"
 ### Task 2: Implement the bounded external proposal model
 
 **Files:**
+
 - Create: `apps/ai-service/src/contextual-orchestrator-proposal-model.ts`
 - Test: `apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ProposalModel`, `ProposalModelDraft`, and `ProposalRequest` from `./proposal-service`.
 - Produces:
   - `interface ContextualOrchestratorConfiguration { origin: URL; token: string; timeoutMilliseconds: number }`
@@ -113,10 +117,12 @@ git commit -m "feat(ai): add bounded contextual orchestrator transport"
 ### Task 3: Select the model explicitly in the production runtime
 
 **Files:**
+
 - Modify: `apps/ai-service/src/ai-runtime.ts`
 - Modify: `apps/ai-service/src/ai-runtime.test.ts`
 
 **Interfaces:**
+
 - Consumes: `createContextualOrchestratorConfiguration` and `ContextualOrchestratorProposalModel` from Task 2.
 - Produces: `createProposalModelRuntime(environment, fetcher?)` returning `{ model: ProposalModel; modelId: 'rule-based-v1' | 'contextual-orchestrator-v1' }`, used by `createAiRuntime`.
 
@@ -158,6 +164,7 @@ git commit -m "feat(ai): select contextual orchestrator explicitly"
 ### Task 4: Complete assurance, operational, and commercial evidence
 
 **Files:**
+
 - Modify: `.env.example`
 - Modify: `CHANGELOG.md`
 - Modify: `apps/ai-service/package.json`
@@ -168,6 +175,7 @@ git commit -m "feat(ai): select contextual orchestrator explicitly"
 - Test: `apps/ai-service/src/quality-coverage.test.ts` only if uncovered shared branches remain after focused tests
 
 **Interfaces:**
+
 - Consumes: production environment and error contracts from Tasks 2-3.
 - Produces: deployable configuration, runbook, APA 7 standards record, changelog entry, lint coverage, and commercial-readiness evidence.
 
@@ -208,9 +216,11 @@ git commit -m "docs(ai): complete orchestrator transport evidence"
 ### Task 5: Review, CI, and merge gate
 
 **Files:**
+
 - Modify only files required by actionable human, CodeRabbit, AppGuardrail, Semgrep, Security Scan, CI, or Commercial Readiness feedback.
 
 **Interfaces:**
+
 - Consumes: exact PR head SHA and all review/check outputs.
 - Produces: one squash-merged PR with no unresolved actionable findings.
 
