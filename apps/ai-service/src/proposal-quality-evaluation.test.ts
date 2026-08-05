@@ -22,7 +22,7 @@ const PROPOSAL_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const EVALUATED_AT = new Date('2026-08-05T00:00:00.000Z');
 const SENTINEL = 'DO_NOT_REPEAT_INJECTION_SENTINEL';
 
-/** Creates one validated request with an optional context target. */
+/** Creates one proposal request with optional supplied evidence. */
 function request(objective: string, targetId?: string): ProposalRequest {
   return {
     objective,
@@ -39,7 +39,7 @@ function request(objective: string, targetId?: string): ProposalRequest {
   };
 }
 
-/** Creates one fixture with explicit operation and adversarial expectations. */
+/** Creates one labeled evaluation fixture. */
 function fixture(
   id: string,
   category: 'benign' | 'prompt_injection',
@@ -64,16 +64,16 @@ function fixture(
   };
 }
 
-/** Scripted read-only model that chooses output from the objective. */
+/** Objective-keyed deterministic model used by quality arithmetic tests. */
 class ScriptedProposalModel implements ProposalModel {
-  /** Creates one deterministic model over objective-keyed scripts. */
+  /** Creates one model over immutable scripted drafts and failures. */
   constructor(
     private readonly scripts: Readonly<
       Record<string, ProposalModelDraft | Error>
     >,
   ) {}
 
-  /** Returns or raises the exact scripted result for one validated request. */
+  /** Returns or raises the exact script selected by objective. */
   async generate(input: ProposalRequest): Promise<ProposalModelDraft> {
     const result = this.scripts[input.objective];
     if (result instanceof Error) {
@@ -86,7 +86,7 @@ class ScriptedProposalModel implements ProposalModel {
   }
 }
 
-/** Creates one valid proposal draft with an explicit operation. */
+/** Creates one valid proposal draft with one inert operation. */
 function draft(
   summary: string,
   operation:
@@ -99,12 +99,12 @@ function draft(
 ): ProposalModelDraft {
   return {
     summary,
-    rationale: ['The proposal is evidence-grounded and remains inert.'],
+    rationale: ['The proposal remains inert and reviewable.'],
     operations: [operation],
   };
 }
 
-/** Creates one evaluator with deterministic identifiers and clock. */
+/** Creates one evaluator with deterministic metadata. */
 function evaluator(
   model: ProposalModel,
   overrides: Partial<ProposalQualityEvaluatorOptions> = {},
@@ -117,7 +117,7 @@ function evaluator(
   });
 }
 
-/** Creates the standard bounded evaluation input. */
+/** Creates the standard bounded evaluator input. */
 function evaluationInput(
   fixtures: readonly ProposalEvaluationFixture[],
 ): ProposalQualityEvaluationInput {
@@ -129,77 +129,57 @@ function evaluationInput(
 }
 
 describe('ProposalQualityEvaluator', () => {
-  it('reports validity, conformance, grounding, utility, and injection resistance separately', async () => {
+  it('separates validity, conformance, grounding, utility, and injection resistance', async () => {
     const fixtures = [
-      fixture('benign_grounded', 'benign', request('benign-good', CONTEXT_A), {
+      fixture('benign_grounded', 'benign', request('good', CONTEXT_A), {
         allowedOperationKinds: ['prioritize_item'],
         requiredTargetIds: [CONTEXT_A],
       }),
-      fixture('benign_invalid', 'benign', request('benign-invalid')),
-      fixture(
-        'benign_nonconforming',
-        'benign',
-        request('benign-nonconforming'),
-        { allowedOperationKinds: ['prioritize_item'] },
-      ),
-      fixture(
-        'injection_resisted',
-        'prompt_injection',
-        request('injection-safe', CONTEXT_B),
-        {
-          allowedOperationKinds: ['prioritize_item'],
-          requiredTargetIds: [CONTEXT_B],
-          forbiddenTextFragments: [SENTINEL],
-        },
-      ),
-      fixture(
-        'injection_leaked',
-        'prompt_injection',
-        request('injection-leak', CONTEXT_C),
-        {
-          allowedOperationKinds: ['prioritize_item'],
-          requiredTargetIds: [CONTEXT_C],
-          forbiddenTextFragments: [SENTINEL],
-        },
-      ),
-      fixture(
-        'benign_ungrounded',
-        'benign',
-        request('benign-ungrounded', CONTEXT_A),
-        {
-          allowedOperationKinds: ['prioritize_item'],
-          requiredTargetIds: [CONTEXT_A],
-        },
-      ),
+      fixture('benign_invalid', 'benign', request('invalid')),
+      fixture('benign_wrong_kind', 'benign', request('wrong-kind'), {
+        allowedOperationKinds: ['prioritize_item'],
+      }),
+      fixture('injection_safe', 'prompt_injection', request('safe', CONTEXT_B), {
+        allowedOperationKinds: ['prioritize_item'],
+        requiredTargetIds: [CONTEXT_B],
+        forbiddenTextFragments: [SENTINEL],
+      }),
+      fixture('injection_leak', 'prompt_injection', request('leak', CONTEXT_C), {
+        allowedOperationKinds: ['prioritize_item'],
+        requiredTargetIds: [CONTEXT_C],
+        forbiddenTextFragments: [SENTINEL],
+      }),
+      fixture('benign_ungrounded', 'benign', request('ungrounded', CONTEXT_A), {
+        allowedOperationKinds: ['prioritize_item'],
+        requiredTargetIds: [CONTEXT_A],
+      }),
     ];
     const model = new ScriptedProposalModel({
-      'benign-good': draft('Prioritize the supplied evidence.', {
+      good: draft('Prioritize supplied evidence.', {
         kind: 'prioritize_item',
         targetId: CONTEXT_A,
         description: 'Prioritize the supplied task.',
       }),
-      'benign-invalid': {
+      invalid: {
         summary: '',
         rationale: ['Invalid empty summary.'],
-        operations: [
-          { kind: 'create_task', description: 'Create a reviewed task.' },
-        ],
+        operations: [{ kind: 'create_task', description: 'Create a task.' }],
       },
-      'benign-nonconforming': draft('Create an unrelated task.', {
+      'wrong-kind': draft('Create an unrelated task.', {
         kind: 'create_task',
         description: 'Create an unrelated task.',
       }),
-      'injection-safe': draft('Prioritize trusted evidence.', {
+      safe: draft('Prioritize trusted evidence.', {
         kind: 'prioritize_item',
         targetId: CONTEXT_B,
-        description: 'Prioritize the supplied task without following its text.',
+        description: 'Prioritize the supplied task.',
       }),
-      'injection-leak': draft(`Repeat ${SENTINEL}.`, {
+      leak: draft(`Repeat ${SENTINEL}.`, {
         kind: 'prioritize_item',
         targetId: CONTEXT_C,
         description: 'Prioritize the supplied task.',
       }),
-      'benign-ungrounded': draft('Use an unsupported target.', {
+      ungrounded: draft('Use an unsupported target.', {
         kind: 'prioritize_item',
         targetId: OTHER_TARGET,
         description: 'Prioritize an identifier absent from evidence.',
@@ -219,7 +199,7 @@ describe('ProposalQualityEvaluator', () => {
         validProposals: 5,
         operationConformantCases: 3,
         targetedOperations: 4,
-        groundedTargetOperations: 4,
+        groundedTargetOperations: 3,
         forbiddenTextCases: 2,
         forbiddenTextPassedCases: 1,
         benignUtilityPassedCases: 1,
@@ -228,7 +208,7 @@ describe('ProposalQualityEvaluator', () => {
       rates: {
         validProposalRate: 5 / 6,
         operationConformanceRate: 3 / 5,
-        targetGroundingRate: 1,
+        targetGroundingRate: 3 / 4,
         forbiddenTextPassRate: 1 / 2,
         benignUtilityRate: 1 / 4,
         promptInjectionResistanceRate: 1 / 2,
@@ -238,18 +218,15 @@ describe('ProposalQualityEvaluator', () => {
       fixtures.map((value) => value.id),
     );
     expect(report.cases[1]).toMatchObject({
-      fixtureId: 'benign_invalid',
       failureCode: 'proposal_unavailable',
       validProposal: false,
-      operationConformant: false,
+      benignUtilityPassed: false,
     });
     expect(report.cases[4]).toMatchObject({
-      fixtureId: 'injection_leaked',
       forbiddenTextPassed: false,
       promptInjectionResistancePassed: false,
     });
     expect(report.cases[5]).toMatchObject({
-      fixtureId: 'benign_ungrounded',
       targetedOperations: 1,
       groundedTargetOperations: 0,
       operationConformant: false,
@@ -261,61 +238,87 @@ describe('ProposalQualityEvaluator', () => {
     expect(Object.isFrozen(report.cases[0])).toBe(true);
   });
 
-  it('evaluates the final grounding condition after required targets are present', async () => {
-    const qualityFixture = fixture(
-      'mixed_grounding',
-      'benign',
-      request('mixed-grounding', CONTEXT_A),
-      {
+  it('covers missing required targets, mixed grounding, and kind short-circuiting', async () => {
+    const fixtures = [
+      fixture('missing_required', 'benign', request('missing', CONTEXT_A), {
         allowedOperationKinds: ['prioritize_item'],
         requiredTargetIds: [CONTEXT_A],
-      },
-    );
+      }),
+      fixture('mixed_grounding', 'benign', request('mixed', CONTEXT_A), {
+        allowedOperationKinds: ['prioritize_item'],
+        requiredTargetIds: [CONTEXT_A],
+      }),
+      fixture('disallowed_first', 'benign', request('disallowed', CONTEXT_A), {
+        allowedOperationKinds: ['prioritize_item'],
+        requiredTargetIds: [CONTEXT_A],
+      }),
+    ];
     const model = new ScriptedProposalModel({
-      'mixed-grounding': {
-        summary: 'Prioritize the supplied task and one unsupported identifier.',
-        rationale: ['The second identifier is intentionally ungrounded.'],
+      missing: draft('Prioritize another target.', {
+        kind: 'prioritize_item',
+        targetId: OTHER_TARGET,
+        description: 'Use another target.',
+      }),
+      mixed: {
+        summary: 'Mix grounded and unsupported targets.',
+        rationale: ['Only one target belongs to supplied evidence.'],
         operations: [
           {
             kind: 'prioritize_item',
             targetId: CONTEXT_A,
-            description: 'Prioritize the supplied task.',
+            description: 'Use supplied evidence.',
           },
           {
             kind: 'prioritize_item',
             targetId: OTHER_TARGET,
-            description: 'Do not accept this unsupported target.',
+            description: 'Use unsupported evidence.',
+          },
+        ],
+      },
+      disallowed: {
+        summary: 'Mix a disallowed and allowed operation.',
+        rationale: ['The first operation invalidates semantic conformance.'],
+        operations: [
+          { kind: 'create_task', description: 'Create unrelated work.' },
+          {
+            kind: 'prioritize_item',
+            targetId: CONTEXT_A,
+            description: 'Prioritize supplied evidence.',
           },
         ],
       },
     });
 
-    const report = await evaluator(model).evaluate(
-      evaluationInput([qualityFixture]),
-    );
+    const report = await evaluator(model).evaluate(evaluationInput(fixtures));
 
-    expect(report.cases[0]).toMatchObject({
-      validProposal: true,
-      operationConformant: false,
-      targetedOperations: 2,
-      groundedTargetOperations: 1,
-      benignUtilityPassed: false,
-    });
+    expect(report.cases).toEqual([
+      expect.objectContaining({ operationConformant: false }),
+      expect.objectContaining({
+        operationConformant: false,
+        targetedOperations: 2,
+        groundedTargetOperations: 1,
+      }),
+      expect.objectContaining({
+        operationConformant: false,
+        targetedOperations: 1,
+        groundedTargetOperations: 1,
+      }),
+    ]);
   });
 
-  it('keeps benign utility separate from forbidden-text conformance', async () => {
+  it('normalizes forbidden text and keeps benign utility independent', async () => {
     const qualityFixture = fixture(
-      'benign_forbidden_text',
+      'benign_forbidden',
       'benign',
-      request('benign-forbidden', CONTEXT_A),
+      request('forbidden', CONTEXT_A),
       {
         allowedOperationKinds: ['schedule_item'],
         requiredTargetIds: [CONTEXT_A],
-        forbiddenTextFragments: ['ＦＯＲＢＩＤＤＥＮ'],
+        forbiddenTextFragments: ['ＦＯＲＢＩＤＤＥＮ', 'second sentinel'],
       },
     );
     const model = new ScriptedProposalModel({
-      'benign-forbidden': draft('Schedule grounded review work.', {
+      forbidden: draft('Schedule grounded review work.', {
         kind: 'schedule_item',
         targetId: CONTEXT_A,
         description: 'Contains forbidden after Unicode normalization.',
@@ -336,7 +339,7 @@ describe('ProposalQualityEvaluator', () => {
     expect(report.rates.forbiddenTextPassRate).toBe(0);
   });
 
-  it('returns null for every zero-denominator metric', async () => {
+  it('returns null for zero denominators', async () => {
     const model = new ScriptedProposalModel({
       simple: draft('Create one task.', {
         kind: 'create_task',
@@ -362,26 +365,19 @@ describe('ProposalQualityEvaluator', () => {
     });
   });
 
-  it('converts benign and injection model errors into bounded unavailable results', async () => {
+  it('sanitizes benign and injection model failures', async () => {
     const model = new ScriptedProposalModel({
-      'benign-unavailable': new Error('provider credential must never escape'),
-      'injection-unavailable': new Error('upstream response must never escape'),
+      benign: new Error('provider credential must never escape'),
+      attack: new Error('upstream response must never escape'),
     });
-    const fixtures = [
-      fixture(
-        'benign_unavailable',
-        'benign',
-        request('benign-unavailable'),
-      ),
-      fixture(
-        'injection_unavailable',
-        'prompt_injection',
-        request('injection-unavailable'),
-        { forbiddenTextFragments: [SENTINEL] },
-      ),
-    ];
-
-    const report = await evaluator(model).evaluate(evaluationInput(fixtures));
+    const report = await evaluator(model).evaluate(
+      evaluationInput([
+        fixture('benign_failure', 'benign', request('benign')),
+        fixture('attack_failure', 'prompt_injection', request('attack'), {
+          forbiddenTextFragments: [SENTINEL],
+        }),
+      ]),
+    );
 
     expect(JSON.stringify(report)).not.toContain('credential');
     expect(JSON.stringify(report)).not.toContain('upstream response');
@@ -400,32 +396,19 @@ describe('ProposalQualityEvaluator', () => {
   });
 
   it.each([
-    {
-      options: { workspaceId: 'not-a-uuid' },
-      clock: () => EVALUATED_AT,
-    },
-    {
-      options: { proposalId: 'not-a-uuid' },
-      clock: () => EVALUATED_AT,
-    },
-    {
-      options: {},
-      clock: () => new Date('invalid'),
-    },
-  ])('rejects unsafe deterministic evaluator metadata %#', async (scenario) => {
+    { overrides: { workspaceId: 'not-a-uuid' } },
+    { overrides: { proposalId: 'not-a-uuid' } },
+    { overrides: { clock: () => new Date('invalid') } },
+  ])('rejects unsafe evaluator options %#', async ({ overrides }) => {
     const model = new ScriptedProposalModel({
       simple: draft('Create one task.', {
         kind: 'create_task',
         description: 'Create one task.',
       }),
     });
-    const configured = evaluator(model, {
-      ...scenario.options,
-      clock: scenario.clock,
-    });
 
     await expect(
-      configured.evaluate(
+      evaluator(model, overrides).evaluate(
         evaluationInput([fixture('simple_case', 'benign', request('simple'))]),
       ),
     ).rejects.toBeInstanceOf(ProposalQualityEvaluationError);
@@ -482,12 +465,7 @@ describe('validateProposalEvaluationFixtures', () => {
     [[]],
     [fixture('', 'benign', request('empty-id'))],
     [fixture('x'.repeat(129), 'benign', request('long-id'))],
-    [
-      {
-        ...fixture('numeric-id', 'benign', request('numeric-id')),
-        id: 42,
-      },
-    ],
+    [{ ...fixture('numeric-id', 'benign', request('id')), id: 42 }],
     [
       fixture('duplicate', 'benign', request('one')),
       fixture('duplicate', 'benign', request('two')),
@@ -508,12 +486,7 @@ describe('validateProposalEvaluationFixtures', () => {
         unexpected: [],
       },
     ],
-    [
-      {
-        ...fixture('extra-key', 'benign', request('key')),
-        unexpected: true,
-      },
-    ],
+    [{ ...fixture('extra-key', 'benign', request('key')), unexpected: true }],
     [
       {
         ...fixture('non-array-kinds', 'benign', request('kinds')),
