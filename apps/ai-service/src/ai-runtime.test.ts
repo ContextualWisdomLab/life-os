@@ -1,5 +1,6 @@
 import type { PoolConfig } from 'pg';
 import { describe, expect, it } from 'vitest';
+import { ProposalModelTransportError } from './contextual-orchestrator-proposal-model';
 import {
   type AiPool,
   AiRuntime,
@@ -139,6 +140,34 @@ describe('AI runtime configuration', () => {
 
     expect(messages).toEqual(['Unexpected idle PostgreSQL client error']);
     expect(messages.join(' ')).not.toContain('secret');
+  });
+
+  it('rejects invalid model selection before allocating a pool', () => {
+    let poolCalls = 0;
+    const poolFactory = (): FakeAiPool => {
+      poolCalls += 1;
+      return new FakeAiPool();
+    };
+    const databaseEnvironment = {
+      AI_DATABASE_URL: testDatabaseUrl('postgresql'),
+    };
+
+    expect(() =>
+      createAiRuntime(
+        { ...databaseEnvironment, AI_PROPOSAL_MODEL: 'unsupported' },
+        poolFactory,
+      ),
+    ).toThrow('AI proposal model is invalid');
+    expect(() =>
+      createAiRuntime(
+        {
+          ...databaseEnvironment,
+          AI_PROPOSAL_MODEL: 'contextual-orchestrator',
+        },
+        poolFactory,
+      ),
+    ).toThrow(ProposalModelTransportError);
+    expect(poolCalls).toBe(0);
   });
 });
 
