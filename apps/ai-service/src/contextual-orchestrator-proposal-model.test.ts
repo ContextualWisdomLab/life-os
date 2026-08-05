@@ -153,6 +153,7 @@ describe('ContextualOrchestratorProposalModel', () => {
       'https://orchestrator.example.test/v1/chat/completions',
     );
     expect(init?.method).toBe('POST');
+    expect(init?.redirect).toBe('error');
     expect(init?.headers).toEqual({
       authorization: `Bearer ${TOKEN}`,
       'content-type': 'application/json',
