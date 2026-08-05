@@ -22,6 +22,9 @@ describe('AI proposal model runtime selection', () => {
     expect(selected.modelId).toBe('rule-based-v1');
     expect(Object.isFrozen(selected)).toBe(true);
     expect(
+      createProposalModelRuntime({ AI_PROPOSAL_MODEL: '' }).modelId,
+    ).toBe('rule-based-v1');
+    expect(
       createProposalModelRuntime({ AI_PROPOSAL_MODEL: 'rule-based' }).modelId,
     ).toBe('rule-based-v1');
   });
