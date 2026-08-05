@@ -100,6 +100,9 @@ describe('contextual orchestrator configuration', () => {
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'https://api.localhost' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'https://127.0.0.1' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_URL: 'https://[::1]' }),
+    environment({
+      CONTEXTUAL_ORCHESTRATOR_URL: 'https://[::ffff:127.0.0.1]',
+    }),
     environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: undefined }),
     environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: ' short' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_TOKEN: 'short ' }),
@@ -194,6 +197,75 @@ describe('ContextualOrchestratorProposalModel', () => {
     >) {
       expect(variant.additionalProperties).toBe(false);
     }
+  });
+
+  it('accepts one valid completion at the exact response-byte limit', async () => {
+    const draft = {
+      summary: 'Create the next task.',
+      rationale: ['The proposal remains inert.'],
+      operations: [
+        {
+          kind: 'create_task',
+          description: 'Create the next reviewed task.',
+        },
+      ],
+    };
+    const envelope = {
+      choices: [
+        {
+          message: {
+            content: JSON.stringify(draft),
+          },
+        },
+      ],
+      padding: '',
+    };
+    const emptyPaddingBody = JSON.stringify(envelope);
+    envelope.padding = 'x'.repeat(
+      65_536 - Buffer.byteLength(emptyPaddingBody, 'utf8'),
+    );
+    const exactLimitBody = JSON.stringify(envelope);
+    expect(Buffer.byteLength(exactLimitBody, 'utf8')).toBe(65_536);
+
+    const fetcher: ContextualOrchestratorFetch = async () =>
+      new Response(exactLimitBody, { status: 200 });
+    await expect(
+      new ContextualOrchestratorProposalModel(
+        configuration(),
+        fetcher,
+      ).generate(request),
+    ).resolves.toEqual(draft);
+  });
+
+  it('aborts a pending fetch at the configured timeout', async () => {
+    let observedAbort = false;
+    const fetcher: ContextualOrchestratorFetch = async (_input, init) =>
+      await new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(new Error('Missing timeout signal'));
+          return;
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            observedAbort = signal.aborted;
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      });
+    const model = new ContextualOrchestratorProposalModel(
+      createContextualOrchestratorConfiguration(
+        environment({ AI_MODEL_REQUEST_TIMEOUT_MS: '100' }),
+      ),
+      fetcher,
+    );
+
+    await expect(model.generate(request)).rejects.toBeInstanceOf(
+      ProposalModelTransportError,
+    );
+    expect(observedAbort).toBe(true);
   });
 
   it('constructs with the production Fetch default without performing I/O', () => {
