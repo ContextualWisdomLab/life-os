@@ -1,14 +1,14 @@
 name: Proposal Quality Format Artifact
 
 on:
-  push:
-    branches: [feat/ai-proposal-quality-evaluation]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: proposal-quality-format-artifact-${{ github.ref }}
+  group: proposal-quality-format-artifact-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout exact branch head
+      - name: Checkout exact pull request merge head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -44,7 +44,7 @@ jobs:
       - name: Upload exact formatted files
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: proposal-quality-formatted-${{ github.sha }}
+          name: proposal-quality-formatted-${{ github.event.pull_request.head.sha }}
           path: |
             apps/ai-service/src/proposal-quality-evaluation.test.ts
             apps/ai-service/src/proposal-quality-fixtures.test.ts
