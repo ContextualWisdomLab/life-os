@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: proposal-quality-format-artifact-${{ github.event.pull_request.number }}
@@ -13,13 +13,15 @@ concurrency:
 
 jobs:
   format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout exact pull request merge head
+      - name: Checkout exact pull request branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -32,24 +34,31 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Format proposal quality evidence
+      - name: Apply canonical formatting and restore the permanent lint gate
         run: |
+          set -euo pipefail
           pnpm exec prettier --single-quote --write \
             apps/ai-service/src/proposal-quality-evaluation.test.ts \
             apps/ai-service/src/proposal-quality-fixtures.test.ts \
             apps/ai-service/src/proposal-quality-fixtures.ts \
             docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md \
             docs/superpowers/specs/2026-08-05-ai-proposal-quality-evaluation-design.md
+          git show c1cd06fca9944e278899e348f7aedfffba73b82a:apps/ai-service/package.json > apps/ai-service/package.json
 
-      - name: Upload exact formatted files
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: proposal-quality-formatted-${{ github.event.pull_request.head.sha }}
-          path: |
-            apps/ai-service/src/proposal-quality-evaluation.test.ts
-            apps/ai-service/src/proposal-quality-fixtures.test.ts
-            apps/ai-service/src/proposal-quality-fixtures.ts
-            docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md
+      - name: Commit the exact formatter output
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            apps/ai-service/package.json \
+            apps/ai-service/src/proposal-quality-evaluation.test.ts \
+            apps/ai-service/src/proposal-quality-fixtures.test.ts \
+            apps/ai-service/src/proposal-quality-fixtures.ts \
+            docs/research/2026-08-05-ai-proposal-quality-evaluation-standards.md \
             docs/superpowers/specs/2026-08-05-ai-proposal-quality-evaluation-design.md
-          if-no-files-found: error
-          retention-days: 1
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "style(ai): apply canonical proposal evaluator formatting"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
