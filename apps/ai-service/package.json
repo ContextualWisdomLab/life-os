@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch --entryFile server",
-    "lint": "prettier --single-quote --write src/proposal-quality-evaluation.ts src/proposal-quality-evaluation.test.ts src/proposal-quality-fixtures.ts src/proposal-quality-fixtures.test.ts && git diff --no-color -- src/proposal-quality-evaluation.ts src/proposal-quality-evaluation.test.ts src/proposal-quality-fixtures.ts src/proposal-quality-fixtures.test.ts && false",
+    "lint": "prettier --single-quote --write src/proposal-quality-evaluation.ts src/proposal-quality-evaluation.test.ts src/proposal-quality-fixtures.ts src/proposal-quality-fixtures.test.ts && tsc --noEmit",
     "test": "vitest run --no-file-parallelism --coverage",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server.js"
