@@ -115,18 +115,18 @@ Update the AI-service lint inputs, `CHANGELOG.md`, operations documentation, com
 
 ## References
 
-Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). *Artificial intelligence risk management framework: Generative artificial intelligence profile* (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
+Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). _Artificial intelligence risk management framework: Generative artificial intelligence profile_ (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
 
-Bhatt, M., Chennabasappa, S., Li, Y., Nikolaidis, C., Song, D., Ahmad, S., Aschermann, C., Chen, Y., Kapil, D., Molnar, D., Whitman, S., & Saxe, J. (2024). CyberSecEval 2: A wide-ranging cybersecurity evaluation suite for large language models. *arXiv*. https://doi.org/10.48550/arXiv.2404.13161
+Bhatt, M., Chennabasappa, S., Li, Y., Nikolaidis, C., Song, D., Ahmad, S., Aschermann, C., Chen, Y., Kapil, D., Molnar, D., Whitman, S., & Saxe, J. (2024). CyberSecEval 2: A wide-ranging cybersecurity evaluation suite for large language models. _arXiv_. https://doi.org/10.48550/arXiv.2404.13161
 
-Chen, S., Piet, J., Sitawarin, C., & Wagner, D. (2024). StruQ: Defending against prompt injection with structured queries. *arXiv*. https://doi.org/10.48550/arXiv.2402.06363
+Chen, S., Piet, J., Sitawarin, C., & Wagner, D. (2024). StruQ: Defending against prompt injection with structured queries. _arXiv_. https://doi.org/10.48550/arXiv.2402.06363
 
-NVIDIA Corporation. (2026). *API reference: NVIDIA NIM for large language models*. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
+NVIDIA Corporation. (2026). _API reference: NVIDIA NIM for large language models_. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
 
-NVIDIA Corporation. (2026). *Structured generation with NVIDIA NIM for large language models*. https://docs.nvidia.com/nim/large-language-models/1.15.0/structured-generation.html
+NVIDIA Corporation. (2026). _Structured generation with NVIDIA NIM for large language models_. https://docs.nvidia.com/nim/large-language-models/1.15.0/structured-generation.html
 
-Open Worldwide Application Security Project. (2025). *LLM01:2025 prompt injection*. OWASP GenAI Security Project. https://genai.owasp.org/llmrisk/llm01-prompt-injection/
+Open Worldwide Application Security Project. (2025). _LLM01:2025 prompt injection_. OWASP GenAI Security Project. https://genai.owasp.org/llmrisk/llm01-prompt-injection/
 
-Singh, A. K., Khurdula, H. V., Khemlani, Y. D., & Agarwal, V. (2026). The structured output benchmark: A multi-source benchmark for evaluating structured output quality in large language models. *arXiv*. https://doi.org/10.48550/arXiv.2604.25359
+Singh, A. K., Khurdula, H. V., Khemlani, Y. D., & Agarwal, V. (2026). The structured output benchmark: A multi-source benchmark for evaluating structured output quality in large language models. _arXiv_. https://doi.org/10.48550/arXiv.2604.25359
 
-Vassilev, A., Oprea, A., Fordyce, A., Anderson, H., Davies, X., & Hamin, M. (2025). *Adversarial machine learning: A taxonomy and terminology of attacks and mitigations* (NIST AI 100-2 E2025). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.100-2e2025
+Vassilev, A., Oprea, A., Fordyce, A., Anderson, H., Davies, X., & Hamin, M. (2025). _Adversarial machine learning: A taxonomy and terminology of attacks and mitigations_ (NIST AI 100-2 E2025). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.100-2e2025

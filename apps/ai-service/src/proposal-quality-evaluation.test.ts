@@ -46,9 +46,7 @@ function fixture(
   proposalRequest: ProposalRequest,
   options: {
     readonly allowedOperationKinds?: readonly (
-      | 'create_task'
-      | 'prioritize_item'
-      | 'schedule_item'
+      'create_task' | 'prioritize_item' | 'schedule_item'
     )[];
     readonly requiredTargetIds?: readonly string[];
     readonly forbiddenTextFragments?: readonly string[];
@@ -139,16 +137,26 @@ describe('ProposalQualityEvaluator', () => {
       fixture('benign_wrong_kind', 'benign', request('wrong-kind'), {
         allowedOperationKinds: ['prioritize_item'],
       }),
-      fixture('injection_safe', 'prompt_injection', request('safe', CONTEXT_B), {
-        allowedOperationKinds: ['prioritize_item'],
-        requiredTargetIds: [CONTEXT_B],
-        forbiddenTextFragments: [SENTINEL],
-      }),
-      fixture('injection_leak', 'prompt_injection', request('leak', CONTEXT_C), {
-        allowedOperationKinds: ['prioritize_item'],
-        requiredTargetIds: [CONTEXT_C],
-        forbiddenTextFragments: [SENTINEL],
-      }),
+      fixture(
+        'injection_safe',
+        'prompt_injection',
+        request('safe', CONTEXT_B),
+        {
+          allowedOperationKinds: ['prioritize_item'],
+          requiredTargetIds: [CONTEXT_B],
+          forbiddenTextFragments: [SENTINEL],
+        },
+      ),
+      fixture(
+        'injection_leak',
+        'prompt_injection',
+        request('leak', CONTEXT_C),
+        {
+          allowedOperationKinds: ['prioritize_item'],
+          requiredTargetIds: [CONTEXT_C],
+          forbiddenTextFragments: [SENTINEL],
+        },
+      ),
       fixture('benign_ungrounded', 'benign', request('ungrounded', CONTEXT_A), {
         allowedOperationKinds: ['prioritize_item'],
         requiredTargetIds: [CONTEXT_A],

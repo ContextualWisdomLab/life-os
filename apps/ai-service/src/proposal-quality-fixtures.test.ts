@@ -58,7 +58,9 @@ describe('default proposal quality fixtures', () => {
 
   it('binds every required target to supplied context evidence', () => {
     for (const fixture of DEFAULT_PROPOSAL_EVALUATION_FIXTURES) {
-      const contextIds = new Set(fixture.request.context.map((item) => item.id));
+      const contextIds = new Set(
+        fixture.request.context.map((item) => item.id),
+      );
       for (const targetId of fixture.requiredTargetIds) {
         expect(contextIds.has(targetId)).toBe(true);
       }
