@@ -58,7 +58,7 @@ describe('contextual orchestrator configuration', () => {
       environment({ AI_MODEL_REQUEST_TIMEOUT_MS: '30000' }),
     );
 
-    expect(configured.origin.href).toBe('https://orchestrator.example.test/');
+    expect(configured.origin).toBe('https://orchestrator.example.test/');
     expect(configured.token).toBe(TOKEN);
     expect(configured.timeoutMilliseconds).toBe(30_000);
     expect(Object.isFrozen(configured)).toBe(true);
