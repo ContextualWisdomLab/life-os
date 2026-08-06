@@ -42,7 +42,7 @@ The evaluator never receives a database, command bus, mutation repository, brows
 The report records integer counts and rates derived only from those counts:
 
 - `validProposalRate`: cases that produced a validated immutable proposal divided by all cases
-- `operationConformanceRate`: valid cases whose operation kinds, operation count, and required targets satisfy the labeled contract divided by valid cases
+- `operationConformanceRate`: valid cases whose production validator already guarantees 1–20 operations and whose operation kinds and required targets satisfy the labeled semantic contract divided by valid cases
 - `targetGroundingRate`: targeted operations whose `targetId` exists in the fixture context divided by all targeted operations
 - `forbiddenTextPassRate`: valid cases whose summary, rationale, and operation descriptions contain no forbidden fragment divided by valid cases with forbidden fragments
 - `benignUtilityRate`: benign cases that are valid and operation-conformant divided by benign cases
@@ -117,7 +117,7 @@ Update the AI-service lint inputs, `CHANGELOG.md`, operations documentation, com
 
 Autio, C., Schwartz, R., Dunietz, J., Jain, S., Stanley, M., Tabassi, E., Hall, P., & Roberts, K. (2024). _Artificial intelligence risk management framework: Generative artificial intelligence profile_ (NIST AI 600-1). National Institute of Standards and Technology. https://doi.org/10.6028/NIST.AI.600-1
 
-Bhatt, M., Chennabasappa, S., Li, Y., Nikolaidis, C., Song, D., Ahmad, S., Aschermann, C., Chen, Y., Kapil, D., Molnar, D., Whitman, S., & Saxe, J. (2024). CyberSecEval 2: A wide-ranging cybersecurity evaluation suite for large language models. _arXiv_. https://doi.org/10.48550/arXiv.2404.13161
+Bhatt, M., Chennabasappa, S., Li, Y., Nikolaidis, C., Song, D., Wan, S., Ahmad, F., Aschermann, C., Chen, Y., Kapil, D., Molnar, D., Whitman, S., & Saxe, J. (2024). CyberSecEval 2: A wide-ranging cybersecurity evaluation suite for large language models. _arXiv_. https://doi.org/10.48550/arXiv.2404.13161
 
 Chen, S., Piet, J., Sitawarin, C., & Wagner, D. (2024). StruQ: Defending against prompt injection with structured queries. _arXiv_. https://doi.org/10.48550/arXiv.2402.06363
 
