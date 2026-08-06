@@ -44,7 +44,8 @@ jobs:
             apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
             apps/ai-service/src/proposal-quality-live-conformance.ts \
             apps/ai-service/src/proposal-quality-live-workflow.test.ts \
-            apps/ai-service/src/proposal-quality-live-coverage.test.ts
+            apps/ai-service/src/proposal-quality-live-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
 
       - name: Verify repaired AI service slice
         run: |
@@ -61,7 +62,8 @@ jobs:
             apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
             apps/ai-service/src/proposal-quality-live-conformance.ts \
             apps/ai-service/src/proposal-quality-live-workflow.test.ts \
-            apps/ai-service/src/proposal-quality-live-coverage.test.ts
+            apps/ai-service/src/proposal-quality-live-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
           git diff --cached --check
           git commit -m 'fix(ai): harden live conformance validation'
           git push origin HEAD:feat/ai-nim-live-conformance
