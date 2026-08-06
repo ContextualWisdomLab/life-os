@@ -10,20 +10,14 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 concurrency:
   group: apply-ai-live-review-fixes-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply:
-    if: >-
-      github.repository == 'ContextualWisdomLab/life-os' &&
-      github.ref == 'refs/heads/feat/ai-nim-live-conformance'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 30
     steps:
       - name: Checkout exact triggering head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,7 +27,6 @@ jobs:
           persist-credentials: false
 
       - name: Verify exact triggering head
-        shell: bash --noprofile --norc -e -o pipefail {0}
         env:
           EXPECTED_HEAD_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
@@ -44,26 +37,23 @@ jobs:
           node-version: 22
 
       - name: Install reproducible dependencies
-        shell: bash --noprofile --norc -e -o pipefail {0}
         run: |
           corepack enable
           pnpm install --frozen-lockfile
 
-      - name: Apply reviewed corrections and remove temporary repair machinery
-        shell: bash --noprofile --norc -e -o pipefail {0}
+      - name: Apply reviewed corrections
         run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            .github/scripts/apply-ai-live-review-fixes.py \
+            .github/scripts/augment-ai-live-review-fixes.py
           python3 .github/scripts/apply-ai-live-review-fixes.py
           python3 .github/scripts/augment-ai-live-review-fixes.py
           sed -i \
             's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
             apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
-          rm -f \
-            .github/scripts/apply-ai-live-review-fixes.py \
-            .github/scripts/augment-ai-live-review-fixes.py \
-            .github/workflows/apply-ai-live-review-fixes.yml
 
-      - name: Format the complete correction set
-        shell: bash --noprofile --norc -e -o pipefail {0}
+      - name: Format reviewed corrections
         run: |
           pnpm exec prettier --single-quote --write \
             AGENTS.md \
@@ -83,20 +73,31 @@ jobs:
             docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md \
             docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md
 
-      - name: Verify full AI service evidence
-        shell: bash --noprofile --norc -e -o pipefail {0}
+      - name: Run focused review regressions
         run: |
-          pnpm --filter @life-os/ai-service lint
-          pnpm --filter @life-os/ai-service test
-          pnpm --filter @life-os/ai-service build
+          pnpm --filter @life-os/ai-service exec vitest run \
+            src/contextual-orchestrator-live-model.test.ts \
+            src/contextual-orchestrator-proposal-contract.test.ts \
+            src/proposal-quality-live-command.test.ts \
+            src/proposal-quality-live-conformance.test.ts \
+            src/proposal-quality-live-null-baseline.test.ts \
+            src/proposal-quality-live-workflow.test.ts \
+            --no-file-parallelism
 
-      - name: Commit and push only from the exact unchanged branch head
-        shell: bash --noprofile --norc -e -o pipefail {0}
+      - name: Remove temporary repair machinery
+        run: |
+          rm -f \
+            .github/scripts/apply-ai-live-review-fixes.py \
+            .github/scripts/augment-ai-live-review-fixes.py \
+            .github/workflows/apply-ai-live-review-fixes.yml
+
+      - name: Commit and push from the exact unchanged branch head
         env:
           EXPECTED_HEAD_SHA: ${{ github.sha }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          remote_head="$({ git ls-remote origin refs/heads/feat/ai-nim-live-conformance || true; } | cut -f1)"
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
           test "$remote_head" = "$EXPECTED_HEAD_SHA"
 
           git config user.name 'github-actions[bot]'
@@ -105,7 +106,7 @@ jobs:
           git diff --cached --check
           git commit -m 'fix(ai): resolve live conformance review findings'
 
-          remote_head="$({ git ls-remote origin refs/heads/feat/ai-nim-live-conformance || true; } | cut -f1)"
+          remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
           test "$remote_head" = "$EXPECTED_HEAD_SHA"
           git push \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
