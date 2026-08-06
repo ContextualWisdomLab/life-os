@@ -64,7 +64,9 @@ describe('proposal quality review regressions', () => {
     const loop = source.slice(loopStart, loopEnd);
     const generation = loop.indexOf('await service.generateProposal');
     const unavailable = loop.indexOf('cases.push(unavailableCase(fixture))');
-    const scoring = loop.indexOf('cases.push(successfulCase(fixture, proposal))');
+    const scoring = loop.indexOf(
+      'cases.push(successfulCase(fixture, proposal))',
+    );
 
     expect(generation).toBeGreaterThanOrEqual(0);
     expect(unavailable).toBeGreaterThan(generation);
@@ -88,8 +90,7 @@ describe('proposal quality review regressions', () => {
       'production validator already guarantees 1–20 operations';
     const planContract =
       '`ProposalService.validateOperations` enforces 1–20 operations before semantic scoring';
-    const correctedAuthors =
-      'Song, D., Wan, S., Ahmad, F., Aschermann, C.';
+    const correctedAuthors = 'Song, D., Wan, S., Ahmad, F., Aschermann, C.';
 
     expect(operations).toContain(operationContract);
     expect(design).toContain(designContract);
