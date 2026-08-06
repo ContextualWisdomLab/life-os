@@ -130,8 +130,19 @@ export function createContextualOrchestratorConfiguration(
   });
 }
 
+/** Recursively freezes one acyclic JSON-compatible contract value. */
+function deepFreeze<T>(value: T): T {
+  if (Object(value) !== value) {
+    return value;
+  }
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+  return Object.freeze(value) as T;
+}
+
 /** Strict proposal-draft schema shared by production and live evaluation. */
-export const CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA = Object.freeze({
+export const CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA = deepFreeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
   additionalProperties: false,
