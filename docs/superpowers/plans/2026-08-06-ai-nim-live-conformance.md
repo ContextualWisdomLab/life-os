@@ -29,6 +29,7 @@
 **Files:**
 
 - Modify: `apps/ai-service/src/contextual-orchestrator-proposal-model.ts`
+- Create: `apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts`
 - Modify: `apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts`
 
 **Interfaces:**
@@ -39,14 +40,14 @@
 
 - [ ] **Step 1: Write failing exports and parser-contract tests**
 
-Add tests that import the three public symbols, assert the system instruction remains inert, assert the schema allows only the three proposal operation families, and assert the parser accepts one exact completion envelope while rejecting malformed JSON, missing choices, empty content, and non-object content with `ProposalModelTransportError`.
+Add contract tests in `contextual-orchestrator-proposal-contract.test.ts` that import the three public symbols, assert the system instruction remains inert, assert the schema allows only the three proposal operation families, and assert the parser accepts one exact completion envelope while rejecting malformed JSON, missing choices, empty content, and non-object content with `ProposalModelTransportError`. Keep transport behavior coverage in `contextual-orchestrator-proposal-model.test.ts`.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [ ] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
 ```bash
-pnpm --filter @life-os/ai-service exec vitest run src/contextual-orchestrator-proposal-model.test.ts --no-file-parallelism
+pnpm --filter @life-os/ai-service exec vitest run src/contextual-orchestrator-proposal-contract.test.ts src/contextual-orchestrator-proposal-model.test.ts --no-file-parallelism
 ```
 
 Expected: TypeScript or assertion failure because the shared symbols are not exported.
@@ -55,14 +56,14 @@ Expected: TypeScript or assertion failure because the shared symbols are not exp
 
 Rename and export the existing constants and parser. Keep `ContextualOrchestratorProposalModel.generate()` calling the exported parser. Do not loosen origin, token, timeout, redirect, byte-limit, UTF-8, or schema validation.
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [ ] **Step 4: Run the focused tests and verify GREEN**
 
-Run the same command. Expected: all tests pass.
+Run the same two-file command. Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/ai-service/src/contextual-orchestrator-proposal-model.ts apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts
+git add apps/ai-service/src/contextual-orchestrator-proposal-model.ts apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts
 git commit -m "refactor(ai): share proposal model contract"
 ```
 
