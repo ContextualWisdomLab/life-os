@@ -167,11 +167,6 @@ jobs:
             --no-input \
             --require-hashes \
             -r _contextual_orchestrator/requirements.lock
-          python -m pip install \
-            --disable-pip-version-check \
-            --no-input \
-            --no-deps \
-            ./_contextual_orchestrator
 
       - name: Create ephemeral orchestrator runtime configuration
         if: env.LIVE_ENABLED == 'true' && steps.models.outputs.configured == 'true'
@@ -223,6 +218,7 @@ jobs:
 
       - name: Start the loopback contextual-orchestrator
         if: steps.seed_nvidia.outputs.available == 'true'
+        working-directory: _contextual_orchestrator
         shell: bash
         run: |
           set -Eeuo pipefail
