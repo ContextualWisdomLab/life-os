@@ -62,9 +62,10 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(workflow).toContain(
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     );
-    expect(
-      workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu')),
-    ).toHaveLength(1);
+    const commitMatches = workflow.match(
+      new RegExp(ORCHESTRATOR_COMMIT, 'gu'),
+    );
+    expect(commitMatches).toHaveLength(1);
     expect(workflow).toContain(
       'ref: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}',
     );
@@ -97,9 +98,10 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     const prohibitedToken = ['COPILOT', 'GITHUB', 'TOKEN'].join('_');
     expect(workflow).not.toContain(prohibitedToken);
     const secretExpression = '${{ secrets.NVIDIA_NIM_API_KEY }}';
-    expect(
-      workflow.match(/\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu),
-    ).toHaveLength(1);
+    const secretMatches = workflow.match(
+      /\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu,
+    );
+    expect(secretMatches).toHaveLength(1);
     const seed = step(
       'Seed NVIDIA credential through the encrypted KV bootstrap',
     );
