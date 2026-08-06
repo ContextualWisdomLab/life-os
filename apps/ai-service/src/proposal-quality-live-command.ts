@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   runProposalLiveConformance,
@@ -36,6 +36,8 @@ export interface ProposalLiveCommandFileSystem {
       readonly flag: 'wx';
     },
   ) => Promise<void>;
+  /** Reads the exact persisted temporary report before publication. */
+  readonly readFile: (path: string, encoding: 'utf8') => Promise<string>;
   /** Atomically replaces the final report after validation. */
   readonly rename: (oldPath: string, newPath: string) => Promise<void>;
   /** Removes incomplete temporary evidence on failure. */
@@ -143,7 +145,7 @@ function conformanceOptions(
 
 /** Returns the production file-system implementation. */
 function productionFileSystem(): ProposalLiveCommandFileSystem {
-  return Object.freeze({ mkdir, writeFile, rename, unlink });
+  return Object.freeze({ mkdir, writeFile, readFile, rename, unlink });
 }
 
 /** Removes one temporary path while ignoring an absent file only. */
@@ -182,7 +184,8 @@ export async function publishProposalLiveConformanceReport(
       mode: 0o600,
       flag: 'wx',
     });
-    const decoded = JSON.parse(payload) as unknown;
+    const persistedPayload = await fileSystem.readFile(temporaryPath, 'utf8');
+    const decoded = JSON.parse(persistedPayload) as unknown;
     validateProposalLiveConformanceReport(decoded);
     await fileSystem.rename(temporaryPath, finalPath);
   } catch {
