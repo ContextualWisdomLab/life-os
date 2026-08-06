@@ -10,6 +10,7 @@ import {
 } from './proposal-quality-live-conformance';
 
 const FINAL_PATH = '/tmp/life-os-live-conformance/report.json';
+type ReadFileOperation = NonNullable<ProposalLiveCommandFileSystem['readFile']>;
 
 /** Creates one valid report without provider traffic. */
 async function validReport(): Promise<ProposalLiveConformanceReport> {
@@ -26,9 +27,7 @@ async function validReport(): Promise<ProposalLiveConformanceReport> {
 /** Creates a file-system seam whose persisted read can differ from the write input. */
 function fileSystem(persisted: string): {
   readonly seam: ProposalLiveCommandFileSystem;
-  readonly readFile: ReturnType<
-    typeof vi.fn<ProposalLiveCommandFileSystem['readFile']>
-  >;
+  readonly readFile: ReturnType<typeof vi.fn<ReadFileOperation>>;
   readonly rename: ReturnType<
     typeof vi.fn<ProposalLiveCommandFileSystem['rename']>
   >;
@@ -36,9 +35,7 @@ function fileSystem(persisted: string): {
     typeof vi.fn<ProposalLiveCommandFileSystem['unlink']>
   >;
 } {
-  const readFile = vi.fn<ProposalLiveCommandFileSystem['readFile']>(
-    async () => persisted,
-  );
+  const readFile = vi.fn<ReadFileOperation>(async () => persisted);
   const rename = vi.fn<ProposalLiveCommandFileSystem['rename']>(
     async () => undefined,
   );
