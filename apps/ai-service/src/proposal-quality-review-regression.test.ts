@@ -24,9 +24,9 @@ describe('proposal quality review regressions', () => {
       forbiddenTextFragments: [],
     };
 
-    expect(() => validateProposalEvaluationFixtures([invalidFixture])).toThrowError(
-      ProposalQualityEvaluationError,
-    );
+    expect(() =>
+      validateProposalEvaluationFixtures([invalidFixture]),
+    ).toThrowError(ProposalQualityEvaluationError);
   });
 
   it('does not mask unexpected nested request inspection failures', () => {
@@ -48,7 +48,9 @@ describe('proposal quality review regressions', () => {
       forbiddenTextFragments: [],
     };
 
-    expect(() => validateProposalEvaluationFixtures([fixture])).toThrow(unexpected);
+    expect(() => validateProposalEvaluationFixtures([fixture])).toThrow(
+      unexpected,
+    );
   });
 
   it('derives the bounded allowed-kind cardinality from the authoritative set', () => {
