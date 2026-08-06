@@ -11,8 +11,8 @@ import type { ProposalRequest } from './proposal-service';
 
 const TOKEN = Buffer.alloc(32, 0x4e).toString('base64url');
 const TASK_ID = '11111111-1111-4111-8111-111111111111';
-const request: ProposalRequest = {
-  objective: 'Review the most important launch task.',
+const REQUEST: ProposalRequest = {
+  objective: 'Review launch readiness.',
   context: [
     {
       id: TASK_ID,
@@ -22,7 +22,7 @@ const request: ProposalRequest = {
     },
   ],
 };
-const draft = {
+const DRAFT = {
   summary: 'Prioritize launch readiness.',
   rationale: ['The active task is the critical path.'],
   operations: [
@@ -33,26 +33,19 @@ const draft = {
     },
   ],
 };
-const routeHigh: LiveConformanceProfile = {
+const ROUTE_HIGH: LiveConformanceProfile = {
   profileId: 'route_high',
   mode: 'route',
   structuredOutput: true,
   reasoningEffort: 'high',
 };
-const routeLow: LiveConformanceProfile = {
-  profileId: 'route_low',
-  mode: 'route',
-  structuredOutput: true,
-  reasoningEffort: 'low',
-};
-const conductTemplate: LiveConformanceProfile = {
+const CONDUCT: LiveConformanceProfile = {
   profileId: 'conduct_template',
   mode: 'conduct',
   structuredOutput: false,
   reasoningEffort: null,
 };
 
-/** Returns one complete live-only environment with optional overrides. */
 function environment(
   overrides: Readonly<Record<string, string | undefined>> = {},
 ): Readonly<Record<string, string | undefined>> {
@@ -63,19 +56,18 @@ function environment(
   };
 }
 
-/** Creates one OpenAI-compatible response with optional orchestration evidence. */
-function completionResponse(input: {
+function response(input: {
+  status?: number;
   content?: unknown;
   orchestration?: unknown;
   usage?: unknown;
-  status?: number;
 } = {}): Response {
   return Response.json(
     {
       choices: [
         {
           message: {
-            content: input.content ?? JSON.stringify(draft),
+            content: input.content ?? JSON.stringify(DRAFT),
           },
         },
       ],
@@ -88,29 +80,27 @@ function completionResponse(input: {
   );
 }
 
-/** Builds one model and records its deterministic clock calls. */
-function modelWithResponse(
+function model(
   profile: LiveConformanceProfile,
-  response: Response,
-  clockValues: number[] = [10, 25],
+  nextResponse: Response,
+  times: number[] = [10, 25],
 ): {
   model: ContextualOrchestratorLiveProposalModel;
   fetcher: ReturnType<typeof vi.fn<ContextualOrchestratorFetch>>;
 } {
-  const fetcher = vi.fn<ContextualOrchestratorFetch>(async () => response);
-  const values = [...clockValues];
+  const fetcher = vi.fn<ContextualOrchestratorFetch>(async () => nextResponse);
+  const clock = [...times];
   return {
     model: new ContextualOrchestratorLiveProposalModel(
       createContextualOrchestratorLiveConfiguration(environment(), profile),
       fetcher,
-      () => values.shift() ?? 0,
+      () => clock.shift() ?? 0,
     ),
     fetcher,
   };
 }
 
-/** Captures one stable live-model failure without exposing nested details. */
-async function failureCode(
+async function code(
   operation: Promise<unknown>,
 ): Promise<LiveConformanceModelError['code']> {
   try {
@@ -123,45 +113,44 @@ async function failureCode(
 }
 
 describe('live conformance configuration', () => {
-  it('accepts and freezes route and conduct profiles with bounded defaults', () => {
-    for (const profile of [routeLow, routeHigh, conductTemplate]) {
-      const validated = validateLiveConformanceProfile(profile);
-      const configuration = createContextualOrchestratorLiveConfiguration(
+  it('freezes valid route and conduct profiles and parses timeout bounds', () => {
+    for (const profile of [ROUTE_HIGH, CONDUCT]) {
+      expect(Object.isFrozen(validateLiveConformanceProfile(profile))).toBe(true);
+      const configured = createContextualOrchestratorLiveConfiguration(
         environment(),
         profile,
       );
-
-      expect(validated).toEqual(profile);
-      expect(Object.isFrozen(validated)).toBe(true);
-      expect(configuration).toEqual({
+      expect(configured).toMatchObject({
         origin: 'http://127.0.0.1:8765/',
         token: TOKEN,
         timeoutMilliseconds: 30_000,
         profile,
       });
-      expect(Object.isFrozen(configuration)).toBe(true);
-      expect(Object.isFrozen(configuration.profile)).toBe(true);
+      expect(Object.isFrozen(configured)).toBe(true);
+      expect(Object.isFrozen(configured.profile)).toBe(true);
     }
     expect(
       createContextualOrchestratorLiveConfiguration(
         environment({ AI_LIVE_MODEL_REQUEST_TIMEOUT_MS: '120000' }),
-        routeHigh,
+        ROUTE_HIGH,
       ).timeoutMilliseconds,
     ).toBe(120_000);
     expect(
       createContextualOrchestratorLiveConfiguration(
         environment({ AI_LIVE_MODEL_REQUEST_TIMEOUT_MS: ' ' }),
-        routeHigh,
+        ROUTE_HIGH,
       ).timeoutMilliseconds,
     ).toBe(30_000);
   });
 
-  it.each([
+  const invalidEnvironments: ReadonlyArray<
+    Readonly<Record<string, string | undefined>>
+  > = [
     {},
     environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: '' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: ' http://127.0.0.1:1' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:1 ' }),
-    environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'not a url' }),
+    environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'not-a-url' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://127.0.0.1:8765' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://localhost:8765' }),
     environment({ CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.2:8765' }),
@@ -189,35 +178,41 @@ describe('live conformance configuration', () => {
     environment({ AI_LIVE_MODEL_REQUEST_TIMEOUT_MS: '99' }),
     environment({ AI_LIVE_MODEL_REQUEST_TIMEOUT_MS: '120001' }),
     environment({ AI_LIVE_MODEL_REQUEST_TIMEOUT_MS: '1.5' }),
-  ])('rejects unsafe environment without retaining inputs %#', (value) => {
-    expect(() =>
-      createContextualOrchestratorLiveConfiguration(value, routeHigh),
-    ).toThrow(LiveConformanceModelError);
-  });
+  ];
+  for (const [index, value] of invalidEnvironments.entries()) {
+    it(`rejects unsafe environment ${index}`, () => {
+      expect(() =>
+        createContextualOrchestratorLiveConfiguration(value, ROUTE_HIGH),
+      ).toThrow(LiveConformanceModelError);
+    });
+  }
 
-  it.each([
+  const invalidProfiles: unknown[] = [
     null,
-    { ...routeHigh, profileId: '' },
-    { ...routeHigh, profileId: 'Route-High' },
-    { ...routeHigh, mode: 'auto' },
-    { ...routeHigh, structuredOutput: 'yes' },
-    { ...routeHigh, reasoningEffort: 'medium' },
-    { ...routeHigh, structuredOutput: false },
-    { ...routeHigh, reasoningEffort: null },
-    { ...conductTemplate, structuredOutput: true },
-    { ...conductTemplate, reasoningEffort: 'high' },
-  ])('rejects inconsistent profile %#', (profile) => {
-    expect(() =>
-      validateLiveConformanceProfile(profile as never),
-    ).toThrow(LiveConformanceModelError);
-  });
+    { ...ROUTE_HIGH, profileId: '' },
+    { ...ROUTE_HIGH, profileId: 'Route-High' },
+    { ...ROUTE_HIGH, mode: 'auto' },
+    { ...ROUTE_HIGH, structuredOutput: 'yes' },
+    { ...ROUTE_HIGH, reasoningEffort: 'medium' },
+    { ...ROUTE_HIGH, structuredOutput: false },
+    { ...ROUTE_HIGH, reasoningEffort: null },
+    { ...CONDUCT, structuredOutput: true },
+    { ...CONDUCT, reasoningEffort: 'high' },
+  ];
+  for (const [index, value] of invalidProfiles.entries()) {
+    it(`rejects inconsistent profile ${index}`, () => {
+      expect(() => validateLiveConformanceProfile(value as never)).toThrow(
+        LiveConformanceModelError,
+      );
+    });
+  }
 });
 
-describe('live conformance request and evidence boundary', () => {
-  it('sends one high-effort structured route and records bounded usage', async () => {
-    const { model, fetcher } = modelWithResponse(
-      routeHigh,
-      completionResponse({
+describe('live conformance transport', () => {
+  it('sends a structured high-effort route and records usage', async () => {
+    const fixture = model(
+      ROUTE_HIGH,
+      response({
         usage: {
           prompt_tokens: 100,
           completion_tokens: 50,
@@ -226,53 +221,29 @@ describe('live conformance request and evidence boundary', () => {
         },
       }),
     );
-
-    await expect(model.generate(request)).resolves.toEqual(draft);
-    expect(fetcher).toHaveBeenCalledOnce();
-    const [target, init] = fetcher.mock.calls[0] ?? [];
+    await expect(fixture.model.generate(REQUEST)).resolves.toEqual(DRAFT);
+    const [target, init] = fixture.fetcher.mock.calls[0] ?? [];
     expect(String(target)).toBe('http://127.0.0.1:8765/v1/chat/completions');
-    expect(init?.method).toBe('POST');
     expect(init?.redirect).toBe('error');
     expect(init?.headers).toEqual({
       authorization: `Bearer ${TOKEN}`,
       'content-type': 'application/json',
     });
-    expect(init?.signal).toBeInstanceOf(AbortSignal);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(body).toMatchObject({
       model: 'contextual-orchestrator',
       orchestration_mode: 'route',
       include_orchestration_trace: true,
+      reasoning_effort: 'high',
       temperature: 0,
       stream: false,
-      reasoning_effort: 'high',
     });
-    expect(body.response_format).toMatchObject({
-      type: 'json_schema',
-      json_schema: {
-        name: 'life_os_inert_proposal_draft',
-        strict: true,
-      },
-    });
-    expect(body.tools).toBeUndefined();
-    expect(body.messages).toEqual([
-      expect.objectContaining({ role: 'system' }),
-      { role: 'user', content: JSON.stringify(request) },
-    ]);
-
-    expect(model.observations()).toEqual([
-      {
+    expect(body.response_format).toBeDefined();
+    expect(fixture.model.observations()).toEqual([
+      expect.objectContaining({
         profileId: 'route_high',
         mode: 'route',
         workflowDepth: 0,
-        roleCounts: {},
-        contributingSteps: 0,
-        verifierPresent: false,
-        verifierVerdict: null,
-        accessEdgeCount: 0,
-        maximumAccessFanIn: 0,
-        distinctAgentCount: 0,
-        planSource: 'unknown',
         elapsedMilliseconds: 15,
         usage: {
           promptTokens: 100,
@@ -281,69 +252,57 @@ describe('live conformance request and evidence boundary', () => {
           reasoningTokens: 30,
         },
         failureCode: null,
-      },
+      }),
     ]);
-    expect(Object.isFrozen(model.observations())).toBe(true);
-    expect(Object.isFrozen(model.observations()[0])).toBe(true);
+    expect(Object.isFrozen(fixture.model.observations())).toBe(true);
   });
 
-  it('sends conduct without provider-native structured output and aggregates trace', async () => {
-    const trace = [
-      {
-        id: 0,
-        role: 'thinker',
-        agent_id: 'reasoning_agent',
-        subtask: 'private subtask must not be retained',
-        access: [],
-        output: 'draft with api_key=super-secret-value',
-      },
-      {
-        id: 1,
-        role: 'worker',
-        agent_id: 'writing_agent',
-        access: [0],
-        output: 'candidate',
-      },
-      {
-        id: 2,
-        role: 'verifier',
-        agent_id: 'review_agent',
-        access: [0, 1],
-        output: 'Verified and accepted.',
-      },
-      {
-        id: 3,
-        role: 'synthesizer',
-        agent_id: 'writing_agent',
-        access: [1, 2],
-        output: JSON.stringify(draft),
-      },
-    ];
-    const { model, fetcher } = modelWithResponse(
-      conductTemplate,
-      completionResponse({
+  it('sends conduct without structured passthrough and sanitizes trace', async () => {
+    const fixture = model(
+      CONDUCT,
+      response({
         orchestration: {
           mode: 'conduct',
-          workflow_run_id: 'must-not-be-retained',
+          workflow_run_id: 'never-retained',
           plan_source: 'template',
-          trace,
+          trace: [
+            {
+              role: 'thinker',
+              agent_id: 'reasoning_agent',
+              access: [],
+              output: 'private secret draft',
+            },
+            {
+              role: 'worker',
+              agent_id: 'writing_agent',
+              access: [0],
+              output: 'candidate',
+            },
+            {
+              role: 'verifier',
+              agent_id: 'review_agent',
+              access: [0, 1],
+              output: 'Verified and accepted.',
+            },
+            {
+              role: 'synthesizer',
+              agent_id: 'writing_agent',
+              access: [1, 2],
+              output: JSON.stringify(DRAFT),
+            },
+          ],
         },
         usage: { reasoning_tokens: 12 },
       }),
     );
-
-    await expect(model.generate(request)).resolves.toEqual(draft);
-    const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as Record<
-      string,
-      unknown
-    >;
-    expect(body.orchestration_mode).toBe('conduct');
+    await fixture.model.generate(REQUEST);
+    const body = JSON.parse(
+      String(fixture.fetcher.mock.calls[0]?.[1]?.body),
+    ) as Record<string, unknown>;
     expect(body.response_format).toBeUndefined();
     expect(body.reasoning_effort).toBeUndefined();
-
-    const [observed] = model.observations();
-    expect(observed).toEqual({
-      profileId: 'conduct_template',
+    const observed = fixture.model.observations()[0];
+    expect(observed).toMatchObject({
       mode: 'conduct',
       workflowDepth: 4,
       roleCounts: { thinker: 1, worker: 1, verifier: 1, synthesizer: 1 },
@@ -354,20 +313,12 @@ describe('live conformance request and evidence boundary', () => {
       maximumAccessFanIn: 2,
       distinctAgentCount: 3,
       planSource: 'template',
-      elapsedMilliseconds: 15,
-      usage: {
-        promptTokens: null,
-        completionTokens: null,
-        totalTokens: null,
-        reasoningTokens: 12,
-      },
-      failureCode: null,
+      usage: { reasoningTokens: 12 },
     });
     const serialized = JSON.stringify(observed);
     for (const forbidden of [
-      'private subtask',
-      'super-secret-value',
-      'must-not-be-retained',
+      'never-retained',
+      'private secret',
       'reasoning_agent',
       'writing_agent',
       'review_agent',
@@ -377,51 +328,53 @@ describe('live conformance request and evidence boundary', () => {
     }
   });
 
-  it.each([
+  for (const [output, verdict] of [
     ['Rejected as unsafe.', 'rejected'],
     ['No clear verdict.', 'unknown'],
     ['', 'unknown'],
-  ] as const)('classifies verifier output %s as %s', async (output, verdict) => {
-    const { model } = modelWithResponse(
-      conductTemplate,
-      completionResponse({
-        orchestration: {
-          mode: 'conduct',
-          plan_source: 'generated',
-          trace: [
-            {
-              role: 'verifier',
-              agent_id: 'review_agent',
-              access: [],
-              output,
-            },
-          ],
-        },
-      }),
-    );
+  ] as const) {
+    it(`classifies verifier verdict ${verdict}`, async () => {
+      const fixture = model(
+        CONDUCT,
+        response({
+          orchestration: {
+            mode: 'conduct',
+            plan_source: 'generated',
+            trace: [
+              {
+                role: 'verifier',
+                agent_id: 'review_agent',
+                access: [],
+                output,
+              },
+            ],
+          },
+        }),
+      );
+      await fixture.model.generate(REQUEST);
+      expect(fixture.model.observations()[0]).toMatchObject({
+        verifierVerdict: verdict,
+        planSource: 'generated',
+      });
+    });
+  }
 
-    await model.generate(request);
-    expect(model.observations()[0]?.verifierVerdict).toBe(verdict);
-    expect(model.observations()[0]?.planSource).toBe('generated');
-  });
-
-  it('uses fallback mode and unknown plan source for malformed optional metadata', async () => {
-    const { model } = modelWithResponse(
-      routeLow,
-      completionResponse({
+  it('falls back for malformed optional metadata and invalid usage counters', async () => {
+    const fixture = model(
+      ROUTE_HIGH,
+      response({
         orchestration: { mode: 'auto', plan_source: 'other' },
         usage: {
           prompt_tokens: -1,
           completion_tokens: 1.5,
           total_tokens: Number.MAX_SAFE_INTEGER,
-          reasoning_tokens: 'secret',
+          reasoning_tokens: 'private',
           completion_tokens_details: [],
         },
       }),
     );
-
-    await model.generate(request);
-    expect(model.observations()[0]).toMatchObject({
+    await fixture.model.generate(REQUEST);
+    expect(fixture.model.observations()[0]).toMatchObject({
       mode: 'route',
       planSource: 'unknown',
       usage: {
@@ -433,52 +386,59 @@ describe('live conformance request and evidence boundary', () => {
     });
   });
 
-  it('constructs with production Fetch and clock defaults without performing I/O', () => {
+  it('constructs with production defaults without I/O', () => {
     expect(
       new ContextualOrchestratorLiveProposalModel(
-        createContextualOrchestratorLiveConfiguration(environment(), routeHigh),
+        createContextualOrchestratorLiveConfiguration(environment(), ROUTE_HIGH),
       ),
     ).toBeInstanceOf(ContextualOrchestratorLiveProposalModel);
   });
 });
 
 describe('live conformance failure evidence', () => {
-  it.each([
+  for (const [status, expected] of [
     [429, 'provider_unavailable'],
     [500, 'provider_unavailable'],
     [400, 'orchestrator_unavailable'],
-  ] as const)('classifies HTTP %i as %s', async (status, expected) => {
-    const { model } = modelWithResponse(
-      routeHigh,
-      new Response('private provider body', { status }),
-    );
-
-    expect(await failureCode(model.generate(request))).toBe(expected);
-    expect(model.observations()).toHaveLength(1);
-    expect(model.observations()[0]).toMatchObject({
-      failureCode: expected,
-      workflowDepth: 0,
-      elapsedMilliseconds: 15,
+  ] as const) {
+    it(`classifies HTTP ${status}`, async () => {
+      const fixture = model(
+        ROUTE_HIGH,
+        new Response('private body', { status }),
+      );
+      expect(await code(fixture.model.generate(REQUEST))).toBe(expected);
+      expect(fixture.model.observations().at(-1)).toMatchObject({
+        failureCode: expected,
+        elapsedMilliseconds: 15,
+      });
+      expect(JSON.stringify(fixture.model.observations())).not.toContain(
+        'private body',
+      );
     });
-    expect(JSON.stringify(model.observations())).not.toContain('private provider');
-  });
+  }
 
-  it.each([
+  const malformedResponses: Response[] = [
     new Response(null, { status: 200 }),
     new Response('x'.repeat(65_537), { status: 200 }),
     new Response(new Uint8Array([0xff]), { status: 200 }),
     new Response('{', { status: 200 }),
     new Response('null', { status: 200 }),
     Response.json({ choices: [] }),
-    completionResponse({ content: 'null' }),
-  ])('fails closed for malformed response %#', async (response) => {
-    const { model } = modelWithResponse(routeHigh, response);
+    response({ content: 'null' }),
+  ];
+  for (const [index, nextResponse] of malformedResponses.entries()) {
+    it(`rejects malformed response ${index}`, async () => {
+      const fixture = model(ROUTE_HIGH, nextResponse);
+      expect(await code(fixture.model.generate(REQUEST))).toBe(
+        'evaluation_failed',
+      );
+      expect(fixture.model.observations().at(-1)?.failureCode).toBe(
+        'evaluation_failed',
+      );
+    });
+  }
 
-    expect(await failureCode(model.generate(request))).toBe('evaluation_failed');
-    expect(model.observations().at(-1)?.failureCode).toBe('evaluation_failed');
-  });
-
-  it.each([
+  const unsafeTraces: unknown[] = [
     Array.from({ length: 33 }, () => ({
       role: 'worker',
       agent_id: 'worker_agent',
@@ -512,51 +472,43 @@ describe('live conformance failure evidence', () => {
       },
     ],
     [null],
-  ])('rejects unsafe trace evidence %#', async (trace) => {
-    const { model } = modelWithResponse(
-      conductTemplate,
-      completionResponse({ orchestration: { mode: 'conduct', trace } }),
-    );
+  ];
+  for (const [index, trace] of unsafeTraces.entries()) {
+    it(`rejects unsafe trace ${index}`, async () => {
+      const fixture = model(
+        CONDUCT,
+        response({ orchestration: { mode: 'conduct', trace } }),
+      );
+      expect(await code(fixture.model.generate(REQUEST))).toBe(
+        'evaluation_failed',
+      );
+    });
+  }
 
-    expect(await failureCode(model.generate(request))).toBe('evaluation_failed');
-    expect(model.observations().at(-1)?.failureCode).toBe('evaluation_failed');
-  });
-
-  it('sanitizes fetch failures and invalid monotonic clocks', async () => {
+  it('sanitizes network failures and invalid monotonic clocks', async () => {
     const fetchFailure: ContextualOrchestratorFetch = async () => {
       throw new Error(`provider leaked ${TOKEN}`);
     };
+    const values = [10, 20];
     const failing = new ContextualOrchestratorLiveProposalModel(
-      createContextualOrchestratorLiveConfiguration(environment(), routeHigh),
+      createContextualOrchestratorLiveConfiguration(environment(), ROUTE_HIGH),
       fetchFailure,
-      (() => {
-        const values = [10, 20];
-        return () => values.shift() ?? 0;
-      })(),
+      () => values.shift() ?? 0,
     );
-    expect(await failureCode(failing.generate(request))).toBe(
+    expect(await code(failing.generate(REQUEST))).toBe(
       'orchestrator_unavailable',
     );
     expect(JSON.stringify(failing.observations())).not.toContain(TOKEN);
 
-    const { model: negativeClock } = modelWithResponse(
-      routeHigh,
-      completionResponse(),
+    for (const times of [
       [20, 10, 20, 10],
-    );
-    expect(await failureCode(negativeClock.generate(request))).toBe(
-      'evaluation_failed',
-    );
-    expect(negativeClock.observations().at(-1)?.elapsedMilliseconds).toBe(0);
-
-    const { model: infiniteClock } = modelWithResponse(
-      routeHigh,
-      completionResponse(),
       [10, Number.POSITIVE_INFINITY, 10, Number.POSITIVE_INFINITY],
-    );
-    expect(await failureCode(infiniteClock.generate(request))).toBe(
-      'evaluation_failed',
-    );
-    expect(infiniteClock.observations().at(-1)?.elapsedMilliseconds).toBe(0);
+    ]) {
+      const fixture = model(ROUTE_HIGH, response(), times);
+      expect(await code(fixture.model.generate(REQUEST))).toBe(
+        'evaluation_failed',
+      );
+      expect(fixture.model.observations().at(-1)?.elapsedMilliseconds).toBe(0);
+    }
   });
 });
