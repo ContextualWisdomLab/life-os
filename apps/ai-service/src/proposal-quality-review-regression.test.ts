@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -9,7 +10,7 @@ import {
 
 /** Reads one repository text artifact relative to this test module. */
 function readRepositoryText(relativePath: string): string {
-  return readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+  return readFileSync(join(__dirname, relativePath), 'utf8');
 }
 
 describe('proposal quality review regressions', () => {
