@@ -13,10 +13,7 @@ const TEMPORARY_REPAIR_PATHS = [
     __dirname,
     '../../../.github/workflows/apply-ai-live-review-fixes.yml',
   ),
-  resolve(
-    __dirname,
-    '../../../.github/scripts/apply-ai-live-review-fixes.py',
-  ),
+  resolve(__dirname, '../../../.github/scripts/apply-ai-live-review-fixes.py'),
   resolve(
     __dirname,
     '../../../.github/scripts/augment-ai-live-review-fixes.py',
@@ -65,9 +62,9 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(workflow).toContain(
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     );
-    expect(workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu'))).toHaveLength(
-      1,
-    );
+    expect(
+      workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu')),
+    ).toHaveLength(1);
     expect(workflow).toContain(
       'ref: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}',
     );
