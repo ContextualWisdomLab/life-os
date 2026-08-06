@@ -4,18 +4,18 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  ProposalQualityEvaluationError,
-  validateProposalEvaluationFixtures,
+  ProposalQualityEvaluationError as EvaluationError,
+  validateProposalEvaluationFixtures as validate,
 } from './proposal-quality-evaluation';
 
 /** Reads one repository text artifact relative to this test module. */
-function readRepositoryText(relativePath: string): string {
+function readText(relativePath: string): string {
   return readFileSync(join(__dirname, relativePath), 'utf8');
 }
 
 describe('proposal quality review regressions', () => {
-  it('normalizes invalid nested proposal requests to the evaluator error contract', () => {
-    const invalidFixture = {
+  it('normalizes invalid nested proposal requests', () => {
+    const fixture = {
       id: 'invalid-request',
       category: 'benign',
       request: { objective: '', context: [] },
@@ -24,14 +24,12 @@ describe('proposal quality review regressions', () => {
       forbiddenTextFragments: [],
     };
 
-    expect(() =>
-      validateProposalEvaluationFixtures([invalidFixture]),
-    ).toThrowError(ProposalQualityEvaluationError);
+    expect(() => validate([fixture])).toThrowError(EvaluationError);
   });
 
-  it('does not mask unexpected nested request inspection failures', () => {
+  it('does not mask unexpected request inspection failures', () => {
     const unexpected = new TypeError('unexpected request inspection failure');
-    const hostileRequest = new Proxy(
+    const request = new Proxy(
       {},
       {
         ownKeys() {
@@ -42,67 +40,61 @@ describe('proposal quality review regressions', () => {
     const fixture = {
       id: 'hostile-request',
       category: 'benign',
-      request: hostileRequest,
+      request,
       allowedOperationKinds: ['create_task'],
       requiredTargetIds: [],
       forbiddenTextFragments: [],
     };
 
-    expect(() => validateProposalEvaluationFixtures([fixture])).toThrow(
-      unexpected,
-    );
+    expect(() => validate([fixture])).toThrow(unexpected);
   });
 
-  it('derives the bounded allowed-kind cardinality from the authoritative set', () => {
-    const source = readRepositoryText('./proposal-quality-evaluation.ts');
+  it('derives allowed-kind cardinality from the authoritative set', () => {
+    const source = readText('./proposal-quality-evaluation.ts');
+    const derivedLimit = 'value.length > EVALUATION_OPERATION_KINDS.size';
 
-    expect(source).toContain(
-      'value.length > EVALUATION_OPERATION_KINDS.size',
-    );
+    expect(source).toContain(derivedLimit);
     expect(source).not.toContain('value.length > 3');
   });
 
-  it('converts only provider-boundary failures into unavailable cases', () => {
-    const source = readRepositoryText('./proposal-quality-evaluation.ts');
-    const loop = source.slice(
-      source.indexOf('for (const fixture of fixtures)'),
-      source.indexOf('const frozenCases = Object.freeze(cases)'),
-    );
+  it('isolates provider failures from semantic scoring', () => {
+    const source = readText('./proposal-quality-evaluation.ts');
+    const loopStart = source.indexOf('for (const fixture of fixtures)');
+    const loopEnd = source.indexOf('const frozenCases = Object.freeze(cases)');
+    const loop = source.slice(loopStart, loopEnd);
     const generation = loop.indexOf('await service.generateProposal');
     const unavailable = loop.indexOf('cases.push(unavailableCase(fixture))');
-    const semanticScoring = loop.indexOf(
-      'cases.push(successfulCase(fixture, proposal))',
-    );
+    const scoring = loop.indexOf('cases.push(successfulCase(fixture, proposal))');
 
     expect(generation).toBeGreaterThanOrEqual(0);
     expect(unavailable).toBeGreaterThan(generation);
-    expect(semanticScoring).toBeGreaterThan(unavailable);
-    expect(loop.slice(unavailable, semanticScoring)).toContain('continue;');
+    expect(scoring).toBeGreaterThan(unavailable);
+    expect(loop.slice(unavailable, scoring)).toContain('continue;');
   });
 
-  it('keeps operation-count and CyberSecEval evidence consistent across docs', () => {
-    const operations = readRepositoryText(
+  it('keeps operation-count and research evidence consistent', () => {
+    const operations = readText(
       '../../../docs/operations/ai-proposal-quality-evaluation.md',
     );
-    const design = readRepositoryText(
+    const design = readText(
       '../../../docs/superpowers/specs/2026-08-05-ai-proposal-quality-evaluation-design.md',
     );
-    const plan = readRepositoryText(
+    const plan = readText(
       '../../../docs/superpowers/plans/2026-08-05-ai-proposal-quality-evaluation.md',
     );
+    const operationContract =
+      'validateOperations` boundary, which guarantees 1–20 operations';
+    const designContract =
+      'production validator already guarantees 1–20 operations';
+    const planContract =
+      '`ProposalService.validateOperations` enforces 1–20 operations before semantic scoring';
+    const correctedAuthors =
+      'Song, D., Wan, S., Ahmad, F., Aschermann, C.';
 
-    expect(operations).toContain(
-      'validateOperations` boundary, which guarantees 1–20 operations',
-    );
-    expect(design).toContain(
-      'production validator already guarantees 1–20 operations',
-    );
-    expect(plan).toContain(
-      '`ProposalService.validateOperations` enforces 1–20 operations before semantic scoring',
-    );
-    expect(design).toContain(
-      'Song, D., Wan, S., Ahmad, F., Aschermann, C.',
-    );
+    expect(operations).toContain(operationContract);
+    expect(design).toContain(designContract);
+    expect(plan).toContain(planContract);
+    expect(design).toContain(correctedAuthors);
     expect(design).not.toContain('Song, D., Ahmad, S., Aschermann, C.');
   });
 });
