@@ -28,6 +28,28 @@ describe('proposal quality review regressions', () => {
     );
   });
 
+  it('does not mask unexpected nested request inspection failures', () => {
+    const unexpected = new TypeError('unexpected request inspection failure');
+    const hostileRequest = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw unexpected;
+        },
+      },
+    );
+    const fixture = {
+      id: 'hostile-request',
+      category: 'benign',
+      request: hostileRequest,
+      allowedOperationKinds: ['create_task'],
+      requiredTargetIds: [],
+      forbiddenTextFragments: [],
+    };
+
+    expect(() => validateProposalEvaluationFixtures([fixture])).toThrow(unexpected);
+  });
+
   it('derives the bounded allowed-kind cardinality from the authoritative set', () => {
     const source = readRepositoryText('./proposal-quality-evaluation.ts');
 
