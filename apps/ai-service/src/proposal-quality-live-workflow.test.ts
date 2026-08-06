@@ -9,9 +9,18 @@ const WORKFLOW_PATH = resolve(
 const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 const ORCHESTRATOR_COMMIT = '6841b71935e0b7cb98fb52bcb4709cc5100c8d87';
 const TEMPORARY_REPAIR_PATHS = [
-  resolve(__dirname, '../../../.github/workflows/apply-ai-live-review-fixes.yml'),
-  resolve(__dirname, '../../../.github/scripts/apply-ai-live-review-fixes.py'),
-  resolve(__dirname, '../../../.github/scripts/augment-ai-live-review-fixes.py'),
+  resolve(
+    __dirname,
+    '../../../.github/workflows/apply-ai-live-review-fixes.yml',
+  ),
+  resolve(
+    __dirname,
+    '../../../.github/scripts/apply-ai-live-review-fixes.py',
+  ),
+  resolve(
+    __dirname,
+    '../../../.github/scripts/augment-ai-live-review-fixes.py',
+  ),
 ];
 
 /** Returns one named workflow step including its body but not the next step. */
