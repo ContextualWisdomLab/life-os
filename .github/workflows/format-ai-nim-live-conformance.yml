@@ -49,9 +49,11 @@ jobs:
                   raise SystemExit(f'{label}: expected one match, found {count}')
               file_path.write_text(source.replace(old, new, 1), encoding='utf-8')
 
-          replace_once(
-              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
-              """async function boundedResponseText(response: Response): Promise<string> {
+          live_path = Path(
+              'apps/ai-service/src/contextual-orchestrator-live-model.ts'
+          )
+          live = live_path.read_text(encoding='utf-8')
+          old_response = """async function boundedResponseText(response: Response): Promise<string> {
             if (!response.ok || response.body === null) {
               return fail(
                 response.status === 429 || response.status >= 500
@@ -59,8 +61,8 @@ jobs:
                   : 'orchestrator_unavailable',
               );
             }
-          """.replace('          ', ''),
-              """async function boundedResponseText(response: Response): Promise<string> {
+          """.replace('          ', '')
+          new_response = """async function boundedResponseText(response: Response): Promise<string> {
             if (!response.ok) {
               return fail(
                 response.status === 429 || response.status >= 500
@@ -71,33 +73,24 @@ jobs:
             if (response.body === null) {
               return fail('evaluation_failed');
             }
-          """.replace('          ', ''),
-              'null response classification',
-          )
+          """.replace('          ', '')
+          if live.count(old_response) != 1:
+              raise SystemExit(
+                  'null response classification: expected one source block'
+              )
+          live = live.replace(old_response, new_response, 1)
 
-          replace_once(
-              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
-              """      this.recordedObservations.push(
-              observation(
-                this.configuration.profile,
-                observedMode,
-                trace,
-                parsePlanSource(orchestration?.plan_source),
-                elapsed,
-                parseUsage(envelope),
-                null,
-              ),
-            );
-            try {
-              return parseContextualOrchestratorProposalCompletion(text);
-            } catch (error) {
-              if (error instanceof ProposalModelTransportError) {
-                return fail('evaluation_failed');
-              }
-              throw error;
-            }
-          """.replace('          ', ''),
-              """      let draft: ProposalModelDraft;
+          elapsed_marker = """      const elapsed = this.monotonicClock() - startedAt;
+          """.replace('          ', '')
+          elapsed_index = live.index(elapsed_marker)
+          success_start = live.index(
+              '      this.recordedObservations.push(\n', elapsed_index
+          )
+          outer_catch = live.index(
+              "    } catch (error) {\n      const code =",
+              success_start,
+          )
+          replacement = """      let draft: ProposalModelDraft;
             try {
               draft = parseContextualOrchestratorProposalCompletion(text);
             } catch (error) {
@@ -118,9 +111,9 @@ jobs:
               ),
             );
             return draft;
-          """.replace('          ', ''),
-              'single terminal observation',
-          )
+          """.replace('          ', '')
+          live = live[:success_start] + replacement + live[outer_catch:]
+          live_path.write_text(live, encoding='utf-8')
 
           replace_once(
               'apps/ai-service/src/proposal-quality-live-conformance.ts',
