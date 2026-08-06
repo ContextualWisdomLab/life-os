@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -8,6 +8,11 @@ const WORKFLOW_PATH = resolve(
 );
 const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 const ORCHESTRATOR_COMMIT = '6841b71935e0b7cb98fb52bcb4709cc5100c8d87';
+const TEMPORARY_REPAIR_PATHS = [
+  resolve(__dirname, '../../../.github/workflows/apply-ai-live-review-fixes.yml'),
+  resolve(__dirname, '../../../.github/scripts/apply-ai-live-review-fixes.py'),
+  resolve(__dirname, '../../../.github/scripts/augment-ai-live-review-fixes.py'),
+];
 
 /** Returns one named workflow step including its body but not the next step. */
 function step(name: string): string {
@@ -31,7 +36,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(workflow).toContain('timeout-minutes: 120');
   });
 
-  it('pins every external action and the contextual-orchestrator commit', () => {
+  it('pins every external action and uses one orchestrator commit source', () => {
     const uses = [...workflow.matchAll(/uses:\s+([^\s#]+)/gu)].map(
       (match) => match[1] ?? '',
     );
@@ -51,10 +56,15 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(workflow).toContain(
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     );
-    expect(workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu'))?.length).toBe(
-      3,
+    expect(workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu'))).toHaveLength(
+      1,
     );
-    expect(workflow).toContain(`ref: ${ORCHESTRATOR_COMMIT}`);
+    expect(workflow).toContain(
+      'ref: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}',
+    );
+    expect(workflow).toContain(
+      'CONTEXTUAL_ORCHESTRATOR_COMMIT_SHA: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}',
+    );
     expect(step('Verify contextual-orchestrator identity')).toContain(
       'git -C _contextual_orchestrator rev-parse HEAD',
     );
@@ -101,7 +111,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     ).not.toContain(secretExpression);
   });
 
-  it('fixes provider egress and keeps the orchestrator on loopback', () => {
+  it('fixes provider egress and keeps credentials out of process arguments', () => {
     expect(workflow).toContain(
       'PROVIDER_BASE_URL: https://integrate.api.nvidia.com/v1',
     );
@@ -115,10 +125,14 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(server).toContain('working-directory: _contextual_orchestrator');
     expect(server).toContain('--host 127.0.0.1');
     expect(server).toContain('--port 8765');
-    expect(server).toContain('--inference-token');
-    expect(server).toContain('--admin-token');
+    expect(server).not.toContain('--inference-token');
+    expect(server).not.toContain('--admin-token');
     expect(server).toContain('--budget-max-output-tokens 200000');
     expect(server).not.toContain('--allow-public-bind');
+    expect(workflow).toContain(
+      "'CONTEXTUAL_ORCHESTRATOR_INFERENCE_TOKEN'",
+    );
+    expect(workflow).toContain("'CONTEXTUAL_ORCHESTRATOR_ADMIN_TOKEN'");
     expect(workflow).toContain(
       "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",
     );
@@ -145,6 +159,15 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(upload).not.toContain('contextual-orchestrator.log');
     expect(upload).not.toContain('nvidia-nim-agents.json');
     expect(upload).not.toContain('temporary');
+    expect(step('Stop the ephemeral orchestrator')).toContain(
+      'rm -f "${RUNNER_TEMP}/contextual-orchestrator.log"',
+    );
+  });
+
+  it('does not retain write-capable one-shot repair machinery', () => {
+    for (const path of TEMPORARY_REPAIR_PATHS) {
+      expect(existsSync(path), path).toBe(false);
+    }
   });
 
   it('runs deterministic contract tests before any provider traffic', () => {
