@@ -185,18 +185,18 @@ LifeOS and contextual-orchestrator remain independently deployable. The live har
 
 ## Research basis and limitations
 
-Fugu presents one API that dynamically chooses direct solution or a coordinated expert team. Conductor learns natural-language communication topologies and targeted instructions, including recursive self-selection for dynamic test-time scaling. TRINITY assigns Thinker, Worker, and Verifier roles over multiple turns with a lightweight evolved coordinator. These sources support measuring topology, delegation, verification, recursion, and access patterns rather than assuming that more agents are automatically better.
+Sakana AI's final product-release documentation states that Fugu exposes one model API that dynamically chooses direct solution or a coordinated expert team (Sakana AI, 2026). The peer-reviewed ICLR 2026 Conductor paper reports learned natural-language communication topologies, targeted instructions, and recursive self-selection for dynamic test-time scaling (Nielsen et al., 2026). The peer-reviewed ICLR 2026 TRINITY paper reports a lightweight evolved coordinator that assigns Thinker, Worker, and Verifier roles over multiple turns (Xu et al., 2026). These source-reported results motivate measuring topology, delegation, verification, recursion, and access patterns. The LifeOS decision to gate deeper orchestration on its own retained evidence is a product-design inference, not a claim that these papers establish universal multi-agent superiority.
 
-A 2026 strong-single-agent study reports that a multi-turn single agent can match homogeneous multi-agent workflows in several settings, with KV-cache efficiency advantages. LifeOS therefore treats single-agent routing as the mandatory baseline and accepts deeper orchestration only on measured evidence. This repository-specific seven-fixture suite is too small to establish general model superiority, fairness, or production reliability. Live results are dated evidence for one provider inventory, one suite version, and one pair of exact repository commits.
+A submitted 2026 preprint reports that a multi-turn single agent can match homogeneous multi-agent workflows in several evaluated settings, with KV-cache efficiency advantages (Xu et al., 2026). LifeOS therefore adopts single-agent routing as the mandatory comparison baseline; that baseline rule is a repository-specific design decision rather than a direct empirical conclusion for the LifeOS domain. This seven-fixture suite is too small to establish general model superiority, fairness, causal benefit from orchestration, or production reliability. Live results remain dated evidence for one provider inventory, one suite version, and one pair of exact repository commits.
 
 ## References
 
-Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2025). _Learning to orchestrate agents in natural language with the Conductor_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2512.04388
+Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2026). _Learning to orchestrate agents in natural language with the Conductor_ [Conference paper]. International Conference on Learning Representations. https://openreview.net/pdf/4a133f1e2ca67ceaedb45c3a123cc8125c694ff5.pdf
 
 NVIDIA Corporation. (2026). _API reference—NVIDIA NIM for large language models_. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
 
-Sakana AI. (2026, June 22). _Sakana Fugu: One model to command them all_. https://sakana.ai/fugu-release/
+Sakana AI. (2026, June 22). _Sakana Fugu: One model to command them all_ [Final product release]. https://sakana.ai/fugu-release/
 
-Xu, J., Koesdwiady, A., Bei, S., Han, Y., Huang, B., Wang, D., Chen, Y., Wang, Z., Wang, P., Li, P., & Ding, Y. (2026). _Rethinking the value of multi-agent workflow: A strong single agent baseline_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2601.12307
+Xu, J., Koesdwiady, A., Bei, S., Han, Y., Huang, B., Wang, D., Chen, Y., Wang, Z., Wang, P., Li, P., & Ding, Y. (2026). _Rethinking the value of multi-agent workflow: A strong single agent baseline_ [Preprint; submitted to ICLR 2026]. arXiv. https://doi.org/10.48550/arXiv.2601.12307
 
-Xu, J., Sun, Q., Schwendeman, P., Nielsen, S., Cetin, E., & Tang, Y. (2025). _TRINITY: An evolved LLM coordinator_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2512.04695
+Xu, J., Sun, Q., Schwendeman, P., Nielsen, S., Cetin, E., & Tang, Y. (2026). _TRINITY: An evolved LLM coordinator_ [Conference paper]. International Conference on Learning Representations. https://doi.org/10.48550/arXiv.2512.04695
