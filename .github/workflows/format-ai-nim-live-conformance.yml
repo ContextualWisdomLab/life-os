@@ -1,4 +1,4 @@
-name: Format AI NIM Live Conformance
+name: Repair AI NIM Live Conformance
 
 on:
   push:
@@ -14,7 +14,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  format:
+  repair:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -34,7 +34,7 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
-      - name: Repair deterministic verification findings
+      - name: Apply deterministic verification repairs
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -49,11 +49,9 @@ jobs:
                   raise SystemExit(f'{label}: expected one match, found {count}')
               file_path.write_text(source.replace(old, new, 1), encoding='utf-8')
 
-          live_path = Path(
-              'apps/ai-service/src/contextual-orchestrator-live-model.ts'
-          )
-          live = live_path.read_text(encoding='utf-8')
-          old_response = """async function boundedResponseText(response: Response): Promise<string> {
+          replace_once(
+              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
+              """async function boundedResponseText(response: Response): Promise<string> {
             if (!response.ok || response.body === null) {
               return fail(
                 response.status === 429 || response.status >= 500
@@ -61,8 +59,8 @@ jobs:
                   : 'orchestrator_unavailable',
               );
             }
-          """.replace('          ', '')
-          new_response = """async function boundedResponseText(response: Response): Promise<string> {
+          """.replace('          ', ''),
+              """async function boundedResponseText(response: Response): Promise<string> {
             if (!response.ok) {
               return fail(
                 response.status === 429 || response.status >= 500
@@ -73,47 +71,56 @@ jobs:
             if (response.body === null) {
               return fail('evaluation_failed');
             }
-          """.replace('          ', '')
-          if live.count(old_response) != 1:
-              raise SystemExit(
-                  'null response classification: expected one source block'
-              )
-          live = live.replace(old_response, new_response, 1)
+          """.replace('          ', ''),
+              'successful response without body classification',
+          )
 
-          elapsed_marker = """      const elapsed = this.monotonicClock() - startedAt;
-          """.replace('          ', '')
-          elapsed_index = live.index(elapsed_marker)
-          success_start = live.index(
-              '      this.recordedObservations.push(\n', elapsed_index
-          )
-          outer_catch = live.index(
-              "    } catch (error) {\n      const code =",
-              success_start,
-          )
-          replacement = """      let draft: ProposalModelDraft;
-            try {
-              draft = parseContextualOrchestratorProposalCompletion(text);
-            } catch (error) {
-              if (error instanceof ProposalModelTransportError) {
-                return fail('evaluation_failed');
-              }
-              throw error;
+          replace_once(
+              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
+              """      this.recordedObservations.push(
+            observation(
+              this.configuration.profile,
+              observedMode,
+              trace,
+              parsePlanSource(orchestration?.plan_source),
+              elapsed,
+              parseUsage(envelope),
+              null,
+            ),
+          );
+          try {
+            return parseContextualOrchestratorProposalCompletion(text);
+          } catch (error) {
+            if (error instanceof ProposalModelTransportError) {
+              return fail('evaluation_failed');
             }
-            this.recordedObservations.push(
-              observation(
-                this.configuration.profile,
-                observedMode,
-                trace,
-                parsePlanSource(orchestration?.plan_source),
-                elapsed,
-                parseUsage(envelope),
-                null,
-              ),
-            );
-            return draft;
-          """.replace('          ', '')
-          live = live[:success_start] + replacement + live[outer_catch:]
-          live_path.write_text(live, encoding='utf-8')
+            throw error;
+          }
+          """.replace('          ', ''),
+              """      let draft: ProposalModelDraft;
+          try {
+            draft = parseContextualOrchestratorProposalCompletion(text);
+          } catch (error) {
+            if (error instanceof ProposalModelTransportError) {
+              return fail('evaluation_failed');
+            }
+            throw error;
+          }
+          this.recordedObservations.push(
+            observation(
+              this.configuration.profile,
+              observedMode,
+              trace,
+              parsePlanSource(orchestration?.plan_source),
+              elapsed,
+              parseUsage(envelope),
+              null,
+            ),
+          );
+          return draft;
+          """.replace('          ', ''),
+              'single terminal observation',
+          )
 
           replace_once(
               'apps/ai-service/src/proposal-quality-live-conformance.ts',
@@ -144,14 +151,8 @@ jobs:
           )
           replace_once(
               'apps/ai-service/src/proposal-quality-live-workflow.test.ts',
-              """    expect(workflow).toContain(
               "CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765'",
-            );
-          """.replace('          ', ''),
-              """    expect(workflow).toContain(
               "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",
-            );
-          """.replace('          ', ''),
               'loopback runtime configuration assertion',
           )
 
@@ -170,55 +171,29 @@ jobs:
           )
           PY
 
-      - name: Format complete live-conformance slice
+      - name: Format repaired source files
         run: |
           pnpm exec prettier --single-quote --write \
-            .github/workflows/ai-proposal-live-conformance.yml \
-            apps/ai-service/package.json \
-            apps/ai-service/src/contextual-orchestrator-proposal-model.ts \
-            apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts \
             apps/ai-service/src/contextual-orchestrator-live-model.ts \
             apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
             apps/ai-service/src/proposal-quality-live-conformance.ts \
-            apps/ai-service/src/proposal-quality-live-conformance.test.ts \
-            apps/ai-service/src/proposal-quality-live-command.ts \
-            apps/ai-service/src/proposal-quality-live-command.test.ts \
-            apps/ai-service/src/proposal-quality-live-cli.ts \
-            apps/ai-service/src/proposal-quality-live-cli.test.ts \
-            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
-            docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md \
-            docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md
+            apps/ai-service/src/proposal-quality-live-workflow.test.ts
 
-      - name: Commit canonical corrections
+      - name: Verify repaired AI service slice
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+
+      - name: Commit verified repairs
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            .github/workflows/ai-proposal-live-conformance.yml \
-            apps/ai-service/package.json \
-            apps/ai-service/src/contextual-orchestrator-proposal-model.ts \
-            apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts \
             apps/ai-service/src/contextual-orchestrator-live-model.ts \
             apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
             apps/ai-service/src/proposal-quality-live-conformance.ts \
-            apps/ai-service/src/proposal-quality-live-conformance.test.ts \
-            apps/ai-service/src/proposal-quality-live-command.ts \
-            apps/ai-service/src/proposal-quality-live-command.test.ts \
-            apps/ai-service/src/proposal-quality-live-cli.ts \
-            apps/ai-service/src/proposal-quality-live-cli.test.ts \
-            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
-            docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md \
-            docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md
+            apps/ai-service/src/proposal-quality-live-workflow.test.ts
           git diff --cached --check
-          if git diff --cached --quiet; then
-            echo 'No source changes required.'
-          else
-            git commit -m 'fix(ai): harden live conformance verification'
-            git push origin HEAD:feat/ai-nim-live-conformance
-          fi
-
-      - name: Verify corrected AI service slice
-        run: |
-          pnpm --filter @life-os/ai-service lint
-          pnpm --filter @life-os/ai-service test
+          git commit -m 'fix(ai): harden live conformance validation'
+          git push origin HEAD:feat/ai-nim-live-conformance
