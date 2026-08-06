@@ -53,27 +53,29 @@ jobs:
               'apps/ai-service/src/contextual-orchestrator-live-model.ts'
           )
           live = live_path.read_text(encoding='utf-8')
-          old_response = """async function boundedResponseText(response: Response): Promise<string> {
-            if (!response.ok || response.body === null) {
-              return fail(
-                response.status === 429 || response.status >= 500
-                  ? 'provider_unavailable'
-                  : 'orchestrator_unavailable',
-              );
-            }
-          """.replace('          ', '')
-          new_response = """async function boundedResponseText(response: Response): Promise<string> {
-            if (!response.ok) {
-              return fail(
-                response.status === 429 || response.status >= 500
-                  ? 'provider_unavailable'
-                  : 'orchestrator_unavailable',
-              );
-            }
-            if (response.body === null) {
-              return fail('evaluation_failed');
-            }
-          """.replace('          ', '')
+          old_response = (
+              'async function boundedResponseText(response: Response): Promise<string> {\n'
+              '  if (!response.ok || response.body === null) {\n'
+              '    return fail(\n'
+              '      response.status === 429 || response.status >= 500\n'
+              "        ? 'provider_unavailable'\n"
+              "        : 'orchestrator_unavailable',\n"
+              '    );\n'
+              '  }\n'
+          )
+          new_response = (
+              'async function boundedResponseText(response: Response): Promise<string> {\n'
+              '  if (!response.ok) {\n'
+              '    return fail(\n'
+              '      response.status === 429 || response.status >= 500\n'
+              "        ? 'provider_unavailable'\n"
+              "        : 'orchestrator_unavailable',\n"
+              '    );\n'
+              '  }\n'
+              '  if (response.body === null) {\n'
+              "    return fail('evaluation_failed');\n"
+              '  }\n'
+          )
           if live.count(old_response) != 1:
               raise SystemExit(
                   'successful response without body classification: expected one block'
@@ -91,49 +93,52 @@ jobs:
               "    } catch (error) {\n      const code =",
               success_start,
           )
-          replacement = """      let draft: ProposalModelDraft;
-            try {
-              draft = parseContextualOrchestratorProposalCompletion(text);
-            } catch (error) {
-              if (error instanceof ProposalModelTransportError) {
-                return fail('evaluation_failed');
-              }
-              throw error;
-            }
-            this.recordedObservations.push(
-              observation(
-                this.configuration.profile,
-                observedMode,
-                trace,
-                parsePlanSource(orchestration?.plan_source),
-                elapsed,
-                parseUsage(envelope),
-                null,
-              ),
-            );
-            return draft;
-          """.replace('          ', '')
+          replacement = (
+              '      let draft: ProposalModelDraft;\n'
+              '      try {\n'
+              '        draft = parseContextualOrchestratorProposalCompletion(text);\n'
+              '      } catch (error) {\n'
+              '        if (error instanceof ProposalModelTransportError) {\n'
+              "          return fail('evaluation_failed');\n"
+              '        }\n'
+              '        throw error;\n'
+              '      }\n'
+              '      this.recordedObservations.push(\n'
+              '        observation(\n'
+              '          this.configuration.profile,\n'
+              '          observedMode,\n'
+              '          trace,\n'
+              '          parsePlanSource(orchestration?.plan_source),\n'
+              '          elapsed,\n'
+              '          parseUsage(envelope),\n'
+              '          null,\n'
+              '        ),\n'
+              '      );\n'
+              '      return draft;\n'
+          )
           live = live[:success_start] + replacement + live[outer_catch:]
           live_path.write_text(live, encoding='utf-8')
 
           replace_once(
               'apps/ai-service/src/proposal-quality-live-conformance.ts',
-              """  const timestamp = requireString(report.evaluatedAt, 64);
-            if (new Date(timestamp).toISOString() !== timestamp) {
-              return invalid();
-            }
-          """.replace('          ', ''),
-              """  const timestamp = requireString(report.evaluatedAt, 64);
-            let canonicalTimestamp: string;
-            try {
-              canonicalTimestamp = new Date(timestamp).toISOString();
-            } catch {
-              return invalid();
-            }
-            if (canonicalTimestamp !== timestamp) {
-              return invalid();
-            }
-          """.replace('          ', ''),
+              (
+                  '  const timestamp = requireString(report.evaluatedAt, 64);\n'
+                  '  if (new Date(timestamp).toISOString() !== timestamp) {\n'
+                  '    return invalid();\n'
+                  '  }\n'
+              ),
+              (
+                  '  const timestamp = requireString(report.evaluatedAt, 64);\n'
+                  '  let canonicalTimestamp: string;\n'
+                  '  try {\n'
+                  '    canonicalTimestamp = new Date(timestamp).toISOString();\n'
+                  '  } catch {\n'
+                  '    return invalid();\n'
+                  '  }\n'
+                  '  if (canonicalTimestamp !== timestamp) {\n'
+                  '    return invalid();\n'
+                  '  }\n'
+              ),
               'timestamp validation sanitization',
           )
 
@@ -158,34 +163,38 @@ jobs:
                   raise SystemExit(f'{label}: expected one match')
               workflow_test = workflow_test.replace(old, new, 1)
 
-          dependency_marker = """    expect(
-            step('Install pinned contextual-orchestrator dependencies'),
-          ).toContain('_contextual_orchestrator/requirements.lock');
-          """.replace('          ', '')
-          dependency_evidence = dependency_marker + """    expect(
-            step('Install pinned contextual-orchestrator dependencies'),
-          ).not.toContain('--no-deps');
-          expect(
-            step('Install pinned contextual-orchestrator dependencies'),
-          ).not.toContain('./_contextual_orchestrator');
-          """.replace('          ', '')
-          if workflow_test.count(dependency_marker) != 1:
-              raise SystemExit('dependency pin evidence: expected one match')
-          workflow_test = workflow_test.replace(
-              dependency_marker,
-              dependency_evidence,
-              1,
+          dependency_anchor = (
+              "    ).toContain('_contextual_orchestrator/requirements.lock');\n"
+          )
+          dependency_index = workflow_test.index(dependency_anchor)
+          dependency_insert = (
+              "    expect(\n"
+              "      step('Install pinned contextual-orchestrator dependencies'),\n"
+              "    ).not.toContain('--no-deps');\n"
+              "    expect(\n"
+              "      step('Install pinned contextual-orchestrator dependencies'),\n"
+              "    ).not.toContain('./_contextual_orchestrator');\n"
+          )
+          workflow_test = (
+              workflow_test[: dependency_index + len(dependency_anchor)]
+              + dependency_insert
+              + workflow_test[dependency_index + len(dependency_anchor) :]
           )
 
-          server_marker = """    const server = step('Start the loopback contextual-orchestrator');
-          """.replace('          ', '')
-          server_evidence = server_marker + """    expect(server).toContain(
-            'working-directory: _contextual_orchestrator',
-          );
-          """.replace('          ', '')
-          if workflow_test.count(server_marker) != 1:
-              raise SystemExit('orchestrator checkout execution: expected one match')
-          workflow_test = workflow_test.replace(server_marker, server_evidence, 1)
+          server_anchor = (
+              "    const server = step('Start the loopback contextual-orchestrator');\n"
+          )
+          server_index = workflow_test.index(server_anchor)
+          server_insert = (
+              "    expect(server).toContain(\n"
+              "      'working-directory: _contextual_orchestrator',\n"
+              "    );\n"
+          )
+          workflow_test = (
+              workflow_test[: server_index + len(server_anchor)]
+              + server_insert
+              + workflow_test[server_index + len(server_anchor) :]
+          )
           workflow_test_path.write_text(workflow_test, encoding='utf-8')
 
           model_test_path = Path(
@@ -195,14 +204,15 @@ jobs:
           malformed_loop = model_test.index(
               '  for (const [index, nextResponse] of malformedResponses.entries()) {'
           )
-          assertion = """      expect(fixture.model.observations().at(-1)?.failureCode).toBe(
-            'evaluation_failed',
-          );
-          """.replace('          ', '')
+          assertion = (
+              '      expect(fixture.model.observations().at(-1)?.failureCode).toBe(\n'
+              "        'evaluation_failed',\n"
+              '      );\n'
+          )
           assertion_index = model_test.index(assertion, malformed_loop)
           model_test = (
               model_test[:assertion_index]
-              + "      expect(fixture.model.observations()).toHaveLength(1);\n"
+              + '      expect(fixture.model.observations()).toHaveLength(1);\n'
               + model_test[assertion_index:]
           )
           model_test_path.write_text(model_test, encoding='utf-8')
