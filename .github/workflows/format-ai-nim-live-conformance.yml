@@ -49,9 +49,11 @@ jobs:
                   raise SystemExit(f'{label}: expected one match, found {count}')
               file_path.write_text(source.replace(old, new, 1), encoding='utf-8')
 
-          replace_once(
-              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
-              """async function boundedResponseText(response: Response): Promise<string> {
+          live_path = Path(
+              'apps/ai-service/src/contextual-orchestrator-live-model.ts'
+          )
+          live = live_path.read_text(encoding='utf-8')
+          old_response = """async function boundedResponseText(response: Response): Promise<string> {
             if (!response.ok || response.body === null) {
               return fail(
                 response.status === 429 || response.status >= 500
@@ -59,8 +61,8 @@ jobs:
                   : 'orchestrator_unavailable',
               );
             }
-          """.replace('          ', ''),
-              """async function boundedResponseText(response: Response): Promise<string> {
+          """.replace('          ', '')
+          new_response = """async function boundedResponseText(response: Response): Promise<string> {
             if (!response.ok) {
               return fail(
                 response.status === 429 || response.status >= 500
@@ -71,56 +73,48 @@ jobs:
             if (response.body === null) {
               return fail('evaluation_failed');
             }
-          """.replace('          ', ''),
-              'successful response without body classification',
-          )
+          """.replace('          ', '')
+          if live.count(old_response) != 1:
+              raise SystemExit(
+                  'successful response without body classification: expected one block'
+              )
+          live = live.replace(old_response, new_response, 1)
 
-          replace_once(
-              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
-              """      this.recordedObservations.push(
-            observation(
-              this.configuration.profile,
-              observedMode,
-              trace,
-              parsePlanSource(orchestration?.plan_source),
-              elapsed,
-              parseUsage(envelope),
-              null,
-            ),
-          );
-          try {
-            return parseContextualOrchestratorProposalCompletion(text);
-          } catch (error) {
-            if (error instanceof ProposalModelTransportError) {
-              return fail('evaluation_failed');
-            }
-            throw error;
-          }
-          """.replace('          ', ''),
-              """      let draft: ProposalModelDraft;
-          try {
-            draft = parseContextualOrchestratorProposalCompletion(text);
-          } catch (error) {
-            if (error instanceof ProposalModelTransportError) {
-              return fail('evaluation_failed');
-            }
-            throw error;
-          }
-          this.recordedObservations.push(
-            observation(
-              this.configuration.profile,
-              observedMode,
-              trace,
-              parsePlanSource(orchestration?.plan_source),
-              elapsed,
-              parseUsage(envelope),
-              null,
-            ),
-          );
-          return draft;
-          """.replace('          ', ''),
-              'single terminal observation',
+          elapsed_marker = (
+              '      const elapsed = this.monotonicClock() - startedAt;\n'
           )
+          elapsed_index = live.index(elapsed_marker)
+          success_start = live.index(
+              '      this.recordedObservations.push(\n', elapsed_index
+          )
+          outer_catch = live.index(
+              "    } catch (error) {\n      const code =",
+              success_start,
+          )
+          replacement = """      let draft: ProposalModelDraft;
+            try {
+              draft = parseContextualOrchestratorProposalCompletion(text);
+            } catch (error) {
+              if (error instanceof ProposalModelTransportError) {
+                return fail('evaluation_failed');
+              }
+              throw error;
+            }
+            this.recordedObservations.push(
+              observation(
+                this.configuration.profile,
+                observedMode,
+                trace,
+                parsePlanSource(orchestration?.plan_source),
+                elapsed,
+                parseUsage(envelope),
+                null,
+              ),
+            );
+            return draft;
+          """.replace('          ', '')
+          live = live[:success_start] + replacement + live[outer_catch:]
+          live_path.write_text(live, encoding='utf-8')
 
           replace_once(
               'apps/ai-service/src/proposal-quality-live-conformance.ts',
@@ -143,32 +137,75 @@ jobs:
               'timestamp validation sanitization',
           )
 
-          replace_once(
-              'apps/ai-service/src/proposal-quality-live-workflow.test.ts',
-              '    expect(uses.length).toBeGreaterThanOrEqual(6);',
-              '    expect(uses.length).toBeGreaterThanOrEqual(5);',
-              'external action count',
+          workflow_test_path = Path(
+              'apps/ai-service/src/proposal-quality-live-workflow.test.ts'
           )
-          replace_once(
-              'apps/ai-service/src/proposal-quality-live-workflow.test.ts',
-              "CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765'",
-              "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",
-              'loopback runtime configuration assertion',
+          workflow_test = workflow_test_path.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  '    expect(uses.length).toBeGreaterThanOrEqual(6);',
+                  '    expect(uses.length).toBeGreaterThanOrEqual(5);',
+                  'external action count',
+              ),
+              (
+                  "CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765'",
+                  "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",
+                  'loopback runtime configuration assertion',
+              ),
+          ]
+          for old, new, label in replacements:
+              if workflow_test.count(old) != 1:
+                  raise SystemExit(f'{label}: expected one match')
+              workflow_test = workflow_test.replace(old, new, 1)
+
+          dependency_marker = """    expect(
+            step('Install pinned contextual-orchestrator dependencies'),
+          ).toContain('_contextual_orchestrator/requirements.lock');
+          """.replace('          ', '')
+          dependency_evidence = dependency_marker + """    expect(
+            step('Install pinned contextual-orchestrator dependencies'),
+          ).not.toContain('--no-deps');
+          expect(
+            step('Install pinned contextual-orchestrator dependencies'),
+          ).not.toContain('./_contextual_orchestrator');
+          """.replace('          ', '')
+          if workflow_test.count(dependency_marker) != 1:
+              raise SystemExit('dependency pin evidence: expected one match')
+          workflow_test = workflow_test.replace(
+              dependency_marker,
+              dependency_evidence,
+              1,
           )
 
-          replace_once(
-              'apps/ai-service/src/contextual-orchestrator-live-model.test.ts',
-              """      expect(fixture.model.observations().at(-1)?.failureCode).toBe(
-              'evaluation_failed',
-            );
-          """.replace('          ', ''),
-              """      expect(fixture.model.observations()).toHaveLength(1);
-            expect(fixture.model.observations().at(-1)?.failureCode).toBe(
-              'evaluation_failed',
-            );
-          """.replace('          ', ''),
-              'single failure observation evidence',
+          server_marker = """    const server = step('Start the loopback contextual-orchestrator');
+          """.replace('          ', '')
+          server_evidence = server_marker + """    expect(server).toContain(
+            'working-directory: _contextual_orchestrator',
+          );
+          """.replace('          ', '')
+          if workflow_test.count(server_marker) != 1:
+              raise SystemExit('orchestrator checkout execution: expected one match')
+          workflow_test = workflow_test.replace(server_marker, server_evidence, 1)
+          workflow_test_path.write_text(workflow_test, encoding='utf-8')
+
+          model_test_path = Path(
+              'apps/ai-service/src/contextual-orchestrator-live-model.test.ts'
           )
+          model_test = model_test_path.read_text(encoding='utf-8')
+          malformed_loop = model_test.index(
+              '  for (const [index, nextResponse] of malformedResponses.entries()) {'
+          )
+          assertion = """      expect(fixture.model.observations().at(-1)?.failureCode).toBe(
+            'evaluation_failed',
+          );
+          """.replace('          ', '')
+          assertion_index = model_test.index(assertion, malformed_loop)
+          model_test = (
+              model_test[:assertion_index]
+              + "      expect(fixture.model.observations()).toHaveLength(1);\n"
+              + model_test[assertion_index:]
+          )
+          model_test_path.write_text(model_test, encoding='utf-8')
           PY
 
       - name: Format repaired source files
