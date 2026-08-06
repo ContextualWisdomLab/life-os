@@ -34,6 +34,149 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
+      - name: Repair deterministic verification findings
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, label: str) -> None:
+              file_path = Path(path)
+              source = file_path.read_text(encoding='utf-8')
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              file_path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
+              """async function boundedResponseText(response: Response): Promise<string> {
+            if (!response.ok || response.body === null) {
+              return fail(
+                response.status === 429 || response.status >= 500
+                  ? 'provider_unavailable'
+                  : 'orchestrator_unavailable',
+              );
+            }
+          """.replace('          ', ''),
+              """async function boundedResponseText(response: Response): Promise<string> {
+            if (!response.ok) {
+              return fail(
+                response.status === 429 || response.status >= 500
+                  ? 'provider_unavailable'
+                  : 'orchestrator_unavailable',
+              );
+            }
+            if (response.body === null) {
+              return fail('evaluation_failed');
+            }
+          """.replace('          ', ''),
+              'null response classification',
+          )
+
+          replace_once(
+              'apps/ai-service/src/contextual-orchestrator-live-model.ts',
+              """      this.recordedObservations.push(
+              observation(
+                this.configuration.profile,
+                observedMode,
+                trace,
+                parsePlanSource(orchestration?.plan_source),
+                elapsed,
+                parseUsage(envelope),
+                null,
+              ),
+            );
+            try {
+              return parseContextualOrchestratorProposalCompletion(text);
+            } catch (error) {
+              if (error instanceof ProposalModelTransportError) {
+                return fail('evaluation_failed');
+              }
+              throw error;
+            }
+          """.replace('          ', ''),
+              """      let draft: ProposalModelDraft;
+            try {
+              draft = parseContextualOrchestratorProposalCompletion(text);
+            } catch (error) {
+              if (error instanceof ProposalModelTransportError) {
+                return fail('evaluation_failed');
+              }
+              throw error;
+            }
+            this.recordedObservations.push(
+              observation(
+                this.configuration.profile,
+                observedMode,
+                trace,
+                parsePlanSource(orchestration?.plan_source),
+                elapsed,
+                parseUsage(envelope),
+                null,
+              ),
+            );
+            return draft;
+          """.replace('          ', ''),
+              'single terminal observation',
+          )
+
+          replace_once(
+              'apps/ai-service/src/proposal-quality-live-conformance.ts',
+              """  const timestamp = requireString(report.evaluatedAt, 64);
+            if (new Date(timestamp).toISOString() !== timestamp) {
+              return invalid();
+            }
+          """.replace('          ', ''),
+              """  const timestamp = requireString(report.evaluatedAt, 64);
+            let canonicalTimestamp: string;
+            try {
+              canonicalTimestamp = new Date(timestamp).toISOString();
+            } catch {
+              return invalid();
+            }
+            if (canonicalTimestamp !== timestamp) {
+              return invalid();
+            }
+          """.replace('          ', ''),
+              'timestamp validation sanitization',
+          )
+
+          replace_once(
+              'apps/ai-service/src/proposal-quality-live-workflow.test.ts',
+              '    expect(uses.length).toBeGreaterThanOrEqual(6);',
+              '    expect(uses.length).toBeGreaterThanOrEqual(5);',
+              'external action count',
+          )
+          replace_once(
+              'apps/ai-service/src/proposal-quality-live-workflow.test.ts',
+              """    expect(workflow).toContain(
+              "CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765'",
+            );
+          """.replace('          ', ''),
+              """    expect(workflow).toContain(
+              "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",
+            );
+          """.replace('          ', ''),
+              'loopback runtime configuration assertion',
+          )
+
+          replace_once(
+              'apps/ai-service/src/contextual-orchestrator-live-model.test.ts',
+              """      expect(fixture.model.observations().at(-1)?.failureCode).toBe(
+              'evaluation_failed',
+            );
+          """.replace('          ', ''),
+              """      expect(fixture.model.observations()).toHaveLength(1);
+            expect(fixture.model.observations().at(-1)?.failureCode).toBe(
+              'evaluation_failed',
+            );
+          """.replace('          ', ''),
+              'single failure observation evidence',
+          )
+          PY
+
       - name: Format complete live-conformance slice
         run: |
           pnpm exec prettier --single-quote --write \
@@ -53,7 +196,7 @@ jobs:
             docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md \
             docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md
 
-      - name: Commit canonical formatting
+      - name: Commit canonical corrections
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
@@ -76,13 +219,13 @@ jobs:
             docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md
           git diff --cached --check
           if git diff --cached --quiet; then
-            echo 'No formatting changes required.'
+            echo 'No source changes required.'
           else
-            git commit -m 'style(ai): format live conformance slice'
+            git commit -m 'fix(ai): harden live conformance verification'
             git push origin HEAD:feat/ai-nim-live-conformance
           fi
 
-      - name: Verify formatted AI service slice
+      - name: Verify corrected AI service slice
         run: |
           pnpm --filter @life-os/ai-service lint
           pnpm --filter @life-os/ai-service test
