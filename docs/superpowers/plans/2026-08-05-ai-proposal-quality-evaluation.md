@@ -89,7 +89,7 @@ Run `ProposalService.generateProposal` with deterministic clock and UUID factori
 
 - [ ] **Step 3: Implement semantic scoring**
 
-A case conforms when it has 1–20 operations, every kind is allowed, every required target appears at least once, and every targeted operation points to context evidence. Track targeted and grounded operation counts separately.
+`ProposalService.validateOperations` enforces 1–20 operations before semantic scoring. Within that validated range, a case conforms when every kind is allowed, every required target appears at least once, and every targeted operation points to context evidence. Track targeted and grounded operation counts separately.
 
 - [ ] **Step 4: Implement report aggregation**
 
