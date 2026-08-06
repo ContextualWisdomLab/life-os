@@ -63,21 +63,21 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     ).toBeLessThan(
       workflow.indexOf('Install pinned contextual-orchestrator dependencies'),
     );
-    expect(step('Install pinned contextual-orchestrator dependencies')).toContain(
-      '--require-hashes',
-    );
-    expect(step('Install pinned contextual-orchestrator dependencies')).toContain(
-      '_contextual_orchestrator/requirements.lock',
-    );
+    expect(
+      step('Install pinned contextual-orchestrator dependencies'),
+    ).toContain('--require-hashes');
+    expect(
+      step('Install pinned contextual-orchestrator dependencies'),
+    ).toContain('_contextual_orchestrator/requirements.lock');
   });
 
   it('uses only the NVIDIA credential and scopes its secret to one seed step', () => {
     const prohibitedToken = ['COPILOT', 'GITHUB', 'TOKEN'].join('_');
     expect(workflow).not.toContain(prohibitedToken);
     const secretExpression = '${{ secrets.NVIDIA_NIM_API_KEY }}';
-    expect(workflow.match(/\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu)).toHaveLength(
-      1,
-    );
+    expect(
+      workflow.match(/\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu),
+    ).toHaveLength(1);
     const seed = step(
       'Seed NVIDIA credential through the encrypted KV bootstrap',
     );
@@ -86,15 +86,13 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(seed).toContain('--name NVIDIA_NIM_API_KEY');
     expect(seed).toContain('--value-stdin');
     expect(seed).toContain("printf '%s'");
-    expect(
-      workflow.replace(seed, ''),
-    ).not.toContain(secretExpression);
+    expect(workflow.replace(seed, '')).not.toContain(secretExpression);
     expect(step('Start the loopback contextual-orchestrator')).not.toContain(
       secretExpression,
     );
-    expect(step('Generate credential-free live conformance evidence')).not.toContain(
-      secretExpression,
-    );
+    expect(
+      step('Generate credential-free live conformance evidence'),
+    ).not.toContain(secretExpression);
   });
 
   it('fixes provider egress and keeps the orchestrator on loopback', () => {
@@ -115,12 +113,14 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(server).toContain('--budget-max-output-tokens 200000');
     expect(server).not.toContain('--allow-public-bind');
     expect(workflow).toContain(
-      'CONTEXTUAL_ORCHESTRATOR_LIVE_URL: \'http://127.0.0.1:8765\'',
+      "CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765'",
     );
   });
 
   it('retains only the validated credential-free report artifact', () => {
-    const generation = step('Generate credential-free live conformance evidence');
+    const generation = step(
+      'Generate credential-free live conformance evidence',
+    );
     expect(generation).toContain(
       'PROPOSAL_LIVE_REPORT_PATH: ${{ runner.temp }}/ai-proposal-live-conformance.json',
     );
@@ -152,7 +152,9 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     ]) {
       expect(deterministic).toContain(testFile);
     }
-    expect(workflow.indexOf('Verify deterministic live-evidence contracts')).toBeLessThan(
+    expect(
+      workflow.indexOf('Verify deterministic live-evidence contracts'),
+    ).toBeLessThan(
       workflow.indexOf(
         'Seed NVIDIA credential through the encrypted KV bootstrap',
       ),

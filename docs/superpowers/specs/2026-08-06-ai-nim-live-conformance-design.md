@@ -32,13 +32,13 @@ The provider key is bound only to the credential-seeding step. Later steps recei
 
 ## Evaluation profiles
 
-| Profile | Orchestration | Structured output | Reasoning effort | Availability on pinned main |
-| --- | --- | --- | --- | --- |
-| `route_low` | exact single route | JSON Schema | `low` | available |
-| `route_high` | exact single route | JSON Schema | `high` | available; comparison baseline |
-| `conduct_template` | thinker → worker → verifier → synthesizer | JSON-only prompt + LifeOS validation | provider default | available |
-| `conduct_generated` | generated task graph and access lists | JSON-only prompt + LifeOS validation | role-sensitive | explicit unsupported cell until the pinned orchestrator exposes safe per-run policy selection |
-| `conduct_without_verifier` | conducted workflow without verifier | JSON-only prompt + LifeOS validation | role-sensitive | explicit unsupported cell until the pinned orchestrator exposes safe per-run policy selection |
+| Profile                    | Orchestration                             | Structured output                    | Reasoning effort | Availability on pinned main                                                                   |
+| -------------------------- | ----------------------------------------- | ------------------------------------ | ---------------- | --------------------------------------------------------------------------------------------- |
+| `route_low`                | exact single route                        | JSON Schema                          | `low`            | available                                                                                     |
+| `route_high`               | exact single route                        | JSON Schema                          | `high`           | available; comparison baseline                                                                |
+| `conduct_template`         | thinker → worker → verifier → synthesizer | JSON-only prompt + LifeOS validation | provider default | available                                                                                     |
+| `conduct_generated`        | generated task graph and access lists     | JSON-only prompt + LifeOS validation | role-sensitive   | explicit unsupported cell until the pinned orchestrator exposes safe per-run policy selection |
+| `conduct_without_verifier` | conducted workflow without verifier       | JSON-only prompt + LifeOS validation | role-sensitive   | explicit unsupported cell until the pinned orchestrator exposes safe per-run policy selection |
 
 The route cells deliberately use the full-shape OpenAI-compatible structured-output transport so NVIDIA reasoning-effort projection is exercised. The conduct cell omits `response_format`, because the pinned orchestrator correctly sends full-shape requests through its single-agent passthrough rather than pretending it can merge provider-native structured responses across agents. This difference is recorded as a confound; the report is conformance evidence, not a causal paper claim.
 
@@ -191,12 +191,12 @@ A 2026 strong-single-agent study reports that a multi-turn single agent can matc
 
 ## References
 
-Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2025). *Learning to orchestrate agents in natural language with the Conductor* [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2512.04388
+Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2025). _Learning to orchestrate agents in natural language with the Conductor_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2512.04388
 
-NVIDIA Corporation. (2026). *API reference—NVIDIA NIM for large language models*. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
+NVIDIA Corporation. (2026). _API reference—NVIDIA NIM for large language models_. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
 
-Sakana AI. (2026, June 22). *Sakana Fugu: One model to command them all*. https://sakana.ai/fugu-release/
+Sakana AI. (2026, June 22). _Sakana Fugu: One model to command them all_. https://sakana.ai/fugu-release/
 
-Xu, J., Koesdwiady, A., Bei, S., Han, Y., Huang, B., Wang, D., Chen, Y., Wang, Z., Wang, P., Li, P., & Ding, Y. (2026). *Rethinking the value of multi-agent workflow: A strong single agent baseline* [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2601.12307
+Xu, J., Koesdwiady, A., Bei, S., Han, Y., Huang, B., Wang, D., Chen, Y., Wang, Z., Wang, P., Li, P., & Ding, Y. (2026). _Rethinking the value of multi-agent workflow: A strong single agent baseline_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2601.12307
 
-Xu, J., Sun, Q., Schwendeman, P., Nielsen, S., Cetin, E., & Tang, Y. (2025). *TRINITY: An evolved LLM coordinator* [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2512.04695
+Xu, J., Sun, Q., Schwendeman, P., Nielsen, S., Cetin, E., & Tang, Y. (2025). _TRINITY: An evolved LLM coordinator_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2512.04695

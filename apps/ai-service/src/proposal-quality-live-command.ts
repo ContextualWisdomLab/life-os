@@ -1,10 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  mkdir,
-  rename,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   runProposalLiveConformance,
@@ -83,10 +78,7 @@ export function parseProposalLiveModelInventory(
   if (value === undefined || value.trim() === '') {
     return Object.freeze([]);
   }
-  if (
-    value.length > MAXIMUM_MODEL_LIST_LENGTH ||
-    /[\r\n\u0000]/u.test(value)
-  ) {
+  if (value.length > MAXIMUM_MODEL_LIST_LENGTH || /[\r\n\u0000]/u.test(value)) {
     return invalid();
   }
   const models = value.split(',').map((item) => item.trim());

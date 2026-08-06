@@ -56,12 +56,14 @@ function environment(
   };
 }
 
-function response(input: {
-  status?: number;
-  content?: unknown;
-  orchestration?: unknown;
-  usage?: unknown;
-} = {}): Response {
+function response(
+  input: {
+    status?: number;
+    content?: unknown;
+    orchestration?: unknown;
+    usage?: unknown;
+  } = {},
+): Response {
   return Response.json(
     {
       choices: [
@@ -115,7 +117,9 @@ async function code(
 describe('live conformance configuration', () => {
   it('freezes valid route and conduct profiles and parses timeout bounds', () => {
     for (const profile of [ROUTE_HIGH, CONDUCT]) {
-      expect(Object.isFrozen(validateLiveConformanceProfile(profile))).toBe(true);
+      expect(Object.isFrozen(validateLiveConformanceProfile(profile))).toBe(
+        true,
+      );
       const configured = createContextualOrchestratorLiveConfiguration(
         environment(),
         profile,
@@ -389,7 +393,10 @@ describe('live conformance transport', () => {
   it('constructs with production defaults without I/O', () => {
     expect(
       new ContextualOrchestratorLiveProposalModel(
-        createContextualOrchestratorLiveConfiguration(environment(), ROUTE_HIGH),
+        createContextualOrchestratorLiveConfiguration(
+          environment(),
+          ROUTE_HIGH,
+        ),
       ),
     ).toBeInstanceOf(ContextualOrchestratorLiveProposalModel);
   });

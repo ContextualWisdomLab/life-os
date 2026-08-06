@@ -77,16 +77,11 @@ const DEFAULT_LIMITATIONS = Object.freeze([
 
 /** Stable high-level state for one complete live-conformance report. */
 export type ProposalLiveConformanceStatus =
-  | 'completed'
-  | 'partial'
-  | 'not_run'
-  | 'failed';
+  'completed' | 'partial' | 'not_run' | 'failed';
 
 /** Stable profile-level state for completed or unavailable evidence. */
 export type ProposalLiveProfileStatus =
-  | 'completed'
-  | 'completed_with_failures'
-  | 'unavailable';
+  'completed' | 'completed_with_failures' | 'unavailable';
 
 /** Stable reasons why a profile or complete run did not produce live quality evidence. */
 export type ProposalLiveUnavailableCode =
@@ -147,8 +142,7 @@ export interface ProposalLiveUnavailableProfile {
 
 /** One available or unavailable live-conformance profile cell. */
 export type ProposalLiveProfile =
-  | ProposalLiveCompletedProfile
-  | ProposalLiveUnavailableProfile;
+  ProposalLiveCompletedProfile | ProposalLiveUnavailableProfile;
 
 /** Recommendation derived only from completed baseline and conduct evidence. */
 export interface ProposalLiveRecommendation {
@@ -278,17 +272,22 @@ function summarizeObservations(
     }
   }
   const failureCodes = Object.freeze(
-    [...new Set(
-      observations
-        .map((item) => item.failureCode)
-        .filter((value): value is LiveConformanceFailureCode => value !== null),
-    )].sort(),
+    [
+      ...new Set(
+        observations
+          .map((item) => item.failureCode)
+          .filter(
+            (value): value is LiveConformanceFailureCode => value !== null,
+          ),
+      ),
+    ].sort(),
   );
   return Object.freeze({
     callCount: observations.length,
     completedCalls: observations.filter((item) => item.failureCode === null)
       .length,
-    failedCalls: observations.filter((item) => item.failureCode !== null).length,
+    failedCalls: observations.filter((item) => item.failureCode !== null)
+      .length,
     workflowDepthMaximum: Math.max(
       0,
       ...observations.map((item) => item.workflowDepth),
@@ -339,10 +338,7 @@ function summarizeUsage(
 }
 
 /** Returns one metric delta while preserving undefined denominators. */
-function delta(
-  value: number | null,
-  baseline: number | null,
-): number | null {
+function delta(value: number | null, baseline: number | null): number | null {
   return value === null || baseline === null ? null : value - baseline;
 }
 
@@ -359,9 +355,7 @@ function rateDeltas(
 }
 
 /** Returns zero deltas for the baseline itself. */
-function baselineDeltas(
-  rates: ProposalQualityRates,
-): ProposalLiveRateDeltas {
+function baselineDeltas(rates: ProposalQualityRates): ProposalLiveRateDeltas {
   const result = {} as Record<keyof ProposalQualityRates, number | null>;
   for (const key of PRIMARY_RATE_KEYS) {
     result[key] = rates[key] === null ? null : 0;
@@ -383,7 +377,11 @@ function unavailableProfile(
   profileId: string,
   code: ProposalLiveUnavailableCode,
 ): ProposalLiveUnavailableProfile {
-  return Object.freeze({ profileId, status: 'unavailable', unavailableCode: code });
+  return Object.freeze({
+    profileId,
+    status: 'unavailable',
+    unavailableCode: code,
+  });
 }
 
 /** Selects the initial run-wide no-result classification. */
@@ -408,9 +406,10 @@ async function evaluateProfile(
   quality: ProposalQualityReport;
   observations: readonly LiveConformanceObservation[];
 }> {
-  const proposalId = PROFILE_PROPOSAL_IDS[
-    profile.profileId as keyof typeof PROFILE_PROPOSAL_IDS
-  ];
+  const proposalId =
+    PROFILE_PROPOSAL_IDS[
+      profile.profileId as keyof typeof PROFILE_PROPOSAL_IDS
+    ];
   if (!proposalId) {
     return invalid();
   }
@@ -457,7 +456,8 @@ function recommendation(
       rationaleCode: 'insufficient_comparable_evidence',
     });
   }
-  const operationDelta = conduct.rateDeltasFromBaseline.operationConformanceRate;
+  const operationDelta =
+    conduct.rateDeltasFromBaseline.operationConformanceRate;
   const injectionDelta =
     conduct.rateDeltasFromBaseline.promptInjectionResistanceRate;
   const hasSafetyRegression =
@@ -530,7 +530,9 @@ export async function runProposalLiveConformance(
 
   if (preflightCode) {
     for (const profile of AVAILABLE_PROFILES) {
-      supportedProfiles.push(unavailableProfile(profile.profileId, preflightCode));
+      supportedProfiles.push(
+        unavailableProfile(profile.profileId, preflightCode),
+      );
     }
   } else {
     for (const profile of AVAILABLE_PROFILES) {
@@ -573,17 +575,13 @@ export async function runProposalLiveConformance(
           ? profile.profileId === 'route_high'
             ? baselineDeltas(profile.quality.rates)
             : rateDeltas(profile.quality.rates, baseline.quality.rates)
-          : Object.freeze(
-              Object.fromEntries(
-                PRIMARY_RATE_KEYS.map((key) => [key, null]),
-              ),
-            ) as ProposalLiveRateDeltas,
+          : (Object.freeze(
+              Object.fromEntries(PRIMARY_RATE_KEYS.map((key) => [key, null])),
+            ) as ProposalLiveRateDeltas),
       });
     },
   );
-  profilesWithDeltas.push(
-    ...UNSUPPORTED_PROFILE_IDS.map(unsupportedProfile),
-  );
+  profilesWithDeltas.push(...UNSUPPORTED_PROFILE_IDS.map(unsupportedProfile));
   const frozenProfiles = Object.freeze(profilesWithDeltas);
   const report = Object.freeze({
     schema: LIVE_CONFORMANCE_SCHEMA,

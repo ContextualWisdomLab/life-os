@@ -39,9 +39,7 @@ export interface LiveConformanceProfile {
 
 /** Credential-free failure classification retained by live evidence. */
 export type LiveConformanceFailureCode =
-  | 'orchestrator_unavailable'
-  | 'provider_unavailable'
-  | 'evaluation_failed';
+  'orchestrator_unavailable' | 'provider_unavailable' | 'evaluation_failed';
 
 /** Bounded provider usage measurements retained without request or response text. */
 export interface LiveConformanceUsage {
@@ -64,10 +62,7 @@ export interface LiveConformanceObservation {
   readonly maximumAccessFanIn: number;
   readonly distinctAgentCount: number;
   readonly planSource:
-    | 'template'
-    | 'generated'
-    | 'template_fallback'
-    | 'unknown';
+    'template' | 'generated' | 'template_fallback' | 'unknown';
   readonly elapsedMilliseconds: number;
   readonly usage: LiveConformanceUsage;
   readonly failureCode: LiveConformanceFailureCode | null;
@@ -219,7 +214,9 @@ function optionalCounter(value: unknown): number | null {
 }
 
 /** Parses provider usage without retaining provider-specific response data. */
-function parseUsage(envelope: Readonly<Record<string, unknown>>): LiveConformanceUsage {
+function parseUsage(
+  envelope: Readonly<Record<string, unknown>>,
+): LiveConformanceUsage {
   const usage = requireRecord(envelope.usage);
   const completionDetails = requireRecord(usage?.completion_tokens_details);
   return Object.freeze({
@@ -251,10 +248,18 @@ function verifierVerdict(
     return 'unknown';
   }
   const normalized = output.normalize('NFKC').toLowerCase();
-  if (/\b(reject|rejected|disagree|conflict|unsafe|fail|failed|error|risky)\b/u.test(normalized)) {
+  if (
+    /\b(reject|rejected|disagree|conflict|unsafe|fail|failed|error|risky)\b/u.test(
+      normalized,
+    )
+  ) {
     return 'rejected';
   }
-  if (/\b(accept|accepted|verified|confirmed|pass|passed|good|ok)\b/u.test(normalized)) {
+  if (
+    /\b(accept|accepted|verified|confirmed|pass|passed|good|ok)\b/u.test(
+      normalized,
+    )
+  ) {
     return 'accepted';
   }
   return 'unknown';
@@ -308,7 +313,9 @@ function parseTrace(
       agentId.trim() === '' ||
       agentId.length > 128 ||
       !Array.isArray(access) ||
-      access.some((entry) => !Number.isSafeInteger(entry) || (entry as number) < 0)
+      access.some(
+        (entry) => !Number.isSafeInteger(entry) || (entry as number) < 0,
+      )
     ) {
       return fail('evaluation_failed');
     }

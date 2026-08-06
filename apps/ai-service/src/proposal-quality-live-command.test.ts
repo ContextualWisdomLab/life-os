@@ -55,21 +55,23 @@ async function validReport(): Promise<ProposalLiveConformanceReport> {
 function fileSystem(): {
   seam: ProposalLiveCommandFileSystem;
   mkdir: ReturnType<typeof vi.fn<ProposalLiveCommandFileSystem['mkdir']>>;
-  writeFile: ReturnType<typeof vi.fn<ProposalLiveCommandFileSystem['writeFile']>>;
+  writeFile: ReturnType<
+    typeof vi.fn<ProposalLiveCommandFileSystem['writeFile']>
+  >;
   rename: ReturnType<typeof vi.fn<ProposalLiveCommandFileSystem['rename']>>;
   unlink: ReturnType<typeof vi.fn<ProposalLiveCommandFileSystem['unlink']>>;
 } {
-  const mkdir = vi.fn<ProposalLiveCommandFileSystem['mkdir']>(async () =>
-    undefined,
+  const mkdir = vi.fn<ProposalLiveCommandFileSystem['mkdir']>(
+    async () => undefined,
   );
   const writeFile = vi.fn<ProposalLiveCommandFileSystem['writeFile']>(
     async () => undefined,
   );
-  const rename = vi.fn<ProposalLiveCommandFileSystem['rename']>(async () =>
-    undefined,
+  const rename = vi.fn<ProposalLiveCommandFileSystem['rename']>(
+    async () => undefined,
   );
-  const unlink = vi.fn<ProposalLiveCommandFileSystem['unlink']>(async () =>
-    undefined,
+  const unlink = vi.fn<ProposalLiveCommandFileSystem['unlink']>(
+    async () => undefined,
   );
   return {
     seam: { mkdir, writeFile, rename, unlink },
@@ -195,8 +197,9 @@ describe('live conformance command', () => {
     const report = await validReport();
     const fs = fileSystem();
     const runner = vi.fn(
-      async (_options: ProposalLiveConformanceOptions): Promise<ProposalLiveConformanceReport> =>
-        report,
+      async (
+        _options: ProposalLiveConformanceOptions,
+      ): Promise<ProposalLiveConformanceReport> => report,
     );
 
     await expect(
@@ -227,7 +230,9 @@ describe('live conformance command', () => {
     const report = await validReport();
     const fs = fileSystem();
     const runner = vi.fn(
-      async (input: ProposalLiveConformanceOptions): Promise<ProposalLiveConformanceReport> => {
+      async (
+        input: ProposalLiveConformanceOptions,
+      ): Promise<ProposalLiveConformanceReport> => {
         expect(input.modelInventory).toEqual([]);
         expect(input.providerCredentialAvailable).toBe(false);
         return report;
@@ -237,7 +242,8 @@ describe('live conformance command', () => {
     await runProposalQualityLiveCommand(
       environment({
         AI_NIM_LIVE_CONFORMANCE_ENABLED: 'false',
-        NVIDIA_NIM_CHAT_MODELS: 'invalid model text that is deliberately ignored',
+        NVIDIA_NIM_CHAT_MODELS:
+          'invalid model text that is deliberately ignored',
       }),
       {
         runConformance: runner,

@@ -35,9 +35,11 @@ describe('shared contextual-orchestrator proposal contract', () => {
     const variants =
       CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA.properties.operations.items.oneOf;
     expect(variants).toHaveLength(3);
-    expect(
-      variants.map((variant) => variant.properties.kind.const),
-    ).toEqual(['create_task', 'prioritize_item', 'schedule_item']);
+    expect(variants.map((variant) => variant.properties.kind.const)).toEqual([
+      'create_task',
+      'prioritize_item',
+      'schedule_item',
+    ]);
     expect(variants.every((variant) => !variant.additionalProperties)).toBe(
       true,
     );
@@ -76,9 +78,12 @@ describe('shared contextual-orchestrator proposal contract', () => {
     completion('{'),
     completion('null'),
     completion('[]'),
-  ])('fails with the sanitized transport contract for malformed input %#', (text) => {
-    expect(() => parseContextualOrchestratorProposalCompletion(text)).toThrow(
-      ProposalModelTransportError,
-    );
-  });
+  ])(
+    'fails with the sanitized transport contract for malformed input %#',
+    (text) => {
+      expect(() => parseContextualOrchestratorProposalCompletion(text)).toThrow(
+        ProposalModelTransportError,
+      );
+    },
+  );
 });

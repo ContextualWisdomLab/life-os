@@ -41,7 +41,9 @@ function options(
 }
 
 /** Builds a conformant proposal draft from one serialized LifeOS request. */
-function conformantDraft(requestBody: Record<string, unknown>): Record<string, unknown> {
+function conformantDraft(
+  requestBody: Record<string, unknown>,
+): Record<string, unknown> {
   const messages = requestBody.messages as Array<Record<string, unknown>>;
   const userMessage = messages[1];
   const request = JSON.parse(String(userMessage?.content)) as {
@@ -148,9 +150,14 @@ function responseForRequest(
 }
 
 /** Creates a Fetch seam that returns one conformant response per request. */
-function successfulFetcher(): ReturnType<typeof vi.fn<ContextualOrchestratorFetch>> {
+function successfulFetcher(): ReturnType<
+  typeof vi.fn<ContextualOrchestratorFetch>
+> {
   return vi.fn<ContextualOrchestratorFetch>(async (_input, init) => {
-    const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    const requestBody = JSON.parse(String(init?.body)) as Record<
+      string,
+      unknown
+    >;
     return responseForRequest(requestBody);
   });
 }
@@ -168,7 +175,9 @@ function profile(
 }
 
 /** Clones immutable report evidence for negative validation tests. */
-function mutableReport(report: ProposalLiveConformanceReport): Record<string, unknown> {
+function mutableReport(
+  report: ProposalLiveConformanceReport,
+): Record<string, unknown> {
   return JSON.parse(JSON.stringify(report)) as Record<string, unknown>;
 }
 
@@ -331,10 +340,12 @@ describe('proposal live conformance report', () => {
     const conduct = profile(report, 'conduct_template');
     if (conduct.status === 'completed') {
       expect(conduct.rateDeltasFromBaseline.validProposalRate).toBe(0);
-      expect(conduct.rateDeltasFromBaseline.benignUtilityRate).toBeGreaterThan(0);
-      expect(
-        conduct.rateDeltasFromBaseline.promptInjectionResistanceRate,
-      ).toBe(0);
+      expect(conduct.rateDeltasFromBaseline.benignUtilityRate).toBeGreaterThan(
+        0,
+      );
+      expect(conduct.rateDeltasFromBaseline.promptInjectionResistanceRate).toBe(
+        0,
+      );
     }
   });
 
@@ -399,11 +410,7 @@ describe('proposal live conformance report', () => {
               .digest('hex'),
       );
       expect(fetcher).not.toHaveBeenCalled();
-      for (const profileId of [
-        'route_low',
-        'route_high',
-        'conduct_template',
-      ]) {
+      for (const profileId of ['route_low', 'route_high', 'conduct_template']) {
         expect(profile(report, profileId)).toEqual({
           profileId,
           status: 'unavailable',
@@ -475,7 +482,9 @@ describe('proposal live conformance validation', () => {
     { evaluatedAt: new Date(Number.NaN) },
     { modelInventory: ['bad model'] },
     { modelInventory: ['same-model', 'same-model'] },
-    { modelInventory: Array.from({ length: 5 }, (_, index) => `model-${index}`) },
+    {
+      modelInventory: Array.from({ length: 5 }, (_, index) => `model-${index}`),
+    },
     { modelInventory: null as never },
   ])('rejects unsafe run input %#', async (override) => {
     await expect(
@@ -511,12 +520,15 @@ describe('proposal live conformance validation', () => {
       invalidReports.push({ ...mutableReport(report), [key]: value });
     }
     const duplicateProfiles = mutableReport(report);
-    const profiles = duplicateProfiles.profiles as Array<Record<string, unknown>>;
+    const profiles = duplicateProfiles.profiles as Array<
+      Record<string, unknown>
+    >;
     profiles[1] = { ...profiles[1], profileId: profiles[0]?.profileId };
     invalidReports.push(duplicateProfiles);
     const invalidProfileId = mutableReport(report);
-    (invalidProfileId.profiles as Array<Record<string, unknown>>)[0]!.profileId =
-      'Route High';
+    (
+      invalidProfileId.profiles as Array<Record<string, unknown>>
+    )[0]!.profileId = 'Route High';
     invalidReports.push(invalidProfileId);
     const invalidRecommendation = mutableReport(report);
     invalidRecommendation.recommendation = {

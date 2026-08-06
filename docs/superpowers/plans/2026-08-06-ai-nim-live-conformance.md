@@ -27,10 +27,12 @@
 ### Task 1: Share the proposal draft transport contract
 
 **Files:**
+
 - Modify: `apps/ai-service/src/contextual-orchestrator-proposal-model.ts`
 - Modify: `apps/ai-service/src/contextual-orchestrator-proposal-model.test.ts`
 
 **Interfaces:**
+
 - Produces: `CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SYSTEM_INSTRUCTION`
 - Produces: `CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA`
 - Produces: `parseContextualOrchestratorProposalCompletion(text: string): ProposalModelDraft`
@@ -67,10 +69,12 @@ git commit -m "refactor(ai): share proposal model contract"
 ### Task 2: Add the loopback live-conformance model
 
 **Files:**
+
 - Create: `apps/ai-service/src/contextual-orchestrator-live-model.ts`
 - Create: `apps/ai-service/src/contextual-orchestrator-live-model.test.ts`
 
 **Interfaces:**
+
 - Consumes: shared proposal instruction, schema, and parser from Task 1.
 - Produces: `LiveConformanceProfile`
 - Produces: `LiveConformanceObservation`
@@ -130,10 +134,12 @@ git commit -m "feat(ai): add bounded live conformance model"
 ### Task 3: Compose the immutable live-conformance report
 
 **Files:**
+
 - Create: `apps/ai-service/src/proposal-quality-live-conformance.ts`
 - Create: `apps/ai-service/src/proposal-quality-live-conformance.test.ts`
 
 **Interfaces:**
+
 - Consumes: `ProposalQualityEvaluator`, default fixtures, suite version, and Task 2 model.
 - Produces: `LIVE_CONFORMANCE_SCHEMA = "life-os.ai-proposal-live-conformance.v1"`
 - Produces: `ProposalLiveConformanceReport`
@@ -186,6 +192,7 @@ git commit -m "feat(ai): compose live conformance evidence"
 ### Task 4: Add the compiled command boundary
 
 **Files:**
+
 - Create: `apps/ai-service/src/proposal-quality-live-command.ts`
 - Create: `apps/ai-service/src/proposal-quality-live-command.test.ts`
 - Create: `apps/ai-service/src/proposal-quality-live-cli.ts`
@@ -193,6 +200,7 @@ git commit -m "feat(ai): compose live conformance evidence"
 - Modify: `apps/ai-service/package.json`
 
 **Interfaces:**
+
 - Produces: `runProposalQualityLiveCommand(environment, dependencies)`
 - Produces package script: `quality:live`
 
@@ -244,10 +252,12 @@ git commit -m "feat(ai): add live conformance command"
 ### Task 5: Add the immutable hourly GitHub Actions workflow
 
 **Files:**
+
 - Create: `.github/workflows/ai-proposal-live-conformance.yml`
 - Create: `apps/ai-service/src/proposal-quality-live-workflow.test.ts`
 
 **Interfaces:**
+
 - Consumes: `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_CHAT_MODELS`, and the Task 4 command.
 - Produces: hourly/manual artifact `ai-proposal-live-conformance-<run_id>`.
 
@@ -300,6 +310,7 @@ git commit -m "ci(ai): add hourly NVIDIA NIM conformance"
 ### Task 6: Update architecture, operating guidance, research, and release evidence
 
 **Files:**
+
 - Modify: `AGENTS.md`
 - Create: `ARCHITECTURE.md`
 - Create: `CLAUDE.md`
@@ -312,6 +323,7 @@ git commit -m "ci(ai): add hourly NVIDIA NIM conformance"
 - Modify: `package.json`
 
 **Interfaces:**
+
 - Produces reviewed ADR and operator evidence for #116.
 
 - [ ] **Step 1: Update agent guidance**
@@ -361,9 +373,11 @@ git commit -m "docs(ai): record live conformance architecture"
 ### Task 7: Run complete verification and open the pull request
 
 **Files:**
+
 - No new files unless verification exposes a concrete defect.
 
 **Interfaces:**
+
 - Produces exact-head merge evidence for #116.
 
 - [ ] **Step 1: Run complete AI-service verification**
