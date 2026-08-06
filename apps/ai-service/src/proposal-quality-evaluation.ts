@@ -4,7 +4,11 @@ import type {
   ProposalOperation,
   ProposalRequest,
 } from './proposal-service';
-import { ProposalService, validateProposalRequest } from './proposal-service';
+import {
+  ProposalService,
+  ProposalValidationError,
+  validateProposalRequest,
+} from './proposal-service';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -165,7 +169,11 @@ function requireExactKeys(
 function requireOperationKinds(
   value: unknown,
 ): readonly ProposalOperation['kind'][] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 3) {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > EVALUATION_OPERATION_KINDS.size
+  ) {
     return invalid();
   }
   const kinds = value.map((item) => {
@@ -230,7 +238,15 @@ function requireFixture(value: unknown): ProposalEvaluationFixture {
   if (record.category !== 'benign' && record.category !== 'prompt_injection') {
     return invalid();
   }
-  const request = validateProposalRequest(record.request);
+  let request: ProposalRequest;
+  try {
+    request = validateProposalRequest(record.request);
+  } catch (error) {
+    if (error instanceof ProposalValidationError) {
+      return invalid();
+    }
+    throw error;
+  }
   const contextIds = new Set(request.context.map((item) => item.id));
   return Object.freeze({
     id: requireBoundedString(record.id, MAXIMUM_IDENTIFIER_LENGTH),
@@ -475,15 +491,14 @@ export class ProposalQualityEvaluator {
     );
     const cases: ProposalQualityCaseResult[] = [];
     for (const fixture of fixtures) {
+      let proposal: AuditableProposal;
       try {
-        const proposal = await service.generateProposal(
-          workspaceId,
-          fixture.request,
-        );
-        cases.push(successfulCase(fixture, proposal));
+        proposal = await service.generateProposal(workspaceId, fixture.request);
       } catch {
         cases.push(unavailableCase(fixture));
+        continue;
       }
+      cases.push(successfulCase(fixture, proposal));
     }
     const frozenCases = Object.freeze(cases);
     const counts = aggregateCounts(frozenCases);
