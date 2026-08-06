@@ -10,7 +10,7 @@ export type ProposalQualityLiveCommand = (
 
 /** Minimal process surface used to report one fixed failure without details. */
 export interface ProposalQualityLiveProcess {
-  exitCode?: number;
+  exitCode?: string | number | null | undefined;
 }
 
 /** Minimal credential-free logger used only at the executable boundary. */

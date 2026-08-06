@@ -27,13 +27,24 @@ export type ProposalLiveCommandEnvironment = Readonly<
 /** Narrow file-system seam used for atomic-publication tests. */
 export interface ProposalLiveCommandFileSystem {
   /** Creates the report directory when absent. */
-  readonly mkdir: typeof mkdir;
-  /** Writes the complete temporary report with restrictive permissions. */
-  readonly writeFile: typeof writeFile;
+  readonly mkdir: (
+    path: string,
+    options: { readonly recursive: true },
+  ) => Promise<unknown>;
+  /** Writes the complete temporary report with mode 0600. */
+  readonly writeFile: (
+    path: string,
+    data: string,
+    options: {
+      readonly encoding: 'utf8';
+      readonly mode: number;
+      readonly flag: 'wx';
+    },
+  ) => Promise<void>;
   /** Atomically replaces the final report after validation. */
-  readonly rename: typeof rename;
+  readonly rename: (oldPath: string, newPath: string) => Promise<void>;
   /** Removes incomplete temporary evidence on failure. */
-  readonly unlink: typeof unlink;
+  readonly unlink: (path: string) => Promise<void>;
 }
 
 /** Deterministic dependencies used by the command and its tests. */
@@ -131,8 +142,10 @@ function conformanceOptions(
         : new Date()),
     environment,
     providerCredentialAvailable,
-    fetcher: dependencies.fetcher,
-    monotonicClock: dependencies.monotonicClock,
+    ...(dependencies.fetcher ? { fetcher: dependencies.fetcher } : {}),
+    ...(dependencies.monotonicClock
+      ? { monotonicClock: dependencies.monotonicClock }
+      : {}),
   };
 }
 
@@ -208,8 +221,8 @@ export async function runProposalQualityLiveCommand(
     await publishProposalLiveConformanceReport(
       report,
       finalPath,
-      dependencies.fileSystem,
-      dependencies.uuidFactory,
+      dependencies.fileSystem ?? productionFileSystem(),
+      dependencies.uuidFactory ?? randomUUID,
     );
     return report;
   } catch (error) {
