@@ -113,7 +113,6 @@ jobs:
       - name: Apply deterministic reviewed corrections
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PYTHONPYCACHEPREFIX: ${{ runner.temp }}/python-cache
         run: |
           set -Eeuo pipefail
@@ -126,10 +125,10 @@ jobs:
           sed -i \
             's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
             apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
-          git show "${BASE_SHA}:.github/workflows/ci.yml" > .github/workflows/ci.yml
           git checkout "$EXPECTED_HEAD_SHA" -- \
             .github/workflows/ai-proposal-live-conformance.yml \
-            .github/workflows/apply-ai-live-review-fixes.yml
+            .github/workflows/apply-ai-live-review-fixes.yml \
+            .github/workflows/ci.yml
           rm -f \
             .github/scripts/apply-ai-live-review-fixes.py \
             .github/scripts/augment-ai-live-review-fixes.py
