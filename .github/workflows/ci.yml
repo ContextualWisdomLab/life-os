@@ -95,7 +95,7 @@ jobs:
         run: docker compose config --quiet
 
   apply_review_fixes:
-    name: Apply reviewed live-conformance fixes once
+    name: Apply reviewed non-workflow fixes once
     if: >-
       github.event_name == 'pull_request' &&
       github.repository == 'ContextualWisdomLab/life-os' &&
@@ -108,12 +108,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
-          persist-credentials: false
+          fetch-depth: 0
 
       - name: Apply deterministic reviewed corrections
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/python-cache
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
@@ -125,16 +126,18 @@ jobs:
           sed -i \
             's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
             apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
-          git show "${EXPECTED_HEAD_SHA}^:.github/workflows/ci.yml" > .github/workflows/ci.yml
+          git show "${BASE_SHA}:.github/workflows/ci.yml" > .github/workflows/ci.yml
+          git checkout "$EXPECTED_HEAD_SHA" -- \
+            .github/workflows/ai-proposal-live-conformance.yml \
+            .github/workflows/apply-ai-live-review-fixes.yml
           rm -f \
             .github/scripts/apply-ai-live-review-fixes.py \
-            .github/scripts/augment-ai-live-review-fixes.py \
-            .github/workflows/apply-ai-live-review-fixes.yml
+            .github/scripts/augment-ai-live-review-fixes.py
+          rm -rf .github/scripts/__pycache__
 
       - name: Commit only from the unchanged exact branch head
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
@@ -143,9 +146,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
+          test -z "$(git diff --cached --name-only | grep '^\.github/workflows/' || true)"
           git commit -m 'fix(ai): resolve live conformance review findings'
           remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
           test "$remote_head" = "$EXPECTED_HEAD_SHA"
-          git push \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
-            HEAD:feat/ai-nim-live-conformance
+          git push origin HEAD:feat/ai-nim-live-conformance
