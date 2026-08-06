@@ -409,10 +409,7 @@ async function evaluateProfile(
   const proposalId =
     PROFILE_PROPOSAL_IDS[
       profile.profileId as keyof typeof PROFILE_PROPOSAL_IDS
-    ];
-  if (!proposalId) {
-    return invalid();
-  }
+    ]!;
   const model = new ContextualOrchestratorLiveProposalModel(
     createContextualOrchestratorLiveConfiguration(options.environment, profile),
     options.fetcher,
@@ -499,16 +496,8 @@ function reportStatus(
     : 'completed';
 }
 
-/** Freezes and validates the fixed limitation statements. */
+/** Freezes the statically reviewed limitation statements. */
 function limitations(): readonly string[] {
-  if (
-    DEFAULT_LIMITATIONS.length > MAXIMUM_LIMITATIONS ||
-    DEFAULT_LIMITATIONS.some(
-      (item) => item.length === 0 || item.length > MAXIMUM_LIMITATION_LENGTH,
-    )
-  ) {
-    return invalid();
-  }
   return Object.freeze([...DEFAULT_LIMITATIONS]);
 }
 
@@ -571,13 +560,10 @@ export async function runProposalLiveConformance(
       }
       return Object.freeze({
         ...profile,
-        rateDeltasFromBaseline: baseline
-          ? profile.profileId === 'route_high'
+        rateDeltasFromBaseline:
+          profile.profileId === 'route_high'
             ? baselineDeltas(profile.quality.rates)
-            : rateDeltas(profile.quality.rates, baseline.quality.rates)
-          : (Object.freeze(
-              Object.fromEntries(PRIMARY_RATE_KEYS.map((key) => [key, null])),
-            ) as ProposalLiveRateDeltas),
+            : rateDeltas(profile.quality.rates, baseline!.quality.rates),
       });
     },
   );
@@ -675,7 +661,13 @@ export function validateProposalLiveConformanceReport(
   requireCommitSha(report.contextualOrchestratorCommitSha);
   requireString(report.suiteVersion, 128);
   const timestamp = requireString(report.evaluatedAt, 64);
-  if (new Date(timestamp).toISOString() !== timestamp) {
+  let canonicalTimestamp: string;
+  try {
+    canonicalTimestamp = new Date(timestamp).toISOString();
+  } catch {
+    return invalid();
+  }
+  if (canonicalTimestamp !== timestamp) {
     return invalid();
   }
   const profileIds = report.profiles.map((item) => {

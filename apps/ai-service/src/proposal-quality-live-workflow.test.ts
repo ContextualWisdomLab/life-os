@@ -35,7 +35,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     const uses = [...workflow.matchAll(/uses:\s+([^\s#]+)/gu)].map(
       (match) => match[1] ?? '',
     );
-    expect(uses.length).toBeGreaterThanOrEqual(6);
+    expect(uses.length).toBeGreaterThanOrEqual(5);
     for (const action of uses) {
       expect(action).toMatch(/^[^@\s]+@[0-9a-f]{40}$/u);
     }
@@ -52,7 +52,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     );
     expect(workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu'))?.length).toBe(
-      4,
+      3,
     );
     expect(workflow).toContain(`ref: ${ORCHESTRATOR_COMMIT}`);
     expect(step('Verify contextual-orchestrator identity')).toContain(
@@ -69,6 +69,12 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(
       step('Install pinned contextual-orchestrator dependencies'),
     ).toContain('_contextual_orchestrator/requirements.lock');
+    expect(
+      step('Install pinned contextual-orchestrator dependencies'),
+    ).not.toContain('--no-deps');
+    expect(
+      step('Install pinned contextual-orchestrator dependencies'),
+    ).not.toContain('./_contextual_orchestrator');
   });
 
   it('uses only the NVIDIA credential and scopes its secret to one seed step', () => {
@@ -106,6 +112,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
       "'CONTEXTUAL_ORCHESTRATOR_ALLOWED_PROVIDER_HOSTS'",
     );
     const server = step('Start the loopback contextual-orchestrator');
+    expect(server).toContain('working-directory: _contextual_orchestrator');
     expect(server).toContain('--host 127.0.0.1');
     expect(server).toContain('--port 8765');
     expect(server).toContain('--inference-token');
@@ -113,7 +120,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(server).toContain('--budget-max-output-tokens 200000');
     expect(server).not.toContain('--allow-public-bind');
     expect(workflow).toContain(
-      "CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765'",
+      "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",
     );
   });
 

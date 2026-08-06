@@ -2,7 +2,6 @@ import {
   CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA,
   CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SYSTEM_INSTRUCTION,
   parseContextualOrchestratorProposalCompletion,
-  ProposalModelTransportError,
   type ContextualOrchestratorFetch,
 } from './contextual-orchestrator-proposal-model';
 import type {
@@ -348,12 +347,15 @@ function parseTrace(
 
 /** Reads one bounded response with fatal UTF-8 decoding. */
 async function boundedResponseText(response: Response): Promise<string> {
-  if (!response.ok || response.body === null) {
+  if (!response.ok) {
     return fail(
       response.status === 429 || response.status >= 500
         ? 'provider_unavailable'
         : 'orchestrator_unavailable',
     );
+  }
+  if (response.body === null) {
+    return fail('evaluation_failed');
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -522,6 +524,12 @@ export class ContextualOrchestratorLiveProposalModel implements ProposalModel {
       if (!Number.isFinite(elapsed) || elapsed < 0) {
         return fail('evaluation_failed');
       }
+      let draft: ProposalModelDraft;
+      try {
+        draft = parseContextualOrchestratorProposalCompletion(text);
+      } catch {
+        return fail('evaluation_failed');
+      }
       this.recordedObservations.push(
         observation(
           this.configuration.profile,
@@ -533,14 +541,7 @@ export class ContextualOrchestratorLiveProposalModel implements ProposalModel {
           null,
         ),
       );
-      try {
-        return parseContextualOrchestratorProposalCompletion(text);
-      } catch (error) {
-        if (error instanceof ProposalModelTransportError) {
-          return fail('evaluation_failed');
-        }
-        throw error;
-      }
+      return draft;
     } catch (error) {
       const code =
         error instanceof LiveConformanceModelError

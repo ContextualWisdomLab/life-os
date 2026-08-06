@@ -98,8 +98,8 @@ function memoryFileSystem(): ProposalLiveCommandFileSystem {
 
 describe('live conformance production branch coverage', () => {
   it('uses the production monotonic clock when no test clock is supplied', async () => {
-    const fetcher = vi.fn<ContextualOrchestratorFetch>(
-      async () => proposalResponse(),
+    const fetcher = vi.fn<ContextualOrchestratorFetch>(async () =>
+      proposalResponse(),
     );
     const model = new ContextualOrchestratorLiveProposalModel(
       createContextualOrchestratorLiveConfiguration(
@@ -123,8 +123,8 @@ describe('live conformance production branch coverage', () => {
 
   it('passes a live credential state and injected transport through the command', async () => {
     const report = await noProviderReport();
-    const fetcher = vi.fn<ContextualOrchestratorFetch>(
-      async () => proposalResponse(),
+    const fetcher = vi.fn<ContextualOrchestratorFetch>(async () =>
+      proposalResponse(),
     );
     let observed: ProposalLiveConformanceOptions | undefined;
 

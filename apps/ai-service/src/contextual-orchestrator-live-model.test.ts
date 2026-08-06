@@ -439,6 +439,7 @@ describe('live conformance failure evidence', () => {
       expect(await code(fixture.model.generate(REQUEST))).toBe(
         'evaluation_failed',
       );
+      expect(fixture.model.observations()).toHaveLength(1);
       expect(fixture.model.observations().at(-1)?.failureCode).toBe(
         'evaluation_failed',
       );
