@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -93,60 +93,3 @@ jobs:
 
       - name: Validate Compose
         run: docker compose config --quiet
-
-  apply_review_fixes:
-    name: Apply reviewed non-workflow fixes once
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.repository == 'ContextualWisdomLab/life-os' &&
-      github.head_ref == 'feat/ai-nim-live-conformance'
-    needs: validate
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout exact pull-request head
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Apply deterministic reviewed corrections
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/python-cache
-        run: |
-          set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
-          python3 -m py_compile \
-            .github/scripts/apply-ai-live-review-fixes.py \
-            .github/scripts/augment-ai-live-review-fixes.py
-          python3 .github/scripts/apply-ai-live-review-fixes.py
-          python3 .github/scripts/augment-ai-live-review-fixes.py
-          sed -i \
-            's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
-            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
-          git checkout "$EXPECTED_HEAD_SHA" -- \
-            .github/workflows/ai-proposal-live-conformance.yml \
-            .github/workflows/apply-ai-live-review-fixes.yml \
-            .github/workflows/ci.yml
-          rm -f \
-            .github/scripts/apply-ai-live-review-fixes.py \
-            .github/scripts/augment-ai-live-review-fixes.py
-          rm -rf .github/scripts/__pycache__
-
-      - name: Commit only from the unchanged exact branch head
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -Eeuo pipefail
-          remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
-          test "$remote_head" = "$EXPECTED_HEAD_SHA"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          test -z "$(git diff --cached --name-only | grep '^\.github/workflows/' || true)"
-          git commit -m 'fix(ai): resolve live conformance review findings'
-          remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
-          test "$remote_head" = "$EXPECTED_HEAD_SHA"
-          git push origin HEAD:feat/ai-nim-live-conformance
