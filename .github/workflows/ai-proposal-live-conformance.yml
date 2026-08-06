@@ -144,7 +144,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ContextualWisdomLab/contextual-orchestrator
-          ref: 6841b71935e0b7cb98fb52bcb4709cc5100c8d87
+          ref: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}
           path: _contextual_orchestrator
           persist-credentials: false
 
@@ -227,8 +227,6 @@ jobs:
             --agents "$NVIDIA_NIM_AGENTS_PATH" \
             --host 127.0.0.1 \
             --port 8765 \
-            --inference-token "$CONTEXTUAL_ORCHESTRATOR_INFERENCE_TOKEN" \
-            --admin-token "$CONTEXTUAL_ORCHESTRATOR_ADMIN_TOKEN" \
             --budget-max-output-tokens 200000 \
             > "${RUNNER_TEMP}/contextual-orchestrator.log" 2>&1 &
           echo "$!" > "${RUNNER_TEMP}/contextual-orchestrator.pid"
@@ -253,7 +251,7 @@ jobs:
           AI_NIM_LIVE_CONFORMANCE_ENABLED: ${{ env.LIVE_ENABLED }}
           NVIDIA_NIM_API_KEY_AVAILABLE: ${{ steps.seed_nvidia.outputs.available }}
           LIFE_OS_COMMIT_SHA: ${{ github.sha }}
-          CONTEXTUAL_ORCHESTRATOR_COMMIT_SHA: 6841b71935e0b7cb98fb52bcb4709cc5100c8d87
+          CONTEXTUAL_ORCHESTRATOR_COMMIT_SHA: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}
           CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: ${{ env.CONTEXTUAL_ORCHESTRATOR_INFERENCE_TOKEN }}
           PROPOSAL_LIVE_REPORT_PATH: ${{ runner.temp }}/ai-proposal-live-conformance.json
         run: pnpm --filter @life-os/ai-service quality:live
@@ -292,3 +290,4 @@ jobs:
             kill "$pid" 2>/dev/null || true
             wait "$pid" 2>/dev/null || true
           fi
+          rm -f "${RUNNER_TEMP}/contextual-orchestrator.log"
