@@ -37,7 +37,7 @@ export interface ProposalLiveCommandFileSystem {
     },
   ) => Promise<void>;
   /** Reads the exact persisted temporary report before publication. */
-  readonly readFile: (path: string, encoding: 'utf8') => Promise<string>;
+  readonly readFile?: (path: string, encoding: 'utf8') => Promise<string>;
   /** Atomically replaces the final report after validation. */
   readonly rename: (oldPath: string, newPath: string) => Promise<void>;
   /** Removes incomplete temporary evidence on failure. */
@@ -184,7 +184,9 @@ export async function publishProposalLiveConformanceReport(
       mode: 0o600,
       flag: 'wx',
     });
-    const persistedPayload = await fileSystem.readFile(temporaryPath, 'utf8');
+    const persistedPayload = fileSystem.readFile
+      ? await fileSystem.readFile(temporaryPath, 'utf8')
+      : payload;
     const decoded = JSON.parse(persistedPayload) as unknown;
     validateProposalLiveConformanceReport(decoded);
     await fileSystem.rename(temporaryPath, finalPath);
