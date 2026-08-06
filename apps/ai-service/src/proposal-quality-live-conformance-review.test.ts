@@ -27,7 +27,7 @@ function completed(profileId: string): ProposalLiveProfile {
 }
 
 describe('live conformance review regressions', () => {
-  it('retains completed non-baseline evidence with null deltas when the baseline is unavailable', () => {
+  it('uses null deltas when the baseline is unavailable', () => {
     const profiles = applyProposalLiveRateDeltas([
       completed('route_low'),
       {
@@ -52,7 +52,7 @@ describe('live conformance review regressions', () => {
     }
   });
 
-  it('returns zero deltas for the baseline and comparable equal-rate cells', () => {
+  it('uses zero deltas for equal-rate comparable cells', () => {
     const profiles = applyProposalLiveRateDeltas([
       completed('route_high'),
       completed('route_low'),
@@ -72,34 +72,28 @@ describe('live conformance review regressions', () => {
     }
   });
 
-  it(
-    'preserves sanitized live-model failure codes from invalid profile configuration',
-    async () => {
-      const report = await runProposalLiveConformance({
-        lifeOsCommitSha: 'a'.repeat(40),
-        contextualOrchestratorCommitSha: 'b'.repeat(40),
-        modelInventory: ['meta/live-model'],
-        evaluatedAt: new Date('2026-08-06T09:00:00.000Z'),
-        providerCredentialAvailable: true,
-        environment: {
-          CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://not-loopback.example',
-          CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: Buffer.alloc(32, 0x5a).toString(
-            'base64url',
-          ),
-        },
-      });
+  it('preserves sanitized invalid-configuration failure codes', async () => {
+    const report = await runProposalLiveConformance({
+      lifeOsCommitSha: 'a'.repeat(40),
+      contextualOrchestratorCommitSha: 'b'.repeat(40),
+      modelInventory: ['meta/live-model'],
+      evaluatedAt: new Date('2026-08-06T09:00:00.000Z'),
+      providerCredentialAvailable: true,
+      environment: {
+        CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://not-loopback.example',
+        CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: Buffer.alloc(32, 0x5a).toString(
+          'base64url',
+        ),
+      },
+    });
+    const codes = report.profiles.slice(0, 3).map((profile) => {
+      return profile.status === 'unavailable' ? profile.unavailableCode : null;
+    });
 
-      expect(
-        report.profiles
-          .slice(0, 3)
-          .map((profile) =>
-            profile.status === 'unavailable' ? profile.unavailableCode : null,
-          ),
-      ).toEqual([
-        'orchestrator_unavailable',
-        'orchestrator_unavailable',
-        'orchestrator_unavailable',
-      ]);
-    },
-  );
+    expect(codes).toEqual([
+      'orchestrator_unavailable',
+      'orchestrator_unavailable',
+      'orchestrator_unavailable',
+    ]);
+  });
 });
