@@ -61,7 +61,7 @@ A strong single-model route is the mandatory baseline. Deeper orchestration is j
 - access lists and communication topology;
 - homogeneous versus heterogeneous model pools.
 
-Fugu, Conductor, TRINITY, and strong-single-agent evidence guide the design, but repository tests and retained measurements determine the deployed policy. Latency is recorded but is not the sole or primary decision criterion.
+Fugu release evidence (final product release and technical report; Fugu Team, 2026), Conductor (peer-reviewed ICLR 2026 conference paper; Nielsen et al., 2026), TRINITY (peer-reviewed ICLR 2026 conference paper; Xu et al., 2026), and strong-single-agent evidence (arXiv preprint and ICLR 2026 submission; Xu et al., 2026) guide the design, but repository tests and retained measurements determine the deployed policy. Latency is recorded but is not the sole or primary decision criterion. Complete APA 7 references and publication-status links are maintained in [`docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md`](docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md#references).
 
 ## Mathematical and psychometric modules
 
