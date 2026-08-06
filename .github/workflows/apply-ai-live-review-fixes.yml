@@ -1,0 +1,83 @@
+name: Apply AI Live Conformance Review Fixes
+
+on:
+  push:
+    branches:
+      - feat/ai-nim-live-conformance
+    paths:
+      - '.github/workflows/apply-ai-live-review-fixes.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/ai-nim-live-conformance
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install reproducible dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Apply reviewed corrections
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/apply-ai-live-review-fixes.py
+          sed -i \
+            's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
+            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
+
+      - name: Format the complete correction set
+        run: |
+          pnpm exec prettier --single-quote --write \
+            AGENTS.md \
+            .github/workflows/ai-proposal-live-conformance.yml \
+            apps/ai-service/src/contextual-orchestrator-live-model.ts \
+            apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
+            apps/ai-service/src/contextual-orchestrator-proposal-model.ts \
+            apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts \
+            apps/ai-service/src/proposal-quality-live-command.ts \
+            apps/ai-service/src/proposal-quality-live-command.test.ts \
+            apps/ai-service/src/proposal-quality-live-conformance.ts \
+            apps/ai-service/src/proposal-quality-live-conformance.test.ts \
+            apps/ai-service/src/proposal-quality-live-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
+            docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md \
+            docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md
+
+      - name: Verify full AI service evidence
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+          pnpm --filter @life-os/ai-service build
+
+      - name: Commit exact verified fixes
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            AGENTS.md \
+            .github/workflows/ai-proposal-live-conformance.yml \
+            apps/ai-service/src \
+            docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md \
+            docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md
+          git diff --cached --check
+          git commit -m 'fix(ai): resolve live conformance review findings'
+          git push origin HEAD:feat/ai-nim-live-conformance
