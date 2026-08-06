@@ -266,17 +266,24 @@ function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
 export function parseContextualOrchestratorProposalCompletion(
   text: string,
 ): ProposalModelDraft {
-  const envelope = requireRecord(JSON.parse(text));
-  if (!Array.isArray(envelope.choices) || envelope.choices.length === 0) {
+  try {
+    const envelope = requireRecord(JSON.parse(text));
+    if (!Array.isArray(envelope.choices) || envelope.choices.length === 0) {
+      return unavailable();
+    }
+    const choice = requireRecord(envelope.choices[0]);
+    const message = requireRecord(choice.message);
+    const content = message.content;
+    if (typeof content !== 'string' || content.trim() === '') {
+      return unavailable();
+    }
+    return requireRecord(JSON.parse(content)) as unknown as ProposalModelDraft;
+  } catch (error) {
+    if (error instanceof ProposalModelTransportError) {
+      throw error;
+    }
     return unavailable();
   }
-  const choice = requireRecord(envelope.choices[0]);
-  const message = requireRecord(choice.message);
-  const content = message.content;
-  if (typeof content !== 'string' || content.trim() === '') {
-    return unavailable();
-  }
-  return requireRecord(JSON.parse(content)) as unknown as ProposalModelDraft;
 }
 
 /**
