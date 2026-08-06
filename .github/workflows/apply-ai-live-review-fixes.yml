@@ -17,7 +17,7 @@ concurrency:
 jobs:
   apply:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout exact triggering head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,24 +26,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify exact triggering head
+      - name: Apply reviewed corrections and remove temporary machinery
         env:
           EXPECTED_HEAD_SHA: ${{ github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-
-      - name: Install reproducible dependencies
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile
-
-      - name: Apply reviewed corrections
         run: |
           set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
           python3 -m py_compile \
             .github/scripts/apply-ai-live-review-fixes.py \
             .github/scripts/augment-ai-live-review-fixes.py
@@ -52,40 +40,6 @@ jobs:
           sed -i \
             's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
             apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
-
-      - name: Format reviewed corrections
-        run: |
-          pnpm exec prettier --single-quote --write \
-            AGENTS.md \
-            .github/workflows/ai-proposal-live-conformance.yml \
-            apps/ai-service/src/contextual-orchestrator-live-model.ts \
-            apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
-            apps/ai-service/src/contextual-orchestrator-proposal-model.ts \
-            apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts \
-            apps/ai-service/src/proposal-quality-live-command.ts \
-            apps/ai-service/src/proposal-quality-live-command.test.ts \
-            apps/ai-service/src/proposal-quality-live-conformance.ts \
-            apps/ai-service/src/proposal-quality-live-conformance.test.ts \
-            apps/ai-service/src/proposal-quality-live-coverage.test.ts \
-            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts \
-            apps/ai-service/src/proposal-quality-live-null-baseline.test.ts \
-            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
-            docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md \
-            docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md
-
-      - name: Run focused review regressions
-        run: |
-          pnpm --filter @life-os/ai-service exec vitest run \
-            src/contextual-orchestrator-live-model.test.ts \
-            src/contextual-orchestrator-proposal-contract.test.ts \
-            src/proposal-quality-live-command.test.ts \
-            src/proposal-quality-live-conformance.test.ts \
-            src/proposal-quality-live-null-baseline.test.ts \
-            src/proposal-quality-live-workflow.test.ts \
-            --no-file-parallelism
-
-      - name: Remove temporary repair machinery
-        run: |
           rm -f \
             .github/scripts/apply-ai-live-review-fixes.py \
             .github/scripts/augment-ai-live-review-fixes.py \
@@ -99,13 +53,11 @@ jobs:
           set -Eeuo pipefail
           remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
           test "$remote_head" = "$EXPECTED_HEAD_SHA"
-
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
           git commit -m 'fix(ai): resolve live conformance review findings'
-
           remote_head="$(git ls-remote origin refs/heads/feat/ai-nim-live-conformance | cut -f1)"
           test "$remote_head" = "$EXPECTED_HEAD_SHA"
           git push \
