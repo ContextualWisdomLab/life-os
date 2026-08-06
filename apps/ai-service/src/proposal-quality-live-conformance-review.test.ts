@@ -72,31 +72,34 @@ describe('live conformance review regressions', () => {
     }
   });
 
-  it('preserves sanitized live-model failure codes from invalid profile configuration', async () => {
-    const report = await runProposalLiveConformance({
-      lifeOsCommitSha: 'a'.repeat(40),
-      contextualOrchestratorCommitSha: 'b'.repeat(40),
-      modelInventory: ['meta/live-model'],
-      evaluatedAt: new Date('2026-08-06T09:00:00.000Z'),
-      providerCredentialAvailable: true,
-      environment: {
-        CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://not-loopback.example',
-        CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: Buffer.alloc(32, 0x5a).toString(
-          'base64url',
-        ),
-      },
-    });
+  it(
+    'preserves sanitized live-model failure codes from invalid profile configuration',
+    async () => {
+      const report = await runProposalLiveConformance({
+        lifeOsCommitSha: 'a'.repeat(40),
+        contextualOrchestratorCommitSha: 'b'.repeat(40),
+        modelInventory: ['meta/live-model'],
+        evaluatedAt: new Date('2026-08-06T09:00:00.000Z'),
+        providerCredentialAvailable: true,
+        environment: {
+          CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://not-loopback.example',
+          CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: Buffer.alloc(32, 0x5a).toString(
+            'base64url',
+          ),
+        },
+      });
 
-    expect(
-      report.profiles
-        .slice(0, 3)
-        .map((profile) =>
-          profile.status === 'unavailable' ? profile.unavailableCode : null,
-        ),
-    ).toEqual([
-      'orchestrator_unavailable',
-      'orchestrator_unavailable',
-      'orchestrator_unavailable',
-    ]);
-  });
+      expect(
+        report.profiles
+          .slice(0, 3)
+          .map((profile) =>
+            profile.status === 'unavailable' ? profile.unavailableCode : null,
+          ),
+      ).toEqual([
+        'orchestrator_unavailable',
+        'orchestrator_unavailable',
+        'orchestrator_unavailable',
+      ]);
+    },
+  );
 });
