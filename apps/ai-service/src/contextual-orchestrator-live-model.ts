@@ -299,7 +299,7 @@ function parseTrace(
     null;
   let accessEdgeCount = 0;
   let maximumAccessFanIn = 0;
-  for (const item of value) {
+  for (const [stepIndex, item] of value.entries()) {
     const step = requireRecord(item);
     const role = step?.role;
     const agentId = step?.agent_id;
@@ -313,8 +313,12 @@ function parseTrace(
       agentId.length > 128 ||
       !Array.isArray(access) ||
       access.some(
-        (entry) => !Number.isSafeInteger(entry) || (entry as number) < 0,
-      )
+        (entry) =>
+          !Number.isSafeInteger(entry) ||
+          (entry as number) < 0 ||
+          (entry as number) >= stepIndex,
+      ) ||
+      new Set(access as number[]).size !== access.length
     ) {
       return fail('evaluation_failed');
     }
@@ -515,11 +519,18 @@ export class ContextualOrchestratorLiveProposalModel implements ProposalModel {
         return fail('evaluation_failed');
       }
       const orchestration = requireRecord(envelope.orchestration);
-      const trace = parseTrace(orchestration?.trace);
-      const observedMode =
+      const responseMode =
         orchestration?.mode === 'route' || orchestration?.mode === 'conduct'
           ? orchestration.mode
-          : this.configuration.profile.mode;
+          : undefined;
+      if (
+        responseMode !== undefined &&
+        responseMode !== this.configuration.profile.mode
+      ) {
+        return fail('evaluation_failed');
+      }
+      const trace = parseTrace(orchestration?.trace);
+      const observedMode = responseMode ?? this.configuration.profile.mode;
       const elapsed = this.monotonicClock() - startedAt;
       if (!Number.isFinite(elapsed) || elapsed < 0) {
         return fail('evaluation_failed');
