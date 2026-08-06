@@ -23,6 +23,11 @@ def repair_live_model() -> None:
 
     path = AI_SOURCE_ROOT / "contextual-orchestrator-live-model.ts"
     source = path.read_text(encoding="utf-8")
+    import_value = "  ProposalModelTransportError,\n"
+    if source.count(import_value) != 1:
+        raise SystemExit("proposal transport error import: expected one match")
+    source = source.replace(import_value, "", 1)
+
     old_response = (
         "async function boundedResponseText(response: Response): Promise<string> {\n"
         "  if (!response.ok || response.body === null) {\n"
@@ -65,11 +70,8 @@ def repair_live_model() -> None:
         "      let draft: ProposalModelDraft;\n"
         "      try {\n"
         "        draft = parseContextualOrchestratorProposalCompletion(text);\n"
-        "      } catch (error) {\n"
-        "        if (error instanceof ProposalModelTransportError) {\n"
-        "          return fail('evaluation_failed');\n"
-        "        }\n"
-        "        throw error;\n"
+        "      } catch {\n"
+        "        return fail('evaluation_failed');\n"
         "      }\n"
         "      this.recordedObservations.push(\n"
         "        observation(\n"
@@ -91,30 +93,95 @@ def repair_live_model() -> None:
 
 
 def repair_report_validation() -> None:
-    """Convert malformed timestamps into the stable conformance error."""
+    """Sanitize timestamps and remove impossible fixed-profile branches."""
 
-    replace_once(
-        AI_SOURCE_ROOT / "proposal-quality-live-conformance.ts",
-        (
-            "  const timestamp = requireString(report.evaluatedAt, 64);\n"
-            "  if (new Date(timestamp).toISOString() !== timestamp) {\n"
-            "    return invalid();\n"
-            "  }\n"
-        ),
-        (
-            "  const timestamp = requireString(report.evaluatedAt, 64);\n"
-            "  let canonicalTimestamp: string;\n"
-            "  try {\n"
-            "    canonicalTimestamp = new Date(timestamp).toISOString();\n"
-            "  } catch {\n"
-            "    return invalid();\n"
-            "  }\n"
-            "  if (canonicalTimestamp !== timestamp) {\n"
-            "    return invalid();\n"
-            "  }\n"
-        ),
-        "timestamp validation sanitization",
+    path = AI_SOURCE_ROOT / "proposal-quality-live-conformance.ts"
+    source = path.read_text(encoding="utf-8")
+
+    timestamp_old = (
+        "  const timestamp = requireString(report.evaluatedAt, 64);\n"
+        "  if (new Date(timestamp).toISOString() !== timestamp) {\n"
+        "    return invalid();\n"
+        "  }\n"
     )
+    timestamp_new = (
+        "  const timestamp = requireString(report.evaluatedAt, 64);\n"
+        "  let canonicalTimestamp: string;\n"
+        "  try {\n"
+        "    canonicalTimestamp = new Date(timestamp).toISOString();\n"
+        "  } catch {\n"
+        "    return invalid();\n"
+        "  }\n"
+        "  if (canonicalTimestamp !== timestamp) {\n"
+        "    return invalid();\n"
+        "  }\n"
+    )
+    if source.count(timestamp_old) != 1:
+        raise SystemExit("timestamp validation sanitization: expected one match")
+    source = source.replace(timestamp_old, timestamp_new, 1)
+
+    proposal_id_old = (
+        "  const proposalId =\n"
+        "    PROFILE_PROPOSAL_IDS[\n"
+        "      profile.profileId as keyof typeof PROFILE_PROPOSAL_IDS\n"
+        "    ];\n"
+        "  if (!proposalId) {\n"
+        "    return invalid();\n"
+        "  }\n"
+    )
+    proposal_id_new = (
+        "  const proposalId =\n"
+        "    PROFILE_PROPOSAL_IDS[\n"
+        "      profile.profileId as keyof typeof PROFILE_PROPOSAL_IDS\n"
+        "    ]!;\n"
+    )
+    if source.count(proposal_id_old) != 1:
+        raise SystemExit("fixed profile proposal identifier: expected one match")
+    source = source.replace(proposal_id_old, proposal_id_new, 1)
+
+    limitations_old = (
+        "/** Freezes and validates the fixed limitation statements. */\n"
+        "function limitations(): readonly string[] {\n"
+        "  if (\n"
+        "    DEFAULT_LIMITATIONS.length > MAXIMUM_LIMITATIONS ||\n"
+        "    DEFAULT_LIMITATIONS.some(\n"
+        "      (item) => item.length === 0 || item.length > MAXIMUM_LIMITATION_LENGTH,\n"
+        "    )\n"
+        "  ) {\n"
+        "    return invalid();\n"
+        "  }\n"
+        "  return Object.freeze([...DEFAULT_LIMITATIONS]);\n"
+        "}\n"
+    )
+    limitations_new = (
+        "/** Freezes the statically reviewed limitation statements. */\n"
+        "function limitations(): readonly string[] {\n"
+        "  return Object.freeze([...DEFAULT_LIMITATIONS]);\n"
+        "}\n"
+    )
+    if source.count(limitations_old) != 1:
+        raise SystemExit("fixed limitation statements: expected one match")
+    source = source.replace(limitations_old, limitations_new, 1)
+
+    deltas_old = (
+        "        rateDeltasFromBaseline: baseline\n"
+        "          ? profile.profileId === 'route_high'\n"
+        "            ? baselineDeltas(profile.quality.rates)\n"
+        "            : rateDeltas(profile.quality.rates, baseline.quality.rates)\n"
+        "          : (Object.freeze(\n"
+        "              Object.fromEntries(PRIMARY_RATE_KEYS.map((key) => [key, null])),\n"
+        "            ) as ProposalLiveRateDeltas),\n"
+    )
+    deltas_new = (
+        "        rateDeltasFromBaseline:\n"
+        "          profile.profileId === 'route_high'\n"
+        "            ? baselineDeltas(profile.quality.rates)\n"
+        "            : rateDeltas(profile.quality.rates, baseline!.quality.rates),\n"
+    )
+    if source.count(deltas_old) != 1:
+        raise SystemExit("completed profile baseline invariant: expected one match")
+    source = source.replace(deltas_old, deltas_new, 1)
+    path.write_text(source, encoding="utf-8")
 
 
 def repair_workflow_contract() -> None:
