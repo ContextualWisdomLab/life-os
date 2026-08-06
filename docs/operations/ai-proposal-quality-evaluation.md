@@ -28,7 +28,7 @@ The proportion of all cases that pass the production proposal validator. A trans
 
 ### Operation conformance rate
 
-The proportion of valid proposals whose operation kinds are allowed, whose required targets are present, and whose targeted operations all refer to supplied context evidence.
+Every valid proposal has already passed the production `ProposalService.validateOperations` boundary, which guarantees 1–20 operations. Within that validated range, the metric is the proportion of proposals whose operation kinds are allowed, whose required targets are present, and whose targeted operations all refer to supplied context evidence.
 
 ### Target grounding rate
 
