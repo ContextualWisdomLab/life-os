@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   ContextualOrchestratorLiveProposalModel,
   createContextualOrchestratorLiveConfiguration,
+  LiveConformanceModelError,
   type LiveConformanceFailureCode,
   type LiveConformanceObservation,
   type LiveConformanceProfile,
@@ -363,6 +364,39 @@ function baselineDeltas(rates: ProposalQualityRates): ProposalLiveRateDeltas {
   return Object.freeze(result);
 }
 
+/** Returns undefined deltas when the strong baseline produced no evidence. */
+function nullDeltas(): ProposalLiveRateDeltas {
+  return Object.freeze(
+    Object.fromEntries(PRIMARY_RATE_KEYS.map((key) => [key, null])),
+  ) as ProposalLiveRateDeltas;
+}
+
+/** Applies comparable deltas while preserving a missing baseline as null. */
+export function applyProposalLiveRateDeltas(
+  profiles: readonly ProposalLiveProfile[],
+): readonly ProposalLiveProfile[] {
+  const baseline = completedProfile(profiles, 'route_high');
+  return Object.freeze(
+    profiles.map((profile) => {
+      if (
+        profile.status !== 'completed' &&
+        profile.status !== 'completed_with_failures'
+      ) {
+        return profile;
+      }
+      return Object.freeze({
+        ...profile,
+        rateDeltasFromBaseline:
+          profile.profileId === 'route_high'
+            ? baselineDeltas(profile.quality.rates)
+            : baseline
+              ? rateDeltas(profile.quality.rates, baseline.quality.rates)
+              : nullDeltas(),
+      });
+    }),
+  );
+}
+
 /** Returns a fixed unsupported profile cell. */
 function unsupportedProfile(profileId: string): ProposalLiveUnavailableProfile {
   return Object.freeze({
@@ -541,32 +575,22 @@ export async function runProposalLiveConformance(
             rateDeltasFromBaseline: Object.freeze({}) as ProposalLiveRateDeltas,
           }),
         );
-      } catch {
+      } catch (error) {
         supportedProfiles.push(
-          unavailableProfile(profile.profileId, 'invalid_configuration'),
+          unavailableProfile(
+            profile.profileId,
+            error instanceof LiveConformanceModelError
+              ? error.code
+              : 'invalid_configuration',
+          ),
         );
       }
     }
   }
 
-  const baseline = completedProfile(supportedProfiles, 'route_high');
-  const profilesWithDeltas: ProposalLiveProfile[] = supportedProfiles.map(
-    (profile) => {
-      if (
-        profile.status !== 'completed' &&
-        profile.status !== 'completed_with_failures'
-      ) {
-        return profile;
-      }
-      return Object.freeze({
-        ...profile,
-        rateDeltasFromBaseline:
-          profile.profileId === 'route_high'
-            ? baselineDeltas(profile.quality.rates)
-            : rateDeltas(profile.quality.rates, baseline!.quality.rates),
-      });
-    },
-  );
+  const profilesWithDeltas: ProposalLiveProfile[] = [
+    ...applyProposalLiveRateDeltas(supportedProfiles),
+  ];
   profilesWithDeltas.push(...UNSUPPORTED_PROFILE_IDS.map(unsupportedProfile));
   const frozenProfiles = Object.freeze(profilesWithDeltas);
   const report = Object.freeze({
