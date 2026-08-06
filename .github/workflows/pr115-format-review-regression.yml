@@ -1,0 +1,69 @@
+name: Format PR 115 review regression
+
+on:
+  push:
+    branches:
+      - feat/ai-proposal-quality-evaluation
+    paths:
+      - .github/workflows/pr115-format-review-regression.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr115-format-review-regression
+  cancel-in-progress: false
+
+jobs:
+  format:
+    if: >-
+      github.repository == 'ContextualWisdomLab/life-os' &&
+      github.actor == 'seonghobae' &&
+      github.ref == 'refs/heads/feat/ai-proposal-quality-evaluation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Install reproducible dependencies
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Format only the reviewed regression and remove this one-shot workflow
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/proposal-quality-review-regression.test.ts
+          git rm .github/workflows/pr115-format-review-regression.yml
+          changed="$(git diff --name-only)"
+          expected="$(printf '%s\n%s\n' \
+            '.github/workflows/pr115-format-review-regression.yml' \
+            'apps/ai-service/src/proposal-quality-review-regression.test.ts')"
+          test "$changed" = "$expected"
+          pnpm exec prettier --single-quote --check \
+            apps/ai-service/src/proposal-quality-review-regression.test.ts
+
+      - name: Publish deterministic formatter output
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ai-service/src/proposal-quality-review-regression.test.ts
+          git commit -m 'style(ai): apply repository Prettier output'
+          basic="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${basic}" \
+            push origin HEAD:refs/heads/feat/ai-proposal-quality-evaluation
