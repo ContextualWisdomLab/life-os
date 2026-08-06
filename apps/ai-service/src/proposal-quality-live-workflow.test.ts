@@ -62,9 +62,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(workflow).toContain(
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     );
-    const commitMatches = workflow.match(
-      new RegExp(ORCHESTRATOR_COMMIT, 'gu'),
-    );
+    const commitMatches = workflow.match(new RegExp(ORCHESTRATOR_COMMIT, 'gu'));
     expect(commitMatches).toHaveLength(1);
     expect(workflow).toContain(
       'ref: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}',
@@ -137,9 +135,7 @@ describe('NVIDIA NIM live conformance workflow contract', () => {
     expect(server).not.toContain('--admin-token');
     expect(server).toContain('--budget-max-output-tokens 200000');
     expect(server).not.toContain('--allow-public-bind');
-    expect(workflow).toContain(
-      "'CONTEXTUAL_ORCHESTRATOR_INFERENCE_TOKEN'",
-    );
+    expect(workflow).toContain("'CONTEXTUAL_ORCHESTRATOR_INFERENCE_TOKEN'");
     expect(workflow).toContain("'CONTEXTUAL_ORCHESTRATOR_ADMIN_TOKEN'");
     expect(workflow).toContain(
       "'CONTEXTUAL_ORCHESTRATOR_LIVE_URL': 'http://127.0.0.1:8765'",

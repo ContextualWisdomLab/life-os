@@ -61,12 +61,7 @@ describe('live conformance review regressions', () => {
     for (const profile of profiles) {
       if (profile.status === 'completed') {
         expect(Object.values(profile.rateDeltasFromBaseline)).toEqual([
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
+          0, 0, 0, 0, 0, 0,
         ]);
       }
     }

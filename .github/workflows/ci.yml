@@ -55,26 +55,6 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prepare formatted diagnostic copies
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          destination="${RUNNER_TEMP}/formatted/apps/ai-service/src"
-          mkdir -p "$destination"
-          cp apps/ai-service/src/proposal-quality-live-conformance-review.test.ts "$destination/"
-          cp apps/ai-service/src/proposal-quality-live-workflow.test.ts "$destination/"
-          pnpm exec prettier --single-quote --write \
-            "$destination/proposal-quality-live-conformance-review.test.ts" \
-            "$destination/proposal-quality-live-workflow.test.ts"
-
-      - name: Upload formatted diagnostic copies
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
-        with:
-          name: formatted-live-conformance-tests
-          path: ${{ runner.temp }}/formatted
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Check formatting
         run: pnpm format:check
 
