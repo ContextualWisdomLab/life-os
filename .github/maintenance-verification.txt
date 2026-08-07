@@ -17,494 +17,447 @@ TAP version 13
     # Subtest: normalizes failed workflow, status, blocker, and review evidence
     ok 1 - normalizes failed workflow, status, blocker, and review evidence
       ---
-      duration_ms: 2.270515
+      duration_ms: 3.419267
       type: 'test'
       ...
     # Subtest: falls back to capability evidence paths when missing evidence is empty
     ok 2 - falls back to capability evidence paths when missing evidence is empty
       ---
-      duration_ms: 1.308795
+      duration_ms: 0.18795
       type: 'test'
       ...
     # Subtest: rejects mismatched, truncated, or malformed repository evidence
     ok 3 - rejects mismatched, truncated, or malformed repository evidence
       ---
-      duration_ms: 0.749241
+      duration_ms: 0.765915
       type: 'test'
       ...
     1..3
 ok 1 - maintenance evidence normalization
   ---
-  duration_ms: 5.653677
+  duration_ms: 5.739772
   type: 'suite'
   ...
 # Subtest: bounded maintenance file operations
     # Subtest: reads one bounded JSON file
     ok 1 - reads one bounded JSON file
       ---
-      duration_ms: 0.576195
+      duration_ms: 0.586891
       type: 'test'
       ...
     # Subtest: rejects invalid paths, missing files, malformed JSON, and oversized input
     ok 2 - rejects invalid paths, missing files, malformed JSON, and oversized input
       ---
-      duration_ms: 1.227942
+      duration_ms: 1.195873
       type: 'test'
       ...
     # Subtest: writes, reads back, and atomically renames restrictive output
     ok 3 - writes, reads back, and atomically renames restrictive output
       ---
-      duration_ms: 0.538755
+      duration_ms: 0.53788
       type: 'test'
       ...
     # Subtest: rejects invalid output and cleans failed temporary evidence
     ok 4 - rejects invalid output and cleans failed temporary evidence
       ---
-      duration_ms: 0.826767
+      duration_ms: 0.864778
       type: 'test'
       ...
     1..4
 ok 2 - bounded maintenance file operations
   ---
-  duration_ms: 3.478089
+  duration_ms: 3.512029
   type: 'suite'
   ...
 # Subtest: maintenance CLI commands
     # Subtest: compiles one contract from bounded evidence files
     ok 1 - compiles one contract from bounded evidence files
       ---
-      duration_ms: 3.408159
+      duration_ms: 3.389352
       type: 'test'
       ...
     # Subtest: validates and publishes JSON and Markdown plan evidence
     ok 2 - validates and publishes JSON and Markdown plan evidence
       ---
-      duration_ms: 2.879593
+      duration_ms: 2.874074
       type: 'test'
       ...
     # Subtest: rejects malformed command shapes and unknown commands
     ok 3 - rejects malformed command shapes and unknown commands
       ---
-      duration_ms: 0.383292
+      duration_ms: 0.396798
       type: 'test'
       ...
     # Subtest: maps known and unknown failures to stable public codes
     ok 4 - maps known and unknown failures to stable public codes
       ---
-      duration_ms: 0.190539
+      duration_ms: 0.200182
       type: 'test'
       ...
     # Subtest: emits only a stable code from the process entry point
     ok 5 - emits only a stable code from the process entry point
       ---
-      duration_ms: 0.297911
+      duration_ms: 0.361392
       type: 'test'
       ...
     1..5
 ok 3 - maintenance CLI commands
   ---
-  duration_ms: 7.428349
+  duration_ms: 8.249638
   type: 'suite'
   ...
 # Subtest: maintenance contract compilation
     # Subtest: selects bounded conducted planning for a security-sensitive PR
     ok 1 - selects bounded conducted planning for a security-sensitive PR
       ---
-      duration_ms: 6.500291
+      duration_ms: 6.138694
       type: 'test'
       ...
     # Subtest: uses standard direct planning for one ordinary failed check
     ok 2 - uses standard direct planning for one ordinary failed check
       ---
-      duration_ms: 2.619723
+      duration_ms: 2.330934
       type: 'test'
       ...
     # Subtest: uses higher direct planning for coupled ordinary evidence
     ok 3 - uses higher direct planning for coupled ordinary evidence
       ---
-      duration_ms: 0.60536
+      duration_ms: 0.603302
       type: 'test'
       ...
     # Subtest: waits without invoking a model when an open PR has no actionable evidence
     ok 4 - waits without invoking a model when an open PR has no actionable evidence
       ---
-      duration_ms: 0.537462
+      duration_ms: 0.433566
       type: 'test'
       ...
     # Subtest: selects the highest-value gap with deterministic tie breaking
     ok 5 - selects the highest-value gap with deterministic tie breaking
       ---
-      duration_ms: 0.810286
+      duration_ms: 0.779229
       type: 'test'
       ...
     # Subtest: selects conducted planning for a maximum-risk buyer gap
     ok 6 - selects conducted planning for a maximum-risk buyer gap
       ---
-      duration_ms: 0.394854
+      duration_ms: 0.469683
       type: 'test'
       ...
     # Subtest: selects higher direct planning for a high-effort non-maximum-risk gap
     ok 7 - selects higher direct planning for a high-effort non-maximum-risk gap
       ---
-      duration_ms: 0.421183
+      duration_ms: 0.414551
       type: 'test'
       ...
     # Subtest: returns a no-work contract when no PR or buyer gap remains
     ok 8 - returns a no-work contract when no PR or buyer gap remains
       ---
-      duration_ms: 0.474513
+      duration_ms: 0.520959
       type: 'test'
       ...
     # Subtest: prioritizes actionable PRs and then the lowest external number
     ok 9 - prioritizes actionable PRs and then the lowest external number
       ---
-      duration_ms: 0.574001
+      duration_ms: 0.569058
       type: 'test'
       ...
     1..9
 ok 4 - maintenance contract compilation
   ---
-  duration_ms: 15.076551
+  duration_ms: 14.43568
   type: 'suite'
   ...
 # Subtest: maintenance contract canonicalization and validation
     # Subtest: serializes sorted object keys while retaining array order
     ok 1 - serializes sorted object keys while retaining array order
       ---
-      duration_ms: 0.364046
+      duration_ms: 0.349921
       type: 'test'
       ...
     # Subtest: produces a deterministic digest independent of an existing digest field
     ok 2 - produces a deterministic digest independent of an existing digest field
       ---
-      duration_ms: 0.271892
+      duration_ms: 0.299076
       type: 'test'
       ...
     # Subtest: accepts an exact compiled contract by identity
     ok 3 - accepts an exact compiled contract by identity
       ---
-      duration_ms: 0.575294
+      duration_ms: 0.559019
       type: 'test'
       ...
     # Subtest: rejects tampering, unknown fields, and inconsistent target/action combinations
     ok 4 - rejects tampering, unknown fields, and inconsistent target/action combinations
       ---
-      duration_ms: 2.136152
+      duration_ms: 1.909661
       type: 'test'
       ...
     # Subtest: accepts a capability target and rejects malformed capability contracts
     ok 5 - accepts a capability target and rejects malformed capability contracts
       ---
-      duration_ms: 1.452135
+      duration_ms: 1.386027
       type: 'test'
       ...
     # Subtest: rejects malformed compile input without echoing attacker prose
     ok 6 - rejects malformed compile input without echoing attacker prose
       ---
-      duration_ms: 0.960298
+      duration_ms: 0.947682
       type: 'test'
       ...
     1..6
 ok 5 - maintenance contract canonicalization and validation
   ---
-  duration_ms: 6.233738
+  duration_ms: 5.840439
   type: 'suite'
   ...
 # Subtest: maintenance uncovered branch evidence
     # Subtest: normalizes absent PR arrays and ignores malformed blocker entries
     ok 1 - normalizes absent PR arrays and ignores malformed blocker entries
       ---
-      duration_ms: 2.974321
+      duration_ms: 2.847544
       type: 'test'
       ...
     # Subtest: normalizes absent gap evidence collections to an explicit empty boundary
     ok 2 - normalizes absent gap evidence collections to an explicit empty boundary
       ---
-      duration_ms: 0.452041
+      duration_ms: 0.464975
       type: 'test'
       ...
     # Subtest: deterministically orders non-actionable PRs and equal-value buyer gaps
     ok 3 - deterministically orders non-actionable PRs and equal-value buyer gaps
       ---
-      duration_ms: 19.471066
+      duration_ms: 16.906343
       type: 'test'
       ...
     # Subtest: treats high-risk review categories as conducted work without path heuristics
     ok 4 - treats high-risk review categories as conducted work without path heuristics
       ---
-      duration_ms: 0.943076
+      duration_ms: 0.779419
       type: 'test'
       ...
     # Subtest: rejects excessive changed-path evidence after digest verification
     ok 5 - rejects excessive changed-path evidence after digest verification
       ---
-      duration_ms: 1.74694
+      duration_ms: 1.552667
       type: 'test'
       ...
     # Subtest: covers plan record, path normalization, generic contract, and render guards
-    not ok 6 - covers plan record, path normalization, generic contract, and render guards
+    ok 6 - covers plan record, path normalization, generic contract, and render guards
       ---
-      duration_ms: 3.507966
+      duration_ms: 4.938432
       type: 'test'
-      location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/coverage.test.mjs:280:3'
-      failureType: 'testCodeFailure'
-      error: 'Maintenance plan output is invalid'
-      code: 'ERR_TEST_FAILURE'
-      name: 'MaintenancePlanError'
-      stack: |-
-        invalid (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:55:9)
-        planStep (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:144:5)
-        file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:223:7
-        Array.map (<anonymous>)
-        validateMaintenancePlan (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:222:16)
-        TestContext.<anonymous> (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/coverage.test.mjs:295:23)
-        Test.runInAsyncScope (node:async_hooks:214:14)
-        Test.run (node:internal/test_runner/test:1047:25)
-        Suite.processPendingSubtests (node:internal/test_runner/test:744:18)
-        Test.postRun (node:internal/test_runner/test:1173:19)
       ...
     # Subtest: completes the process entry point without changing exit state
     ok 7 - completes the process entry point without changing exit state
       ---
-      duration_ms: 25.604246
+      duration_ms: 25.915845
       type: 'test'
       ...
     1..7
-not ok 6 - maintenance uncovered branch evidence
+ok 6 - maintenance uncovered branch evidence
   ---
-  duration_ms: 57.079357
+  duration_ms: 57.070322
   type: 'suite'
-  location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/coverage.test.mjs:123:1'
-  failureType: 'subtestsFailed'
-  error: '1 subtest failed'
-  code: 'ERR_TEST_FAILURE'
   ...
 # Subtest: realistic OpenCode maintenance dry-run fixture
     # Subtest: prioritizes a failing PR and actionable security review before product work
-    not ok 1 - prioritizes a failing PR and actionable security review before product work
+    ok 1 - prioritizes a failing PR and actionable security review before product work
       ---
-      duration_ms: 6.939849
+      duration_ms: 5.804732
       type: 'test'
-      location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/fixture.test.mjs:21:3'
-      failureType: 'testCodeFailure'
-      error: |-
-        Expected values to be strictly equal:
-        
-        false !== true
-        
-      code: 'ERR_ASSERTION'
-      name: 'AssertionError'
-      expected: true
-      actual: false
-      operator: 'strictEqual'
-      stack: |-
-        TestContext.<anonymous> (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/fixture.test.mjs:34:12)
-        Test.runInAsyncScope (node:async_hooks:214:14)
-        Test.run (node:internal/test_runner/test:1047:25)
-        Test.start (node:internal/test_runner/test:944:17)
-        node:internal/test_runner/test:1440:71
-        node:internal/per_context/primordials:466:82
-        new Promise (<anonymous>)
-        new SafePromise (node:internal/per_context/primordials:435:3)
-        node:internal/per_context/primordials:466:9
-        Array.map (<anonymous>)
       ...
     # Subtest: recommends the highest-value bounded buyer gap after the PR queue drains
     ok 2 - recommends the highest-value bounded buyer gap after the PR queue drains
       ---
-      duration_ms: 0.781101
+      duration_ms: 0.666499
       type: 'test'
       ...
     1..2
-not ok 7 - realistic OpenCode maintenance dry-run fixture
+ok 7 - realistic OpenCode maintenance dry-run fixture
   ---
-  duration_ms: 9.399881
+  duration_ms: 8.229611
   type: 'suite'
-  location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/fixture.test.mjs:20:1'
-  failureType: 'subtestsFailed'
-  error: '1 subtest failed'
-  code: 'ERR_TEST_FAILURE'
   ...
 # Subtest: OpenCode maintenance planner contract
     # Subtest: is one bounded primary planning agent
     ok 1 - is one bounded primary planning agent
       ---
-      duration_ms: 1.825417
+      duration_ms: 1.396697
       type: 'test'
       ...
     # Subtest: allows repository inspection and exactly one ephemeral edit path
     ok 2 - allows repository inspection and exactly one ephemeral edit path
       ---
-      duration_ms: 0.803923
+      duration_ms: 0.55392
       type: 'test'
       ...
     # Subtest: denies execution, delegation, external, web, and interactive capabilities
     ok 3 - denies execution, delegation, external, web, and interactive capabilities
       ---
-      duration_ms: 0.495724
+      duration_ms: 0.323181
       type: 'test'
       ...
     # Subtest: uses the reviewed contract as sole authority and prohibits GitHub mutation
     ok 4 - uses the reviewed contract as sole authority and prohibits GitHub mutation
       ---
-      duration_ms: 0.287502
+      duration_ms: 0.162532
       type: 'test'
       ...
     # Subtest: contains no prohibited Copilot or review-secret references
     ok 5 - contains no prohibited Copilot or review-secret references
       ---
-      duration_ms: 0.214904
+      duration_ms: 0.148667
       type: 'test'
       ...
     1..5
 ok 8 - OpenCode maintenance planner contract
   ---
-  duration_ms: 5.52822
+  duration_ms: 3.950586
   type: 'suite'
   ...
 # Subtest: maintenance plan validation
     # Subtest: accepts and deeply freezes one exact plan-only recommendation
     ok 1 - accepts and deeply freezes one exact plan-only recommendation
       ---
-      duration_ms: 6.019127
+      duration_ms: 5.31925
       type: 'test'
       ...
     # Subtest: accepts a no-action plan only for a no-compute contract
     ok 2 - accepts a no-action plan only for a no-compute contract
       ---
-      duration_ms: 2.247953
+      duration_ms: 2.13493
       type: 'test'
       ...
     # Subtest: accepts stable decision and provider failure reason codes
     ok 3 - accepts stable decision and provider failure reason codes
       ---
-      duration_ms: 0.797041
+      duration_ms: 0.774099
       type: 'test'
       ...
     # Subtest: rejects mismatched identity, action, compute, and decision evidence
     ok 4 - rejects mismatched identity, action, compute, and decision evidence
       ---
-      duration_ms: 1.707134
+      duration_ms: 1.719227
       type: 'test'
       ...
     # Subtest: rejects unsafe, excessive, duplicate, or unauthorized plan content
     ok 5 - rejects unsafe, excessive, duplicate, or unauthorized plan content
       ---
-      duration_ms: 2.883961
+      duration_ms: 3.057365
       type: 'test'
       ...
     # Subtest: rejects malformed contracts through the stable plan boundary
     ok 6 - rejects malformed contracts through the stable plan boundary
       ---
-      duration_ms: 0.495594
+      duration_ms: 0.449455
       type: 'test'
       ...
     1..6
 ok 9 - maintenance plan validation
   ---
-  duration_ms: 15.719854
+  duration_ms: 14.948313
   type: 'suite'
   ...
 # Subtest: maintenance plan Markdown rendering
     # Subtest: renders one bounded operator-readable plan
     ok 1 - renders one bounded operator-readable plan
       ---
-      duration_ms: 0.860741
+      duration_ms: 0.853587
       type: 'test'
       ...
     # Subtest: renders explicit empty sections for a no-action plan
     ok 2 - renders explicit empty sections for a no-action plan
       ---
-      duration_ms: 0.537993
+      duration_ms: 0.513856
       type: 'test'
       ...
     # Subtest: fails closed when an unvalidated render object contains unsafe fields
     ok 3 - fails closed when an unvalidated render object contains unsafe fields
       ---
-      duration_ms: 0.31341
+      duration_ms: 0.316838
       type: 'test'
       ...
     1..3
 ok 10 - maintenance plan Markdown rendering
   ---
-  duration_ms: 1.882134
+  duration_ms: 1.851914
   type: 'suite'
   ...
 # Subtest: NVIDIA OpenCode maintenance workflow contract
     # Subtest: runs hourly and manually from reviewed default-branch source
     ok 1 - runs hourly and manually from reviewed default-branch source
       ---
-      duration_ms: 1.764763
+      duration_ms: 1.73712
       type: 'test'
       ...
     # Subtest: pins every external action and the OpenCode GitHub action
     ok 2 - pins every external action and the OpenCode GitHub action
       ---
-      duration_ms: 0.555616
+      duration_ms: 0.571813
       type: 'test'
       ...
     # Subtest: uses NVIDIA NIM and contains no Copilot credential path
     ok 3 - uses NVIDIA NIM and contains no Copilot credential path
       ---
-      duration_ms: 0.34025
+      duration_ms: 0.295569
       type: 'test'
       ...
     # Subtest: keeps model execution read-only and delegates no merge or release authority
     ok 4 - keeps model execution read-only and delegates no merge or release authority
       ---
-      duration_ms: 0.434909
+      duration_ms: 0.456088
       type: 'test'
       ...
     # Subtest: compiles reviewed evidence before exposing the model credential
     ok 5 - compiles reviewed evidence before exposing the model credential
       ---
-      duration_ms: 0.269627
+      duration_ms: 0.219528
       type: 'test'
       ...
     # Subtest: fails closed for high-risk conducted work until the reviewed orchestrator path is available
     ok 6 - fails closed for high-risk conducted work until the reviewed orchestrator path is available
       ---
-      duration_ms: 0.241725
+      duration_ms: 0.229527
       type: 'test'
       ...
     # Subtest: retains only validated contract and plan artifacts
     ok 7 - retains only validated contract and plan artifacts
       ---
-      duration_ms: 0.278634
+      duration_ms: 1.748821
       type: 'test'
       ...
     # Subtest: does not alter the independent AppGuardrail review boundary
     ok 8 - does not alter the independent AppGuardrail review boundary
       ---
-      duration_ms: 1.87987
+      duration_ms: 2.066032
       type: 'test'
       ...
     1..8
 ok 11 - NVIDIA OpenCode maintenance workflow contract
   ---
-  duration_ms: 9.45756
+  duration_ms: 9.306393
   type: 'suite'
   ...
 1..11
 # tests 58
 # suites 11
-# pass 56
-# fail 2
+# pass 58
+# fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 317.504389
-# Error: 98.81% branch coverage does not meet threshold of 100%.
+# duration_ms 310.082605
+# Error: 99.42% branch coverage does not meet threshold of 100%.
 # start of coverage report
 # --------------------------------------------------------------
 # file          | line % | branch % | funcs % | uncovered lines
 # --------------------------------------------------------------
 # src           |        |          |         | 
 #  cli.mjs      | 100.00 |    99.05 |  100.00 | 
-#  contract.mjs | 100.00 |    99.28 |  100.00 | 
-#  plan.mjs     | 100.00 |    97.87 |  100.00 | 
+#  contract.mjs | 100.00 |    99.29 |  100.00 | 
+#  plan.mjs     | 100.00 |   100.00 |  100.00 | 
 # --------------------------------------------------------------
-# all files     | 100.00 |    98.81 |  100.00 | 
+# all files     | 100.00 |    99.42 |  100.00 | 
 # --------------------------------------------------------------
 # end of coverage report
 /home/runner/work/life-os/life-os/packages/maintenance-agent:
