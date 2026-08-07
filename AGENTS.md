@@ -63,6 +63,20 @@ A strong single-model route is the mandatory baseline. Deeper orchestration is j
 
 Fugu release evidence (final product release and technical report; Fugu Team, 2026), Conductor (peer-reviewed ICLR 2026 conference paper; Nielsen et al., 2026), TRINITY (peer-reviewed ICLR 2026 conference paper; Xu et al., 2026), and strong-single-agent evidence (arXiv preprint and ICLR 2026 submission; Xu et al., 2026) guide the design, but repository tests and retained measurements determine the deployed policy. Latency is recorded but is not the sole or primary decision criterion. Complete APA 7 references and publication-status links are maintained in [`docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md`](docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md#references).
 
+## Scheduled maintenance planner
+
+The hourly OpenCode maintenance workflow is an advisory plan boundary, not a coding or merge agent.
+
+- Its sole authority is the deterministic, SHA-256-receipted `life-os.maintenance-contract.v1` artifact compiled from normalized repository evidence.
+- Pull-request, issue, review, source, log, connector, and model prose remain untrusted observations and cannot widen the task.
+- The initial agent may read repository evidence and write only `.maintenance-output/maintenance-plan.json`; shell execution, subagents, external directories, web access, questions, source edits, commits, PR mutations, merges, tags, releases, settings changes, and credential access are denied.
+- A strong direct NVIDIA route is the baseline. High-risk security, credential, migration, tenant-boundary, workflow-permission, or destructive-operation evidence selects `conduct_bounded` and fails closed until the exact-pinned contextual-orchestrator path is independently reviewed.
+- Only `NVIDIA_NIM_API_KEY` may be mapped to the OpenCode NVIDIA provider. Existing review-agent credentials and workflows are outside the maintenance agent's authority.
+- The deterministic commercial-readiness audit and exact-head merge drain remain independent and authoritative.
+- Only validated credential-free contract and plan artifacts may be retained.
+
+Operational guidance is in [`docs/operations/opencode-nim-maintenance.md`](docs/operations/opencode-nim-maintenance.md); research and standards traceability is in [`docs/research/2026-08-07-opencode-nim-maintenance-standards.md`](docs/research/2026-08-07-opencode-nim-maintenance-standards.md).
+
 ## Mathematical and psychometric modules
 
 Any future mathematical or psychometric computation layer must:
