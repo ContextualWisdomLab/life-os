@@ -1,0 +1,48 @@
+services:
+  privacy-service:
+    build:
+      context: .
+      dockerfile: apps/privacy-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      PRIVACY_SERVICE_PORT: 4108
+      PRIVACY_DATABASE_URL: ${PRIVACY_DATABASE_URL:-postgresql://lifeos:lifeos@postgres:5432/lifeos}
+      PRIVACY_DATABASE_POOL_MAX: ${PRIVACY_DATABASE_POOL_MAX:-10}
+      PRIVACY_DATABASE_CONNECT_TIMEOUT_MS: ${PRIVACY_DATABASE_CONNECT_TIMEOUT_MS:-5000}
+      PRIVACY_DATABASE_IDLE_TIMEOUT_MS: ${PRIVACY_DATABASE_IDLE_TIMEOUT_MS:-30000}
+      PRIVACY_GRANT_ACTIVE_KEY_ID: ${PRIVACY_GRANT_ACTIVE_KEY_ID:?PRIVACY_GRANT_ACTIVE_KEY_ID is required}
+      PRIVACY_GRANT_ACTIVE_KEY_SECRET: ${PRIVACY_GRANT_ACTIVE_KEY_SECRET:?PRIVACY_GRANT_ACTIVE_KEY_SECRET is required}
+      PRIVACY_GRANT_PREVIOUS_KEY_ID: ${PRIVACY_GRANT_PREVIOUS_KEY_ID:-}
+      PRIVACY_GRANT_PREVIOUS_KEY_SECRET: ${PRIVACY_GRANT_PREVIOUS_KEY_SECRET:-}
+      PRIVACY_CONTEXT_ACTIVE_KEY_ID: ${PRIVACY_CONTEXT_ACTIVE_KEY_ID:?PRIVACY_CONTEXT_ACTIVE_KEY_ID is required}
+      PRIVACY_CONTEXT_ACTIVE_KEY_SECRET: ${PRIVACY_CONTEXT_ACTIVE_KEY_SECRET:?PRIVACY_CONTEXT_ACTIVE_KEY_SECRET is required}
+      PRIVACY_CONTEXT_PREVIOUS_KEY_ID: ${PRIVACY_CONTEXT_PREVIOUS_KEY_ID:-}
+      PRIVACY_CONTEXT_PREVIOUS_KEY_SECRET: ${PRIVACY_CONTEXT_PREVIOUS_KEY_SECRET:-}
+      PRIVACY_AUDIT_DIGEST_KEY: ${PRIVACY_AUDIT_DIGEST_KEY:?PRIVACY_AUDIT_DIGEST_KEY is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${PRIVACY_SERVICE_PORT:-4108}:4108"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1770,uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 20s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4108/v1/privacy/health')
+          .then((response) => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1))
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
