@@ -1,5 +1,10 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Pool, type PoolConfig, type PoolClient } from 'pg';
+import {
+  Pool,
+  type PoolConfig,
+  type PoolClient,
+  type QueryResultRow,
+} from 'pg';
 import { PrivacyAccessApplication } from './privacy-access-application';
 import {
   PostgresPrivacyAccessRepository,
@@ -52,7 +57,7 @@ export class NodePrivacyTransactionClient
     text: string,
     values?: readonly unknown[],
   ): Promise<PrivacySqlQueryResult<Row>> {
-    const result = await this.client.query<Row>(
+    const result = await this.client.query<Row & QueryResultRow>(
       text,
       values === undefined ? undefined : [...values],
     );
