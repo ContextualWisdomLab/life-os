@@ -1,0 +1,29 @@
+{
+  "name": "@life-os/privacy-service",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch --entryFile server",
+    "lint": "tsc --noEmit && prettier --single-quote --check package.json tsconfig.json vitest.config.ts \"src/**/*.ts\" migrations/*.sql ../../docs/operations/purpose-bound-pii-access.md ../../docs/research/2026-08-07-purpose-bound-pii-access-standards.md ../../docs/superpowers/specs/2026-08-07-purpose-bound-pii-access-design.md ../../docs/superpowers/plans/2026-08-07-purpose-bound-pii-access.md",
+    "test": "vitest run --no-file-parallelism --coverage",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "pg": "^8.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.10",
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.20.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
