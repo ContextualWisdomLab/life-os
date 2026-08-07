@@ -1,5 +1,5 @@
 name: Finalize Purpose-Bound Privacy Service
-# Temporary verification workflow; it self-removes after the complete privacy slice passes.
+# Temporary verification workflow; it self-removes after the final typed privacy slice passes.
 
 on:
   push:
