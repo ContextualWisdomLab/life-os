@@ -33,11 +33,15 @@ describe('privacy-service deployment contract', () => {
     ]) {
       expect(compose).toContain(`${name}: \${${name}:?`);
     }
-    expect(compose.match(/PRIVACY_GRANT_ACTIVE_KEY_SECRET/gu)).toHaveLength(2);
-    expect(compose.match(/PRIVACY_CONTEXT_ACTIVE_KEY_SECRET/gu)).toHaveLength(
-      2,
+    expect(compose).not.toContain(
+      'PRIVACY_CONTEXT_ACTIVE_KEY_SECRET: ${PRIVACY_GRANT_ACTIVE_KEY_SECRET:',
     );
-    expect(compose.match(/PRIVACY_AUDIT_DIGEST_KEY/gu)).toHaveLength(2);
+    expect(compose).not.toContain(
+      'PRIVACY_AUDIT_DIGEST_KEY: ${PRIVACY_GRANT_ACTIVE_KEY_SECRET:',
+    );
+    expect(compose).not.toContain(
+      'PRIVACY_AUDIT_DIGEST_KEY: ${PRIVACY_CONTEXT_ACTIVE_KEY_SECRET:',
+    );
   });
 
   it('runs as a read-only non-root container with no Linux capabilities', () => {
