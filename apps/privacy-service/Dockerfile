@@ -1,4 +1,4 @@
-FROM node:22.23.0-bookworm-slim AS build
+FROM node:22.23.0-bookworm-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2 AS build
 
 ENV NODE_ENV=development
 WORKDIR /workspace
@@ -15,7 +15,7 @@ COPY apps/privacy-service apps/privacy-service
 RUN pnpm --filter @life-os/privacy-service build \
     && pnpm --filter @life-os/privacy-service deploy --prod /out
 
-FROM node:22.23.0-bookworm-slim AS runtime
+FROM node:22.23.0-bookworm-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2 AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
