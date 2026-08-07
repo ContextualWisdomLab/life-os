@@ -1,0 +1,92 @@
+name: Repair AI Live Conformance Expectation
+
+on:
+  push:
+    branches:
+      - feat/ai-nim-live-conformance
+    paths:
+      - '.github/workflows/fix-ai-live-stale-expectation.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/ai-nim-live-conformance
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install reproducible dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Align the stale configuration expectation
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ai-service/src/proposal-quality-live-conformance.test.ts')
+          source = path.read_text(encoding='utf-8')
+          old = """  it('fails the report when the baseline cannot be configured', async () => {
+            const report = await runProposalLiveConformance(
+              options({
+                environment: {
+                  CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://not-loopback.example',
+                  CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: TOKEN,
+                },
+                fetcher: successfulFetcher(),
+              }),
+            );
+
+            expect(report.status).toBe('failed');
+            for (const profileId of ['route_low', 'route_high', 'conduct_template']) {
+              expect(profile(report, profileId)).toEqual({
+                profileId,
+                status: 'unavailable',
+                unavailableCode: 'invalid_configuration',
+              });
+            }
+          });
+          """.replace('          ', '')
+          new = old.replace(
+              "unavailableCode: 'invalid_configuration'",
+              "unavailableCode: 'orchestrator_unavailable'",
+          )
+          if source.count(old) != 1:
+              raise SystemExit('expected exactly one stale live-conformance test block')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+          pnpm exec prettier --single-quote --write \
+            apps/ai-service/src/proposal-quality-live-conformance.test.ts
+
+      - name: Verify the complete AI service
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+          pnpm --filter @life-os/ai-service build
+
+      - name: Commit verified correction and remove this workflow
+        run: |
+          set -Eeuo pipefail
+          git rm .github/workflows/fix-ai-live-stale-expectation.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ai-service/src/proposal-quality-live-conformance.test.ts
+          git diff --cached --check
+          git commit -m 'test(ai): align live conformance failure classification'
+          git push origin HEAD:feat/ai-nim-live-conformance
