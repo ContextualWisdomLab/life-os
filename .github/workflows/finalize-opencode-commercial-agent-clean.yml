@@ -1,10 +1,15 @@
 name: Finalize OpenCode Commercial Development Loop
-# Temporary verification-only workflow; it self-removes after the isolated bounded-contract run passes.
+# Temporary verification workflow; successful push verification self-removes it.
 
 on:
   push:
     branches:
       - feat/opencode-commercial-development-loop
+    paths:
+      - '.github/workflows/finalize-opencode-commercial-agent-clean.yml'
+  pull_request:
+    branches:
+      - main
     paths:
       - '.github/workflows/finalize-opencode-commercial-agent-clean.yml'
 
@@ -19,11 +24,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Checkout feature branch
+      - name: Checkout exact event revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: feat/opencode-commercial-development-loop
+          ref: ${{ github.event_name == 'push' && 'feat/opencode-commercial-development-loop' || github.sha }}
           fetch-depth: 0
+          persist-credentials: ${{ github.event_name == 'push' }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -195,8 +201,14 @@ jobs:
           pnpm --filter @life-os/commercial-development-agent build
 
       - name: Commit the exact verified final slice
+        if: github.event_name == 'push'
         run: |
           set -Eeuo pipefail
+          remote_head="$(git ls-remote origin refs/heads/feat/opencode-commercial-development-loop | awk '{print $1}')"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo '::error::Feature head moved during final verification.'
+            exit 1
+          fi
           git rm .github/workflows/finalize-opencode-commercial-agent-clean.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
