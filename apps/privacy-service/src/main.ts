@@ -24,6 +24,7 @@ import type { PrivacyGrantConsumptionReceipt } from './privacy-access-repository
 import {
   createPrivacyRuntime,
   PrivacyRuntime,
+  type PrivacyRuntimeEnvironment,
 } from './privacy-runtime';
 import {
   verifyPrivacyServiceContext,
@@ -51,6 +52,32 @@ export interface PrivacyAccessOperations {
   consume(
     command: PrivacyAccessConsumeCommand,
   ): Promise<PrivacyGrantConsumptionReceipt>;
+}
+
+/** Creates one validated runtime for Nest dependency injection. */
+export function createPrivacyRuntimeProvider(
+  environment: PrivacyRuntimeEnvironment = process.env,
+): PrivacyRuntime {
+  return createPrivacyRuntime(environment);
+}
+
+/** Projects the purpose-bound application from one owned runtime. */
+export function privacyApplicationFromRuntime(
+  runtime: PrivacyRuntime,
+): PrivacyAccessOperations {
+  return runtime.application;
+}
+
+/** Projects the private service-context key ring from one owned runtime. */
+export function privacyContextKeyRingFromRuntime(
+  runtime: PrivacyRuntime,
+): PrivacyServiceContextKeyRing {
+  return runtime.contextKeyRing;
+}
+
+/** Creates one request-validation clock without shared mutable state. */
+export function createPrivacyClock(): () => Date {
+  return () => new Date();
 }
 
 /** Purpose-bound privacy authorization and evidence HTTP boundary. */
@@ -131,24 +158,21 @@ export class PrivacyController {
   providers: [
     {
       provide: PRIVACY_RUNTIME,
-      useFactory: (): PrivacyRuntime => createPrivacyRuntime(process.env),
+      useFactory: createPrivacyRuntimeProvider,
     },
     {
       provide: PRIVACY_ACCESS_APPLICATION,
       inject: [PRIVACY_RUNTIME],
-      useFactory: (runtime: PrivacyRuntime): PrivacyAccessOperations =>
-        runtime.application,
+      useFactory: privacyApplicationFromRuntime,
     },
     {
       provide: PRIVACY_CONTEXT_KEY_RING,
       inject: [PRIVACY_RUNTIME],
-      useFactory: (
-        runtime: PrivacyRuntime,
-      ): PrivacyServiceContextKeyRing => runtime.contextKeyRing,
+      useFactory: privacyContextKeyRingFromRuntime,
     },
     {
       provide: PRIVACY_CLOCK,
-      useFactory: (): (() => Date) => () => new Date(),
+      useFactory: createPrivacyClock,
     },
   ],
 })
