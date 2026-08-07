@@ -94,8 +94,7 @@ function requireDigestKey(value: unknown): string {
     return invalid();
   }
   const bytes = Buffer.byteLength(value, 'utf8');
-  return bytes >= MINIMUM_DIGEST_KEY_BYTES &&
-    bytes <= MAXIMUM_DIGEST_KEY_BYTES
+  return bytes >= MINIMUM_DIGEST_KEY_BYTES && bytes <= MAXIMUM_DIGEST_KEY_BYTES
     ? value
     : invalid();
 }
@@ -114,10 +113,7 @@ function normalizeReference(value: unknown): string {
   if (typeof value !== 'string' || DISALLOWED_CONTROL_PATTERN.test(value)) {
     return invalid();
   }
-  const normalized = value
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/gu, ' ');
+  const normalized = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
   if (
     normalized === '' ||
     [...normalized].length > MAXIMUM_REFERENCE_CHARACTERS ||
