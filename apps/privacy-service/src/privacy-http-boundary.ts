@@ -123,10 +123,7 @@ function boundedOptionalText(
   if (typeof value !== 'string' || DISALLOWED_CONTROL_PATTERN.test(value)) {
     return invalid();
   }
-  const normalized = value
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/gu, ' ');
+  const normalized = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
   const characters = [...normalized].length;
   if (
     characters < minimumCharacters ||
@@ -145,13 +142,7 @@ export function parsePrivacyAccessDecisionBody(
   const body = record(value);
   requireExactKeys(
     body,
-    [
-      'purpose',
-      'action',
-      'resourceCategory',
-      'requestedTtlSeconds',
-      'reason',
-    ],
+    ['purpose', 'action', 'resourceCategory', 'requestedTtlSeconds', 'reason'],
     ['purpose', 'action', 'resourceCategory', 'requestedTtlSeconds'],
   );
   const purpose = requirePurpose(body.purpose);
@@ -189,11 +180,7 @@ export function parsePrivacyAccessConsumeBody(
   value: unknown,
 ): ParsedPrivacyAccessConsumeBody {
   const body = record(value);
-  requireExactKeys(
-    body,
-    ['grantToken', 'resourceReference'],
-    ['grantToken'],
-  );
+  requireExactKeys(body, ['grantToken', 'resourceReference'], ['grantToken']);
   if (
     typeof body.grantToken !== 'string' ||
     body.grantToken.length === 0 ||
@@ -233,9 +220,7 @@ export function extractPrivacyServiceContextHeaders(
     }
     selected[requiredName] = matches[0][1];
   }
-  return Object.freeze(
-    selected as unknown as PrivacyServiceContextHeaders,
-  );
+  return Object.freeze(selected as unknown as PrivacyServiceContextHeaders);
 }
 
 function problemException(
