@@ -1,0 +1,104 @@
+name: Diagnose Maintenance Agent Coverage
+
+on:
+  push:
+    branches:
+      - feat/opencode-nim-maintenance-loop
+    paths:
+      - '.github/workflows/diagnose-maintenance-coverage.yml'
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/opencode-nim-maintenance-loop
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install reproducible dependencies
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+
+      - name: Apply pending deterministic repairs
+        run: |
+          python3 .github/scripts/finalize-opencode-maintenance.py
+          python3 .github/scripts/repair-maintenance-cli-entrypoint.py
+
+      - name: Capture raw V8 coverage
+        env:
+          NODE_V8_COVERAGE: ${{ runner.temp }}/v8-coverage
+        run: node --test packages/maintenance-agent/src/*.test.mjs
+
+      - name: Report uncovered block ranges
+        env:
+          COVERAGE_DIRECTORY: ${{ runner.temp }}/v8-coverage
+        run: |
+          node <<'NODE'
+          const { readFileSync, readdirSync } = require('node:fs');
+          const { join } = require('node:path');
+          const targets = new Set(['contract.mjs', 'plan.mjs', 'cli.mjs']);
+          const aggregate = new Map();
+          for (const name of readdirSync(process.env.COVERAGE_DIRECTORY)) {
+            const payload = JSON.parse(
+              readFileSync(join(process.env.COVERAGE_DIRECTORY, name), 'utf8'),
+            );
+            for (const script of payload.result ?? []) {
+              const target = [...targets].find((item) =>
+                String(script.url).endsWith(`/packages/maintenance-agent/src/${item}`),
+              );
+              if (!target) continue;
+              const source = readFileSync(
+                join('packages/maintenance-agent/src', target),
+                'utf8',
+              );
+              const lineAt = (offset) =>
+                source.slice(0, offset).split('\n').length;
+              for (const fn of script.functions ?? []) {
+                for (const range of fn.ranges ?? []) {
+                  const key = `${target}:${range.startOffset}:${range.endOffset}`;
+                  const current = aggregate.get(key) ?? {
+                    target,
+                    startOffset: range.startOffset,
+                    endOffset: range.endOffset,
+                    count: 0,
+                    lineStart: lineAt(range.startOffset),
+                    lineEnd: lineAt(range.endOffset),
+                    functionName: fn.functionName || '<anonymous>',
+                    snippet: source
+                      .slice(range.startOffset, Math.min(range.endOffset, range.startOffset + 180))
+                      .replace(/\s+/g, ' ')
+                      .trim(),
+                  };
+                  current.count += range.count;
+                  aggregate.set(key, current);
+                }
+              }
+            }
+          }
+          const uncovered = [...aggregate.values()]
+            .filter((item) => item.count === 0)
+            .sort(
+              (left, right) =>
+                left.target.localeCompare(right.target) ||
+                left.startOffset - right.startOffset,
+            );
+          console.log(JSON.stringify(uncovered, null, 2));
+          if (uncovered.length === 0) {
+            console.log('No uncovered V8 block ranges found.');
+          }
+          NODE
