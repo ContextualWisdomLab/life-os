@@ -72,6 +72,27 @@ def repair_policy_typing() -> None:
         ("Object.freeze(['identity_profile'])", "Object.freeze(['identity_profile'] as const)"),
     ):
         source = source.replace(old, new)
+    investigation_categories = """    resourceCategories: Object.freeze([
+      'identity_profile',
+      'notification_content',
+      'ai_audit_content',
+    ]),
+"""
+    typed_investigation_categories = """    resourceCategories: Object.freeze([
+      'identity_profile',
+      'notification_content',
+      'ai_audit_content',
+    ] as const),
+"""
+    if source.count(investigation_categories) != 1:
+        raise SystemExit(
+            "privacy investigation category matrix: expected one match"
+        )
+    source = source.replace(
+        investigation_categories,
+        typed_investigation_categories,
+        1,
+    )
     path.write_text(source, encoding="utf-8")
 
 
