@@ -46,9 +46,7 @@ export interface PrivacyPool extends PrivacySqlPool {
 export type PrivacyPoolFactory = (configuration: PoolConfig) => PrivacyPool;
 
 /** Adapts one `pg` transaction client to the privacy repository boundary. */
-export class NodePrivacyTransactionClient
-  implements PrivacySqlTransactionClient
-{
+export class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {
   /** Creates one adapter over an already checked-out PostgreSQL client. */
   constructor(private readonly client: PoolClient) {}
 
