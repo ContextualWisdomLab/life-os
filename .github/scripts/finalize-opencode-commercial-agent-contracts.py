@@ -170,7 +170,36 @@ def repair_receipt_integration_test() -> None:
 
 
 def repair_workflow_contract_tests() -> None:
-    """Assert the intended secret and credentialed mutation seams precisely."""
+    """Repair the scheduled workflow and assert its permanent trust boundaries."""
+
+    workflow_path = ROOT / ".github/workflows/opencode-commercial-development.yml"
+    replace_once(
+        workflow_path,
+        """          git switch --create "${{ steps.branch.outputs.branch_name }}"
+""",
+        """          branch_name="automation/opencode-commercial-$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          git switch --create "$branch_name"
+""",
+        "same-step branch output self-reference",
+    )
+    replace_once(
+        workflow_path,
+        """          def run(*args):
+              return subprocess.check_output(args, cwd=root)
+""",
+        """          def run(*args):
+              return subprocess.check_output(args, cwd=root, timeout=30)
+""",
+        "bounded local git subprocess helper",
+    )
+    replace_once(
+        workflow_path,
+        """          remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+""",
+        """          remote_main="$(timeout 30s git ls-remote origin refs/heads/main | awk '{print $1}')"
+""",
+        "bounded exact-base remote lookup",
+    )
 
     path = PACKAGE / "workflow-contract.test.mjs"
     replace_once(
@@ -185,6 +214,42 @@ def repair_workflow_contract_tests() -> None:
         "    expect(mutation).toContain('git push origin');\n",
         "    expect(mutation).toContain('push origin \"HEAD:${branch}\"');\n",
         "credentialed push assertion",
+    )
+    replace_once(
+        path,
+        """    expect(step('Create the isolated UUIDv4 feature branch')).toContain(
+      'uuid.uuid4()',
+    );
+    expect(step('Create the isolated UUIDv4 feature branch')).toContain(
+      'automation/opencode-commercial-',
+    );
+""",
+        """    const branch = step('Create the isolated UUIDv4 feature branch');
+    expect(branch).toContain('uuid.uuid4()');
+    expect(branch).toContain('automation/opencode-commercial-');
+    expect(branch).not.toContain('steps.branch.outputs.branch_name');
+    expect(branch).toContain('git switch --create "$branch_name"');
+""",
+        "branch creation execution contract",
+    )
+    replace_once(
+        path,
+        """    expect(step('Project and validate the working-tree diff')).toContain(
+      'commercial-development-agent validate-diff',
+    );
+    expect(step('Recheck the exact main base before remote mutation')).toContain(
+      'git ls-remote origin refs/heads/main',
+    );
+""",
+        """    const projection = step('Project and validate the working-tree diff');
+    expect(projection).toContain('commercial-development-agent validate-diff');
+    expect(projection).toContain('timeout=30');
+    const baseRecheck = step('Recheck the exact main base before remote mutation');
+    expect(baseRecheck).toContain(
+      'timeout 30s git ls-remote origin refs/heads/main',
+    );
+""",
+        "bounded process execution contract",
     )
 
 
