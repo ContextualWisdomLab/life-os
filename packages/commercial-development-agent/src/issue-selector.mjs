@@ -7,6 +7,11 @@ import {
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const PULL_REQUEST_URL_PATTERN =
   /^https:\/\/github\.com\/ContextualWisdomLab\/life-os\/pull\/([1-9]\d*)$/u;
+const ISSUE_REFERENCE_PATTERNS = Object.freeze([
+  /(?:^|[^0-9])#([1-9]\d*)(?=$|[^0-9])/gu,
+  /ContextualWisdomLab\/life-os#([1-9]\d*)(?=$|[^0-9])/gu,
+  /https:\/\/github\.com\/ContextualWisdomLab\/life-os\/issues\/([1-9]\d*)(?=$|[^0-9])/gu,
+]);
 const PROHIBITED_INTENT_PATTERNS = Object.freeze([
   /\b(?:print|expose|read|steal|leak)\b[\s\S]{0,80}\b(?:secret|token|credential|api key)\b/iu,
   /\b(?:disable|remove|weaken|bypass)\b[\s\S]{0,80}\b(?:branch protection|check|review|security gate)\b/iu,
@@ -80,19 +85,19 @@ function requestsProhibitedAuthority(issue) {
   return PROHIBITED_INTENT_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/** Returns whether fixed-shape reference text names the exact issue number. */
+function textReferencesIssue(text, issueNumber) {
+  const expected = String(issueNumber);
+  return ISSUE_REFERENCE_PATTERNS.some((pattern) =>
+    [...text.matchAll(pattern)].some((match) => match[1] === expected),
+  );
+}
+
 /** Returns whether one open pull request references an issue. */
 function pullRequestReferencesIssue(pullRequest, issueNumber) {
-  const text = `${pullRequest.title}\n${pullRequest.body}`;
-  const escapedNumber = String(issueNumber).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  return (
-    new RegExp(`(?:^|[^0-9])#${escapedNumber}(?:$|[^0-9])`, 'u').test(text) ||
-    new RegExp(
-      `ContextualWisdomLab/life-os#${escapedNumber}(?:$|[^0-9])`,
-      'u',
-    ).test(text) ||
-    text.includes(
-      `https://github.com/ContextualWisdomLab/life-os/issues/${issueNumber}`,
-    )
+  return textReferencesIssue(
+    `${pullRequest.title}\n${pullRequest.body}`,
+    issueNumber,
   );
 }
 
