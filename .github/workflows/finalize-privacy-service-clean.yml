@@ -1,5 +1,5 @@
 name: Finalize Purpose-Bound Privacy Service
-# Temporary verification workflow; it self-removes after the final typed privacy slice passes.
+# Temporary verification workflow; it self-removes after isolated Compose validation passes.
 
 on:
   push:
@@ -13,7 +13,6 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_privacy_test
 
 jobs:
   finalize:
