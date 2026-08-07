@@ -45,6 +45,18 @@ describe('privacy access decision HTTP body', () => {
     ).toMatchObject({ purpose: 'account_support', reason: expect.any(String) });
   });
 
+  it('accepts break-glass only at its shorter bounded lifetime', () => {
+    expect(
+      parsePrivacyAccessDecisionBody({
+        purpose: 'break_glass',
+        action: 'read',
+        resourceCategory: 'planning_content',
+        requestedTtlSeconds: 300,
+        reason: 'INC-8841 대응을 위한 긴급 읽기 접근이 필요합니다.',
+      }),
+    ).toMatchObject({ purpose: 'break_glass', requestedTtlSeconds: 300 });
+  });
+
   it.each([
     null,
     [],
@@ -91,6 +103,26 @@ describe('privacy access decision HTTP body', () => {
       action: 'read',
       resourceCategory: 'planning_content',
       requestedTtlSeconds: 901,
+    },
+    {
+      purpose: 'break_glass',
+      action: 'read',
+      resourceCategory: 'planning_content',
+      requestedTtlSeconds: 301,
+      reason: 'INC-8841 대응을 위한 긴급 읽기 접근이 필요합니다.',
+    },
+    {
+      purpose: 'account_support',
+      action: 'read',
+      resourceCategory: 'identity_profile',
+      requestedTtlSeconds: 300,
+    },
+    {
+      purpose: 'workspace_operation',
+      action: 'read',
+      resourceCategory: 'planning_content',
+      requestedTtlSeconds: 600,
+      reason: 'too short',
     },
     {
       purpose: 'account_support',
