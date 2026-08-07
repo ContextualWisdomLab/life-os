@@ -1,0 +1,63 @@
+name: Normalize OpenCode Finalizer Source
+# Temporary deterministic normalizer; the successful commit removes this workflow.
+
+on:
+  push:
+    branches:
+      - feat/opencode-commercial-development-loop
+    paths:
+      - '.github/workflows/finalize-opencode-normalizer-clean.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/opencode-commercial-development-loop
+          fetch-depth: 0
+
+      - name: Preserve escapes in the generated Python helper
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/finalize-opencode-commercial-agent-clean.yml')
+          source = path.read_text(encoding='utf-8')
+          old = "new = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:"
+          new = "new = r'''def replace_once(path: Path, old: str, new: str, label: str) -> None:"
+          if source.count(old) != 1:
+              raise SystemExit('expected one finalizer helper template')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/finalize-opencode-commercial-agent-clean.yml').read_text(encoding='utf-8')
+          if "new = r'''def replace_once" not in source:
+              raise SystemExit('raw helper template was not retained')
+          PY
+
+      - name: Commit the bounded normalizer result
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin refs/heads/feat/opencode-commercial-development-loop | awk '{print $1}')"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo '::error::Feature head moved during finalizer normalization.'
+            exit 1
+          fi
+          git rm .github/workflows/finalize-opencode-normalizer-clean.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/finalize-opencode-commercial-agent-clean.yml
+          git diff --cached --check
+          git commit -m 'fix(ci): preserve finalizer Python escapes'
+          git push origin HEAD:feat/opencode-commercial-development-loop
