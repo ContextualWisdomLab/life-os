@@ -15,7 +15,6 @@
             "failedChecks": ["CI"],
             "unresolvedFindings": [
               {
-                "source": "coderabbit",
                 "category": "security",
                 "severity": "high",
                 "path": ".github/workflows/opencode-nim-maintenance.yml"
