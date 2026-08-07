@@ -102,7 +102,9 @@ describe('PrivacyRuntime', () => {
       expect.objectContaining({ connectionString: DATABASE_URL }),
     );
     expect(pool.listeners).toHaveLength(1);
-    expect(() => pool.listeners[0]?.(new Error('private pool failure'))).not.toThrow();
+    expect(() =>
+      pool.listeners[0]?.(new Error('private pool failure')),
+    ).not.toThrow();
   });
 
   it('shares one exactly-once shutdown operation across concurrent callers', async () => {
@@ -124,7 +126,10 @@ describe('PrivacyRuntime', () => {
     pool.end.mockRejectedValueOnce(new Error('private shutdown failure'));
     const runtime = createPrivacyRuntime(environment(), () => pool);
 
-    const results = await Promise.allSettled([runtime.close(), runtime.close()]);
+    const results = await Promise.allSettled([
+      runtime.close(),
+      runtime.close(),
+    ]);
     expect(results).toEqual([
       expect.objectContaining({ status: 'rejected' }),
       expect.objectContaining({ status: 'rejected' }),
@@ -138,7 +143,9 @@ describe('PrivacyRuntime', () => {
     { PRIVACY_AUDIT_DIGEST_KEY: 'short' },
   ])('rejects invalid protected runtime material %#', (override) => {
     const factory = vi.fn<PrivacyPoolFactory>();
-    expect(() => createPrivacyRuntime(environment(override), factory)).toThrow();
+    expect(() =>
+      createPrivacyRuntime(environment(override), factory),
+    ).toThrow();
     expect(factory).not.toHaveBeenCalled();
   });
 });
