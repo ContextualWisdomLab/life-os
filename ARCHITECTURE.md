@@ -107,13 +107,48 @@ LifeOS currently contains no psychometric computation service. Any future mathem
 - numerical reproducibility, precision, seed control, convergence diagnostics, and fallback behavior are documented;
 - statistical assumptions and estimands are cited in APA 7 style.
 
-## 5. Automation and merge safety
+## 5. Plan-only maintenance automation
+
+The hourly maintenance workflow is a separate governance subsystem. It consumes deterministic commercial-readiness evidence and produces one advisory plan; it is not a code writer, reviewer, or merge authority.
+
+```mermaid
+flowchart TB
+    T[Default-branch schedule] --> S[Read-only GitHub snapshot]
+    S --> A[Commercial readiness audit]
+    A --> C[Maintenance contract compiler]
+    C --> H[Canonical SHA-256 receipt]
+    C --> P{Compute profile}
+    P -->|none| N[Explicit no-action plan]
+    P -->|route_standard / route_high| OC[Restricted OpenCode planner]
+    P -->|conduct_bounded| F[Fail closed until reviewed orchestrator]
+    OC --> V[Exact plan validator]
+    N --> V
+    F --> V
+    V --> R[Credential-free seven-day artifact]
+    G[CI + security + CodeRabbit + exact-head drain] -. independent authority .-> T
+```
+
+### Maintenance invariants
+
+- Only reviewed default-branch workflow source may receive the scheduled provider secret.
+- The trusted task authority is `life-os.maintenance-contract.v1`, compiled from normalized facts without arbitrary issue, review, log, or source prose.
+- The contract identifies one action, bounded target, allowed path prefixes, prohibited operations, compute limits, and an exact output schema; canonical JSON is protected by SHA-256.
+- The OpenCode agent may inspect repository files and write only one ephemeral plan file. Shell execution, task delegation, external directories, web access, interactive questions, source edits, GitHub mutation, merge, release, settings changes, and credential access are denied.
+- Direct NVIDIA routing is the baseline. High-risk security, credential, migration, tenant-boundary, workflow-permission, or destructive-operation evidence selects `conduct_bounded` and does not silently downgrade when the reviewed contextual-orchestrator path is unavailable.
+- Only `NVIDIA_NIM_API_KEY` may be mapped to the OpenCode NVIDIA provider. Independent review-agent credentials and workflows are outside this subsystem's authority.
+- Model output is untrusted until exact schema, digest, SHA, path, content, and prohibition validation succeeds.
+- Only validated contract JSON, plan JSON, and rendered Markdown are retained. Raw prompts, responses, logs, hidden reasoning, source patches, and secrets are excluded.
+- The deterministic commercial-readiness audit, CI, security checks, CodeRabbit, human review, and exact-head merge drain remain independent and authoritative.
+
+The pure `@life-os/maintenance-agent` package has no product-database or application-service dependency and can be reused by `naruon` or another ContextualWisdomLab orchestration surface through its versioned JSON contracts.
+
+## 6. Automation and merge safety
 
 Pull requests follow one loop: inspect every review and check, fix root causes, rerun the exact head, resolve addressed threads, and merge only after all required evidence passes. Administrative bypasses are prohibited.
 
 Scheduled model-assisted automation uses `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited. Existing dedicated review-agent credentials are not repurposed. Deterministic audit and merge eligibility remain independently enforceable even when a model provider is unavailable.
 
-## 6. Documentation hierarchy
+## 7. Documentation hierarchy
 
 1. `AGENTS.md` — repository-wide agent and merge rules.
 2. `ARCHITECTURE.md` — durable architectural decisions and diagrams.
