@@ -5,6 +5,8 @@ import {
   PrivacyAccessApplicationError,
 } from './privacy-access-application';
 import {
+  PRIVACY_ACCESS_POLICY_DIGEST,
+  PRIVACY_ACCESS_POLICY_REVISION_ID,
   PrivacyAccessValidationError,
   evaluatePrivacyAccessRequest,
   type PrivacyAccessDecision,
@@ -75,9 +77,8 @@ function allowedDecision(
     resourceCategory: 'planning_content',
     accessMode: 'ordinary',
     outcome: 'allowed',
-    policyRevisionId: '7a25c6b5-9fd7-45f3-9bd9-180dbc668c92',
-    policyDigest:
-      '8a96ff5f4f4d2f18ba31f38b1db20f99afc1a9018a1a12cf6e230ddf47e7d106',
+    policyRevisionId: PRIVACY_ACCESS_POLICY_REVISION_ID,
+    policyDigest: PRIVACY_ACCESS_POLICY_DIGEST,
     requestDigest: 'a'.repeat(64),
     reasonDigest: 'b'.repeat(64),
     issuedAt: '2026-08-07T03:00:00.000Z',
@@ -173,8 +174,8 @@ describe('privacy domain branch evidence', () => {
     ).toThrow(PrivacyAccessValidationError);
   });
 
-  it.each([null, 42, ' '.repeat(30), '한'.repeat(400)])(
-    'rejects malformed or byte-oversized reason %#',
+  it.each([null, 42, ' '.repeat(30), '가'.repeat(400)])(
+    'rejects malformed or raw-byte-oversized reason %#',
     (reason) => {
       expect(() =>
         evaluatePrivacyAccessRequest(
@@ -220,7 +221,7 @@ describe('privacy token branch evidence', () => {
     );
   });
 
-  it('signs and verifies break-glass validity at its exact boundaries', () => {
+  it('accepts break-glass skew boundary and rejects exact expiry', () => {
     const token = createPrivacyAccessGrantToken(
       allowedDecision({
         purpose: 'break_glass',
@@ -234,9 +235,16 @@ describe('privacy token branch evidence', () => {
       verifyPrivacyAccessGrantToken(token, ring(), {
         workspaceId: WORKSPACE_ID,
         actorId: ACTOR_ID,
-        now: new Date('2026-08-07T03:05:00.000Z'),
+        now: new Date('2026-08-07T02:59:00.000Z'),
       }).accessMode,
     ).toBe('break_glass');
+    expect(() =>
+      verifyPrivacyAccessGrantToken(token, ring(), {
+        workspaceId: WORKSPACE_ID,
+        actorId: ACTOR_ID,
+        now: new Date('2026-08-07T03:05:00.000Z'),
+      }),
+    ).toThrow(PrivacyAccessTokenError);
   });
 
   it('rejects invalid key rings at signing and malformed verification context', () => {
