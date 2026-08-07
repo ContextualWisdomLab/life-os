@@ -89,8 +89,11 @@ function allowedDecision(
 
 /** Creates one valid denied decision. */
 function deniedDecision(): PrivacyAccessDecision {
-  const { grantId: _grantId, expiresAt: _expiresAt, ...decision } =
-    allowedDecision({ outcome: 'denied' });
+  const {
+    grantId: _grantId,
+    expiresAt: _expiresAt,
+    ...decision
+  } = allowedDecision({ outcome: 'denied' });
   return decision;
 }
 
@@ -266,14 +269,17 @@ describe('PostgresPrivacyAccessRepository decision persistence', () => {
       decision: allowedDecision(),
       tokenDigest: 'short',
     },
-  ])('rejects malformed decision input before opening a connection %#', async (input) => {
-    const pool = new RecordingPool();
-    const repository = new PostgresPrivacyAccessRepository(pool);
-    await expect(
-      repository.persistDecision(input as PrivacyDecisionPersistenceInput),
-    ).rejects.toEqual(new PrivacyAccessPersistenceError());
-    expect(pool.connectCalls).toBe(0);
-  });
+  ])(
+    'rejects malformed decision input before opening a connection %#',
+    async (input) => {
+      const pool = new RecordingPool();
+      const repository = new PostgresPrivacyAccessRepository(pool);
+      await expect(
+        repository.persistDecision(input as PrivacyDecisionPersistenceInput),
+      ).rejects.toEqual(new PrivacyAccessPersistenceError());
+      expect(pool.connectCalls).toBe(0);
+    },
+  );
 
   it('rolls back and sanitizes transaction failures', async () => {
     const pool = new RecordingPool();
@@ -322,7 +328,9 @@ describe('PostgresPrivacyAccessRepository grant consumption', () => {
     expect(pool.client.calls.map((call) => call.text.trim())).toEqual([
       'BEGIN',
       expect.stringContaining('UPDATE privacy_access.privacy_access_grants'),
-      expect.stringContaining('INSERT INTO privacy_access.privacy_access_events'),
+      expect.stringContaining(
+        'INSERT INTO privacy_access.privacy_access_events',
+      ),
       'COMMIT',
     ]);
     expect(pool.client.calls[1]?.text).toContain('consumed_at IS NULL');
@@ -377,14 +385,17 @@ describe('PostgresPrivacyAccessRepository grant consumption', () => {
     { claims: claims({ workspaceId: 'numeric-1' }) },
     { claims: claims({ policyDigest: 'short' }) },
     { claims: claims({ expiresAt: ISSUED_AT }) },
-  ])('rejects malformed consumption input before connection %#', async (override) => {
-    const pool = new RecordingPool();
-    const repository = new PostgresPrivacyAccessRepository(pool);
-    await expect(
-      repository.consumeGrant(consumption(override as never)),
-    ).rejects.toEqual(new PrivacyAccessPersistenceError());
-    expect(pool.connectCalls).toBe(0);
-  });
+  ])(
+    'rejects malformed consumption input before connection %#',
+    async (override) => {
+      const pool = new RecordingPool();
+      const repository = new PostgresPrivacyAccessRepository(pool);
+      await expect(
+        repository.consumeGrant(consumption(override as never)),
+      ).rejects.toEqual(new PrivacyAccessPersistenceError());
+      expect(pool.connectCalls).toBe(0);
+    },
+  );
 
   it.each([
     { workspace_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
