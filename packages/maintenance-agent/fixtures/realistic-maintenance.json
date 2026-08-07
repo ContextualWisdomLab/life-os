@@ -1,0 +1,110 @@
+{
+  "schema": "life-os.maintenance-fixture.v1",
+  "scenarios": [
+    {
+      "name": "failing_check_with_actionable_security_review",
+      "input": {
+        "repository": "ContextualWisdomLab/life-os",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generatedAt": "2026-08-07T06:00:00.000Z",
+        "pullRequests": [
+          {
+            "number": 127,
+            "headSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "draft": false,
+            "failedChecks": ["CI"],
+            "unresolvedFindings": [
+              {
+                "source": "coderabbit",
+                "category": "security",
+                "severity": "high",
+                "path": ".github/workflows/opencode-nim-maintenance.yml"
+              }
+            ],
+            "changedPaths": [
+              ".github/workflows/opencode-nim-maintenance.yml",
+              "packages/maintenance-agent/src/contract.mjs"
+            ]
+          }
+        ],
+        "buyerGaps": [
+          {
+            "capabilityId": "capture.durable-sync",
+            "customerImpact": 5,
+            "risk": 4,
+            "acquisitionImpact": 5,
+            "effort": 4,
+            "allowedPathPrefixes": [
+              "apps/web/",
+              "apps/planning-service/"
+            ]
+          }
+        ],
+        "reviewAgentFingerprint": {
+          "workflowPaths": [
+            ".github/workflows/appguardrail.yml",
+            ".github/workflows/security-scan.yml"
+          ],
+          "secretNames": [
+            "CODERABBIT_API_KEY",
+            "NVIDIA_NIM_API_KEY"
+          ],
+          "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "action": "inspect_pr",
+        "computeProfile": "conduct_bounded",
+        "targetExternalNumber": 127,
+        "failedChecks": ["CI"],
+        "findingClasses": ["security"]
+      }
+    },
+    {
+      "name": "reviewed_queue_drained_to_buyer_gap",
+      "input": {
+        "repository": "ContextualWisdomLab/life-os",
+        "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generatedAt": "2026-08-07T06:00:00.000Z",
+        "pullRequests": [],
+        "buyerGaps": [
+          {
+            "capabilityId": "capture.durable-sync",
+            "customerImpact": 5,
+            "risk": 4,
+            "acquisitionImpact": 5,
+            "effort": 4,
+            "allowedPathPrefixes": [
+              "apps/web/",
+              "apps/planning-service/"
+            ]
+          },
+          {
+            "capabilityId": "operations.dashboard",
+            "customerImpact": 3,
+            "risk": 3,
+            "acquisitionImpact": 4,
+            "effort": 3,
+            "allowedPathPrefixes": ["apps/web/", "infra/observability/"]
+          }
+        ],
+        "reviewAgentFingerprint": {
+          "workflowPaths": [
+            ".github/workflows/appguardrail.yml",
+            ".github/workflows/security-scan.yml"
+          ],
+          "secretNames": [
+            "CODERABBIT_API_KEY",
+            "NVIDIA_NIM_API_KEY"
+          ],
+          "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expected": {
+        "action": "recommend_gap",
+        "computeProfile": "route_high",
+        "targetCapabilityId": "capture.durable-sync"
+      }
+    }
+  ]
+}
