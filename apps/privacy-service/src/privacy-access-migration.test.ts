@@ -8,13 +8,28 @@ const migrationPath = resolve(
 );
 const migration = readFileSync(migrationPath, 'utf8');
 
-/** Extracts normalized database object names from one migration keyword. */
-function objectNames(keyword: string): string[] {
-  const expression = new RegExp(
-    `${keyword}\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?([a-z_][a-z0-9_.]*)`,
-    'giu',
+type ObjectKeyword =
+  | 'CREATE TABLE'
+  | 'CREATE INDEX'
+  | 'CREATE OR REPLACE FUNCTION'
+  | 'CREATE TRIGGER';
+
+const OBJECT_PATTERNS: Readonly<Record<ObjectKeyword, RegExp>> = {
+  'CREATE TABLE':
+    /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_.]*)/giu,
+  'CREATE INDEX':
+    /CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_.]*)/giu,
+  'CREATE OR REPLACE FUNCTION':
+    /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_.]*)/giu,
+  'CREATE TRIGGER':
+    /CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_.]*)/giu,
+};
+
+/** Extracts normalized database object names for one fixed migration keyword. */
+function objectNames(keyword: ObjectKeyword): string[] {
+  return [...migration.matchAll(OBJECT_PATTERNS[keyword])].map(
+    (match) => match[1] ?? '',
   );
-  return [...migration.matchAll(expression)].map((match) => match[1] ?? '');
 }
 
 /** Requires every unqualified identifier segment to contain two snake-case words. */
