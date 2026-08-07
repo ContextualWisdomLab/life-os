@@ -30,15 +30,15 @@ describe('OpenCode maintenance planner contract', () => {
       assert.match(metadata, new RegExp(`^  ${permission}: allow$`, 'mu'));
     }
     assert.match(metadata, /^  edit:$/mu);
-    assert.match(metadata, /^    "\*": deny$/mu);
+    assert.match(metadata, /^    ['"]\*['"]: deny$/mu);
     assert.match(
       metadata,
-      /^    "\.maintenance-output\/maintenance-plan\.json": allow$/mu,
+      /^    ['"]\.maintenance-output\/maintenance-plan\.json['"]: allow$/mu,
     );
     assert.equal(
       (
         metadata.match(
-          /^    "\.maintenance-output\/maintenance-plan\.json": allow$/gmu,
+          /^    ['"]\.maintenance-output\/maintenance-plan\.json['"]: allow$/gmu,
         ) ?? []
       ).length,
       1,
