@@ -12,6 +12,9 @@ const POLICY = JSON.parse(
   ),
 );
 const BASE_SHA = 'a'.repeat(40);
+const PRIVATE_KEY_BLOCK = ['-----BEGIN ', 'PRIVATE KEY-----\nprivate\n'].join(
+  '',
+);
 
 /** Returns one safe changed-file fixture. */
 function file(overrides = {}) {
@@ -61,8 +64,10 @@ describe('commercial development diff policy', () => {
       accepted: true,
       reason_code: 'accepted',
       changed_files: 3,
-      changed_bytes:
-        evidence().files.reduce((sum, item) => sum + item.bytes, 0),
+      changed_bytes: evidence().files.reduce(
+        (sum, item) => sum + item.bytes,
+        0,
+      ),
       additions: 6,
       deletions: 0,
     });
@@ -70,10 +75,7 @@ describe('commercial development diff policy', () => {
 
   it('returns no_change without creating remote work', () => {
     expect(
-      validateCommercialDevelopmentDiff(
-        evidence({ files: [] }),
-        POLICY,
-      ),
+      validateCommercialDevelopmentDiff(evidence({ files: [] }), POLICY),
     ).toEqual({
       accepted: false,
       reason_code: 'no_change',
@@ -137,7 +139,12 @@ describe('commercial development diff policy', () => {
   });
 
   it.each([
-    ['changed files', Array.from({ length: 25 }, (_, index) => file({ path: `apps/web/src/file-${index}.ts` }))],
+    [
+      'changed files',
+      Array.from({ length: 25 }, (_, index) =>
+        file({ path: `apps/web/src/file-${index}.ts` }),
+      ),
+    ],
     ['changed bytes', [file({ bytes: 131_073, content: 'x' })]],
     ['changed lines', [file({ additions: 3_001 })]],
   ])('rejects an excessive %s limit', (_label, files) => {
@@ -150,11 +157,13 @@ describe('commercial development diff policy', () => {
     ['COPILOT_GITHUB_TOKEN', 'const prohibited = "COPILOT_GITHUB_TOKEN";'],
     ['GitHub token', 'const token = "ghp_abcdefghijklmnopqrstuvwxyz123456";'],
     ['NVIDIA token', 'const key = "nvapi-abcdefghijklmnopqrstuvwxyz123456";'],
-    ['private key', '-----BEGIN PRIVATE KEY-----\nprivate\n'],
+    ['private key', PRIVATE_KEY_BLOCK],
   ])('rejects secret-shaped %s content', (_label, content) => {
     expect(
       validateCommercialDevelopmentDiff(
-        evidence({ files: [file({ content, bytes: Buffer.byteLength(content) })] }),
+        evidence({
+          files: [file({ content, bytes: Buffer.byteLength(content) })],
+        }),
         POLICY,
       ),
     ).toMatchObject({ accepted: false, reason_code: 'content_rejected' });
@@ -175,7 +184,9 @@ describe('commercial development diff policy', () => {
   ])('rejects destructive or privileged executable content: %s', (content) => {
     expect(
       validateCommercialDevelopmentDiff(
-        evidence({ files: [file({ content, bytes: Buffer.byteLength(content) })] }),
+        evidence({
+          files: [file({ content, bytes: Buffer.byteLength(content) })],
+        }),
         POLICY,
       ),
     ).toMatchObject({ accepted: false, reason_code: 'content_rejected' });
