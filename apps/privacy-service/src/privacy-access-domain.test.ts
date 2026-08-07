@@ -115,6 +115,7 @@ describe('purpose-bound privacy access policy', () => {
         purpose,
         action,
         resourceCategory,
+        requestedTtlSeconds: purpose === 'break_glass' ? 300 : 600,
         reason: 'A sufficiently detailed and bounded business reason.',
       });
       expect(decision).toEqual({
@@ -136,8 +137,10 @@ describe('purpose-bound privacy access policy', () => {
   );
 
   it('normalizes equivalent Unicode and whitespace before keyed evidence digesting', () => {
-    const first = evaluate({ reason: '  지원\t사례 Ａ-17 검토 완료.  ' });
-    const second = evaluate({ reason: '지원 사례 A-17 검토 완료.' });
+    const first = evaluate({
+      reason: '  지원\t사례 Ａ-17 검토 완료 및 승인 기록.  ',
+    });
+    const second = evaluate({ reason: '지원 사례 A-17 검토 완료 및 승인 기록.' });
     expect(first.reasonDigest).toBe(second.reasonDigest);
     expect(first.requestDigest).toBe(second.requestDigest);
   });
