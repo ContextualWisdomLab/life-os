@@ -281,10 +281,10 @@ describe('authorized original personal data reader', () => {
       reason: 'Support case SUP-8841 requires exact profile verification.',
     });
     const profile = Object.freeze({
-      displayName: '배성호',
-      postalAddress: '대한민국 경기도 평택시 Example-ro １７',
-      phoneNumber: '+82-10-1234-5678',
-      emailAddress: 'person@example.test',
+      displayName: '홍길동 테스트',
+      postalAddress: '대한민국 테스트시 샘플로 １７',
+      phoneNumber: '+82-10-0000-0000',
+      emailAddress: 'synthetic.person@example.test',
     });
     const reader: AuthorizedPersonalDataReader<typeof profile> = {
       read: vi.fn(async (receipt) => {
