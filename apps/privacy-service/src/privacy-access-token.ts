@@ -410,8 +410,7 @@ export function verifyPrivacyAccessGrantToken(
   if (parts.length !== 2) {
     return invalid();
   }
-  const payload = parts[0] ?? '';
-  const signature = parts[1] ?? '';
+  const [payload, signature] = parts as [string, string];
   const claims = parseClaims(decodePayload(payload));
   const selected = verificationKey(keyRing, claims.keyId);
   verifySignature(payload, signature, selected.secret);
