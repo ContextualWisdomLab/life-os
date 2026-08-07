@@ -1,0 +1,77 @@
+name: Diagnose privacy formatting
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/diagnose-privacy-format.yml
+      - apps/privacy-service/**
+      - docs/research/2026-08-07-purpose-bound-pii-access-standards.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-privacy-format-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Format failing privacy sources
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/privacy-service/src/docstring-coverage.test.ts \
+            apps/privacy-service/src/main-coverage.test.ts \
+            apps/privacy-service/src/main.test.ts \
+            apps/privacy-service/src/main.ts \
+            apps/privacy-service/src/postgres-privacy-access-repository-coverage.test.ts \
+            apps/privacy-service/src/postgres-privacy-access-repository.integration.test.ts \
+            apps/privacy-service/src/postgres-privacy-access-repository.test.ts \
+            apps/privacy-service/src/postgres-privacy-access-repository.ts \
+            apps/privacy-service/src/privacy-access-application.test.ts \
+            apps/privacy-service/src/privacy-access-application.ts \
+            apps/privacy-service/src/privacy-access-coverage.test.ts \
+            apps/privacy-service/src/privacy-access-domain.test.ts \
+            apps/privacy-service/src/privacy-access-domain.ts \
+            apps/privacy-service/src/privacy-access-migration.test.ts \
+            apps/privacy-service/src/privacy-access-token.test.ts \
+            apps/privacy-service/src/privacy-access-token.ts \
+            apps/privacy-service/src/privacy-deployment-contract.test.ts \
+            apps/privacy-service/src/privacy-http-boundary.ts \
+            apps/privacy-service/src/privacy-runtime.test.ts \
+            apps/privacy-service/src/privacy-runtime.ts \
+            apps/privacy-service/src/privacy-service-context-coverage.test.ts \
+            apps/privacy-service/src/privacy-service-context.test.ts \
+            apps/privacy-service/src/privacy-service-context.ts \
+            apps/privacy-service/src/server.test.ts \
+            docs/research/2026-08-07-purpose-bound-pii-access-standards.md
+
+      - name: Upload formatted evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: privacy-format-diagnostic
+          path: |
+            apps/privacy-service/src/
+            docs/research/2026-08-07-purpose-bound-pii-access-standards.md
+          if-no-files-found: error
+          retention-days: 1
