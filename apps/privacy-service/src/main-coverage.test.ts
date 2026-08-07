@@ -19,18 +19,16 @@ const AUDIT_SECRET = Buffer.alloc(32, 0x53).toString('base64url');
 
 describe('privacy module provider factories', () => {
   it('creates the runtime from process-compatible environment input', async () => {
-    const runtime = createPrivacyRuntimeProvider(
-      {
-        PRIVACY_DATABASE_URL: TEST_DATABASE_URL,
-        PRIVACY_DATABASE_CONNECT_TIMEOUT_MS: '100',
-        PRIVACY_DATABASE_POOL_MAX: '1',
-        PRIVACY_GRANT_ACTIVE_KEY_ID: 'grant-active',
-        PRIVACY_GRANT_ACTIVE_KEY_SECRET: GRANT_SECRET,
-        PRIVACY_CONTEXT_ACTIVE_KEY_ID: 'context-active',
-        PRIVACY_CONTEXT_ACTIVE_KEY_SECRET: CONTEXT_SECRET,
-        PRIVACY_AUDIT_DIGEST_KEY: AUDIT_SECRET,
-      },
-    );
+    const runtime = createPrivacyRuntimeProvider({
+      PRIVACY_DATABASE_URL: TEST_DATABASE_URL,
+      PRIVACY_DATABASE_CONNECT_TIMEOUT_MS: '100',
+      PRIVACY_DATABASE_POOL_MAX: '1',
+      PRIVACY_GRANT_ACTIVE_KEY_ID: 'grant-active',
+      PRIVACY_GRANT_ACTIVE_KEY_SECRET: GRANT_SECRET,
+      PRIVACY_CONTEXT_ACTIVE_KEY_ID: 'context-active',
+      PRIVACY_CONTEXT_ACTIVE_KEY_SECRET: CONTEXT_SECRET,
+      PRIVACY_AUDIT_DIGEST_KEY: AUDIT_SECRET,
+    });
     expect(runtime).toBeInstanceOf(PrivacyRuntime);
     expect(privacyApplicationFromRuntime(runtime)).toBe(runtime.application);
     expect(privacyContextKeyRingFromRuntime(runtime)).toBe(
