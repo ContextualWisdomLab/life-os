@@ -702,7 +702,7 @@
         "planning.durable-data",
         "review.guided-loop"
       ],
-      "tracking_issue": null,
+      "tracking_issue": 116,
       "evidence": [
         {
           "maturity": "prototype",
@@ -739,6 +739,24 @@
           "kind": "documentation",
           "mode": "exists",
           "path": "docs/operations/ai-gateway-key-rotation.md"
+        },
+        {
+          "maturity": "usable",
+          "kind": "workflow",
+          "mode": "exists",
+          "path": ".github/workflows/ai-proposal-live-conformance.yml"
+        },
+        {
+          "maturity": "production",
+          "kind": "test",
+          "mode": "exists",
+          "path": "apps/ai-service/src/proposal-quality-live-workflow.test.ts"
+        },
+        {
+          "maturity": "production",
+          "kind": "documentation",
+          "mode": "exists",
+          "path": "docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md"
         }
       ]
     },
