@@ -25,9 +25,9 @@ function productionFiles(directory: string): string[] {
 function isExported(node: ts.Node): boolean {
   return Boolean(
     ts.canHaveModifiers(node) &&
-      ts
-        .getModifiers(node)
-        ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
+    ts
+      .getModifiers(node)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
   );
 }
 
@@ -42,12 +42,16 @@ function hasDocumentation(node: ts.Node): boolean {
 function declarationName(node: ts.Node, file: string): string {
   const named = node as ts.Node & { readonly name?: ts.Node };
   const name = named.name?.getText() ?? ts.SyntaxKind[node.kind];
-  const position = node.getSourceFile().getLineAndCharacterOfPosition(node.getStart());
+  const position = node
+    .getSourceFile()
+    .getLineAndCharacterOfPosition(node.getStart());
   return `${relative(SOURCE_ROOT, file)}:${position.line + 1}:${name}`;
 }
 
 /** Collects every exported API declaration and public class member. */
-function documentedSurface(file: string): Array<{ node: ts.Node; label: string }> {
+function documentedSurface(
+  file: string,
+): Array<{ node: ts.Node; label: string }> {
   const source = ts.createSourceFile(
     file,
     readFileSync(file, 'utf8'),
@@ -80,9 +84,7 @@ function documentedSurface(file: string): Array<{ node: ts.Node; label: string }
             ts.isSetAccessorDeclaration(member)) &&
           !ts
             .getModifiers(member)
-            ?.some(
-              (modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword,
-            )
+            ?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword)
         ) {
           result.push({
             node: member,
@@ -97,7 +99,8 @@ function documentedSurface(file: string): Array<{ node: ts.Node; label: string }
 
 describe('privacy-service public documentation coverage', () => {
   it('documents every exported production declaration and public class member', () => {
-    const declarations = productionFiles(SOURCE_ROOT).flatMap(documentedSurface);
+    const declarations =
+      productionFiles(SOURCE_ROOT).flatMap(documentedSurface);
     expect(declarations.length).toBeGreaterThan(20);
     const undocumented = declarations
       .filter(({ node }) => !hasDocumentation(node))
