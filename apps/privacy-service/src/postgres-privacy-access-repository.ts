@@ -475,6 +475,7 @@ export class PostgresPrivacyAccessRepository implements PrivacyAccessRepository 
     } catch {
       return invalid();
     }
+    let receipt: PrivacyGrantConsumptionReceipt | undefined;
     try {
       await client.query('BEGIN');
       const update = await client.query<ConsumedGrantRow>(CONSUME_GRANT_SQL, [
@@ -492,29 +493,31 @@ export class PostgresPrivacyAccessRepository implements PrivacyAccessRepository 
       if (!Array.isArray(update.rows) || update.rows.length !== 1) {
         return invalid();
       }
-      const receipt = parseConsumedRow(update.rows[0]!, input);
+      const consumedReceipt = parseConsumedRow(update.rows[0]!, input);
       await client.query(INSERT_EVENT_SQL, [
-        receipt.accessEventId,
-        receipt.grantId,
-        receipt.decisionId,
-        receipt.workspaceId,
-        receipt.actorId,
-        receipt.purpose,
-        receipt.action,
-        receipt.resourceCategory,
-        receipt.accessMode,
-        receipt.policyRevisionId,
-        receipt.policyDigest,
+        consumedReceipt.accessEventId,
+        consumedReceipt.grantId,
+        consumedReceipt.decisionId,
+        consumedReceipt.workspaceId,
+        consumedReceipt.actorId,
+        consumedReceipt.purpose,
+        consumedReceipt.action,
+        consumedReceipt.resourceCategory,
+        consumedReceipt.accessMode,
+        consumedReceipt.policyRevisionId,
+        consumedReceipt.policyDigest,
         input.resourceReferenceDigest,
-        receipt.occurredAt,
+        consumedReceipt.occurredAt,
       ]);
       await client.query('COMMIT');
-      return receipt;
+      receipt = consumedReceipt;
     } catch {
       await rollback(client);
-      return invalid();
-    } finally {
-      client.release();
     }
+    client.release();
+    if (receipt === undefined) {
+      return invalid();
+    }
+    return receipt;
   }
 }
