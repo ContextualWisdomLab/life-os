@@ -72,6 +72,24 @@ describe('private context additional branch evidence', () => {
     },
   );
 
+  it.each([null, 42, []])(
+    'rejects non-string workspace identifiers %#',
+    (workspaceId) => {
+      expect(() =>
+        createPrivacyServiceContextHeaders(
+          {
+            workspaceId: workspaceId as never,
+            actorId: ACTOR_ID,
+            method: 'POST',
+            path: '/v1/privacy/access-decisions',
+            issuedAt: ISSUED_AT,
+          },
+          ring(),
+        ),
+      ).toThrow(PrivacyServiceContextError);
+    },
+  );
+
   it('rejects non-second issuance precision and supports exact age boundaries', () => {
     expect(() =>
       createPrivacyServiceContextHeaders(
