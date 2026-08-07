@@ -35,10 +35,7 @@ import {
   type PrivacyAccessDecisionResult,
   type PrivacyAccessOperations,
 } from './main';
-import {
-  startPrivacyService,
-  type PrivacyNestApplication,
-} from './server';
+import { startPrivacyService, type PrivacyNestApplication } from './server';
 import {
   PostgresPrivacyAccessRepository,
   PrivacyAccessPersistenceError,
@@ -59,7 +56,9 @@ const CONTEXT_SECRET = Buffer.alloc(32, 0x63).toString('base64url');
 const DIGEST = 'a'.repeat(64);
 
 class MemoryRepository implements PrivacyAccessRepository {
-  async persistDecision(_input: PrivacyDecisionPersistenceInput): Promise<void> {
+  async persistDecision(
+    _input: PrivacyDecisionPersistenceInput,
+  ): Promise<void> {
     return undefined;
   }
 
@@ -231,7 +230,9 @@ describe('privacy exact coverage regressions', () => {
 
   it('accepts a consume body without an optional resource reference', () => {
     const grantToken = `${'a'.repeat(64)}.${'b'.repeat(43)}`;
-    expect(parsePrivacyAccessConsumeBody({ grantToken })).toEqual({ grantToken });
+    expect(parsePrivacyAccessConsumeBody({ grantToken })).toEqual({
+      grantToken,
+    });
   });
 
   it('maps consume-operation failures through the bounded HTTP problem contract', async () => {
@@ -243,7 +244,11 @@ describe('privacy exact coverage regressions', () => {
       throw new Error('private downstream detail');
     });
     const application: PrivacyAccessOperations = { decide, consume };
-    const controller = new PrivacyController(application, contextRing(), () => NOW);
+    const controller = new PrivacyController(
+      application,
+      contextRing(),
+      () => NOW,
+    );
     const headers = createPrivacyServiceContextHeaders(
       {
         workspaceId: WORKSPACE_ID,
