@@ -1,0 +1,523 @@
+
+> @life-os/maintenance-agent@0.1.0 lint /home/runner/work/life-os/life-os/packages/maintenance-agent
+> node --check src/contract.mjs && node --check src/plan.mjs && node --check src/cli.mjs && node --check src/bin.mjs && prettier --single-quote --check package.json "src/*.mjs" ../../.opencode/agents/maintenance-planner.md ../../docs/operations/opencode-nim-maintenance.md ../../docs/research/2026-08-07-opencode-nim-maintenance-standards.md ../../docs/superpowers/specs/2026-08-07-opencode-nim-maintenance-loop-design.md ../../docs/superpowers/plans/2026-08-07-opencode-nim-maintenance-loop.md fixtures/*.json ../../docs/adr/0001-governed-opencode-maintenance.md
+
+Checking formatting...
+All matched files use Prettier code style!
+
+> @life-os/maintenance-agent@0.1.0 typecheck /home/runner/work/life-os/life-os/packages/maintenance-agent
+> node --check src/contract.mjs && node --check src/plan.mjs && node --check src/cli.mjs && node --check src/bin.mjs && node --check src/bin.mjs
+
+
+> @life-os/maintenance-agent@0.1.0 test /home/runner/work/life-os/life-os/packages/maintenance-agent
+> node --test --experimental-test-coverage --test-coverage-include=src/contract.mjs --test-coverage-include=src/plan.mjs --test-coverage-include=src/cli.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 src/*.test.mjs
+
+TAP version 13
+# Subtest: maintenance evidence normalization
+    # Subtest: normalizes failed workflow, status, blocker, and review evidence
+    ok 1 - normalizes failed workflow, status, blocker, and review evidence
+      ---
+      duration_ms: 2.270515
+      type: 'test'
+      ...
+    # Subtest: falls back to capability evidence paths when missing evidence is empty
+    ok 2 - falls back to capability evidence paths when missing evidence is empty
+      ---
+      duration_ms: 1.308795
+      type: 'test'
+      ...
+    # Subtest: rejects mismatched, truncated, or malformed repository evidence
+    ok 3 - rejects mismatched, truncated, or malformed repository evidence
+      ---
+      duration_ms: 0.749241
+      type: 'test'
+      ...
+    1..3
+ok 1 - maintenance evidence normalization
+  ---
+  duration_ms: 5.653677
+  type: 'suite'
+  ...
+# Subtest: bounded maintenance file operations
+    # Subtest: reads one bounded JSON file
+    ok 1 - reads one bounded JSON file
+      ---
+      duration_ms: 0.576195
+      type: 'test'
+      ...
+    # Subtest: rejects invalid paths, missing files, malformed JSON, and oversized input
+    ok 2 - rejects invalid paths, missing files, malformed JSON, and oversized input
+      ---
+      duration_ms: 1.227942
+      type: 'test'
+      ...
+    # Subtest: writes, reads back, and atomically renames restrictive output
+    ok 3 - writes, reads back, and atomically renames restrictive output
+      ---
+      duration_ms: 0.538755
+      type: 'test'
+      ...
+    # Subtest: rejects invalid output and cleans failed temporary evidence
+    ok 4 - rejects invalid output and cleans failed temporary evidence
+      ---
+      duration_ms: 0.826767
+      type: 'test'
+      ...
+    1..4
+ok 2 - bounded maintenance file operations
+  ---
+  duration_ms: 3.478089
+  type: 'suite'
+  ...
+# Subtest: maintenance CLI commands
+    # Subtest: compiles one contract from bounded evidence files
+    ok 1 - compiles one contract from bounded evidence files
+      ---
+      duration_ms: 3.408159
+      type: 'test'
+      ...
+    # Subtest: validates and publishes JSON and Markdown plan evidence
+    ok 2 - validates and publishes JSON and Markdown plan evidence
+      ---
+      duration_ms: 2.879593
+      type: 'test'
+      ...
+    # Subtest: rejects malformed command shapes and unknown commands
+    ok 3 - rejects malformed command shapes and unknown commands
+      ---
+      duration_ms: 0.383292
+      type: 'test'
+      ...
+    # Subtest: maps known and unknown failures to stable public codes
+    ok 4 - maps known and unknown failures to stable public codes
+      ---
+      duration_ms: 0.190539
+      type: 'test'
+      ...
+    # Subtest: emits only a stable code from the process entry point
+    ok 5 - emits only a stable code from the process entry point
+      ---
+      duration_ms: 0.297911
+      type: 'test'
+      ...
+    1..5
+ok 3 - maintenance CLI commands
+  ---
+  duration_ms: 7.428349
+  type: 'suite'
+  ...
+# Subtest: maintenance contract compilation
+    # Subtest: selects bounded conducted planning for a security-sensitive PR
+    ok 1 - selects bounded conducted planning for a security-sensitive PR
+      ---
+      duration_ms: 6.500291
+      type: 'test'
+      ...
+    # Subtest: uses standard direct planning for one ordinary failed check
+    ok 2 - uses standard direct planning for one ordinary failed check
+      ---
+      duration_ms: 2.619723
+      type: 'test'
+      ...
+    # Subtest: uses higher direct planning for coupled ordinary evidence
+    ok 3 - uses higher direct planning for coupled ordinary evidence
+      ---
+      duration_ms: 0.60536
+      type: 'test'
+      ...
+    # Subtest: waits without invoking a model when an open PR has no actionable evidence
+    ok 4 - waits without invoking a model when an open PR has no actionable evidence
+      ---
+      duration_ms: 0.537462
+      type: 'test'
+      ...
+    # Subtest: selects the highest-value gap with deterministic tie breaking
+    ok 5 - selects the highest-value gap with deterministic tie breaking
+      ---
+      duration_ms: 0.810286
+      type: 'test'
+      ...
+    # Subtest: selects conducted planning for a maximum-risk buyer gap
+    ok 6 - selects conducted planning for a maximum-risk buyer gap
+      ---
+      duration_ms: 0.394854
+      type: 'test'
+      ...
+    # Subtest: selects higher direct planning for a high-effort non-maximum-risk gap
+    ok 7 - selects higher direct planning for a high-effort non-maximum-risk gap
+      ---
+      duration_ms: 0.421183
+      type: 'test'
+      ...
+    # Subtest: returns a no-work contract when no PR or buyer gap remains
+    ok 8 - returns a no-work contract when no PR or buyer gap remains
+      ---
+      duration_ms: 0.474513
+      type: 'test'
+      ...
+    # Subtest: prioritizes actionable PRs and then the lowest external number
+    ok 9 - prioritizes actionable PRs and then the lowest external number
+      ---
+      duration_ms: 0.574001
+      type: 'test'
+      ...
+    1..9
+ok 4 - maintenance contract compilation
+  ---
+  duration_ms: 15.076551
+  type: 'suite'
+  ...
+# Subtest: maintenance contract canonicalization and validation
+    # Subtest: serializes sorted object keys while retaining array order
+    ok 1 - serializes sorted object keys while retaining array order
+      ---
+      duration_ms: 0.364046
+      type: 'test'
+      ...
+    # Subtest: produces a deterministic digest independent of an existing digest field
+    ok 2 - produces a deterministic digest independent of an existing digest field
+      ---
+      duration_ms: 0.271892
+      type: 'test'
+      ...
+    # Subtest: accepts an exact compiled contract by identity
+    ok 3 - accepts an exact compiled contract by identity
+      ---
+      duration_ms: 0.575294
+      type: 'test'
+      ...
+    # Subtest: rejects tampering, unknown fields, and inconsistent target/action combinations
+    ok 4 - rejects tampering, unknown fields, and inconsistent target/action combinations
+      ---
+      duration_ms: 2.136152
+      type: 'test'
+      ...
+    # Subtest: accepts a capability target and rejects malformed capability contracts
+    ok 5 - accepts a capability target and rejects malformed capability contracts
+      ---
+      duration_ms: 1.452135
+      type: 'test'
+      ...
+    # Subtest: rejects malformed compile input without echoing attacker prose
+    ok 6 - rejects malformed compile input without echoing attacker prose
+      ---
+      duration_ms: 0.960298
+      type: 'test'
+      ...
+    1..6
+ok 5 - maintenance contract canonicalization and validation
+  ---
+  duration_ms: 6.233738
+  type: 'suite'
+  ...
+# Subtest: maintenance uncovered branch evidence
+    # Subtest: normalizes absent PR arrays and ignores malformed blocker entries
+    ok 1 - normalizes absent PR arrays and ignores malformed blocker entries
+      ---
+      duration_ms: 2.974321
+      type: 'test'
+      ...
+    # Subtest: normalizes absent gap evidence collections to an explicit empty boundary
+    ok 2 - normalizes absent gap evidence collections to an explicit empty boundary
+      ---
+      duration_ms: 0.452041
+      type: 'test'
+      ...
+    # Subtest: deterministically orders non-actionable PRs and equal-value buyer gaps
+    ok 3 - deterministically orders non-actionable PRs and equal-value buyer gaps
+      ---
+      duration_ms: 19.471066
+      type: 'test'
+      ...
+    # Subtest: treats high-risk review categories as conducted work without path heuristics
+    ok 4 - treats high-risk review categories as conducted work without path heuristics
+      ---
+      duration_ms: 0.943076
+      type: 'test'
+      ...
+    # Subtest: rejects excessive changed-path evidence after digest verification
+    ok 5 - rejects excessive changed-path evidence after digest verification
+      ---
+      duration_ms: 1.74694
+      type: 'test'
+      ...
+    # Subtest: covers plan record, path normalization, generic contract, and render guards
+    not ok 6 - covers plan record, path normalization, generic contract, and render guards
+      ---
+      duration_ms: 3.507966
+      type: 'test'
+      location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/coverage.test.mjs:280:3'
+      failureType: 'testCodeFailure'
+      error: 'Maintenance plan output is invalid'
+      code: 'ERR_TEST_FAILURE'
+      name: 'MaintenancePlanError'
+      stack: |-
+        invalid (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:55:9)
+        planStep (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:144:5)
+        file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:223:7
+        Array.map (<anonymous>)
+        validateMaintenancePlan (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/plan.mjs:222:16)
+        TestContext.<anonymous> (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/coverage.test.mjs:295:23)
+        Test.runInAsyncScope (node:async_hooks:214:14)
+        Test.run (node:internal/test_runner/test:1047:25)
+        Suite.processPendingSubtests (node:internal/test_runner/test:744:18)
+        Test.postRun (node:internal/test_runner/test:1173:19)
+      ...
+    # Subtest: completes the process entry point without changing exit state
+    ok 7 - completes the process entry point without changing exit state
+      ---
+      duration_ms: 25.604246
+      type: 'test'
+      ...
+    1..7
+not ok 6 - maintenance uncovered branch evidence
+  ---
+  duration_ms: 57.079357
+  type: 'suite'
+  location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/coverage.test.mjs:123:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: realistic OpenCode maintenance dry-run fixture
+    # Subtest: prioritizes a failing PR and actionable security review before product work
+    not ok 1 - prioritizes a failing PR and actionable security review before product work
+      ---
+      duration_ms: 6.939849
+      type: 'test'
+      location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/fixture.test.mjs:21:3'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        false !== true
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///home/runner/work/life-os/life-os/packages/maintenance-agent/src/fixture.test.mjs:34:12)
+        Test.runInAsyncScope (node:async_hooks:214:14)
+        Test.run (node:internal/test_runner/test:1047:25)
+        Test.start (node:internal/test_runner/test:944:17)
+        node:internal/test_runner/test:1440:71
+        node:internal/per_context/primordials:466:82
+        new Promise (<anonymous>)
+        new SafePromise (node:internal/per_context/primordials:435:3)
+        node:internal/per_context/primordials:466:9
+        Array.map (<anonymous>)
+      ...
+    # Subtest: recommends the highest-value bounded buyer gap after the PR queue drains
+    ok 2 - recommends the highest-value bounded buyer gap after the PR queue drains
+      ---
+      duration_ms: 0.781101
+      type: 'test'
+      ...
+    1..2
+not ok 7 - realistic OpenCode maintenance dry-run fixture
+  ---
+  duration_ms: 9.399881
+  type: 'suite'
+  location: '/home/runner/work/life-os/life-os/packages/maintenance-agent/src/fixture.test.mjs:20:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: OpenCode maintenance planner contract
+    # Subtest: is one bounded primary planning agent
+    ok 1 - is one bounded primary planning agent
+      ---
+      duration_ms: 1.825417
+      type: 'test'
+      ...
+    # Subtest: allows repository inspection and exactly one ephemeral edit path
+    ok 2 - allows repository inspection and exactly one ephemeral edit path
+      ---
+      duration_ms: 0.803923
+      type: 'test'
+      ...
+    # Subtest: denies execution, delegation, external, web, and interactive capabilities
+    ok 3 - denies execution, delegation, external, web, and interactive capabilities
+      ---
+      duration_ms: 0.495724
+      type: 'test'
+      ...
+    # Subtest: uses the reviewed contract as sole authority and prohibits GitHub mutation
+    ok 4 - uses the reviewed contract as sole authority and prohibits GitHub mutation
+      ---
+      duration_ms: 0.287502
+      type: 'test'
+      ...
+    # Subtest: contains no prohibited Copilot or review-secret references
+    ok 5 - contains no prohibited Copilot or review-secret references
+      ---
+      duration_ms: 0.214904
+      type: 'test'
+      ...
+    1..5
+ok 8 - OpenCode maintenance planner contract
+  ---
+  duration_ms: 5.52822
+  type: 'suite'
+  ...
+# Subtest: maintenance plan validation
+    # Subtest: accepts and deeply freezes one exact plan-only recommendation
+    ok 1 - accepts and deeply freezes one exact plan-only recommendation
+      ---
+      duration_ms: 6.019127
+      type: 'test'
+      ...
+    # Subtest: accepts a no-action plan only for a no-compute contract
+    ok 2 - accepts a no-action plan only for a no-compute contract
+      ---
+      duration_ms: 2.247953
+      type: 'test'
+      ...
+    # Subtest: accepts stable decision and provider failure reason codes
+    ok 3 - accepts stable decision and provider failure reason codes
+      ---
+      duration_ms: 0.797041
+      type: 'test'
+      ...
+    # Subtest: rejects mismatched identity, action, compute, and decision evidence
+    ok 4 - rejects mismatched identity, action, compute, and decision evidence
+      ---
+      duration_ms: 1.707134
+      type: 'test'
+      ...
+    # Subtest: rejects unsafe, excessive, duplicate, or unauthorized plan content
+    ok 5 - rejects unsafe, excessive, duplicate, or unauthorized plan content
+      ---
+      duration_ms: 2.883961
+      type: 'test'
+      ...
+    # Subtest: rejects malformed contracts through the stable plan boundary
+    ok 6 - rejects malformed contracts through the stable plan boundary
+      ---
+      duration_ms: 0.495594
+      type: 'test'
+      ...
+    1..6
+ok 9 - maintenance plan validation
+  ---
+  duration_ms: 15.719854
+  type: 'suite'
+  ...
+# Subtest: maintenance plan Markdown rendering
+    # Subtest: renders one bounded operator-readable plan
+    ok 1 - renders one bounded operator-readable plan
+      ---
+      duration_ms: 0.860741
+      type: 'test'
+      ...
+    # Subtest: renders explicit empty sections for a no-action plan
+    ok 2 - renders explicit empty sections for a no-action plan
+      ---
+      duration_ms: 0.537993
+      type: 'test'
+      ...
+    # Subtest: fails closed when an unvalidated render object contains unsafe fields
+    ok 3 - fails closed when an unvalidated render object contains unsafe fields
+      ---
+      duration_ms: 0.31341
+      type: 'test'
+      ...
+    1..3
+ok 10 - maintenance plan Markdown rendering
+  ---
+  duration_ms: 1.882134
+  type: 'suite'
+  ...
+# Subtest: NVIDIA OpenCode maintenance workflow contract
+    # Subtest: runs hourly and manually from reviewed default-branch source
+    ok 1 - runs hourly and manually from reviewed default-branch source
+      ---
+      duration_ms: 1.764763
+      type: 'test'
+      ...
+    # Subtest: pins every external action and the OpenCode GitHub action
+    ok 2 - pins every external action and the OpenCode GitHub action
+      ---
+      duration_ms: 0.555616
+      type: 'test'
+      ...
+    # Subtest: uses NVIDIA NIM and contains no Copilot credential path
+    ok 3 - uses NVIDIA NIM and contains no Copilot credential path
+      ---
+      duration_ms: 0.34025
+      type: 'test'
+      ...
+    # Subtest: keeps model execution read-only and delegates no merge or release authority
+    ok 4 - keeps model execution read-only and delegates no merge or release authority
+      ---
+      duration_ms: 0.434909
+      type: 'test'
+      ...
+    # Subtest: compiles reviewed evidence before exposing the model credential
+    ok 5 - compiles reviewed evidence before exposing the model credential
+      ---
+      duration_ms: 0.269627
+      type: 'test'
+      ...
+    # Subtest: fails closed for high-risk conducted work until the reviewed orchestrator path is available
+    ok 6 - fails closed for high-risk conducted work until the reviewed orchestrator path is available
+      ---
+      duration_ms: 0.241725
+      type: 'test'
+      ...
+    # Subtest: retains only validated contract and plan artifacts
+    ok 7 - retains only validated contract and plan artifacts
+      ---
+      duration_ms: 0.278634
+      type: 'test'
+      ...
+    # Subtest: does not alter the independent AppGuardrail review boundary
+    ok 8 - does not alter the independent AppGuardrail review boundary
+      ---
+      duration_ms: 1.87987
+      type: 'test'
+      ...
+    1..8
+ok 11 - NVIDIA OpenCode maintenance workflow contract
+  ---
+  duration_ms: 9.45756
+  type: 'suite'
+  ...
+1..11
+# tests 58
+# suites 11
+# pass 56
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 317.504389
+# Error: 98.81% branch coverage does not meet threshold of 100%.
+# start of coverage report
+# --------------------------------------------------------------
+# file          | line % | branch % | funcs % | uncovered lines
+# --------------------------------------------------------------
+# src           |        |          |         | 
+#  cli.mjs      | 100.00 |    99.05 |  100.00 | 
+#  contract.mjs | 100.00 |    99.28 |  100.00 | 
+#  plan.mjs     | 100.00 |    97.87 |  100.00 | 
+# --------------------------------------------------------------
+# all files     | 100.00 |    98.81 |  100.00 | 
+# --------------------------------------------------------------
+# end of coverage report
+/home/runner/work/life-os/life-os/packages/maintenance-agent:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @life-os/maintenance-agent@0.1.0 test: `node --test --experimental-test-coverage --test-coverage-include=src/contract.mjs --test-coverage-include=src/plan.mjs --test-coverage-include=src/cli.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 src/*.test.mjs`
+Exit status 1
+ WARN   Local package.json exists, but node_modules missing, did you mean to install?
+
+> @life-os/maintenance-agent@0.1.0 build /home/runner/work/life-os/life-os/packages/maintenance-agent
+> node --check src/contract.mjs && node --check src/plan.mjs && node --check src/cli.mjs && node --check src/bin.mjs
+
+
+> @life-os/root@0.1.0 format:check /home/runner/work/life-os/life-os
+> prettier --single-quote --check README.md CONTRIBUTING.md SECURITY.md docs/legal/privacy.md docs/legal/terms.md package.json turbo.json tsconfig.base.json pnpm-workspace.yaml compose.yaml .appguardrail.json .github/workflows/ci.yml .github/workflows/appguardrail.yml security/appguardrail-contract.json packages/appguardrail-contract/package.json packages/appguardrail-contract/src/verify-contract.mjs packages/appguardrail-contract/src/verify-contract.test.mjs tests/appguardrail-fixtures/dangerous-cors.ts tests/appguardrail-fixtures/oauth-open-redirect.ts docs/security/appguardrail-regressions.md docs/superpowers/specs/2026-08-03-appguardrail-security-gate-design.md docs/superpowers/plans/2026-08-03-appguardrail-security-gate.md .github/workflows/commercial-readiness.yml product/commercial-readiness-policy.json product/capabilities.json packages/commercial-readiness/package.json packages/commercial-readiness/src/schema.mjs packages/commercial-readiness/src/schema.test.mjs packages/commercial-readiness/src/audit.mjs packages/commercial-readiness/src/audit.test.mjs packages/commercial-readiness/src/pr-gate.mjs packages/commercial-readiness/src/pr-gate.test.mjs packages/commercial-readiness/src/render.mjs packages/commercial-readiness/src/render.test.mjs packages/commercial-readiness/src/github-client.mjs packages/commercial-readiness/src/github-client.test.mjs packages/commercial-readiness/src/cli.mjs packages/commercial-readiness/src/cli.test.mjs packages/commercial-readiness/src/workflow-contract.test.mjs packages/commercial-readiness/src/legal-contract.test.mjs docs/superpowers/specs/2026-08-03-commercial-readiness-loop-design.md docs/superpowers/plans/2026-08-03-commercial-readiness-loop.md apps/identity-service/src/oauth-http-boundary.ts apps/identity-service/src/oauth-http-application.ts apps/identity-service/src/oauth-http-boundary.test.ts docs/superpowers/plans/2026-08-03-oauth-http-boundary-slice.md apps/identity-service/package.json apps/identity-service/src/main.ts apps/identity-service/src/oauth-http-controller.ts apps/identity-service/src/oauth-http-controller.test.ts apps/identity-service/src/oauth-http.integration.test.ts apps/identity-service/src/identity-runtime.ts apps/identity-service/src/identity-runtime.test.ts docs/superpowers/plans/2026-08-03-oauth-controller-wiring-slice.md apps/identity-service/src/oauth-provider-http-client.ts apps/identity-service/src/tests/oauth-provider-http-client.test.ts docs/superpowers/plans/2026-08-03-oauth-provider-http-client-slice.md apps/identity-service/src/google-oidc-client.ts apps/identity-service/src/google-oidc-client.test.ts docs/superpowers/plans/2026-08-03-google-oidc-verifier-slice.md apps/identity-service/src/github-oauth-client.ts apps/identity-service/src/github-oauth-client.test.ts docs/superpowers/plans/2026-08-03-github-oauth-client-slice.md apps/identity-service/src/oauth-callback-application.ts apps/identity-service/src/oauth-callback-application.test.ts docs/superpowers/plans/2026-08-03-oauth-callback-orchestration-slice.md docs/superpowers/plans/2026-08-03-oauth-callback-runtime-wiring-slice.md docs/superpowers/plans/2026-08-03-oauth-open-redirect-regression-slice.md docs/superpowers/plans/2026-08-03-oauth-http-integration-slice.md apps/planning-service/package.json apps/planning-service/migrations/README.md apps/planning-service/src/main.ts apps/planning-service/src/http-boundary.ts apps/planning-service/src/http-boundary.test.ts apps/planning-service/src/planning-domain.ts apps/planning-service/src/planning-domain.test.ts apps/planning-service/src/planning-runtime.ts apps/planning-service/src/planning-runtime.test.ts apps/planning-service/src/postgres-planning-repository.ts apps/planning-service/src/postgres-planning-repository.test.ts apps/planning-service/src/postgres-planning-repository.integration.test.ts apps/planning-service/src/search.ts apps/planning-service/src/search.test.ts apps/planning-service/src/postgres-planning-search.test.ts docs/superpowers/plans/2026-08-03-planning-postgres-repository-slice.md docs/superpowers/plans/2026-08-04-planning-postgres-runtime-slice.md apps/habit-service/package.json apps/habit-service/migrations/README.md apps/habit-service/src/main.ts apps/habit-service/src/habit-domain.ts apps/habit-service/src/habit-domain.test.ts apps/habit-service/src/postgres-habit-repository.ts apps/habit-service/src/postgres-habit-repository.test.ts apps/habit-service/src/postgres-habit-repository.integration.test.ts apps/habit-service/src/habit-runtime.ts apps/habit-service/src/habit-runtime.test.ts apps/habit-service/src/http-boundary.ts apps/habit-service/src/http-boundary.test.ts apps/habit-service/src/habit-service.integration.test.ts docs/superpowers/plans/2026-08-04-habit-recurring-domain-slice.md docs/superpowers/plans/2026-08-04-habit-postgres-repository-slice.md docs/superpowers/plans/2026-08-04-habit-http-api-slice.md apps/ai-service/package.json apps/ai-service/tsconfig.json apps/ai-service/src/main.ts apps/ai-service/src/proposal-service.ts apps/ai-service/src/proposal-service.test.ts apps/ai-service/src/no-silent-mutation.integration.test.ts apps/ai-service/migrations/README.md apps/ai-service/src/proposal-audit-domain.ts apps/ai-service/src/proposal-audit-domain.test.ts apps/ai-service/src/postgres-proposal-audit-repository.ts apps/ai-service/src/postgres-proposal-audit-repository.test.ts apps/ai-service/src/postgres-proposal-audit-repository.integration.test.ts apps/ai-service/src/proposal-audit-application.ts apps/ai-service/src/proposal-audit-application.test.ts apps/ai-service/src/ai-runtime.ts apps/ai-service/src/ai-runtime.test.ts apps/ai-service/src/proposal-audit-http.integration.test.ts docs/superpowers/plans/2026-08-04-ai-proposal-audit-repository-slice.md docs/superpowers/plans/2026-08-04-ai-proposal-audit-api-slice.md apps/gateway/package.json apps/gateway/src/app.module.ts apps/gateway/src/main.ts apps/gateway/src/observability.ts apps/gateway/src/observability.test.ts packages/observability/package.json packages/observability/src/index.cjs packages/observability/src/index.d.ts packages/observability/src/index.test.cjs infra/observability/prometheus.yml infra/observability/alerts.yml docs/operations/service-level-objectives.md docs/superpowers/plans/2026-08-04-observability-slo-foundation-slice.md apps/planning-service/src/observability.ts apps/planning-service/src/observability.test.ts infra/observability/planning-alerts.yml docs/operations/planning-service-level-objectives.md docs/superpowers/plans/2026-08-04-gateway-structured-logging-slice.md apps/ai-service/vitest.config.ts apps/ai-service/src/docstring-coverage.test.ts docs/operations/ai-proposal-audit-assurance.md docs/superpowers/specs/2026-08-04-ai-service-quality-gates-design.md docs/superpowers/plans/2026-08-04-ai-service-quality-gates.md apps/ai-service/src/server.ts apps/ai-service/src/quality-coverage.test.ts apps/ai-service/src/server.test.ts CHANGELOG.md apps/ai-service/src/ai-gateway-keyring.ts apps/ai-service/src/ai-gateway-keyring.test.ts apps/ai-service/src/ai-http-boundary.ts apps/ai-service/src/ai-http-boundary.test.ts docs/operations/ai-gateway-key-rotation.md docs/research/2026-08-04-ai-gateway-key-rotation-standards.md docs/superpowers/specs/2026-08-04-ai-gateway-key-rotation-design.md docs/superpowers/plans/2026-08-04-ai-gateway-key-rotation.md .github/workflows/opencode-nim-maintenance.yml .opencode/agents/maintenance-planner.md product/review-agent-integrity.json packages/maintenance-agent/package.json packages/maintenance-agent/src/*.mjs packages/maintenance-agent/fixtures/*.json docs/adr/0001-governed-opencode-maintenance.md docs/operations/opencode-nim-maintenance.md docs/research/2026-08-07-opencode-nim-maintenance-standards.md docs/superpowers/specs/2026-08-07-opencode-nim-maintenance-loop-design.md docs/superpowers/plans/2026-08-07-opencode-nim-maintenance-loop.md AGENTS.md CLAUDE.md ARCHITECTURE.md
+
+Checking formatting...
+All matched files use Prettier code style!
