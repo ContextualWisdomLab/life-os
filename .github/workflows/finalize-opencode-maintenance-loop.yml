@@ -14,6 +14,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Retry after exact maintenance fixture repairs.
 jobs:
   finalize:
     runs-on: ubuntu-24.04
