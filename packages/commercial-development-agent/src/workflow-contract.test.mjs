@@ -6,7 +6,9 @@ const WORKFLOW_PATH = resolve(
   import.meta.dirname,
   '../../../.github/workflows/opencode-commercial-development.yml',
 );
+const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
 const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
+const packageJson = JSON.parse(readFileSync(PACKAGE_PATH, 'utf8'));
 
 /** Returns one named workflow step including its body but not the next step. */
 function step(name) {
@@ -30,7 +32,7 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).toContain('timeout-minutes: 120');
   });
 
-  it('pins every external action and one exact OpenCode package version', () => {
+  it('pins every external action and the reviewed OpenCode package exactly', () => {
     const uses = [...workflow.matchAll(/uses:\s+([^\s#]+)/gu)].map(
       (match) => match[1] ?? '',
     );
@@ -47,7 +49,12 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).toContain(
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
     );
-    expect(workflow).toMatch(/OPENCODE_PACKAGE_VERSION: '[0-9]+\.[0-9]+\.[0-9]+'/u);
+    expect(packageJson.devDependencies['opencode-ai']).toMatch(
+      /^[0-9]+\.[0-9]+\.[0-9]+$/u,
+    );
+    expect(workflow).toContain(
+      `OPENCODE_PACKAGE_VERSION: '${packageJson.devDependencies['opencode-ai']}'`,
+    );
     expect(workflow).not.toContain('__PINNED_BY_BOOTSTRAP__');
     expect(step('Verify the exact OpenCode installation')).toContain(
       'opencode --version',
@@ -55,56 +62,94 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(step('Verify the exact OpenCode installation')).toContain(
       'opencode run --help',
     );
+    expect(step('Verify the exact OpenCode installation')).toContain('--pure');
     expect(workflow).not.toMatch(/curl[^\n]*\|\s*(?:sh|bash)/iu);
   });
 
-  it('uses only the NVIDIA secret and never exposes GitHub credentials to OpenCode', () => {
+  it('keeps the real NVIDIA credential in a loopback bridge, not the model environment', () => {
     expect(workflow).not.toContain('COPILOT_GITHUB_TOKEN');
-    const secretExpression = '${{ secrets.NVIDIA_NIM_API_KEY }}';
     expect(
       workflow.match(/\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu),
     ).toHaveLength(1);
+
+    const bridge = step('Start loopback NVIDIA credential bridge');
+    expect(bridge).toContain('${{ secrets.NVIDIA_NIM_API_KEY }}');
+    expect(bridge).toContain('127.0.0.1');
+    expect(bridge).toContain('integrate.api.nvidia.com');
+    expect(bridge).toContain('/v1/chat/completions');
+    expect(bridge).toContain('MAX_REQUEST_BYTES');
+    expect(bridge).toContain('MAX_RESPONSE_BYTES');
+    expect(bridge).toContain('UPSTREAM_TIMEOUT_SECONDS');
+    expect(bridge).toContain('--preserve-env=NVIDIA_NIM_API_KEY');
+    expect(bridge).toContain('-u opencode_bridge');
+    expect(bridge).not.toContain('echo "$NVIDIA_NIM_API_KEY"');
+
     const model = step('Run one bounded OpenCode implementation');
-    expect(model).toContain(secretExpression);
-    expect(model).toContain('NVIDIA_API_KEY="$NVIDIA_NIM_API_KEY"');
-    expect(model).toContain('unset NVIDIA_NIM_API_KEY');
-    expect(model).toContain('opencode run');
+    expect(model).toContain('sudo -u opencode_model env -i');
+    expect(model).toContain('NVIDIA_API_KEY=local-loopback-placeholder');
+    expect(model).toContain('opencode run --pure --auto');
     expect(model).toContain('timeout --signal=TERM --kill-after=30s 90m');
+    expect(model).not.toContain('NVIDIA_NIM_API_KEY');
+    expect(model).not.toContain('${{ secrets.');
+    expect(model).not.toContain('github.token');
     expect(model).not.toContain('GITHUB_TOKEN');
     expect(model).not.toContain('GH_TOKEN');
-    expect(model).not.toContain('github.token');
-    expect(model).not.toContain('secrets.');
-    expect(model).not.toContain('review');
-    expect(step('Checkout exact main source')).toContain(
-      'persist-credentials: false',
+  });
+
+  it('isolates model writes from git, trusted policy, and trusted verifier authority', () => {
+    const workspace = step('Prepare disposable model workspace');
+    expect(workspace).toContain('MODEL_WORKSPACE');
+    expect(workspace).toContain("--exclude='.git'");
+    expect(workspace).toContain("--exclude='node_modules'");
+    expect(workspace).toContain('test ! -e "$MODEL_WORKSPACE/.git"');
+    expect(workspace).toContain('chmod 0700 "$GITHUB_WORKSPACE"');
+    expect(workspace).toContain('opencode_model');
+    expect(workspace).toContain('iptables');
+    expect(workspace).toContain('127.0.0.1');
+
+    const model = step('Run one bounded OpenCode implementation');
+    expect(model).toContain('cd "$MODEL_WORKSPACE"');
+    expect(model).toContain('OPENCODE_CONFIG="$MODEL_HOME/opencode.json"');
+    expect(model).toContain('"external_directory": "deny"');
+    expect(model).toContain('"webfetch": "deny"');
+    expect(model).toContain('"websearch": "deny"');
+
+    const materialize = step('Materialize candidate through trusted boundary');
+    expect(materialize).toContain('packages/commercial-development-agent');
+    expect(materialize).toContain('product/opencode-commercial-development-policy.json');
+    expect(materialize).toContain("stat.S_ISREG");
+    expect(materialize).toContain("'object_type_rejected'");
+    expect(materialize).toContain("--exclude='.git'");
+    expect(materialize).toContain("--exclude='node_modules'");
+    expect(materialize).toContain(
+      'node packages/commercial-development-agent/src/cli.mjs validate-diff',
+    );
+    expect(materialize).not.toContain(
+      'pnpm --filter @life-os/commercial-development-agent exec commercial-development-agent validate-diff',
     );
   });
 
-  it('keeps deterministic selection, branch, diff, and base policy outside the model', () => {
+  it('keeps deterministic selection, branch, subprocess, and exact-base gates outside the model', () => {
     expect(
       workflow.indexOf('Run deterministic commercial readiness audit'),
     ).toBeLessThan(workflow.indexOf('Run one bounded OpenCode implementation'));
     expect(step('Select one eligible issue')).toContain(
       'commercial-development-agent select',
     );
-    expect(step('Create the isolated UUIDv4 feature branch')).toContain(
-      'uuid.uuid4()',
-    );
-    expect(step('Create the isolated UUIDv4 feature branch')).toContain(
-      'automation/opencode-commercial-',
-    );
-    expect(step('Build the policy-isolated prompt')).toContain(
-      'commercial-development-agent prompt',
-    );
-    expect(step('Project and validate the working-tree diff')).toContain(
-      'commercial-development-agent validate-diff',
-    );
-    expect(step('Recheck the exact main base before remote mutation')).toContain(
-      'git ls-remote origin refs/heads/main',
-    );
-    expect(step('Recheck the exact main base before remote mutation')).toContain(
-      'base_changed',
-    );
+
+    const branch = step('Create the isolated UUIDv4 feature branch');
+    expect(branch).toContain('uuid.uuid4()');
+    expect(branch).toContain('branch_name="automation/opencode-commercial-');
+    expect(branch).toContain('git switch --create "$branch_name"');
+    expect(branch).not.toContain('steps.branch.outputs.branch_name');
+
+    const materialize = step('Materialize candidate through trusted boundary');
+    expect(materialize).toContain('timeout=30');
+    expect(materialize).toContain("git', 'ls-remote'");
+
+    const base = step('Recheck the exact main base before remote mutation');
+    expect(base).toContain('timeout 30s git ls-remote origin refs/heads/main');
+    expect(base).toContain('base_changed');
   });
 
   it('allows one credentialed draft-PR mutation step but no merge or release authority', () => {
@@ -123,25 +168,37 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).not.toContain('actions: write');
   });
 
-  it('retains only the credential-free receipt and always removes private model material', () => {
+  it('retains only credential-free receipts and removes model/bridge material', () => {
     const upload = step('Upload credential-free development receipt');
-    expect(upload).toContain('path: ${{ runner.temp }}/commercial-development/receipt.json');
+    expect(upload).toContain(
+      'path: ${{ runner.temp }}/commercial-development/receipt.json',
+    );
     expect(upload).toContain('if-no-files-found: error');
     expect(upload).toContain('retention-days: 7');
-    for (const prohibited of ['prompt.json', 'opencode.log', 'opencode.json', 'diff.json']) {
+    for (const prohibited of [
+      'prompt.json',
+      'opencode.log',
+      'opencode.json',
+      'diff.json',
+      'nim-bridge.py',
+    ]) {
       expect(upload).not.toContain(prohibited);
     }
+
     const cleanup = step('Remove private agent material');
     expect(cleanup).toContain('if: always()');
+    expect(cleanup).toContain('pkill -u opencode_bridge');
+    expect(cleanup).toContain('iptables -D');
+    expect(cleanup).toContain('MODEL_WORKSPACE');
     for (const file of [
       'prompt.json',
       'prompt.txt',
-      'opencode.json',
       'opencode.log',
       'issues.json',
       'pulls.json',
       'diff.json',
       'receipt-input.json',
+      'nim-bridge.py',
     ]) {
       expect(cleanup).toContain(file);
     }
