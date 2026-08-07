@@ -167,9 +167,9 @@ describe('purpose-bound privacy access policy', () => {
   });
 
   it('caps ordinary and break-glass validity windows', () => {
-    expect(
-      evaluate({ requestedTtlSeconds: 900 }).expiresAt,
-    ).toBe('2026-08-07T01:15:00.000Z');
+    expect(evaluate({ requestedTtlSeconds: 900 }).expiresAt).toBe(
+      '2026-08-07T01:15:00.000Z',
+    );
     expect(() => evaluate({ requestedTtlSeconds: 901 })).toThrow(
       PrivacyAccessValidationError,
     );
@@ -197,11 +197,14 @@ describe('purpose-bound privacy access policy', () => {
     { reason: 'short' },
     { reason: 'line\nbreak reason that should never pass validation' },
     { reason: 'x'.repeat(501) },
-  ])('rejects malformed request input without repository state %#', (override) => {
-    expect(() => evaluate(override as never)).toThrow(
-      PrivacyAccessValidationError,
-    );
-  });
+  ])(
+    'rejects malformed request input without repository state %#',
+    (override) => {
+      expect(() => evaluate(override as never)).toThrow(
+        PrivacyAccessValidationError,
+      );
+    },
+  );
 
   it.each([
     {
