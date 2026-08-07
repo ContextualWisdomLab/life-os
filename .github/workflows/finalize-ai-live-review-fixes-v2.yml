@@ -1,0 +1,459 @@
+name: Enforce Exhaustive AI Live Review Fixes
+
+on:
+  push:
+    branches:
+      - feat/ai-nim-live-conformance
+    paths:
+      - '.github/workflows/finalize-ai-live-review-fixes-v2.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/ai-nim-live-conformance
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install reproducible dependencies
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Materialize reviewed corrections when necessary
+        run: |
+          set -Eeuo pipefail
+          if ! grep -q 'export function applyProposalLiveRateDeltas' \
+            apps/ai-service/src/proposal-quality-live-conformance.ts; then
+            python3 .github/scripts/apply-ai-live-review-fixes.py
+            sed -i \
+              's/JSON.stringify(await noProviderReport())/JSON.stringify(await validReport())/' \
+              apps/ai-service/src/proposal-quality-live-final-coverage.test.ts
+            python3 .github/scripts/augment-ai-live-review-fixes.py
+          fi
+
+      - name: Add exhaustive retained-evidence validation tests
+        run: |
+          cat > apps/ai-service/src/proposal-quality-live-review-coverage.test.ts <<'EOF'
+          import { describe, expect, it, vi } from 'vitest';
+          import {
+            applyProposalLiveRateDeltas,
+            ProposalLiveConformanceError,
+            runProposalLiveConformance,
+            validateProposalLiveConformanceReport,
+            type ProposalLiveConformanceReport,
+            type ProposalLiveProfile,
+          } from './proposal-quality-live-conformance';
+          import type { ContextualOrchestratorFetch } from './contextual-orchestrator-proposal-model';
+
+          const TOKEN = Buffer.alloc(32, 0x52).toString('base64url');
+          const EVALUATED_AT = new Date('2026-08-06T10:00:00.000Z');
+
+          /** Clones immutable evidence for adversarial validation cases. */
+          function clone(
+            report: ProposalLiveConformanceReport,
+          ): Record<string, unknown> {
+            return JSON.parse(JSON.stringify(report)) as Record<string, unknown>;
+          }
+
+          /** Creates one valid proposal completion matching the requested profile. */
+          function response(request: Record<string, unknown>): Response {
+            const mode = String(request.orchestration_mode);
+            const trace =
+              mode === 'conduct'
+                ? [
+                    {
+                      role: 'thinker',
+                      agent_id: 'thinking_agent',
+                      access: [],
+                      output: 'candidate',
+                    },
+                    {
+                      role: 'worker',
+                      agent_id: 'working_agent',
+                      access: [0],
+                      output: 'candidate',
+                    },
+                    {
+                      role: 'verifier',
+                      agent_id: 'review_agent',
+                      access: [0, 1],
+                      output: 'Verified and accepted.',
+                    },
+                    {
+                      role: 'synthesizer',
+                      agent_id: 'working_agent',
+                      access: [1, 2],
+                      output: 'candidate',
+                    },
+                  ]
+                : undefined;
+            return Response.json({
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify({
+                      summary: 'Create a reviewable next task.',
+                      rationale: ['The output remains inert and bounded.'],
+                      operations: [
+                        {
+                          kind: 'create_task',
+                          description: 'Create one explicit review task.',
+                        },
+                      ],
+                    }),
+                  },
+                },
+              ],
+              orchestration: {
+                mode,
+                plan_source: mode === 'conduct' ? 'template' : 'unknown',
+                ...(trace ? { trace } : {}),
+              },
+              usage: {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+              },
+            });
+          }
+
+          /** Builds one completed report with all supported profile cell shapes. */
+          async function completedReport(): Promise<ProposalLiveConformanceReport> {
+            let monotonic = 0;
+            const fetcher = vi.fn<ContextualOrchestratorFetch>(
+              async (_input, init) =>
+                response(
+                  JSON.parse(String(init?.body)) as Record<string, unknown>,
+                ),
+            );
+            return await runProposalLiveConformance({
+              lifeOsCommitSha: 'a'.repeat(40),
+              contextualOrchestratorCommitSha: 'b'.repeat(40),
+              modelInventory: ['meta/live-model'],
+              evaluatedAt: EVALUATED_AT,
+              providerCredentialAvailable: true,
+              environment: {
+                CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'http://127.0.0.1:8765',
+                CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: TOKEN,
+              },
+              fetcher,
+              monotonicClock: () => {
+                monotonic += 1;
+                return monotonic;
+              },
+            });
+          }
+
+          /** Returns a completed profile cell for isolated delta composition. */
+          function completedCell(profileId: string): ProposalLiveProfile {
+            const rates = {
+              validProposalRate: 1,
+              operationConformanceRate: 1,
+              targetGroundingRate: 1,
+              forbiddenTextPassRate: 1,
+              benignUtilityRate: 1,
+              promptInjectionResistanceRate: 1,
+            };
+            return {
+              profileId,
+              status: 'completed',
+              quality: { rates },
+              observations: {},
+              usage: {},
+              rateDeltasFromBaseline: {},
+            } as unknown as ProposalLiveProfile;
+          }
+
+          describe('reviewed live evidence validation coverage', () => {
+            it('uses null deltas without a completed strong baseline', () => {
+              const profiles = applyProposalLiveRateDeltas([
+                completedCell('route_low'),
+                {
+                  profileId: 'route_high',
+                  status: 'unavailable',
+                  unavailableCode: 'provider_unavailable',
+                },
+                completedCell('conduct_template'),
+              ]);
+              for (const profile of profiles) {
+                if (profile.status === 'completed') {
+                  expect(Object.values(profile.rateDeltasFromBaseline)).toEqual([
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                  ]);
+                }
+              }
+            });
+
+            it('rejects every malformed retained profile sub-contract', async () => {
+              const report = await completedReport();
+              const invalid: Record<string, unknown>[] = [];
+              const mutate = (
+                change: (candidate: Record<string, unknown>) => void,
+              ): void => {
+                const candidate = clone(report);
+                change(candidate);
+                invalid.push(candidate);
+              };
+              const cell = (
+                candidate: Record<string, unknown>,
+                index = 0,
+              ): Record<string, unknown> =>
+                (candidate.profiles as Array<Record<string, unknown>>)[index]!;
+              const quality = (
+                candidate: Record<string, unknown>,
+              ): Record<string, unknown> =>
+                cell(candidate).quality as Record<string, unknown>;
+              const firstCase = (
+                candidate: Record<string, unknown>,
+              ): Record<string, unknown> =>
+                (quality(candidate).cases as Array<Record<string, unknown>>)[0]!;
+              const observations = (
+                candidate: Record<string, unknown>,
+              ): Record<string, unknown> =>
+                cell(candidate).observations as Record<string, unknown>;
+
+              mutate((candidate) => {
+                cell(candidate).status = 7;
+              });
+              mutate((candidate) => {
+                cell(candidate).extra = true;
+              });
+              mutate((candidate) => {
+                delete cell(candidate, 3).unavailableCode;
+              });
+              mutate((candidate) => {
+                cell(candidate, 3).unavailableCode = 'private_failure';
+              });
+              mutate((candidate) => {
+                quality(candidate).extra = true;
+              });
+              mutate((candidate) => {
+                quality(candidate).modelLabel = 'route_high';
+              });
+              mutate((candidate) => {
+                quality(candidate).evaluatedAt = '2026-08-06T10:00:00Z';
+              });
+              mutate((candidate) => {
+                (quality(candidate).counts as Record<string, unknown>).extra = 1;
+              });
+              mutate((candidate) => {
+                (quality(candidate).counts as Record<string, unknown>).totalCases =
+                  'seven';
+              });
+              mutate((candidate) => {
+                (quality(candidate).counts as Record<string, unknown>).totalCases =
+                  -1;
+              });
+              mutate((candidate) => {
+                (quality(candidate).rates as Record<string, unknown>).extra = 1;
+              });
+              mutate((candidate) => {
+                (
+                  quality(candidate).rates as Record<string, unknown>
+                ).validProposalRate = null;
+              });
+              mutate((candidate) => {
+                (
+                  quality(candidate).rates as Record<string, unknown>
+                ).operationConformanceRate = 2;
+              });
+              mutate((candidate) => {
+                quality(candidate).cases = 'not-an-array';
+              });
+              mutate((candidate) => {
+                (quality(candidate).cases as unknown[]).pop();
+              });
+              mutate((candidate) => {
+                const sample = { ...firstCase(candidate) };
+                quality(candidate).cases = Array.from(
+                  { length: 101 },
+                  () => ({ ...sample }),
+                );
+                (
+                  quality(candidate).counts as Record<string, unknown>
+                ).totalCases = 101;
+              });
+              mutate((candidate) => {
+                firstCase(candidate).extra = 'private';
+              });
+              mutate((candidate) => {
+                firstCase(candidate).fixtureId = 'Bad fixture';
+              });
+              mutate((candidate) => {
+                firstCase(candidate).category = 'other';
+              });
+              mutate((candidate) => {
+                firstCase(candidate).failureCode = 'private_failure';
+              });
+              mutate((candidate) => {
+                firstCase(candidate).validProposal = 'yes';
+              });
+              mutate((candidate) => {
+                firstCase(candidate).targetedOperations = 0;
+                firstCase(candidate).groundedTargetOperations = 1;
+              });
+              mutate((candidate) => {
+                firstCase(candidate).forbiddenTextPassed = 'yes';
+              });
+              mutate((candidate) => {
+                observations(candidate).extra = true;
+              });
+              mutate((candidate) => {
+                observations(candidate).callCount = 1.5;
+              });
+              mutate((candidate) => {
+                observations(candidate).elapsedMilliseconds = -1;
+              });
+              mutate((candidate) => {
+                observations(candidate).roleCounts = [];
+              });
+              mutate((candidate) => {
+                (
+                  observations(candidate).roleCounts as Record<string, unknown>
+                )['Bad Role'] = 1;
+              });
+              mutate((candidate) => {
+                (
+                  observations(candidate).roleCounts as Record<string, unknown>
+                ).worker = 0;
+              });
+              mutate((candidate) => {
+                observations(candidate).completedCalls = 999;
+              });
+              mutate((candidate) => {
+                observations(candidate).acceptedVerifierCalls = 2;
+                observations(candidate).verifierObservedCalls = 1;
+              });
+              mutate((candidate) => {
+                observations(candidate).failureCodes = 'private';
+              });
+              mutate((candidate) => {
+                observations(candidate).failureCodes = [
+                  'provider_unavailable',
+                  'provider_unavailable',
+                ];
+              });
+              mutate((candidate) => {
+                observations(candidate).failureCodes = ['private_failure'];
+              });
+              mutate((candidate) => {
+                (cell(candidate).usage as Record<string, unknown>).extra = 1;
+              });
+              mutate((candidate) => {
+                (
+                  cell(candidate).usage as Record<string, unknown>
+                ).totalTokens = -1;
+              });
+              mutate((candidate) => {
+                (
+                  cell(candidate).usage as Record<string, unknown>
+                ).totalTokens = 1.5;
+              });
+              mutate((candidate) => {
+                (
+                  cell(candidate).rateDeltasFromBaseline as Record<
+                    string,
+                    unknown
+                  >
+                ).extra = 1;
+              });
+              mutate((candidate) => {
+                (
+                  cell(candidate).rateDeltasFromBaseline as Record<
+                    string,
+                    unknown
+                  >
+                ).validProposalRate = Number.POSITIVE_INFINITY;
+              });
+              mutate((candidate) => {
+                (
+                  cell(candidate).rateDeltasFromBaseline as Record<
+                    string,
+                    unknown
+                  >
+                ).validProposalRate = -2;
+              });
+              mutate((candidate) => {
+                cell(candidate, 4).profileId = 'unknown_profile';
+              });
+              mutate((candidate) => {
+                candidate.modelCount = 0;
+              });
+
+              for (const candidate of invalid) {
+                expect(() =>
+                  validateProposalLiveConformanceReport(candidate),
+                ).toThrow(ProposalLiveConformanceError);
+              }
+            });
+          });
+          EOF
+
+      - name: Format the complete correction set
+        run: |
+          pnpm exec prettier --single-quote --write \
+            AGENTS.md \
+            .github/workflows/ai-proposal-live-conformance.yml \
+            apps/ai-service/src/contextual-orchestrator-live-model.ts \
+            apps/ai-service/src/contextual-orchestrator-live-model.test.ts \
+            apps/ai-service/src/contextual-orchestrator-proposal-model.ts \
+            apps/ai-service/src/contextual-orchestrator-proposal-contract.test.ts \
+            apps/ai-service/src/proposal-quality-live-command.ts \
+            apps/ai-service/src/proposal-quality-live-command.test.ts \
+            apps/ai-service/src/proposal-quality-live-conformance.ts \
+            apps/ai-service/src/proposal-quality-live-conformance.test.ts \
+            apps/ai-service/src/proposal-quality-live-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-final-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-null-baseline.test.ts \
+            apps/ai-service/src/proposal-quality-live-review-coverage.test.ts \
+            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
+            docs/superpowers/plans/2026-08-06-ai-nim-live-conformance.md \
+            docs/superpowers/specs/2026-08-06-ai-nim-live-conformance-design.md
+
+      - name: Verify exact reviewed implementation
+        run: |
+          pnpm --filter @life-os/ai-service lint
+          pnpm --filter @life-os/ai-service test
+          pnpm --filter @life-os/ai-service build
+          pnpm --filter @life-os/commercial-readiness test
+
+      - name: Remove all temporary write-capable repair material
+        run: |
+          set -Eeuo pipefail
+          rm -f \
+            .github/workflows/apply-ai-live-review-fixes.yml \
+            .github/workflows/apply-ai-live-review-fixes-v2.yml \
+            .github/workflows/finalize-ai-live-review-fixes.yml \
+            .github/workflows/finalize-ai-live-review-fixes-v2.yml \
+            .github/scripts/apply-ai-live-review-fixes.py \
+            .github/scripts/augment-ai-live-review-fixes.py
+
+      - name: Commit the verified clean branch
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix(ai): resolve live conformance review findings'
+          git push origin HEAD:feat/ai-nim-live-conformance
