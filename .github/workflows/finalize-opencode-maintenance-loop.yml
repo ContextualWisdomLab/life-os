@@ -34,14 +34,8 @@ jobs:
           corepack enable
           pnpm install --no-frozen-lockfile
 
-      - name: Prepare maintenance coverage generator
-        run: |
-          set -Eeuo pipefail
-          sed -i \
-            -e 's/contractDigest,/maintenanceContractDigest,/' \
-            -e 's/contractDigest(tampered)/maintenanceContractDigest(tampered)/' \
-            -e 's/waitContract.target.number/waitContract.target.externalNumber/' \
-            .github/scripts/complete-maintenance-coverage.py
+      - name: Correct maintenance coverage generator
+        run: python3 .github/scripts/fix-maintenance-coverage-generator.py
 
       - name: Apply maintenance contract repairs
         run: python3 .github/scripts/finalize-opencode-maintenance.py
@@ -104,34 +98,24 @@ jobs:
             package.json
 
       - name: Verify maintenance package and repository formatting
-        id: verify
         run: |
           set +e
-          {
-            pnpm --filter @life-os/maintenance-agent lint
-            pnpm --filter @life-os/maintenance-agent typecheck
-            pnpm --filter @life-os/maintenance-agent test
-            pnpm --filter @life-os/maintenance-agent build
-            pnpm format:check
-          } > .github/maintenance-verification.txt 2>&1
-          status=$?
+          status=0
+          : > .github/maintenance-verification.txt
+          pnpm --filter @life-os/maintenance-agent lint \
+            >> .github/maintenance-verification.txt 2>&1 || status=1
+          pnpm --filter @life-os/maintenance-agent typecheck \
+            >> .github/maintenance-verification.txt 2>&1 || status=1
+          pnpm --filter @life-os/maintenance-agent test \
+            >> .github/maintenance-verification.txt 2>&1 || status=1
+          pnpm --filter @life-os/maintenance-agent build \
+            >> .github/maintenance-verification.txt 2>&1 || status=1
+          pnpm format:check \
+            >> .github/maintenance-verification.txt 2>&1 || status=1
           tail -n 300 .github/maintenance-verification.txt
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Publish bounded verification diagnostics
-        if: steps.verify.outputs.status != '0'
-        run: |
-          set -Eeuo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/maintenance-verification.txt
-          git commit -m 'test(automation): retain maintenance verification failure'
-          git push origin HEAD:feat/opencode-nim-maintenance-loop
-          exit 1
+          exit "$status"
 
       - name: Remove temporary repair automation
-        if: steps.verify.outputs.status == '0'
         run: |
           set -Eeuo pipefail
           git rm -f --ignore-unmatch \
@@ -146,10 +130,10 @@ jobs:
             .github/scripts/complete-maintenance-coverage.py \
             .github/scripts/finalize-opencode-maintenance.py \
             .github/scripts/finalize-opencode-maintenance-product.py \
+            .github/scripts/fix-maintenance-coverage-generator.py \
             .github/scripts/repair-maintenance-cli-entrypoint.py
 
       - name: Commit verified product slice
-        if: steps.verify.outputs.status == '0'
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
