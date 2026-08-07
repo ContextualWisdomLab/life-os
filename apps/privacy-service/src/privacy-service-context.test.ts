@@ -96,9 +96,7 @@ describe('signed privacy service context', () => {
       'x-life-os-workspace-id': WORKSPACE_ID,
       'x-life-os-actor-id': ACTOR_ID,
       'x-life-os-context-issued-at': '1786078800',
-      'x-life-os-context-signature': expect.stringMatching(
-        /^[A-Za-z0-9_-]+$/u,
-      ),
+      'x-life-os-context-signature': expect.stringMatching(/^[A-Za-z0-9_-]+$/u),
     });
     expect(JSON.stringify(headers)).not.toContain(ACTIVE_SECRET);
 
@@ -149,28 +147,31 @@ describe('signed privacy service context', () => {
     { path: '/v1/privacy/access-grants/consume' },
     { now: new Date('2026-08-07T05:01:01.000Z') },
     { now: new Date('2026-08-07T04:58:59.000Z') },
-  ])('rejects replay across method, path, stale, or future time %#', (override) => {
-    const keyRing = parsePrivacyServiceContextKeyRing(activeEnvironment());
-    const headers = createPrivacyServiceContextHeaders(
-      {
-        workspaceId: WORKSPACE_ID,
-        actorId: ACTOR_ID,
-        method: 'POST',
-        path: '/v1/privacy/access-decisions',
-        issuedAt: new Date('2026-08-07T05:00:00.000Z'),
-      },
-      keyRing,
-    );
-    expect(() =>
-      verifyPrivacyServiceContext(
-        headers,
+  ])(
+    'rejects replay across method, path, stale, or future time %#',
+    (override) => {
+      const keyRing = parsePrivacyServiceContextKeyRing(activeEnvironment());
+      const headers = createPrivacyServiceContextHeaders(
+        {
+          workspaceId: WORKSPACE_ID,
+          actorId: ACTOR_ID,
+          method: 'POST',
+          path: '/v1/privacy/access-decisions',
+          issuedAt: new Date('2026-08-07T05:00:00.000Z'),
+        },
         keyRing,
-        override.method ?? 'POST',
-        override.path ?? '/v1/privacy/access-decisions',
-        override.now ?? NOW,
-      ),
-    ).toThrow(PrivacyServiceContextError);
-  });
+      );
+      expect(() =>
+        verifyPrivacyServiceContext(
+          headers,
+          keyRing,
+          override.method ?? 'POST',
+          override.path ?? '/v1/privacy/access-decisions',
+          override.now ?? NOW,
+        ),
+      ).toThrow(PrivacyServiceContextError);
+    },
+  );
 
   it('rejects altered ownership, signature, key identifier, and header shapes', () => {
     const keyRing = parsePrivacyServiceContextKeyRing(activeEnvironment());
@@ -188,8 +189,7 @@ describe('signed privacy service context', () => {
       { ...headers, 'x-life-os-workspace-id': 'numeric-1' },
       {
         ...headers,
-        'x-life-os-actor-id':
-          'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        'x-life-os-actor-id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
       { ...headers, 'x-life-os-context-signature': 'forged' },
       { ...headers, 'x-life-os-context-key-id': 'retired-key' },
