@@ -40,9 +40,14 @@ export interface PrivacyPool extends PrivacySqlPool {
 /** Factory seam used to create one production or test pool. */
 export type PrivacyPoolFactory = (configuration: PoolConfig) => PrivacyPool;
 
-class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {
+/** Adapts one `pg` transaction client to the privacy repository boundary. */
+export class NodePrivacyTransactionClient
+  implements PrivacySqlTransactionClient
+{
+  /** Creates one adapter over an already checked-out PostgreSQL client. */
   constructor(private readonly client: PoolClient) {}
 
+  /** Executes one static statement with an owned copy of readonly values. */
   async query<Row>(
     text: string,
     values?: readonly unknown[],
@@ -54,22 +59,28 @@ class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {
     return { rows: result.rows };
   }
 
+  /** Returns the underlying PostgreSQL connection to its pool. */
   release(): void {
     this.client.release();
   }
 }
 
-class NodePrivacyPool implements PrivacyPool {
+/** Adapts one production `pg` pool to the bounded privacy runtime contract. */
+export class NodePrivacyPool implements PrivacyPool {
+  /** Creates one adapter over a runtime-owned PostgreSQL pool. */
   constructor(private readonly pool: Pool) {}
 
+  /** Checks out one transaction-capable connection. */
   async connect(): Promise<PrivacySqlTransactionClient> {
     return new NodePrivacyTransactionClient(await this.pool.connect());
   }
 
+  /** Registers one process-level pool error listener. */
   on(event: 'error', listener: (error: Error) => void): void {
     this.pool.on(event, listener);
   }
 
+  /** Closes every checked-out and idle connection owned by the pool. */
   async end(): Promise<void> {
     await this.pool.end();
   }
@@ -160,7 +171,10 @@ export function createPrivacyPoolConfiguration(
   };
 }
 
-function defaultPoolFactory(configuration: PoolConfig): PrivacyPool {
+/** Creates the production PostgreSQL adapter without opening a connection. */
+export function defaultPrivacyPoolFactory(
+  configuration: PoolConfig,
+): PrivacyPool {
   return new NodePrivacyPool(new Pool(configuration));
 }
 
@@ -190,7 +204,7 @@ export class PrivacyRuntime implements OnApplicationShutdown {
 /** Creates the production privacy runtime after validating every secret first. */
 export function createPrivacyRuntime(
   environment: PrivacyRuntimeEnvironment = process.env,
-  poolFactory: PrivacyPoolFactory = defaultPoolFactory,
+  poolFactory: PrivacyPoolFactory = defaultPrivacyPoolFactory,
 ): PrivacyRuntime {
   const grantKeyRing = parsePrivacyGrantKeyRing(environment);
   const contextKeyRing = parsePrivacyServiceContextKeyRing(environment);
