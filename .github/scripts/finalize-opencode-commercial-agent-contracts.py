@@ -95,6 +95,22 @@ function requireTextBlock(value, maximumBytes) {
     )
 
 
+def repair_receipt_version_contract() -> None:
+    """Reject secret-shaped OpenCode labels before retaining a run receipt."""
+
+    contracts = PACKAGE / "contracts.mjs"
+    replace_once(
+        contracts,
+        """    opencode_version: requireString(input.opencode_version, {
+      maximumBytes: 128,
+    }),
+""",
+        """    opencode_version: requireOpaqueLabel(input.opencode_version, 128),
+""",
+        "receipt OpenCode version contract",
+    )
+
+
 def repair_diff_tests() -> None:
     """Distinguish malformed paths from valid but unauthorized paths."""
 
@@ -213,6 +229,7 @@ def main() -> None:
     """Apply every bounded correction in a deterministic order."""
 
     repair_issue_text_contract()
+    repair_receipt_version_contract()
     repair_diff_tests()
     repair_receipt_integration_test()
     repair_workflow_contract_tests()
