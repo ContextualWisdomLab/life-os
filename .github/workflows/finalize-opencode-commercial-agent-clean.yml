@@ -89,6 +89,50 @@ jobs:
           )
           PY
 
+      - name: Normalize the isolation script's bounded replacement seam
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/finalize-opencode-commercial-agent-isolation.py')
+          source = path.read_text(encoding='utf-8')
+          old = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              """Replace one exact source block or fail before ambiguous mutation."""
+
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          '''.replace('          ', '')
+          new = '''def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              """Replace one exact source block or one explicitly bounded model block."""
+
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              if count == 1:
+                  path.write_text(source.replace(old, new, 1), encoding="utf-8")
+                  return
+              if label == "isolated OpenCode process" and path == WORKFLOW:
+                  start_marker = '          export NVIDIA_API_KEY="$NVIDIA_NIM_API_KEY"\n'
+                  end_marker = '          chmod 0600 "$RECEIPT_DIR/opencode.log"\n'
+                  start = source.find(start_marker)
+                  end = source.find(end_marker, start)
+                  if start >= 0 and end >= 0:
+                      end += len(end_marker)
+                      path.write_text(
+                          source[:start] + new + source[end:],
+                          encoding="utf-8",
+                      )
+                      return
+              raise SystemExit(f"{label}: expected one match, found {count}")
+          '''.replace('          ', '')
+          if source.count(old) != 1:
+              raise SystemExit('isolation replacement helper did not match reviewed source')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply deterministic bounded contract corrections
         run: |
           set -Eeuo pipefail
@@ -105,6 +149,7 @@ jobs:
             .github/scripts/finalize-opencode-commercial-agent-isolation.py \
             .github/scripts/finalize-opencode-commercial-agent-quality.py \
             .github/workflows/bootstrap-opencode-commercial-agent.yml \
+            .github/workflows/diagnose-opencode-coverage.yml \
             .github/workflows/finalize-opencode-commercial-agent.yml \
             .github/workflows/merge-opencode-commercial-agent-when-ready.yml \
             .github/workflows/repair-opencode-commercial-agent.yml \
