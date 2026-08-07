@@ -34,7 +34,9 @@ describe('privacy-service deployment contract', () => {
       expect(compose).toContain(`${name}: \${${name}:?`);
     }
     expect(compose.match(/PRIVACY_GRANT_ACTIVE_KEY_SECRET/gu)).toHaveLength(2);
-    expect(compose.match(/PRIVACY_CONTEXT_ACTIVE_KEY_SECRET/gu)).toHaveLength(2);
+    expect(compose.match(/PRIVACY_CONTEXT_ACTIVE_KEY_SECRET/gu)).toHaveLength(
+      2,
+    );
     expect(compose.match(/PRIVACY_AUDIT_DIGEST_KEY/gu)).toHaveLength(2);
   });
 
@@ -52,7 +54,9 @@ describe('privacy-service deployment contract', () => {
   it('builds reproducibly and exposes only the bounded health contract', () => {
     expect(dockerfile).toContain('node:22.23.0-bookworm-slim');
     expect(dockerfile).toContain('pnpm install --frozen-lockfile');
-    expect(dockerfile).toContain('pnpm --filter @life-os/privacy-service build');
+    expect(dockerfile).toContain(
+      'pnpm --filter @life-os/privacy-service build',
+    );
     expect(dockerfile).toContain('CMD ["node", "dist/server.js"]');
     expect(compose).toContain(
       "fetch('http://127.0.0.1:4108/v1/privacy/health')",
