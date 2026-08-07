@@ -122,7 +122,10 @@ describe('privacy repository validation coverage', () => {
     null,
     {},
     { decision: null },
-    { decision: decision({ outcome: 'unknown' as never }), tokenDigest: DIGEST },
+    {
+      decision: decision({ outcome: 'unknown' as never }),
+      tokenDigest: DIGEST,
+    },
     {
       decision: decision({
         policyRevisionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -161,7 +164,11 @@ describe('privacy repository validation coverage', () => {
     { claims: null },
     { claims: claims({ schema: 'other' as never }) },
     { claims: claims({ keyId: '' }) },
-    { claims: claims({ policyRevisionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }) },
+    {
+      claims: claims({
+        policyRevisionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      }),
+    },
     { claims: claims({ purpose: 'break_glass', accessMode: 'ordinary' }) },
     { claims: claims({ issuedAt: new Date(Number.NaN) as never }) },
   ])('rejects additional malformed consumption %#', async (input) => {
