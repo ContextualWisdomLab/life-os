@@ -49,28 +49,28 @@ describe('private context additional branch evidence', () => {
       PRIVACY_CONTEXT_ACTIVE_KEY_SECRET: 'x'.repeat(4_097),
     },
   ])('rejects additional key environments %#', (environment) => {
-    expect(() => parsePrivacyServiceContextKeyRing(environment as never)).toThrow(
-      PrivacyServiceContextError,
-    );
-  });
-
-  it.each([
-    null,
-    { active: { keyId: 'active', secret: 'short' } },
-  ])('rejects malformed signing key rings %#', (keyRing) => {
     expect(() =>
-      createPrivacyServiceContextHeaders(
-        {
-          workspaceId: WORKSPACE_ID,
-          actorId: ACTOR_ID,
-          method: 'POST',
-          path: '/v1/privacy/access-decisions',
-          issuedAt: ISSUED_AT,
-        },
-        keyRing as never,
-      ),
+      parsePrivacyServiceContextKeyRing(environment as never),
     ).toThrow(PrivacyServiceContextError);
   });
+
+  it.each([null, { active: { keyId: 'active', secret: 'short' } }])(
+    'rejects malformed signing key rings %#',
+    (keyRing) => {
+      expect(() =>
+        createPrivacyServiceContextHeaders(
+          {
+            workspaceId: WORKSPACE_ID,
+            actorId: ACTOR_ID,
+            method: 'POST',
+            path: '/v1/privacy/access-decisions',
+            issuedAt: ISSUED_AT,
+          },
+          keyRing as never,
+        ),
+      ).toThrow(PrivacyServiceContextError);
+    },
+  );
 
   it('rejects non-second issuance precision and supports exact age boundaries', () => {
     expect(() =>
@@ -105,11 +105,7 @@ describe('private context additional branch evidence', () => {
     ).toEqual({ workspaceId: WORKSPACE_ID, actorId: ACTOR_ID });
   });
 
-  it.each([
-    null,
-    [],
-    42,
-  ])('rejects non-record header input %#', (value) => {
+  it.each([null, [], 42])('rejects non-record header input %#', (value) => {
     expect(() =>
       verifyPrivacyServiceContext(
         value as never,
@@ -130,10 +126,7 @@ describe('private context additional branch evidence', () => {
     for (const [candidate, now] of [
       [duplicate, ISSUED_AT],
       [valid, new Date(Number.NaN)],
-      [
-        { ...valid, 'x-life-os-context-signature': 'a'.repeat(10) },
-        ISSUED_AT,
-      ],
+      [{ ...valid, 'x-life-os-context-signature': 'a'.repeat(10) }, ISSUED_AT],
     ] as const) {
       expect(() =>
         verifyPrivacyServiceContext(
@@ -154,13 +147,7 @@ describe('private context additional branch evidence', () => {
       ['POST', '/v1/privacy/access-decisions#fragment'],
     ]) {
       expect(() =>
-        verifyPrivacyServiceContext(
-          headers(),
-          ring(),
-          method,
-          path,
-          ISSUED_AT,
-        ),
+        verifyPrivacyServiceContext(headers(), ring(), method, path, ISSUED_AT),
       ).toThrow(PrivacyServiceContextError);
     }
   });
