@@ -32,7 +32,7 @@ describe('realistic OpenCode maintenance dry-run fixture', () => {
     assert.deepEqual(contract.failedChecks, value.expected.failedChecks);
     assert.deepEqual(contract.findingClasses, value.expected.findingClasses);
     assert.equal(
-      JSON.stringify(contract).includes('create or merge pull requests'),
+      contract.prohibitedOperations.includes('create_or_merge_pull_request'),
       true,
     );
   });
