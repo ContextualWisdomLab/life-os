@@ -469,7 +469,7 @@ describe('proposal live conformance report', () => {
       expect(profile(report, profileId)).toEqual({
         profileId,
         status: 'unavailable',
-        unavailableCode: 'invalid_configuration',
+        unavailableCode: 'orchestrator_unavailable',
       });
     }
   });
