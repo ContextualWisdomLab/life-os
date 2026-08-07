@@ -71,10 +71,7 @@ function requireDatabaseUrl(): string {
 
 async function applyMigration(pool: Pool): Promise<void> {
   const migration = await readFile(
-    resolve(
-      __dirname,
-      '../migrations/0001_purpose_bound_privacy_access.sql',
-    ),
+    resolve(__dirname, '../migrations/0001_purpose_bound_privacy_access.sql'),
     'utf8',
   );
   await pool.query(migration);
@@ -101,7 +98,9 @@ describeWithPostgres('PostgreSQL purpose-bound privacy access', () => {
       application_name: 'life-os-privacy-integration-admin',
       max: 20,
     });
-    await administrativePool.query('DROP SCHEMA IF EXISTS privacy_access CASCADE');
+    await administrativePool.query(
+      'DROP SCHEMA IF EXISTS privacy_access CASCADE',
+    );
     await applyMigration(administrativePool);
   }, 30_000);
 
@@ -112,13 +111,16 @@ describeWithPostgres('PostgreSQL purpose-bound privacy access', () => {
   });
 
   afterAll(async () => {
-    await administrativePool.query('DROP SCHEMA IF EXISTS privacy_access CASCADE');
+    await administrativePool.query(
+      'DROP SCHEMA IF EXISTS privacy_access CASCADE',
+    );
     await administrativePool.end();
   }, 30_000);
 
   it('persists allow and deny decisions without raw reason or grant token', async () => {
     const service = application(administrativePool);
-    const reason = 'Support case SUP-8841 requires exact identity verification.';
+    const reason =
+      'Support case SUP-8841 requires exact identity verification.';
     const allowed = await service.decide({
       workspaceId: WORKSPACE_ID,
       actorId: ACTOR_ID,
@@ -148,7 +150,10 @@ describeWithPostgres('PostgreSQL purpose-bound privacy access', () => {
     expect(decisions.rows).toHaveLength(2);
     expect(grants.rows).toHaveLength(1);
     expect(denied.decision.outcome).toBe('denied');
-    const serialized = JSON.stringify({ decisions: decisions.rows, grants: grants.rows });
+    const serialized = JSON.stringify({
+      decisions: decisions.rows,
+      grants: grants.rows,
+    });
     expect(serialized).not.toContain(reason);
     expect(serialized).not.toContain(allowed.grantToken ?? 'missing');
     expect(serialized).toContain(allowed.decision.reasonDigest);
@@ -186,8 +191,12 @@ describeWithPostgres('PostgreSQL purpose-bound privacy access', () => {
         }),
       ),
     );
-    expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    expect(attempts.filter((result) => result.status === 'rejected')).toHaveLength(15);
+    expect(
+      attempts.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      attempts.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(15);
     const events = await restartedPool.query(
       'SELECT * FROM privacy_access.privacy_access_events',
     );
@@ -260,11 +269,11 @@ describeWithPostgres('PostgreSQL purpose-bound privacy access', () => {
       grantToken: issued.grantToken ?? '',
     });
     for (const statement of [
-      'UPDATE privacy_access.privacy_access_decisions SET purpose_code = \'legal_obligation\'',
+      "UPDATE privacy_access.privacy_access_decisions SET purpose_code = 'legal_obligation'",
       'DELETE FROM privacy_access.privacy_access_decisions',
-      'UPDATE privacy_access.privacy_access_events SET action_code = \'export\'',
+      "UPDATE privacy_access.privacy_access_events SET action_code = 'export'",
       'DELETE FROM privacy_access.privacy_access_events',
-      'UPDATE privacy_access.privacy_access_grants SET expires_at = expires_at + interval \'1 hour\'',
+      "UPDATE privacy_access.privacy_access_grants SET expires_at = expires_at + interval '1 hour'",
       'DELETE FROM privacy_access.privacy_access_grants',
     ]) {
       await expect(administrativePool.query(statement)).rejects.toThrow();
