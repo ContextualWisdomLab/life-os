@@ -262,9 +262,9 @@ describe('PrivacyAccessApplication consumption', () => {
       grantToken: second.grantToken ?? '',
       resourceReference: undefined,
     });
-    expect(
-      firstFixture.repository.consumed[0]?.resourceReferenceDigest,
-    ).toBe(secondFixture.repository.consumed[0]?.resourceReferenceDigest);
+    expect(firstFixture.repository.consumed[0]?.resourceReferenceDigest).toBe(
+      secondFixture.repository.consumed[0]?.resourceReferenceDigest,
+    );
   });
 });
 
