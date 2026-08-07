@@ -35,7 +35,9 @@ jobs:
           pnpm install --no-frozen-lockfile
 
       - name: Apply deterministic source and test repairs
-        run: python3 .github/scripts/finalize-opencode-maintenance.py
+        run: |
+          python3 .github/scripts/finalize-opencode-maintenance.py
+          python3 .github/scripts/repair-maintenance-cli-entrypoint.py
 
       - name: Register capability, format inventory, and review-agent receipt
         run: |
@@ -217,7 +219,8 @@ jobs:
           git rm \
             .github/workflows/finalize-opencode-maintenance.yml \
             .github/workflows/repair-opencode-maintenance.yml \
-            .github/scripts/finalize-opencode-maintenance.py
+            .github/scripts/finalize-opencode-maintenance.py \
+            .github/scripts/repair-maintenance-cli-entrypoint.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
