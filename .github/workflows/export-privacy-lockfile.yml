@@ -1,5 +1,5 @@
-name: Export Privacy Service Lockfile
-# Temporary read-only verifier. The generated lockfile is returned as an artifact for connector-backed review.
+name: Finalize Privacy Service Lockfile
+# Temporary deterministic lockfile finalizer; the successful commit removes this workflow.
 
 on:
   push:
@@ -7,34 +7,30 @@ on:
       - feat/purpose-bound-pii-access
     paths:
       - '.github/workflows/export-privacy-lockfile.yml'
-  pull_request:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/export-privacy-lockfile.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  export:
+  finalize:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout exact event revision
+      - name: Checkout exact feature head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: feat/purpose-bound-pii-access
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
-      - name: Generate the workspace lockfile without installing packages
+      - name: Generate the exact workspace lockfile
         run: |
           set -Eeuo pipefail
           corepack enable
@@ -42,11 +38,24 @@ jobs:
           grep -q '^  apps/privacy-service:' pnpm-lock.yaml
           git diff --exit-code -- apps/privacy-service/package.json
 
-      - name: Upload the generated lockfile
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
-        with:
-          name: privacy-service-lockfile
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 9
+      - name: Commit only the generated lockfile
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin refs/heads/feat/purpose-bound-pii-access | awk '{print $1}')"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo '::error::Feature head moved during lockfile generation.'
+            exit 1
+          fi
+          git rm .github/workflows/export-privacy-lockfile.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pnpm-lock.yaml
+          unexpected="$(git diff --cached --name-only | grep -Ev '^(pnpm-lock.yaml|.github/workflows/export-privacy-lockfile.yml)$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo '::error::Lockfile finalization produced an unexpected repository change.'
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          git diff --cached --check
+          git commit -m 'fix(privacy): include service lockfile importer'
+          git push origin HEAD:feat/purpose-bound-pii-access
