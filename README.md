@@ -36,6 +36,7 @@ apps/
   integration-service/
 packages/
   contracts/
+  maintenance-agent/
   plugin-sdk/
 infra/
 docs/
@@ -103,6 +104,21 @@ This logical-dump tier is not point-in-time recovery and does not schedule, encr
 
 The manual deployment workflow accepts only digest-pinned images and an exact HTTPS web origin, uses one shared renderer, optionally applies forward-only migrations, runs through the protected GitHub `production` environment, and performs server-side dry-run and diff. Before applying, it captures whether each Deployment exists and its current revision. A failed apply or rollout must either verify rollback to that captured revision or verify deletion of a first-time Deployment; a separate failure is reported when workload-state recovery itself fails. Namespace policy, completed migrations, external infrastructure, and other non-Deployment resources are not automatically reversed. The reference does not provision a cluster, database, NATS, ingress, TLS, DNS, image pipeline, or secret manager. Operators must follow the [production deployment runbook](docs/operations/production-deployment.md) and preserve those explicit ownership boundaries.
 
+## Maintenance automation
+
+`@life-os/maintenance-agent` compiles normalized commercial-readiness evidence into a canonical SHA-256-receipted maintenance contract and validates one advisory plan. The hourly GitHub Actions workflow uses only `NVIDIA_NIM_API_KEY` through a restricted OpenCode primary agent.
+
+The initial boundary is deliberately plan-only:
+
+- it loads scheduled code only from the reviewed default branch;
+- it cannot run shell commands, invoke subagents, access external directories or the web, modify source, mutate GitHub, merge, tag, release, change repository settings, or read credentials;
+- it treats issue, pull-request, review, source, log, and model prose as untrusted evidence rather than task authority;
+- it uses a direct NVIDIA route for ordinary bounded work;
+- it fails closed when high-risk evidence selects `conduct_bounded` until the exact-pinned contextual-orchestrator path is independently reviewed;
+- it retains only validated credential-free contract JSON, plan JSON, and rendered Markdown for seven days.
+
+The deterministic commercial-readiness audit, CI, security checks, CodeRabbit, human review, and exact-head merge drain remain independent and authoritative. See the [maintenance runbook](docs/operations/opencode-nim-maintenance.md).
+
 ## Privacy and deployment responsibility
 
 This is a public repository. It contains synthetic examples only. Personal goals, health information, relationship data, credentials, access tokens, private prompts, customer data, and production exports must not be committed.
@@ -118,6 +134,8 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 - [Plugin contract surface plan](docs/superpowers/plans/2026-08-04-plugin-contract-surface.md)
 - [PostgreSQL backup and restore runbook](docs/operations/backup-and-restore.md)
 - [Production Kubernetes deployment runbook](docs/operations/production-deployment.md)
+- [NVIDIA OpenCode maintenance runbook](docs/operations/opencode-nim-maintenance.md)
+- [Maintenance standards and research traceability](docs/research/2026-08-07-opencode-nim-maintenance-standards.md)
 - [Upstream privacy notice](docs/legal/privacy.md)
 - [Upstream project terms](docs/legal/terms.md)
 - [Vulnerability reporting](SECURITY.md)
