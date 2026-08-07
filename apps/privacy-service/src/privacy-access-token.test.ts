@@ -172,7 +172,9 @@ describe('privacy access grant token', () => {
     ).toBe('privacy-2026-07-z');
     const newlySigned = createPrivacyAccessGrantToken(decision(), overlap);
     const payload = JSON.parse(
-      Buffer.from(newlySigned.split('.')[0] ?? '', 'base64url').toString('utf8'),
+      Buffer.from(newlySigned.split('.')[0] ?? '', 'base64url').toString(
+        'utf8',
+      ),
     ) as { keyId: string };
     expect(payload.keyId).toBe('privacy-2026-08-a');
   });
