@@ -21,8 +21,7 @@ import { PRIVACY_ACCESS_GRANT_SCHEMA } from './privacy-access-token';
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
-const RFC_3339_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const RFC_3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 /** Minimal query result returned by a PostgreSQL client. */
 export interface PrivacySqlQueryResult<Row> {
