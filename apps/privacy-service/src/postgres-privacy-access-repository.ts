@@ -143,7 +143,7 @@ WHERE privacy_grant.grant_id = $1::uuid
   AND privacy_grant.consumed_at IS NULL
   AND privacy_grant.consumed_event_id IS NULL
   AND privacy_grant.issued_at <= $10::timestamptz
-  AND privacy_grant.expires_at >= $10::timestamptz
+  AND privacy_grant.expires_at > $10::timestamptz
   AND privacy_decision.decision_id = privacy_grant.decision_id
   AND privacy_decision.grant_id = privacy_grant.grant_id
   AND privacy_decision.workspace_id = privacy_grant.workspace_id
