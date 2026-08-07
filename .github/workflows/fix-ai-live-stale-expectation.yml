@@ -42,34 +42,24 @@ jobs:
 
           path = Path('apps/ai-service/src/proposal-quality-live-conformance.test.ts')
           source = path.read_text(encoding='utf-8')
-          old = """  it('fails the report when the baseline cannot be configured', async () => {
-            const report = await runProposalLiveConformance(
-              options({
-                environment: {
-                  CONTEXTUAL_ORCHESTRATOR_LIVE_URL: 'https://not-loopback.example',
-                  CONTEXTUAL_ORCHESTRATOR_LIVE_TOKEN: TOKEN,
-                },
-                fetcher: successfulFetcher(),
-              }),
-            );
-
-            expect(report.status).toBe('failed');
-            for (const profileId of ['route_low', 'route_high', 'conduct_template']) {
-              expect(profile(report, profileId)).toEqual({
-                profileId,
-                status: 'unavailable',
-                unavailableCode: 'invalid_configuration',
-              });
-            }
-          });
-          """.replace('          ', '')
-          new = old.replace(
-              "unavailableCode: 'invalid_configuration'",
+          marker = "it('fails the report when the baseline cannot be configured'"
+          start = source.find(marker)
+          if start < 0:
+              raise SystemExit('baseline configuration test was not found')
+          end = source.find("\n  });", start)
+          if end < 0:
+              raise SystemExit('baseline configuration test terminator was not found')
+          end += len("\n  });")
+          block = source[start:end]
+          old = "unavailableCode: 'invalid_configuration'"
+          if block.count(old) != 1:
+              raise SystemExit('expected one stale classification inside the baseline test')
+          repaired = block.replace(
+              old,
               "unavailableCode: 'orchestrator_unavailable'",
+              1,
           )
-          if source.count(old) != 1:
-              raise SystemExit('expected exactly one stale live-conformance test block')
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          path.write_text(source[:start] + repaired + source[end:], encoding='utf-8')
           PY
           pnpm exec prettier --single-quote --write \
             apps/ai-service/src/proposal-quality-live-conformance.test.ts
