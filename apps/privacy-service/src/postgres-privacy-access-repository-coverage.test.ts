@@ -208,6 +208,18 @@ describe('privacy repository validation coverage', () => {
     expect(pool.client.release).toHaveBeenCalledOnce();
   });
 
+  it('rolls back a transaction when no grant row can be consumed', async () => {
+    const pool = new Pool();
+    pool.client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    await expect(
+      new PostgresPrivacyAccessRepository(pool).consumeGrant(consume()),
+    ).rejects.toEqual(new PrivacyAccessPersistenceError());
+    expect(pool.client.query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
+    expect(pool.client.release).toHaveBeenCalledOnce();
+  });
+
   it.each([
     { grant_id: 'numeric-1' },
     { decision_id: 'numeric-2' },
