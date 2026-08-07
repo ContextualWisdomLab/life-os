@@ -145,7 +145,7 @@ export class PrivacyAccessApplication {
   /** Creates one application with explicit persistence, cryptography, and clocks. */
   constructor(dependencies: PrivacyAccessApplicationDependencies) {
     if (!dependencies || typeof dependencies !== 'object') {
-      return invalid();
+      invalid();
     }
     this.repository = dependencies.repository;
     this.grantKeyRing = dependencies.grantKeyRing;
