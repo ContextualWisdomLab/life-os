@@ -134,10 +134,7 @@ export function parsePrivacyGrantKeyRing(
     return Object.freeze({ active });
   }
   const previous = key(previousId, previousSecret);
-  if (
-    previous.keyId === active.keyId ||
-    previous.secret === active.secret
-  ) {
+  if (previous.keyId === active.keyId || previous.secret === active.secret) {
     return invalid();
   }
   return Object.freeze({ active, previous });
@@ -272,7 +269,9 @@ function serializeClaims(claims: PrivacyAccessGrantClaims): string {
 }
 
 function sign(payload: string, secret: string): string {
-  return createHmac('sha256', secret).update(payload, 'ascii').digest('base64url');
+  return createHmac('sha256', secret)
+    .update(payload, 'ascii')
+    .digest('base64url');
 }
 
 /** Creates one canonical compact grant using only the active signing key. */
@@ -315,7 +314,9 @@ function decodePayload(value: string): Readonly<Record<string, unknown>> {
   }
 }
 
-function parseClaims(value: Readonly<Record<string, unknown>>): PrivacyAccessGrantClaims {
+function parseClaims(
+  value: Readonly<Record<string, unknown>>,
+): PrivacyAccessGrantClaims {
   requireExactKeys(value, [
     'schema',
     'keyId',
