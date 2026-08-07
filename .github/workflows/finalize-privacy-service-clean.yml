@@ -1,5 +1,5 @@
 name: Finalize Purpose-Bound Privacy Service
-# Temporary verification workflow; it self-removes after isolated Compose validation passes.
+# Temporary test-first workflow; it self-removes after isolated verification passes.
 
 on:
   push:
@@ -51,10 +51,26 @@ jobs:
           corepack enable
           pnpm install --no-frozen-lockfile
 
-      - name: Apply deterministic strict-TypeScript corrections
+      - name: Add authorized-purpose regression tests first
         run: |
           set -Eeuo pipefail
-          python3 .github/scripts/finalize-privacy-service-types.py
+          python3 .github/scripts/finalize-privacy-service-types.py tests
+
+      - name: Prove the regression tests fail before implementation
+        run: |
+          set +e
+          pnpm --filter @life-os/privacy-service test
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo 'Authorized-purpose regression tests unexpectedly passed before implementation.' >&2
+            exit 1
+          fi
+
+      - name: Apply deterministic privacy boundary corrections
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/finalize-privacy-service-types.py implementation
 
       - name: Remove temporary write-capable privacy workflows
         run: |
@@ -92,5 +108,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
-          git commit -m 'fix(privacy): finalize purpose-bound access service'
+          git commit -m 'fix(privacy): bind access to authorized purpose'
           git push origin HEAD:feat/purpose-bound-pii-access
