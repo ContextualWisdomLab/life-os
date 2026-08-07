@@ -51,10 +51,7 @@ describe('privacy service bootstrap', () => {
     });
 
     await expect(
-      startPrivacyService(
-        { PRIVACY_SERVICE_PORT: '5108' },
-        factory,
-      ),
+      startPrivacyService({ PRIVACY_SERVICE_PORT: '5108' }, factory),
     ).resolves.toBe(application);
     expect(application.prefixes).toEqual(['v1']);
     expect(application.shutdownHooksEnabled).toBe(1);
