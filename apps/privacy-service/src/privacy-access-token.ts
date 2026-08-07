@@ -385,12 +385,7 @@ function verifySignature(
     return invalid();
   }
   const expected = Buffer.from(sign(payload, secret), 'base64url');
-  let actual: Buffer;
-  try {
-    actual = Buffer.from(signature, 'base64url');
-  } catch {
-    return invalid();
-  }
+  const actual = Buffer.from(signature, 'base64url');
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     invalid();
   }
