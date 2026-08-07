@@ -1,4 +1,5 @@
 name: Finalize OpenCode Commercial Development Loop
+# Temporary verification-only workflow; it self-removes after the bounded package passes.
 
 on:
   push:
