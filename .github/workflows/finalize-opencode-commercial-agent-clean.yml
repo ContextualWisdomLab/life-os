@@ -133,12 +133,31 @@ jobs:
           path.write_text(source.replace(old, new, 1), encoding='utf-8')
           PY
 
-      - name: Apply deterministic bounded contract corrections
+      - name: Apply deterministic bounded contract corrections and hardening tests
         run: |
           set -Eeuo pipefail
           python3 .github/scripts/finalize-opencode-commercial-agent-contracts.py
           python3 .github/scripts/finalize-opencode-commercial-agent-isolation.py
-          python3 .github/scripts/finalize-opencode-commercial-agent-quality.py
+          python3 .github/scripts/finalize-opencode-commercial-agent-quality.py tests
+
+      - name: Prove the least-authority regressions fail before implementation
+        run: |
+          set +e
+          pnpm --filter @life-os/commercial-development-agent exec vitest run \
+            src/diff-validator.test.mjs \
+            src/workflow-contract.test.mjs \
+            --no-file-parallelism
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo '::error::Least-authority regressions unexpectedly passed before implementation.'
+            exit 1
+          fi
+
+      - name: Apply the least-authority implementation
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/finalize-opencode-commercial-agent-quality.py implementation
 
       - name: Remove temporary write-capable repair assets
         run: |
@@ -183,5 +202,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --check
-          git commit -m 'fix(agent): finalize isolated reproducible OpenCode development loop'
+          git commit -m 'fix(agent): broker credentials and finalize isolated OpenCode loop'
           git push origin HEAD:feat/opencode-commercial-development-loop
