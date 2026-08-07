@@ -53,9 +53,9 @@ describe('purpose-bound privacy access migration', () => {
   });
 
   it('uses only multiword snake-case constraints, indexes, functions, and triggers', () => {
-    const constraints = [...migration.matchAll(/CONSTRAINT\s+([a-z0-9_]+)/giu)].map(
-      (match) => match[1] ?? '',
-    );
+    const constraints = [
+      ...migration.matchAll(/CONSTRAINT\s+([a-z0-9_]+)/giu),
+    ].map((match) => match[1] ?? '');
     const indexes = objectNames('CREATE INDEX');
     const functions = objectNames('CREATE OR REPLACE FUNCTION');
     const triggers = objectNames('CREATE TRIGGER');
@@ -95,7 +95,9 @@ describe('purpose-bound privacy access migration', () => {
   });
 
   it('enforces UUIDv4, digest, policy, grant, and consumption shape checks', () => {
-    expect(migration.match(/substring\([^)]*from 15 for 1\) = '4'/gu)?.length).toBeGreaterThanOrEqual(8);
+    expect(
+      migration.match(/substring\([^)]*from 15 for 1\) = '4'/gu)?.length,
+    ).toBeGreaterThanOrEqual(8);
     expect(migration).toContain("policy_digest ~ '^[0-9a-f]{64}$'");
     expect(migration).toContain("decision_outcome IN ('allowed', 'denied')");
     expect(migration).toContain('privacy_decision_grant_shape_check');
