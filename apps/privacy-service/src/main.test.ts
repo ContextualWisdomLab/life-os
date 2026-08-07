@@ -96,7 +96,9 @@ function operations(result: PrivacyAccessDecisionResult): {
   consume: ReturnType<typeof vi.fn<PrivacyAccessOperations['consume']>>;
 } {
   const decide = vi.fn<PrivacyAccessOperations['decide']>(async () => result);
-  const consume = vi.fn<PrivacyAccessOperations['consume']>(async () => receipt());
+  const consume = vi.fn<PrivacyAccessOperations['consume']>(async () =>
+    receipt(),
+  );
   return { boundary: { decide, consume }, decide, consume };
 }
 
@@ -229,7 +231,9 @@ describe('PrivacyController', () => {
       decision: decision('allowed'),
       grantToken: 'a.b',
     });
-    fixture.decide.mockRejectedValueOnce(new Error('database password private'));
+    fixture.decide.mockRejectedValueOnce(
+      new Error('database password private'),
+    );
     const controller = new PrivacyController(
       fixture.boundary,
       keyRing(),
