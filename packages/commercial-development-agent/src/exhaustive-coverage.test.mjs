@@ -4,7 +4,6 @@ import {
   COMMERCIAL_DEVELOPMENT_RECEIPT_SCHEMA,
   COMMERCIAL_DEVELOPMENT_RUN_SCHEMA,
   CommercialDevelopmentContractError,
-  normalizeCommercialDevelopmentPolicy,
   validateCommercialDevelopmentIssue,
   validateCommercialDevelopmentReceipt,
   validateCommercialDevelopmentRun,
@@ -490,7 +489,7 @@ describe('exhaustive diff validation boundaries', () => {
       {},
       {
         ownKeys() {
-          throw new Error('private diff proxy');
+          throw new Error('private diff proxy detail');
         },
       },
     );
