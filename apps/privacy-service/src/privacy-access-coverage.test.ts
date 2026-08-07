@@ -140,18 +140,16 @@ describe('privacy domain branch evidence', () => {
     expect(result.actorId).toBe(ACTOR_ID);
   });
 
-  it.each([
-    null,
-    undefined,
-    42,
-    [],
-  ])('rejects a non-record request %#', (value) => {
-    expect(() =>
-      evaluatePrivacyAccessRequest(value as never, {
-        auditDigestKey: AUDIT_KEY,
-      }),
-    ).toThrow(PrivacyAccessValidationError);
-  });
+  it.each([null, undefined, 42, []])(
+    'rejects a non-record request %#',
+    (value) => {
+      expect(() =>
+        evaluatePrivacyAccessRequest(value as never, {
+          auditDigestKey: AUDIT_KEY,
+        }),
+      ).toThrow(PrivacyAccessValidationError);
+    },
+  );
 
   it.each([
     null,
@@ -175,31 +173,29 @@ describe('privacy domain branch evidence', () => {
     ).toThrow(PrivacyAccessValidationError);
   });
 
-  it.each([
-    null,
-    42,
-    ' '.repeat(30),
-    '한'.repeat(400),
-  ])('rejects malformed or byte-oversized reason %#', (reason) => {
-    expect(() =>
-      evaluatePrivacyAccessRequest(
-        {
-          workspaceId: WORKSPACE_ID,
-          actorId: ACTOR_ID,
-          purpose: 'account_support',
-          action: 'read',
-          resourceCategory: 'identity_profile',
-          requestedTtlSeconds: 30,
-          requestedAt: NOW,
-          reason: reason as never,
-        },
-        {
-          auditDigestKey: AUDIT_KEY,
-          uuidFactory: () => DECISION_ID,
-        },
-      ),
-    ).toThrow(PrivacyAccessValidationError);
-  });
+  it.each([null, 42, ' '.repeat(30), '한'.repeat(400)])(
+    'rejects malformed or byte-oversized reason %#',
+    (reason) => {
+      expect(() =>
+        evaluatePrivacyAccessRequest(
+          {
+            workspaceId: WORKSPACE_ID,
+            actorId: ACTOR_ID,
+            purpose: 'account_support',
+            action: 'read',
+            resourceCategory: 'identity_profile',
+            requestedTtlSeconds: 30,
+            requestedAt: NOW,
+            reason: reason as never,
+          },
+          {
+            auditDigestKey: AUDIT_KEY,
+            uuidFactory: () => DECISION_ID,
+          },
+        ),
+      ).toThrow(PrivacyAccessValidationError);
+    },
+  );
 });
 
 describe('privacy token branch evidence', () => {
@@ -355,12 +351,13 @@ describe('privacy application branch evidence', () => {
     expect(() => new PrivacyAccessApplication(null as never)).toThrow(
       PrivacyAccessApplicationError,
     );
-    expect(() =>
-      new PrivacyAccessApplication({
-        repository: new MemoryRepository(),
-        grantKeyRing: ring(),
-        auditDigestKey: 'short',
-      }),
+    expect(
+      () =>
+        new PrivacyAccessApplication({
+          repository: new MemoryRepository(),
+          grantKeyRing: ring(),
+          auditDigestKey: 'short',
+        }),
     ).toThrow(PrivacyAccessApplicationError);
     const defaulted = new PrivacyAccessApplication({
       repository: new MemoryRepository(),
