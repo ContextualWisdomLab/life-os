@@ -14,7 +14,6 @@ import {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u;
 const MINIMUM_SECRET_BYTES = 32;
@@ -241,9 +240,7 @@ function canonicalClaims(
     resourceCategory: requireCategory(decision.resourceCategory),
     accessMode: mode,
     policyRevisionId: requireUuidV4(decision.policyRevisionId),
-    policyDigest: SHA_256_PATTERN.test(decision.policyDigest)
-      ? decision.policyDigest
-      : invalid(),
+    policyDigest: decision.policyDigest,
     issuedAt,
     expiresAt,
   });
