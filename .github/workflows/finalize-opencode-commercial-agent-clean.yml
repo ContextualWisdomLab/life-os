@@ -88,11 +88,17 @@ jobs:
           )
           PY
 
+      - name: Apply deterministic bounded contract corrections
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/finalize-opencode-commercial-agent-contracts.py
+
       - name: Remove temporary write-capable repair assets
         run: |
           set -Eeuo pipefail
           rm -f \
             .github/scripts/finalize-opencode-commercial-agent.py \
+            .github/scripts/finalize-opencode-commercial-agent-contracts.py \
             .github/workflows/bootstrap-opencode-commercial-agent.yml \
             .github/workflows/finalize-opencode-commercial-agent.yml \
             .github/workflows/merge-opencode-commercial-agent-when-ready.yml \
