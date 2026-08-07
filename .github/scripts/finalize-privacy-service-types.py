@@ -130,6 +130,28 @@ def repair_lint_contract() -> None:
     path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
 
+def prepare_compose_environment() -> None:
+    """Create ignored deterministic key material for Compose validation only."""
+
+    environment_path = ROOT / ".env"
+    values = {
+        "PRIVACY_GRANT_ACTIVE_KEY_ID": "privacy-finalizer-grant",
+        "PRIVACY_GRANT_ACTIVE_KEY_SECRET": "g" * 40,
+        "PRIVACY_CONTEXT_ACTIVE_KEY_ID": "privacy-finalizer-context",
+        "PRIVACY_CONTEXT_ACTIVE_KEY_SECRET": "c" * 40,
+        "PRIVACY_AUDIT_DIGEST_KEY": "a" * 40,
+    }
+    environment_path.write_text(
+        "".join(f"{name}={value}\n" for name, value in values.items()),
+        encoding="utf-8",
+    )
+    environment_path.chmod(0o600)
+    exclude_path = ROOT / ".git/info/exclude"
+    exclude = exclude_path.read_text(encoding="utf-8")
+    if ".env\n" not in exclude:
+        exclude_path.write_text(exclude + "\n.env\n", encoding="utf-8")
+
+
 def main() -> None:
     """Apply every strict boundary correction in one deterministic pass."""
 
@@ -138,6 +160,7 @@ def main() -> None:
     repair_policy_typing()
     repair_pg_adapter()
     repair_lint_contract()
+    prepare_compose_environment()
 
 
 if __name__ == "__main__":
