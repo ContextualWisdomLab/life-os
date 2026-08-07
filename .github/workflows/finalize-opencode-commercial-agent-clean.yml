@@ -1,5 +1,5 @@
 name: Finalize OpenCode Commercial Development Loop
-# Temporary verification-only workflow; it self-removes after exhaustive coverage passes.
+# Temporary verification-only workflow; it self-removes after the final bounded-contract run passes.
 
 on:
   push:
