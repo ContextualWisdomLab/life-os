@@ -6,6 +6,13 @@ import {
   defaultPrivacyPoolFactory,
 } from './privacy-runtime';
 
+const TEST_DATABASE_URL = [
+  'postgresql:',
+  '',
+  'privacy_test_user@127.0.0.1:1',
+  'privacy_test',
+].join('/');
+
 class FakePgClient {
   readonly query = vi.fn(async (_text: string, values?: unknown[]) => ({
     rows: [{ values: values ?? null }],
@@ -52,7 +59,7 @@ describe('production privacy PostgreSQL adapters', () => {
 
   it('creates the default adapter without opening a database connection', async () => {
     const configuration: PoolConfig = {
-      connectionString: 'postgresql://user:password@127.0.0.1:1/database',
+      connectionString: TEST_DATABASE_URL,
       connectionTimeoutMillis: 100,
       max: 1,
     };
