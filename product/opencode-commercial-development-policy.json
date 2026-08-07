@@ -18,6 +18,7 @@
   "prohibited_path_prefixes": [
     ".github/",
     ".git/",
+    "packages/commercial-development-agent/",
     "infra/",
     "coverage/",
     "dist/",
@@ -31,7 +32,8 @@
     "CODEOWNERS",
     "package.json",
     "pnpm-lock.yaml",
-    "pnpm-workspace.yaml"
+    "pnpm-workspace.yaml",
+    "product/opencode-commercial-development-policy.json"
   ],
   "maximum_changed_files": 24,
   "maximum_changed_bytes": 131072,
