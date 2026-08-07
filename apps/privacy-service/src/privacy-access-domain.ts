@@ -2,7 +2,6 @@ import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
 const MINIMUM_TTL_SECONDS = 30;
 const MAXIMUM_ORDINARY_TTL_SECONDS = 900;
 const MAXIMUM_BREAK_GLASS_TTL_SECONDS = 300;
@@ -284,14 +283,13 @@ function requireTtl(value: unknown, mode: PrivacyAccessMode): number {
 }
 
 function policyRule(purpose: PrivacyAccessPurpose): PolicyRule {
-  return POLICY_RULES.find((rule) => rule.purpose === purpose) ?? invalid();
+  return POLICY_RULES.find((rule) => rule.purpose === purpose)!;
 }
 
 function keyedDigest(key: string, label: string, value: string): string {
-  const digest = createHmac('sha256', key)
+  return createHmac('sha256', key)
     .update(`${label}\u0000${value}`, 'utf8')
     .digest('hex');
-  return SHA_256_PATTERN.test(digest) ? digest : invalid();
 }
 
 function canonicalRequest(input: {
