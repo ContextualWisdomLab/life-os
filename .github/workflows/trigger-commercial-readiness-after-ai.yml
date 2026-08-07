@@ -1,0 +1,65 @@
+name: Trigger Commercial Readiness After AI Review
+
+on:
+  push:
+    branches:
+      - feat/ai-nim-live-conformance
+    paths:
+      - '.github/workflows/trigger-commercial-readiness-after-ai.yml'
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  wait-review-and-dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Wait for exact-head checks and review threads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          repository='ContextualWisdomLab/life-os'
+          pull_number='117'
+          for _ in $(seq 1 100); do
+            head_sha="$(gh api "repos/${repository}/pulls/${pull_number}" --jq '.head.sha')"
+            unresolved="$(gh api graphql \
+              -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved}}}}}' \
+              -f owner='ContextualWisdomLab' \
+              -f name='life-os' \
+              -F number=117 \
+              --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')"
+            failed="$(gh api "repos/${repository}/commits/${head_sha}/check-runs?per_page=100" \
+              -H 'Accept: application/vnd.github+json' \
+              --jq '[.check_runs[] | select(.status == "completed" and (.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped"))] | length')"
+            pending="$(gh api "repos/${repository}/commits/${head_sha}/check-runs?per_page=100" \
+              -H 'Accept: application/vnd.github+json' \
+              --jq '[.check_runs[] | select(.status != "completed")] | length')"
+            coderabbit="$(gh api "repos/${repository}/commits/${head_sha}/status" \
+              --jq '[.statuses[] | select(.context == "CodeRabbit" and .state == "success")] | length')"
+            if [ "$unresolved" = '0' ] && [ "$failed" = '0' ] && [ "$pending" = '0' ] && [ "$coderabbit" != '0' ]; then
+              gh workflow run commercial-readiness.yml --repo "$repository" --ref main
+              exit 0
+            fi
+            sleep 60
+          done
+          echo '::error::Exact-head review gate did not become eligible within the bounded wait.'
+          exit 1
+
+      - name: Remove temporary dispatcher from the feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          branch='feat/ai-nim-live-conformance'
+          path='.github/workflows/trigger-commercial-readiness-after-ai.yml'
+          sha="$(gh api "repos/ContextualWisdomLab/life-os/contents/${path}?ref=${branch}" --jq '.sha')"
+          gh api \
+            --method DELETE \
+            "repos/ContextualWisdomLab/life-os/contents/${path}" \
+            -f message='chore(ci): remove temporary readiness dispatcher' \
+            -f branch="$branch" \
+            -f sha="$sha" >/dev/null
