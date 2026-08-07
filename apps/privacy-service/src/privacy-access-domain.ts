@@ -238,7 +238,11 @@ function normalizeReason(value: unknown, required: boolean): string {
   if (value === undefined && !required) {
     return '';
   }
-  if (typeof value !== 'string' || DISALLOWED_CONTROL_PATTERN.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    DISALLOWED_CONTROL_PATTERN.test(value) ||
+    Buffer.byteLength(value, 'utf8') > MAXIMUM_REASON_BYTES
+  ) {
     return invalid();
   }
   const normalized = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
