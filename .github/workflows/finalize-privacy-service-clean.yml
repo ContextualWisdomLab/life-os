@@ -52,10 +52,16 @@ jobs:
           corepack enable
           pnpm install --no-frozen-lockfile
 
+      - name: Apply deterministic strict-TypeScript corrections
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/finalize-privacy-service-types.py
+
       - name: Remove temporary write-capable privacy workflows
         run: |
           set -Eeuo pipefail
           rm -f \
+            .github/scripts/finalize-privacy-service-types.py \
             .github/workflows/repair-privacy-service-v2.yml \
             .github/workflows/verify-privacy-service-current.yml
 
