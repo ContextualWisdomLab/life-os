@@ -1,0 +1,107 @@
+name: Finalize OpenCode Commercial Development Loop
+
+on:
+  push:
+    branches:
+      - feat/opencode-commercial-development-loop
+    paths:
+      - '.github/workflows/finalize-opencode-commercial-agent-clean.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/opencode-commercial-development-loop
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Pin the current official OpenCode package and refresh the lockfile
+        id: opencode
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          version="$(timeout 60s npm view opencode-ai version --json | jq -r '.')"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo '::error::OpenCode registry version is not an exact semantic version.'
+            exit 1
+          fi
+          pnpm --filter @life-os/commercial-development-agent add \
+            --save-dev \
+            --save-exact \
+            "opencode-ai@${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Finalize the persistent workflow contract
+        env:
+          OPENCODE_VERSION: ${{ steps.opencode.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path('.github/workflows/opencode-commercial-development.yml')
+          source = path.read_text(encoding='utf-8')
+          placeholder = "OPENCODE_PACKAGE_VERSION: '__PINNED_BY_BOOTSTRAP__'"
+          replacement = f"OPENCODE_PACKAGE_VERSION: '{os.environ['OPENCODE_VERSION']}'"
+          if placeholder in source:
+              source = source.replace(placeholder, replacement, 1)
+          elif replacement not in source:
+              raise SystemExit('OpenCode package-version contract is neither placeholder nor expected exact pin')
+          path.write_text(source, encoding='utf-8')
+          PY
+
+      - name: Remove temporary write-capable repair assets
+        run: |
+          set -Eeuo pipefail
+          rm -f \
+            .github/scripts/finalize-opencode-commercial-agent.py \
+            .github/workflows/bootstrap-opencode-commercial-agent.yml \
+            .github/workflows/finalize-opencode-commercial-agent.yml \
+            .github/workflows/merge-opencode-commercial-agent-when-ready.yml \
+            .github/workflows/repair-opencode-commercial-agent.yml \
+            .github/workflows/review-fix-opencode-commercial-agent.yml
+
+      - name: Format and verify the bounded package
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            .github/workflows/opencode-commercial-development.yml \
+            packages/commercial-development-agent/package.json \
+            packages/commercial-development-agent/vitest.config.mjs \
+            packages/commercial-development-agent/src \
+            product/opencode-commercial-development-policy.json \
+            docs/operations/opencode-commercial-development-loop.md \
+            docs/research/2026-08-07-opencode-commercial-development-loop-standards.md \
+            docs/superpowers/specs/2026-08-07-opencode-commercial-development-loop-design.md \
+            docs/superpowers/plans/2026-08-07-opencode-commercial-development-loop.md
+          pnpm --filter @life-os/commercial-development-agent exec opencode --version
+          pnpm --filter @life-os/commercial-development-agent exec opencode run --help > /dev/null
+          pnpm --filter @life-os/commercial-development-agent lint
+          pnpm --filter @life-os/commercial-development-agent test
+          pnpm --filter @life-os/commercial-development-agent build
+
+      - name: Commit the exact verified final slice
+        run: |
+          set -Eeuo pipefail
+          git rm .github/workflows/finalize-opencode-commercial-agent-clean.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix(agent): finalize reproducible OpenCode development loop'
+          git push origin HEAD:feat/opencode-commercial-development-loop
