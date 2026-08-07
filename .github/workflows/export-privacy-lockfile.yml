@@ -1,0 +1,48 @@
+name: Export Privacy Service Lockfile
+# Temporary read-only verifier. The generated lockfile is returned as an artifact for connector-backed review.
+
+on:
+  push:
+    branches:
+      - feat/purpose-bound-pii-access
+    paths:
+      - '.github/workflows/export-privacy-lockfile.yml'
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/purpose-bound-pii-access
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Generate the workspace lockfile without installing packages
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --lockfile-only --no-frozen-lockfile
+          grep -q '^  apps/privacy-service:' pnpm-lock.yaml
+          git diff --exit-code -- apps/privacy-service/package.json
+
+      - name: Upload the generated lockfile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: privacy-service-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
