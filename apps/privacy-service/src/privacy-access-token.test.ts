@@ -220,6 +220,7 @@ describe('privacy access grant token', () => {
   it.each([
     { workspaceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
     { actorId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+    { now: new Date('2026-08-07T01:10:00.000Z') },
     { now: new Date('2026-08-07T01:10:00.001Z') },
     { now: new Date('2026-08-07T00:58:59.999Z') },
   ])('rejects context, expiry, and future issuance mismatch %#', (override) => {
