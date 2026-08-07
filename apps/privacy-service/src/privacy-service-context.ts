@@ -300,9 +300,6 @@ export function verifyPrivacyServiceContext(
     return invalid();
   }
   const issuedAtSeconds = Number(issuedAtText);
-  if (!Number.isSafeInteger(issuedAtSeconds)) {
-    return invalid();
-  }
   const method = requireMethod(methodValue);
   const path = requirePath(pathValue);
   if (!(nowValue instanceof Date) || Number.isNaN(nowValue.getTime())) {
