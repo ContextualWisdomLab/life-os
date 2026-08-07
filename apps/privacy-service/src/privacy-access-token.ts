@@ -441,7 +441,7 @@ export function verifyPrivacyAccessGrantToken(
     expires <= issued ||
     expires - issued > maximum ||
     issued - now > MAXIMUM_CLOCK_SKEW_MILLISECONDS ||
-    now > expires
+    now >= expires
   ) {
     return invalid();
   }
