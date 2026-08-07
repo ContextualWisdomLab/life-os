@@ -50,6 +50,12 @@ def main() -> None:
         "",
         "bounded finding keys",
     )
+    source = replace_once(
+        source,
+        "            pathPrefixes: ['apps/web'],",
+        "            pathPrefixes: ['apps/web/'],",
+        "allowed plan path prefix",
+    )
     TARGET.write_text(source, encoding="utf-8")
 
 
