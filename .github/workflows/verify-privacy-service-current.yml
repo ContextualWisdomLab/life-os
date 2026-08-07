@@ -1,0 +1,272 @@
+name: Verify Current Privacy Service
+
+on:
+  push:
+    branches:
+      - feat/purpose-bound-pii-access
+    paths:
+      - '.github/workflows/verify-privacy-service-current.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_privacy_test
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    services:
+      postgres:
+        image: postgres:16.10-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: life_os_privacy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_privacy_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/purpose-bound-pii-access
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install and refresh workspace lockfile
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+
+      - name: Apply deterministic runtime and module corrections
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_path = Path('apps/privacy-service/package.json')
+          package = json.loads(package_path.read_text(encoding='utf-8'))
+          package['scripts']['lint'] = (
+              'tsc --noEmit && prettier --single-quote --check '
+              'package.json tsconfig.json nest-cli.json vitest.config.ts '
+              '"src/**/*.ts" '
+              '../../AGENTS.md ../../ARCHITECTURE.md ../../CLAUDE.md '
+              '../../CHANGELOG.md ../../README.md '
+              '../../docs/operations/purpose-bound-pii-access.md '
+              '../../docs/research/2026-08-07-purpose-bound-pii-access-standards.md '
+              '../../docs/superpowers/specs/2026-08-07-purpose-bound-pii-access-design.md '
+              '../../docs/superpowers/plans/2026-08-07-purpose-bound-pii-access.md'
+          )
+          package_path.write_text(
+              json.dumps(package, indent=2) + '\n',
+              encoding='utf-8',
+          )
+
+          runtime_path = Path('apps/privacy-service/src/privacy-runtime.ts')
+          runtime = runtime_path.read_text(encoding='utf-8')
+          runtime = runtime.replace(
+              'class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {\n  constructor(private readonly client: PoolClient) {}',
+              '/** Adapts one node-postgres client to the readonly transaction contract. */\n'
+              'export class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {\n'
+              '  /** Creates one adapter over a checked-out node-postgres client. */\n'
+              '  constructor(private readonly client: PoolClient) {}',
+          )
+          runtime = runtime.replace(
+              "    const result = await this.client.query<Row>(\n      text,\n      values === undefined ? undefined : [...values],\n    );\n    return { rows: result.rows };",
+              "    const result = await this.client.query(\n      text,\n      values === undefined ? undefined : [...values],\n    );\n    return { rows: result.rows as Row[] };",
+          )
+          runtime = runtime.replace(
+              "  async query<Row>(\n    text: string,\n    values?: readonly unknown[],\n  ): Promise<PrivacySqlQueryResult<Row>> {",
+              "  /** Executes one static statement and returns a typed row projection. */\n"
+              "  async query<Row>(\n    text: string,\n    values?: readonly unknown[],\n  ): Promise<PrivacySqlQueryResult<Row>> {",
+              1,
+          )
+          runtime = runtime.replace(
+              '  release(): void {\n    this.client.release();\n  }',
+              '  /** Returns the checked-out connection to the owning pool. */\n'
+              '  release(): void {\n    this.client.release();\n  }',
+              1,
+          )
+          runtime = runtime.replace(
+              'class NodePrivacyPool implements PrivacyPool {\n  constructor(private readonly pool: Pool) {}',
+              '/** Adapts one node-postgres pool to the privacy runtime contract. */\n'
+              'export class NodePrivacyPool implements PrivacyPool {\n'
+              '  /** Creates one pool adapter without opening a connection eagerly. */\n'
+              '  constructor(private readonly pool: Pool) {}',
+          )
+          runtime = runtime.replace(
+              '  async connect(): Promise<PrivacySqlTransactionClient> {',
+              '  /** Checks out one transaction client. */\n'
+              '  async connect(): Promise<PrivacySqlTransactionClient> {',
+              1,
+          )
+          runtime = runtime.replace(
+              "  on(event: 'error', listener: (error: Error) => void): void {",
+              "  /** Registers one process-level pool failure listener. */\n"
+              "  on(event: 'error', listener: (error: Error) => void): void {",
+              1,
+          )
+          runtime = runtime.replace(
+              '  async end(): Promise<void> {\n    await this.pool.end();\n  }',
+              '  /** Closes every idle and checked-out pool connection. */\n'
+              '  async end(): Promise<void> {\n    await this.pool.end();\n  }',
+              1,
+          )
+          runtime = runtime.replace(
+              'function defaultPoolFactory(configuration: PoolConfig): PrivacyPool {',
+              '/** Creates the production node-postgres pool adapter. */\n'
+              'export function defaultPrivacyPoolFactory(\n'
+              '  configuration: PoolConfig,\n'
+              '): PrivacyPool {',
+          )
+          runtime = runtime.replace(
+              '  poolFactory: PrivacyPoolFactory = defaultPoolFactory,',
+              '  poolFactory: PrivacyPoolFactory = defaultPrivacyPoolFactory,',
+          )
+          runtime_path.write_text(runtime, encoding='utf-8')
+
+          main_path = Path('apps/privacy-service/src/main.ts')
+          main = main_path.read_text(encoding='utf-8')
+          insertion = """/** Creates the production runtime from one process-compatible environment. */
+          export function createPrivacyRuntimeProvider(
+            environment: NodeJS.ProcessEnv = process.env,
+          ): PrivacyRuntime {
+            return createPrivacyRuntime(environment);
+          }
+
+          /** Selects the application boundary owned by one runtime. */
+          export function privacyApplicationFromRuntime(
+            runtime: PrivacyRuntime,
+          ): PrivacyAccessOperations {
+            return runtime.application;
+          }
+
+          /** Selects the private-context key ring owned by one runtime. */
+          export function privacyContextKeyRingFromRuntime(
+            runtime: PrivacyRuntime,
+          ): PrivacyServiceContextKeyRing {
+            return runtime.contextKeyRing;
+          }
+
+          /** Creates one fresh UTC-capable request clock. */
+          export function createPrivacyClock(): () => Date {
+            return () => new Date();
+          }
+
+          """
+          marker = '/** Root NestJS module for the independently deployable privacy service. */\n'
+          if 'export function createPrivacyRuntimeProvider' not in main:
+              main = main.replace(marker, insertion + marker, 1)
+          main = main.replace(
+              '      useFactory: (): PrivacyRuntime => createPrivacyRuntime(process.env),',
+              '      useFactory: createPrivacyRuntimeProvider,',
+          )
+          main = main.replace(
+              '      useFactory: (runtime: PrivacyRuntime): PrivacyAccessOperations =>\n        runtime.application,',
+              '      useFactory: privacyApplicationFromRuntime,',
+          )
+          main = main.replace(
+              '      useFactory: (\n        runtime: PrivacyRuntime,\n      ): PrivacyServiceContextKeyRing => runtime.contextKeyRing,',
+              '      useFactory: privacyContextKeyRingFromRuntime,',
+          )
+          main = main.replace(
+              '      useFactory: (): (() => Date) => () => new Date(),',
+              '      useFactory: createPrivacyClock,',
+          )
+          main = main.replace(
+              "export type { PrivacyAccessDecisionResult } from './privacy-access-application';",
+              'export type { PrivacyAccessDecisionResult };',
+          )
+          main_path.write_text(main, encoding='utf-8')
+
+          server_path = Path('apps/privacy-service/src/server.ts')
+          server = server_path.read_text(encoding='utf-8')
+          server = server.replace(
+              'const productionFactory: PrivacyNestFactory = async (module) =>',
+              '/** Creates the production Nest application through NestFactory. */\n'
+              'export const productionPrivacyNestFactory: PrivacyNestFactory = async (module) =>',
+          )
+          server = server.replace(
+              '  factory: PrivacyNestFactory = productionFactory,',
+              '  factory: PrivacyNestFactory = productionPrivacyNestFactory,',
+          )
+          server_path.write_text(server, encoding='utf-8')
+          PY
+
+      - name: Add production Nest factory coverage
+        run: |
+          cat > apps/privacy-service/src/server-production-coverage.test.ts <<'EOF'
+          import { NestFactory } from '@nestjs/core';
+          import { describe, expect, it, vi } from 'vitest';
+          import { AppModule } from './main';
+          import {
+            productionPrivacyNestFactory,
+            type PrivacyNestApplication,
+          } from './server';
+
+          describe('production privacy Nest factory', () => {
+            it('delegates exactly once to NestFactory.create', async () => {
+              const application: PrivacyNestApplication = {
+                setGlobalPrefix: vi.fn(),
+                enableShutdownHooks: vi.fn(),
+                listen: vi.fn(async () => undefined),
+              };
+              const spy = vi
+                .spyOn(NestFactory, 'create')
+                .mockResolvedValueOnce(application as never);
+              await expect(
+                productionPrivacyNestFactory(AppModule),
+              ).resolves.toBe(application);
+              expect(spy).toHaveBeenCalledWith(AppModule);
+              spy.mockRestore();
+            });
+          });
+          EOF
+
+      - name: Format the complete privacy slice
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/privacy-service/package.json \
+            apps/privacy-service/tsconfig.json \
+            apps/privacy-service/nest-cli.json \
+            apps/privacy-service/vitest.config.ts \
+            'apps/privacy-service/src/**/*.ts' \
+            AGENTS.md ARCHITECTURE.md CLAUDE.md CHANGELOG.md README.md \
+            docs/operations/purpose-bound-pii-access.md \
+            docs/research/2026-08-07-purpose-bound-pii-access-standards.md \
+            docs/superpowers/specs/2026-08-07-purpose-bound-pii-access-design.md \
+            docs/superpowers/plans/2026-08-07-purpose-bound-pii-access.md
+
+      - name: Verify unit, PostgreSQL, documentation, and build evidence
+        run: |
+          pnpm --filter @life-os/privacy-service lint
+          pnpm --filter @life-os/privacy-service test
+          pnpm --filter @life-os/privacy-service build
+
+      - name: Commit verified service and remove temporary workflows
+        run: |
+          set -Eeuo pipefail
+          rm -f \
+            .github/workflows/bootstrap-privacy-service.yml \
+            .github/workflows/repair-initial-privacy-contracts.yml \
+            .github/workflows/verify-privacy-core.yml \
+            .github/workflows/verify-privacy-service-current.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat(privacy): verify purpose-bound access service'
+          git push origin HEAD:feat/purpose-bound-pii-access
