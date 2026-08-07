@@ -194,9 +194,9 @@ def repair_workflow_contract_tests() -> None:
     )
     replace_once(
         workflow_path,
-        """          remote_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+        """          current="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
 """,
-        """          remote_main="$(timeout 30s git ls-remote origin refs/heads/main | awk '{print $1}')"
+        """          current="$(timeout 30s git ls-remote origin refs/heads/main | awk '{print $1}')"
 """,
         "bounded exact-base remote lookup",
     )
