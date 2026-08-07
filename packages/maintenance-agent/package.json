@@ -1,0 +1,15 @@
+{
+  "name": "@life-os/maintenance-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check src/contract.mjs && node --check src/plan.mjs && node --check src/cli.mjs",
+    "lint": "node --check src/contract.mjs && node --check src/plan.mjs && node --check src/cli.mjs && prettier --single-quote --check package.json \"src/*.mjs\" ../../.opencode/agents/maintenance-planner.md ../../docs/operations/opencode-nim-maintenance.md ../../docs/research/2026-08-07-opencode-nim-maintenance-standards.md ../../docs/superpowers/specs/2026-08-07-opencode-nim-maintenance-loop-design.md ../../docs/superpowers/plans/2026-08-07-opencode-nim-maintenance-loop.md",
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/contract.mjs --test-coverage-include=src/plan.mjs --test-coverage-include=src/cli.mjs --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 src/*.test.mjs",
+    "typecheck": "node --check src/contract.mjs && node --check src/plan.mjs && node --check src/cli.mjs"
+  },
+  "bin": {
+    "life-os-maintenance-agent": "src/cli.mjs"
+  }
+}
