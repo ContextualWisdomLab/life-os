@@ -17,8 +17,11 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u;
 const MAXIMUM_TOKEN_CHARACTERS = 16_384;
+const MINIMUM_REASON_CHARACTERS = 20;
 const MAXIMUM_REASON_CHARACTERS = 500;
 const MAXIMUM_REASON_BYTES = 1_024;
+const MAXIMUM_BREAK_GLASS_TTL_SECONDS = 300;
+const MAXIMUM_ORDINARY_TTL_SECONDS = 900;
 const MAXIMUM_REFERENCE_CHARACTERS = 256;
 const MAXIMUM_REFERENCE_BYTES = 1_024;
 const DISALLOWED_CONTROL_PATTERN = /[\u0000-\u0008\u000a-\u001f\u007f]/u;
@@ -110,6 +113,7 @@ function requireCategory(value: unknown): PrivacyResourceCategory {
 
 function boundedOptionalText(
   value: unknown,
+  minimumCharacters: number,
   maximumCharacters: number,
   maximumBytes: number,
 ): string | undefined {
@@ -123,9 +127,10 @@ function boundedOptionalText(
     .normalize('NFKC')
     .trim()
     .replace(/\s+/gu, ' ');
+  const characters = [...normalized].length;
   if (
-    normalized === '' ||
-    [...normalized].length > maximumCharacters ||
+    characters < minimumCharacters ||
+    characters > maximumCharacters ||
     Buffer.byteLength(normalized, 'utf8') > maximumBytes
   ) {
     return invalid();
@@ -149,20 +154,29 @@ export function parsePrivacyAccessDecisionBody(
     ],
     ['purpose', 'action', 'resourceCategory', 'requestedTtlSeconds'],
   );
+  const purpose = requirePurpose(body.purpose);
+  const maximumTtlSeconds =
+    purpose === 'break_glass'
+      ? MAXIMUM_BREAK_GLASS_TTL_SECONDS
+      : MAXIMUM_ORDINARY_TTL_SECONDS;
   if (
     !Number.isSafeInteger(body.requestedTtlSeconds) ||
     (body.requestedTtlSeconds as number) < 30 ||
-    (body.requestedTtlSeconds as number) > 900
+    (body.requestedTtlSeconds as number) > maximumTtlSeconds
   ) {
     return invalid();
   }
   const reason = boundedOptionalText(
     body.reason,
+    MINIMUM_REASON_CHARACTERS,
     MAXIMUM_REASON_CHARACTERS,
     MAXIMUM_REASON_BYTES,
   );
+  if (purpose !== 'workspace_operation' && reason === undefined) {
+    return invalid();
+  }
   return Object.freeze({
-    purpose: requirePurpose(body.purpose),
+    purpose,
     action: requireAction(body.action),
     resourceCategory: requireCategory(body.resourceCategory),
     requestedTtlSeconds: body.requestedTtlSeconds as number,
@@ -190,6 +204,7 @@ export function parsePrivacyAccessConsumeBody(
   }
   const resourceReference = boundedOptionalText(
     body.resourceReference,
+    1,
     MAXIMUM_REFERENCE_CHARACTERS,
     MAXIMUM_REFERENCE_BYTES,
   );
