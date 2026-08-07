@@ -34,7 +34,7 @@ jobs:
           corepack enable
           pnpm install --no-frozen-lockfile
 
-      - name: Apply deterministic implementation and coverage repairs
+      - name: Prepare maintenance coverage generator
         run: |
           set -Eeuo pipefail
           sed -i \
@@ -42,10 +42,18 @@ jobs:
             -e 's/contractDigest(tampered)/maintenanceContractDigest(tampered)/' \
             -e 's/waitContract.target.number/waitContract.target.externalNumber/' \
             .github/scripts/complete-maintenance-coverage.py
-          python3 .github/scripts/finalize-opencode-maintenance.py
-          python3 .github/scripts/repair-maintenance-cli-entrypoint.py
-          python3 .github/scripts/complete-maintenance-coverage.py
-          python3 .github/scripts/finalize-opencode-maintenance-product.py
+
+      - name: Apply maintenance contract repairs
+        run: python3 .github/scripts/finalize-opencode-maintenance.py
+
+      - name: Apply CLI entrypoint repairs
+        run: python3 .github/scripts/repair-maintenance-cli-entrypoint.py
+
+      - name: Generate complete maintenance coverage evidence
+        run: python3 .github/scripts/complete-maintenance-coverage.py
+
+      - name: Finalize permanent model and reviewer boundaries
+        run: python3 .github/scripts/finalize-opencode-maintenance-product.py
 
       - name: Require the complete product evidence set
         run: |
