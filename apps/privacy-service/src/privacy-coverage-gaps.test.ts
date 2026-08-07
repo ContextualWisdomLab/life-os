@@ -165,7 +165,7 @@ function signedClaims(value: Record<string, unknown>): string {
 }
 
 describe('privacy exact coverage regressions', () => {
-  it('rejects non-string application digest keys and UUIDs', async () => {
+  it('rejects malformed application digest keys and UUIDs', async () => {
     expect(
       () =>
         new PrivacyAccessApplication({
@@ -181,13 +181,30 @@ describe('privacy exact coverage regressions', () => {
       auditDigestKey: AUDIT_KEY,
       clock: () => NOW,
     });
-    await expect(
-      service.consume({
-        workspaceId: 42 as never,
-        actorId: ACTOR_ID,
-        grantToken: 'a.b',
-      }),
-    ).rejects.toEqual(new PrivacyAccessApplicationError());
+    for (const workspaceId of [42 as never, 'not-a-uuid']) {
+      await expect(
+        service.consume({
+          workspaceId,
+          actorId: ACTOR_ID,
+          grantToken: 'a.b',
+        }),
+      ).rejects.toEqual(new PrivacyAccessApplicationError());
+    }
+  });
+
+  it('rejects string principals that are not UUIDv4 at the private context boundary', () => {
+    expect(() =>
+      createPrivacyServiceContextHeaders(
+        {
+          workspaceId: '11111111-1111-1111-8111-111111111111',
+          actorId: ACTOR_ID,
+          method: 'POST',
+          path: '/v1/privacy/access-decisions',
+          issuedAt: ISSUED_AT,
+        },
+        contextRing(),
+      ),
+    ).toThrow(PrivacyServiceContextError);
   });
 
   it('rejects a signed claim with a non-string canonical timestamp', () => {
@@ -312,15 +329,16 @@ describe('privacy exact coverage regressions', () => {
     expect(connect).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-record consumed database row and rolls back', async () => {
+  it('rejects a non-record consumed database row, rolls back, and releases the client', async () => {
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [null] })
       .mockResolvedValueOnce({ rows: [] });
+    const release = vi.fn();
     const client = {
       query,
-      release: vi.fn(),
+      release,
     } as unknown as PrivacySqlTransactionClient;
     const pool = {
       connect: vi.fn(async () => client),
@@ -330,5 +348,28 @@ describe('privacy exact coverage regressions', () => {
       new PostgresPrivacyAccessRepository(pool).consumeGrant(consumeInput()),
     ).rejects.toEqual(new PrivacyAccessPersistenceError());
     expect(query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('releases the client when consumption and rollback both fail', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce(new Error('private consume failure'))
+      .mockRejectedValueOnce(new Error('private rollback failure'));
+    const release = vi.fn();
+    const client = {
+      query,
+      release,
+    } as unknown as PrivacySqlTransactionClient;
+    const pool = {
+      connect: vi.fn(async () => client),
+    } as PrivacySqlPool;
+
+    await expect(
+      new PostgresPrivacyAccessRepository(pool).consumeGrant(consumeInput()),
+    ).rejects.toEqual(new PrivacyAccessPersistenceError());
+    expect(query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
+    expect(release).toHaveBeenCalledOnce();
   });
 });
