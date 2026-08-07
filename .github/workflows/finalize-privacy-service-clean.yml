@@ -67,7 +67,6 @@ jobs:
             apps/privacy-service/nest-cli.json \
             apps/privacy-service/vitest.config.ts \
             'apps/privacy-service/src/**/*.ts' \
-            apps/privacy-service/migrations/*.sql \
             compose.privacy.yaml \
             docs/compliance/purpose-bound-pii-access-control-mapping.md \
             docs/operations/purpose-bound-pii-access.md \
