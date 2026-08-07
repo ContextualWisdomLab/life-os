@@ -79,18 +79,18 @@ The implementation does not claim that a policy engine can determine legal basis
 
 ## PII handling alternatives to masking
 
-| Control | Production use |
-| --- | --- |
-| Tenant isolation | Required on every decision, grant, query, and audit record |
-| Purpose-based ABAC | Required before issuing a grant |
-| Single-use, short-lived grants | Required for sensitive reads |
-| Encryption | Required in transit and at rest; application/key separation is deployment-owned |
-| Metadata-only audit | Required; payload values are replaced by canonical digests in evidence |
-| Egress control | Required for logs, traces, metrics, artifacts, analytics, support tooling, and LLM inputs |
-| Just-in-time / break-glass | Separate short policy with reason and post-access review evidence |
-| Pseudonymization | Optional for analytics where identity is not required |
-| Synthetic data | Required preference for tests, examples, screenshots, and demos |
-| Masking | Optional presentation control, never a substitute for authorization |
+| Control                        | Production use                                                                            |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| Tenant isolation               | Required on every decision, grant, query, and audit record                                |
+| Purpose-based ABAC             | Required before issuing a grant                                                           |
+| Single-use, short-lived grants | Required for sensitive reads                                                              |
+| Encryption                     | Required in transit and at rest; application/key separation is deployment-owned           |
+| Metadata-only audit            | Required; payload values are replaced by canonical digests in evidence                    |
+| Egress control                 | Required for logs, traces, metrics, artifacts, analytics, support tooling, and LLM inputs |
+| Just-in-time / break-glass     | Separate short policy with reason and post-access review evidence                         |
+| Pseudonymization               | Optional for analytics where identity is not required                                     |
+| Synthetic data                 | Required preference for tests, examples, screenshots, and demos                           |
+| Masking                        | Optional presentation control, never a substitute for authorization                       |
 
 ## Residual risks
 
