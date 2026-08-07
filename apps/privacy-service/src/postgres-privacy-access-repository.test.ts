@@ -299,7 +299,7 @@ describe('PostgresPrivacyAccessRepository decision persistence', () => {
 });
 
 describe('PostgresPrivacyAccessRepository grant consumption', () => {
-  it('atomically marks an exact unused grant consumed and appends one event', async () => {
+  it('atomically marks an exact unused unexpired grant consumed and appends one event', async () => {
     const pool = new RecordingPool();
     pool.client.queuedRows.push([], [consumedRow()], [], []);
     const repository = new PostgresPrivacyAccessRepository(pool);
@@ -326,7 +326,8 @@ describe('PostgresPrivacyAccessRepository grant consumption', () => {
       'COMMIT',
     ]);
     expect(pool.client.calls[1]?.text).toContain('consumed_at IS NULL');
-    expect(pool.client.calls[1]?.text).toContain('expires_at >= $10');
+    expect(pool.client.calls[1]?.text).toContain('expires_at > $10');
+    expect(pool.client.calls[1]?.text).not.toContain('expires_at >= $10');
     expect(pool.client.calls[1]?.text).toContain('issued_at <= $10');
     expect(pool.client.calls[1]?.values).toEqual([
       GRANT_ID,
