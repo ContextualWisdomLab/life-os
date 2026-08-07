@@ -241,10 +241,7 @@ function normalizeReason(value: unknown, required: boolean): string {
   if (typeof value !== 'string' || DISALLOWED_CONTROL_PATTERN.test(value)) {
     return invalid();
   }
-  const normalized = value
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/gu, ' ');
+  const normalized = value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
   if (
     normalized === '' ||
     codePointLength(normalized) < MINIMUM_REASON_CHARACTERS ||
