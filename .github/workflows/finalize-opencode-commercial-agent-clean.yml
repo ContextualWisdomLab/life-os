@@ -34,6 +34,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           corepack enable
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('package.json')
+          document = json.loads(path.read_text(encoding='utf-8'))
+          pnpm = document.setdefault('pnpm', {})
+          allowed = pnpm.setdefault('onlyBuiltDependencies', [])
+          if 'opencode-ai' not in allowed:
+              allowed.append('opencode-ai')
+          pnpm['onlyBuiltDependencies'] = sorted(set(allowed))
+          path.write_text(json.dumps(document, indent=2) + '\n', encoding='utf-8')
+          PY
           version="$(timeout 60s npm view opencode-ai version --json | jq -r '.')"
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo '::error::OpenCode registry version is not an exact semantic version.'
@@ -80,6 +93,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           pnpm exec prettier --single-quote --write \
+            package.json \
             .github/workflows/opencode-commercial-development.yml \
             packages/commercial-development-agent/package.json \
             packages/commercial-development-agent/vitest.config.mjs \
