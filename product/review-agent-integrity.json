@@ -1,0 +1,7 @@
+{
+  "workflowPaths": [
+    ".github/workflows/appguardrail.yml"
+  ],
+  "secretNames": [],
+  "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}
