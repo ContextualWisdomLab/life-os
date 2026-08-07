@@ -6,6 +6,7 @@ on:
       - feat/opencode-nim-maintenance-loop
     paths:
       - '.github/workflows/finalize-opencode-maintenance-loop.yml'
+      - '.github/maintenance-verification.txt'
 
 permissions:
   contents: write
@@ -98,6 +99,8 @@ jobs:
             package.json
 
       - name: Verify maintenance package and repository formatting
+        id: verify
+        continue-on-error: true
         run: |
           set +e
           status=0
@@ -115,7 +118,22 @@ jobs:
           tail -n 300 .github/maintenance-verification.txt
           exit "$status"
 
+      - name: Publish bounded verification diagnostics
+        if: steps.verify.outcome == 'failure'
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/maintenance-verification.txt
+          if git diff --cached --quiet; then
+            exit 1
+          fi
+          git commit -m 'test(automation): retain bounded maintenance verification failure'
+          git push origin HEAD:feat/opencode-nim-maintenance-loop
+          exit 1
+
       - name: Remove temporary repair automation
+        if: steps.verify.outcome == 'success'
         run: |
           set -Eeuo pipefail
           git rm -f --ignore-unmatch \
@@ -134,6 +152,7 @@ jobs:
             .github/scripts/repair-maintenance-cli-entrypoint.py
 
       - name: Commit verified product slice
+        if: steps.verify.outcome == 'success'
         run: |
           set -Eeuo pipefail
           git config user.name 'github-actions[bot]'
