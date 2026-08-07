@@ -1,8 +1,8 @@
 name: Diagnose commercial development lockfile
 
 on:
-  push:
-    branches: [feat/opencode-commercial-development-loop]
+  pull_request:
+    branches: [main]
     paths:
       - .github/workflows/diagnose-commercial-development-lockfile.yml
       - packages/commercial-development-agent/package.json
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: diagnose-commercial-development-lockfile-${{ github.ref }}
+  group: diagnose-commercial-development-lockfile-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
