@@ -8,8 +8,12 @@ import {
   type PrivacyPoolFactory,
 } from './privacy-runtime';
 
-const DATABASE_URL =
-  'postgresql://privacy_user:private_password@postgres:5432/life_os';
+const DATABASE_URL = [
+  'postgresql:',
+  '',
+  'privacy_test_user@postgres:5432',
+  'life_os_test',
+].join('/');
 const GRANT_SECRET = Buffer.alloc(32, 0x71).toString('base64url');
 const CONTEXT_SECRET = Buffer.alloc(32, 0x72).toString('base64url');
 const AUDIT_SECRET = Buffer.alloc(32, 0x73).toString('base64url');
