@@ -34,9 +34,7 @@ import {
 /** Dependency-injection token for the owned production runtime. */
 export const PRIVACY_RUNTIME = Symbol('PRIVACY_RUNTIME');
 /** Dependency-injection token for the purpose-bound access application. */
-export const PRIVACY_ACCESS_APPLICATION = Symbol(
-  'PRIVACY_ACCESS_APPLICATION',
-);
+export const PRIVACY_ACCESS_APPLICATION = Symbol('PRIVACY_ACCESS_APPLICATION');
 /** Dependency-injection token for the private service-context key ring. */
 export const PRIVACY_CONTEXT_KEY_RING = Symbol('PRIVACY_CONTEXT_KEY_RING');
 /** Dependency-injection token for the request-validation clock. */
