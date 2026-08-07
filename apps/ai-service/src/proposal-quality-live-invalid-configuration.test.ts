@@ -27,6 +27,9 @@ describe('live conformance configuration fallback', () => {
 
     const report = await runProposalLiveConformance(options);
     expect(report.status).toBe('failed');
+    expect(report.profiles).toHaveLength(5);
+    expect(Object.isFrozen(report)).toBe(true);
+    expect(Object.isFrozen(report.profiles)).toBe(true);
     for (const profileId of ['route_low', 'route_high', 'conduct_template']) {
       expect(
         report.profiles.find((profile) => profile.profileId === profileId),
@@ -36,6 +39,8 @@ describe('live conformance configuration fallback', () => {
         unavailableCode: 'invalid_configuration',
       });
     }
-    expect(JSON.stringify(report)).not.toContain('private setup detail');
+    const serialized = JSON.stringify(report);
+    expect(serialized).not.toContain('private setup detail');
+    expect(serialized).not.toContain(TOKEN);
   });
 });
