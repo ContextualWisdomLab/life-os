@@ -4,7 +4,7 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u;
-const PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]{1,255}$/u;
+const PATH_PATTERN = /^\/[A-Za-z0-9._~!$&'()*+,;=:@%\/-]{1,255}$/u;
 const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const MINIMUM_SECRET_BYTES = 32;
 const MAXIMUM_SECRET_BYTES = 4_096;
@@ -123,10 +123,7 @@ export function parsePrivacyServiceContextKeyRing(
     return Object.freeze({ active });
   }
   const previous = key(previousId, previousSecret);
-  if (
-    active.keyId === previous.keyId ||
-    active.secret === previous.secret
-  ) {
+  if (active.keyId === previous.keyId || active.secret === previous.secret) {
     return invalid();
   }
   return Object.freeze({ active, previous });
@@ -188,7 +185,9 @@ function canonicalPayload(input: {
 }
 
 function signature(payload: string, secret: string): string {
-  return createHmac('sha256', secret).update(payload, 'utf8').digest('base64url');
+  return createHmac('sha256', secret)
+    .update(payload, 'utf8')
+    .digest('base64url');
 }
 
 /** Creates one exact signed private-context header set using only the active key. */
@@ -258,10 +257,7 @@ function verificationKey(
     return active;
   }
   if (keyRing.previous !== undefined) {
-    const previous = key(
-      keyRing.previous.keyId,
-      keyRing.previous.secret,
-    );
+    const previous = key(keyRing.previous.keyId, keyRing.previous.secret);
     if (previous.keyId === keyId) {
       return previous;
     }
@@ -296,12 +292,8 @@ export function verifyPrivacyServiceContext(
   nowValue: Date,
 ): VerifiedPrivacyServiceContext {
   const headers = exactHeaderRecord(headersValue);
-  const keyId = requireKeyId(
-    header(headers, 'x-life-os-context-key-id'),
-  );
-  const workspaceId = requireUuid(
-    header(headers, 'x-life-os-workspace-id'),
-  );
+  const keyId = requireKeyId(header(headers, 'x-life-os-context-key-id'));
+  const workspaceId = requireUuid(header(headers, 'x-life-os-workspace-id'));
   const actorId = requireUuid(header(headers, 'x-life-os-actor-id'));
   const issuedAtText = header(headers, 'x-life-os-context-issued-at');
   if (!/^\d{10}$/u.test(issuedAtText)) {
@@ -318,10 +310,7 @@ export function verifyPrivacyServiceContext(
   }
   const nowSeconds = Math.floor(nowValue.getTime() / 1_000);
   const age = nowSeconds - issuedAtSeconds;
-  if (
-    age > MAXIMUM_CONTEXT_AGE_SECONDS ||
-    age < -MAXIMUM_FUTURE_SKEW_SECONDS
-  ) {
+  if (age > MAXIMUM_CONTEXT_AGE_SECONDS || age < -MAXIMUM_FUTURE_SKEW_SECONDS) {
     return invalid();
   }
   const selected = verificationKey(keyRing, keyId);
