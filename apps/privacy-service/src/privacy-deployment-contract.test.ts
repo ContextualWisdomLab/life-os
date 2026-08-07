@@ -13,9 +13,12 @@ describe('privacy-service deployment contract', () => {
   it('keeps the service independently composable through one overlay', () => {
     expect(compose).toContain('privacy-service:');
     expect(compose).toContain('dockerfile: apps/privacy-service/Dockerfile');
-    expect(compose).toContain('PRIVACY_DATABASE_URL:');
-    expect(compose).toContain('condition: service_healthy');
+    expect(compose).toContain(
+      'PRIVACY_DATABASE_URL: ${PRIVACY_DATABASE_URL:?PRIVACY_DATABASE_URL is required}',
+    );
     expect(compose).toContain('127.0.0.1:${PRIVACY_SERVICE_PORT:-4108}:4108');
+    expect(compose).not.toContain('depends_on:');
+    expect(compose).not.toContain('postgresql://lifeos:lifeos');
     expect(compose).not.toContain('network_mode: host');
     expect(compose).not.toContain('privileged: true');
   });
