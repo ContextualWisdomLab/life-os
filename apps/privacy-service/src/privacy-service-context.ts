@@ -48,13 +48,13 @@ export interface PrivacyServiceContextInput {
 }
 
 /** Header map emitted by the trusted signer. */
-export interface PrivacyServiceContextHeaders {
-  readonly 'x-life-os-context-key-id': string;
-  readonly 'x-life-os-workspace-id': string;
-  readonly 'x-life-os-actor-id': string;
-  readonly 'x-life-os-context-issued-at': string;
-  readonly 'x-life-os-context-signature': string;
-}
+export type PrivacyServiceContextHeaders = Readonly<{
+  'x-life-os-context-key-id': string;
+  'x-life-os-workspace-id': string;
+  'x-life-os-actor-id': string;
+  'x-life-os-context-issued-at': string;
+  'x-life-os-context-signature': string;
+}>;
 
 /** Verified tenant and actor identity used by the application boundary. */
 export interface VerifiedPrivacyServiceContext {
