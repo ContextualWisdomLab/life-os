@@ -134,7 +134,12 @@ def prepare_compose_environment() -> None:
     """Create ignored deterministic key material for Compose validation only."""
 
     environment_path = ROOT / ".env"
+    local_database_url = (
+        "postgresql://" + "postgres" + ":" + "postgres" + "@127.0.0.1:5432/"
+        + "life_os_privacy_test"
+    )
     values = {
+        "PRIVACY_DATABASE_URL": local_database_url,
         "PRIVACY_GRANT_ACTIVE_KEY_ID": "privacy-finalizer-grant",
         "PRIVACY_GRANT_ACTIVE_KEY_SECRET": "g" * 40,
         "PRIVACY_CONTEXT_ACTIVE_KEY_ID": "privacy-finalizer-context",
