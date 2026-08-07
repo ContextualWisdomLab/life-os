@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- An hourly, plan-only NVIDIA NIM OpenCode maintenance workflow that converts deterministic commercial-readiness evidence into a SHA-256-receipted contract and retains only an exact-schema credential-free maintenance plan; high-risk conducted work fails closed until the reviewed contextual-orchestrator path is available.
 - An hourly and manually dispatchable NVIDIA NIM live-conformance harness that pins contextual-orchestrator to an exact reviewed commit, compares strong single-route reasoning with bounded conducted workflows, and retains only validated credential-free quality, safety, orchestration, usage, and ablation evidence.
 - A versioned, immutable AI proposal quality evaluator that separates production validity, semantic operation conformance, evidence grounding, benign utility, forbidden-text leakage, and prompt-injection resistance across realistic English, Korean, temporal, empty-context, completed-item, and adversarial fixtures.
 - An explicit `contextual-orchestrator` proposal-model mode with bounded OpenAI-compatible transport, strict structured output, model provenance, and an independent local rule-based default.
@@ -32,6 +33,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- The OpenCode maintenance planner uses only `NVIDIA_NIM_API_KEY`, loads scheduled code from the reviewed default branch, denies shell, delegation, external/web access and source edits, cannot mutate GitHub, and rejects plans containing unauthorized paths, secrets, raw logs, hidden reasoning, merge/release operations, or contract-digest mismatches.
 - The scheduled live-model harness uses only `NVIDIA_NIM_API_KEY`, seeds it through the encrypted contextual-orchestrator credential registry, installs hash-locked dependencies from an exact commit, confines LifeOS traffic to loopback, allowlists NVIDIA NIM egress, and excludes provider credentials, prompts, responses, traces, and hidden reasoning from retained artifacts.
 - Proposal quality reports now discard nested model failures and response bodies, normalize labeled sentinel checks, expose no provider credential or mutation dependency, and measure prompt-injection resistance together with benign utility instead of rewarding blanket refusal.
 - External proposal generation now accepts only one credential-free HTTPS orchestrator origin, stops responses at 65536 bytes, enforces a bounded abort timeout, supplies no tools, treats planning context as untrusted data, and exposes only sanitized failures.
