@@ -7,6 +7,11 @@ on:
       - feat/purpose-bound-pii-access
     paths:
       - '.github/workflows/export-privacy-lockfile.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/export-privacy-lockfile.yml'
 
 permissions:
   contents: read
@@ -19,10 +24,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout exact feature head
+      - name: Checkout exact event revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: feat/purpose-bound-pii-access
           persist-credentials: false
 
       - name: Set up Node.js
