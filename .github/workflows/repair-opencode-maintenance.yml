@@ -1,0 +1,226 @@
+name: Repair OpenCode Maintenance Slice
+
+on:
+  push:
+    branches:
+      - feat/opencode-nim-maintenance-loop
+    paths:
+      - '.github/workflows/repair-opencode-maintenance.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/opencode-nim-maintenance-loop
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install workspace and refresh the lockfile
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+
+      - name: Apply deterministic source and test repairs
+        run: python3 .github/scripts/finalize-opencode-maintenance.py
+
+      - name: Register capability, format inventory, and review-agent receipt
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          capabilities_path = Path('product/capabilities.json')
+          capabilities = json.loads(capabilities_path.read_text(encoding='utf-8'))
+          capability = next(
+              item
+              for item in capabilities['capabilities']
+              if item['id'] == 'automation.commercial-readiness-loop'
+          )
+          capability['tracking_issue'] = 119
+          additions = [
+              {
+                  'maturity': 'usable',
+                  'kind': 'implementation',
+                  'mode': 'exists',
+                  'path': 'packages/maintenance-agent/src/contract.mjs',
+              },
+              {
+                  'maturity': 'usable',
+                  'kind': 'workflow',
+                  'mode': 'exists',
+                  'path': '.github/workflows/opencode-nim-maintenance.yml',
+              },
+              {
+                  'maturity': 'production',
+                  'kind': 'test',
+                  'mode': 'exists',
+                  'path': 'packages/maintenance-agent/src/workflow-contract.test.mjs',
+              },
+              {
+                  'maturity': 'production',
+                  'kind': 'documentation',
+                  'mode': 'exists',
+                  'path': 'docs/operations/opencode-nim-maintenance.md',
+              },
+          ]
+          existing = {item['path'] for item in capability['evidence']}
+          capability['evidence'].extend(
+              item for item in additions if item['path'] not in existing
+          )
+          capabilities_path.write_text(
+              json.dumps(capabilities, indent=2) + '\n', encoding='utf-8'
+          )
+
+          workflow_paths = ['.github/workflows/appguardrail.yml']
+          secret_names = []
+          workflow_contents = [
+              Path(path).read_text(encoding='utf-8') for path in workflow_paths
+          ]
+          receipt_payload = {
+              'workflowPaths': workflow_paths,
+              'secretNames': secret_names,
+              'workflowContents': workflow_contents,
+          }
+          receipt = {
+              'workflowPaths': workflow_paths,
+              'secretNames': secret_names,
+              'digest': hashlib.sha256(
+                  json.dumps(receipt_payload, separators=(',', ':')).encode('utf-8')
+              ).hexdigest(),
+          }
+          Path('product/review-agent-integrity.json').write_text(
+              json.dumps(receipt, indent=2) + '\n', encoding='utf-8'
+          )
+
+          maintained_paths = [
+              'AGENTS.md',
+              'ARCHITECTURE.md',
+              'CLAUDE.md',
+              'CHANGELOG.md',
+              'README.md',
+              '.github/workflows/opencode-nim-maintenance.yml',
+              '.opencode/agents/maintenance-planner.md',
+              'product/review-agent-integrity.json',
+              'packages/maintenance-agent/package.json',
+              'packages/maintenance-agent/src/bin.mjs',
+              'packages/maintenance-agent/src/contract.mjs',
+              'packages/maintenance-agent/src/contract.test.mjs',
+              'packages/maintenance-agent/src/plan.mjs',
+              'packages/maintenance-agent/src/plan.test.mjs',
+              'packages/maintenance-agent/src/cli.mjs',
+              'packages/maintenance-agent/src/cli.test.mjs',
+              'packages/maintenance-agent/src/opencode-contract.test.mjs',
+              'packages/maintenance-agent/src/workflow-contract.test.mjs',
+              'docs/operations/opencode-nim-maintenance.md',
+              'docs/research/2026-08-07-opencode-nim-maintenance-standards.md',
+              'docs/superpowers/specs/2026-08-07-opencode-nim-maintenance-loop-design.md',
+              'docs/superpowers/plans/2026-08-07-opencode-nim-maintenance-loop.md',
+          ]
+          package_path = Path('package.json')
+          package = json.loads(package_path.read_text(encoding='utf-8'))
+          command = package['scripts']['format:check']
+          tokens = command.split()
+          for maintained_path in maintained_paths:
+              if maintained_path not in tokens:
+                  command += f' {maintained_path}'
+          package['scripts']['format:check'] = command
+          package_path.write_text(
+              json.dumps(package, indent=2) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - name: Strengthen the review-agent integrity assertion
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/maintenance-agent/src/workflow-contract.test.mjs')
+          source = path.read_text(encoding='utf-8')
+          if "import { createHash } from 'node:crypto';" not in source:
+              source = source.replace(
+                  "import assert from 'node:assert/strict';\n",
+                  "import assert from 'node:assert/strict';\nimport { createHash } from 'node:crypto';\n",
+                  1,
+              )
+          old = """    assert.match(fingerprint.digest, /^[0-9a-f]{64}$/u);
+              assert.match(reviewWorkflow, /^name: AppGuardrail$/mu);
+          """.replace('          ', '')
+          new = """    const receiptPayload = {
+              workflowPaths: fingerprint.workflowPaths,
+              secretNames: fingerprint.secretNames,
+              workflowContents: [reviewWorkflow],
+            };
+            assert.equal(
+              fingerprint.digest,
+              createHash('sha256')
+                .update(JSON.stringify(receiptPayload), 'utf8')
+                .digest('hex'),
+            );
+            assert.match(reviewWorkflow, /^name: AppGuardrail$/mu);
+          """.replace('          ', '')
+          if old in source:
+              source = source.replace(old, new, 1)
+          elif 'const receiptPayload' not in source:
+              raise SystemExit('review-agent integrity assertion block changed')
+          path.write_text(source, encoding='utf-8')
+          PY
+
+      - name: Format the complete slice
+        run: |
+          pnpm exec prettier --single-quote --write \
+            AGENTS.md \
+            ARCHITECTURE.md \
+            CLAUDE.md \
+            CHANGELOG.md \
+            README.md \
+            package.json \
+            pnpm-lock.yaml \
+            product/capabilities.json \
+            product/review-agent-integrity.json \
+            .github/workflows/opencode-nim-maintenance.yml \
+            .opencode/agents/maintenance-planner.md \
+            packages/maintenance-agent/package.json \
+            packages/maintenance-agent/src/*.mjs \
+            docs/operations/opencode-nim-maintenance.md \
+            docs/research/2026-08-07-opencode-nim-maintenance-standards.md \
+            docs/superpowers/specs/2026-08-07-opencode-nim-maintenance-loop-design.md \
+            docs/superpowers/plans/2026-08-07-opencode-nim-maintenance-loop.md
+
+      - name: Verify package and repository contracts
+        run: |
+          pnpm --filter @life-os/maintenance-agent lint
+          pnpm --filter @life-os/maintenance-agent test
+          pnpm --filter @life-os/maintenance-agent build
+          pnpm --filter @life-os/commercial-readiness test
+          pnpm format:check
+
+      - name: Commit verified repairs and remove temporary assets
+        run: |
+          set -Eeuo pipefail
+          git rm \
+            .github/workflows/finalize-opencode-maintenance.yml \
+            .github/workflows/repair-opencode-maintenance.yml \
+            .github/scripts/finalize-opencode-maintenance.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'chore(automation): finalize OpenCode maintenance evidence'
+          git push origin HEAD:feat/opencode-nim-maintenance-loop
