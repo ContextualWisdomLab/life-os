@@ -1,0 +1,590 @@
+name: Harden and Verify Privacy Service
+
+on:
+  push:
+    branches:
+      - feat/purpose-bound-pii-access
+    paths:
+      - '.github/workflows/repair-privacy-service-v2.yml'
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_privacy_test
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    services:
+      postgres:
+        image: postgres:16.10-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: life_os_privacy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_privacy_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/purpose-bound-pii-access
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install and refresh workspace lockfile
+        run: |
+          corepack enable
+          pnpm install --no-frozen-lockfile
+
+      - name: Apply idempotent hardening corrections
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def replace(path: Path, old: str, new: str) -> None:
+              source = path.read_text(encoding='utf-8')
+              if old in source:
+                  path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          package_path = Path('apps/privacy-service/package.json')
+          package = json.loads(package_path.read_text(encoding='utf-8'))
+          package['scripts']['lint'] = (
+              'tsc --noEmit && prettier --single-quote --check '
+              'package.json tsconfig.json nest-cli.json vitest.config.ts '
+              '"src/**/*.ts" '
+              '../../AGENTS.md ../../ARCHITECTURE.md ../../CLAUDE.md '
+              '../../CHANGELOG.md ../../README.md '
+              '../../docs/operations/purpose-bound-pii-access.md '
+              '../../docs/research/2026-08-07-purpose-bound-pii-access-standards.md '
+              '../../docs/superpowers/specs/2026-08-07-purpose-bound-pii-access-design.md '
+              '../../docs/superpowers/plans/2026-08-07-purpose-bound-pii-access.md'
+          )
+          package_path.write_text(json.dumps(package, indent=2) + '\n', encoding='utf-8')
+
+          domain = Path('apps/privacy-service/src/privacy-access-domain.ts')
+          replace(domain, 'const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;\n', '')
+          replace(domain, 'const MAXIMUM_REASON_BYTES = 2_048;', 'const MAXIMUM_REASON_BYTES = 1_024;')
+          replace(
+              domain,
+              '  return POLICY_RULES.find((rule) => rule.purpose === purpose) ?? invalid();',
+              '  return POLICY_RULES.find((rule) => rule.purpose === purpose)!;',
+          )
+          replace(
+              domain,
+              """  const digest = createHmac('sha256', key)
+    .update(`${label}\\u0000${value}`, 'utf8')
+    .digest('hex');
+  return SHA_256_PATTERN.test(digest) ? digest : invalid();""",
+              """  return createHmac('sha256', key)
+    .update(`${label}\\u0000${value}`, 'utf8')
+    .digest('hex');""",
+          )
+
+          coverage = Path('apps/privacy-service/src/privacy-access-coverage.test.ts')
+          source = coverage.read_text(encoding='utf-8')
+          prefix = source.split("from './privacy-access-domain';", 1)[0]
+          if 'PRIVACY_ACCESS_POLICY_DIGEST' not in prefix:
+              source = source.replace(
+                  '  PrivacyAccessValidationError,\n  evaluatePrivacyAccessRequest,',
+                  '  PRIVACY_ACCESS_POLICY_DIGEST,\n'
+                  '  PRIVACY_ACCESS_POLICY_REVISION_ID,\n'
+                  '  PrivacyAccessValidationError,\n'
+                  '  evaluatePrivacyAccessRequest,',
+                  1,
+              )
+          source = source.replace(
+              "    policyRevisionId: '7a25c6b5-9fd7-45f3-9bd9-180dbc668c92',\n"
+              "    policyDigest:\n"
+              "      '8a96ff5f4f4d2f18ba31f38b1db20f99afc1a9018a1a12cf6e230ddf47e7d106',",
+              '    policyRevisionId: PRIVACY_ACCESS_POLICY_REVISION_ID,\n'
+              '    policyDigest: PRIVACY_ACCESS_POLICY_DIGEST,',
+          )
+          coverage.write_text(source, encoding='utf-8')
+
+          runtime = Path('apps/privacy-service/src/privacy-runtime.ts')
+          source = runtime.read_text(encoding='utf-8')
+          if 'export class NodePrivacyTransactionClient' not in source:
+              source = source.replace(
+                  'class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {\n  constructor(private readonly client: PoolClient) {}',
+                  '/** Adapts one node-postgres client to the readonly transaction contract. */\n'
+                  'export class NodePrivacyTransactionClient implements PrivacySqlTransactionClient {\n'
+                  '  /** Creates one adapter over a checked-out node-postgres client. */\n'
+                  '  constructor(private readonly client: PoolClient) {}',
+              )
+          source = source.replace(
+              """    const result = await this.client.query<Row>(
+      text,
+      values === undefined ? undefined : [...values],
+    );
+    return { rows: result.rows };""",
+              """    const result = await this.client.query(
+      text,
+      values === undefined ? undefined : [...values],
+    );
+    return { rows: result.rows as Row[] };""",
+          )
+          if 'export class NodePrivacyPool' not in source:
+              source = source.replace(
+                  'class NodePrivacyPool implements PrivacyPool {\n  constructor(private readonly pool: Pool) {}',
+                  '/** Adapts one node-postgres pool to the privacy runtime contract. */\n'
+                  'export class NodePrivacyPool implements PrivacyPool {\n'
+                  '  /** Creates one pool adapter without opening a connection eagerly. */\n'
+                  '  constructor(private readonly pool: Pool) {}',
+              )
+          if 'export function defaultPrivacyPoolFactory' not in source:
+              source = source.replace(
+                  'function defaultPoolFactory(configuration: PoolConfig): PrivacyPool {',
+                  '/** Creates the production node-postgres pool adapter. */\n'
+                  'export function defaultPrivacyPoolFactory(\n'
+                  '  configuration: PoolConfig,\n'
+                  '): PrivacyPool {',
+              )
+              source = source.replace(
+                  '  poolFactory: PrivacyPoolFactory = defaultPoolFactory,',
+                  '  poolFactory: PrivacyPoolFactory = defaultPrivacyPoolFactory,',
+              )
+          source = source.replace(
+              """function requireConfiguration(
+  environment: PrivacyRuntimeEnvironment,
+  name: string,
+): string {
+  const value = environment[name]?.trim();
+  if (
+    !value ||
+    value.length > MAXIMUM_CONFIGURATION_LENGTH ||
+    DISALLOWED_CONTROL_PATTERN.test(value)
+  ) {
+    return invalid();
+  }
+  return value;
+}""",
+              """function requireConfiguration(
+  environment: PrivacyRuntimeEnvironment,
+  name: string,
+): string {
+  const raw = environment[name];
+  if (typeof raw !== 'string') {
+    return invalid();
+  }
+  const value = raw.trim();
+  if (
+    value === '' ||
+    value.length > MAXIMUM_CONFIGURATION_LENGTH ||
+    DISALLOWED_CONTROL_PATTERN.test(value)
+  ) {
+    return invalid();
+  }
+  return value;
+}
+
+function requireSecretConfiguration(
+  environment: PrivacyRuntimeEnvironment,
+  name: string,
+): string {
+  const value = environment[name];
+  if (
+    typeof value !== 'string' ||
+    value.trim() !== value ||
+    value.length > MAXIMUM_CONFIGURATION_LENGTH ||
+    DISALLOWED_CONTROL_PATTERN.test(value)
+  ) {
+    return invalid();
+  }
+  return value;
+}""",
+          )
+          source = source.replace(
+              """  const auditDigestKey = requireDigestKey(
+    requireConfiguration(environment, 'PRIVACY_AUDIT_DIGEST_KEY'),
+  );""",
+              """  const auditDigestKey = requireDigestKey(
+    requireSecretConfiguration(environment, 'PRIVACY_AUDIT_DIGEST_KEY'),
+  );""",
+          )
+          runtime.write_text(source, encoding='utf-8')
+
+          main = Path('apps/privacy-service/src/main.ts')
+          source = main.read_text(encoding='utf-8')
+          if 'export function createPrivacyRuntimeProvider' not in source:
+              marker = '/** Root NestJS module for the independently deployable privacy service. */\n'
+              insertion = """/** Creates the production runtime from one process-compatible environment. */
+export function createPrivacyRuntimeProvider(
+  environment: NodeJS.ProcessEnv = process.env,
+): PrivacyRuntime {
+  return createPrivacyRuntime(environment);
+}
+
+/** Selects the application boundary owned by one runtime. */
+export function privacyApplicationFromRuntime(
+  runtime: PrivacyRuntime,
+): PrivacyAccessOperations {
+  return runtime.application;
+}
+
+/** Selects the private-context key ring owned by one runtime. */
+export function privacyContextKeyRingFromRuntime(
+  runtime: PrivacyRuntime,
+): PrivacyServiceContextKeyRing {
+  return runtime.contextKeyRing;
+}
+
+/** Creates one fresh UTC-capable request clock. */
+export function createPrivacyClock(): () => Date {
+  return () => new Date();
+}
+
+"""
+              source = source.replace(marker, insertion + marker, 1)
+          source = source.replace(
+              '      useFactory: (): PrivacyRuntime => createPrivacyRuntime(process.env),',
+              '      useFactory: createPrivacyRuntimeProvider,',
+          )
+          source = source.replace(
+              '      useFactory: (runtime: PrivacyRuntime): PrivacyAccessOperations =>\n        runtime.application,',
+              '      useFactory: privacyApplicationFromRuntime,',
+          )
+          source = source.replace(
+              '      useFactory: (\n        runtime: PrivacyRuntime,\n      ): PrivacyServiceContextKeyRing => runtime.contextKeyRing,',
+              '      useFactory: privacyContextKeyRingFromRuntime,',
+          )
+          source = source.replace(
+              '      useFactory: (): (() => Date) => () => new Date(),',
+              '      useFactory: createPrivacyClock,',
+          )
+          source = source.replace(
+              "export type { PrivacyAccessDecisionResult } from './privacy-access-application';",
+              'export type { PrivacyAccessDecisionResult };',
+          )
+          main.write_text(source, encoding='utf-8')
+
+          server = Path('apps/privacy-service/src/server.ts')
+          source = server.read_text(encoding='utf-8')
+          if 'productionPrivacyNestFactory' not in source:
+              source = source.replace(
+                  'const productionFactory: PrivacyNestFactory = async (module) =>',
+                  '/** Creates the production Nest application through NestFactory. */\n'
+                  'export const productionPrivacyNestFactory: PrivacyNestFactory = async (module) =>',
+              )
+              source = source.replace(
+                  '  factory: PrivacyNestFactory = productionFactory,',
+                  '  factory: PrivacyNestFactory = productionPrivacyNestFactory,',
+              )
+          server.write_text(source, encoding='utf-8')
+
+          token = Path('apps/privacy-service/src/privacy-access-token.ts')
+          source = token.read_text(encoding='utf-8')
+          source = source.replace(
+              """  let actual: Buffer;
+  try {
+    actual = Buffer.from(signature, 'base64url');
+  } catch {
+    return invalid();
+  }
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {""",
+              """  const actual = Buffer.from(signature, 'base64url');
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {""",
+          )
+          token.write_text(source, encoding='utf-8')
+
+          context = Path('apps/privacy-service/src/privacy-service-context.ts')
+          source = context.read_text(encoding='utf-8')
+          source = source.replace(
+              '    keys.some((name) => !EXPECTED_HEADER_NAMES.includes(name)) ||',
+              '    keys.some((name) =>\n      !(EXPECTED_HEADER_NAMES as readonly string[]).includes(name),\n    ) ||',
+          )
+          source = source.replace(
+              '  if (!input || typeof input !== \'object\' || !keyRing) {',
+              "  if (\n    !input ||\n    typeof input !== 'object' ||\n    !keyRing ||\n    typeof keyRing !== 'object'\n  ) {",
+          )
+          context.write_text(source, encoding='utf-8')
+
+          http = Path('apps/privacy-service/src/privacy-http-boundary.ts')
+          source = http.read_text(encoding='utf-8')
+          source = source.replace(
+              '    actual.some((name) => !allowed.includes(name)) ||',
+              '    actual.some((name) =>\n      !(allowed as readonly string[]).includes(name),\n    ) ||',
+          )
+          source = source.replace(
+              """    selected[requiredName] = matches[0][1];""",
+              """    selected[requiredName] = matches[0]![1] as string;""",
+          )
+          http.write_text(source, encoding='utf-8')
+
+          repository = Path(
+              'apps/privacy-service/src/postgres-privacy-access-repository.ts'
+          )
+          source = repository.read_text(encoding='utf-8')
+          if 'const KEY_ID_PATTERN' not in source:
+              source = source.replace(
+                  "const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;",
+                  "const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;\n"
+                  "const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;",
+              )
+          source = source.replace(
+              """    keyId:
+      typeof claims.keyId === 'string' && claims.keyId.length > 0
+        ? claims.keyId
+        : invalid(),""",
+              """    keyId:
+      typeof claims.keyId === 'string' && KEY_ID_PATTERN.test(claims.keyId)
+        ? claims.keyId
+        : invalid(),""",
+          )
+          source = source.replace(
+              """  if (
+    normalizedClaims.policyRevisionId !== PRIVACY_ACCESS_POLICY_REVISION_ID ||
+    normalizedClaims.policyDigest !== PRIVACY_ACCESS_POLICY_DIGEST ||
+    Date.parse(normalizedClaims.expiresAt) <=
+      Date.parse(normalizedClaims.issuedAt) ||
+    (normalizedClaims.accessMode === 'break_glass') !==
+      (normalizedClaims.purpose === 'break_glass')
+  ) {""",
+              """  const occurredAt = requireTimestamp(input.occurredAt);
+  if (
+    normalizedClaims.policyRevisionId !== PRIVACY_ACCESS_POLICY_REVISION_ID ||
+    normalizedClaims.policyDigest !== PRIVACY_ACCESS_POLICY_DIGEST ||
+    Date.parse(normalizedClaims.expiresAt) <=
+      Date.parse(normalizedClaims.issuedAt) ||
+    Date.parse(occurredAt) < Date.parse(normalizedClaims.issuedAt) ||
+    Date.parse(occurredAt) > Date.parse(normalizedClaims.expiresAt) ||
+    (normalizedClaims.accessMode === 'break_glass') !==
+      (normalizedClaims.purpose === 'break_glass')
+  ) {""",
+          )
+          source = source.replace(
+              '    occurredAt: requireTimestamp(input.occurredAt),',
+              '    occurredAt,',
+          )
+          repository.write_text(source, encoding='utf-8')
+
+          application = Path(
+              'apps/privacy-service/src/privacy-access-application.ts'
+          )
+          source = application.read_text(encoding='utf-8')
+          source = source.replace(
+              """    if (!dependencies || typeof dependencies !== 'object') {
+      return invalid();
+    }
+    this.repository = dependencies.repository;""",
+              """    if (
+      !dependencies ||
+      typeof dependencies !== 'object' ||
+      !dependencies.repository ||
+      typeof dependencies.repository.persistDecision !== 'function' ||
+      typeof dependencies.repository.consumeGrant !== 'function'
+    ) {
+      return invalid();
+    }
+    this.repository = dependencies.repository;""",
+          )
+          source = source.replace(
+              """export async function readOriginalPersonalData<T>(
+  application: PrivacyAccessApplication,
+  command: PrivacyAccessConsumeCommand,
+  reader: AuthorizedPersonalDataReader<T>,
+): Promise<T> {
+  const receipt = await application.consume(command);
+  return await reader.read(receipt);
+}""",
+              """export async function readOriginalPersonalData<T>(
+  application: PrivacyAccessApplication,
+  command: PrivacyAccessConsumeCommand,
+  reader: AuthorizedPersonalDataReader<T>,
+): Promise<T> {
+  if (!reader || typeof reader.read !== 'function') {
+    return invalid();
+  }
+  const receipt = await application.consume(command);
+  return await reader.read(receipt);
+}""",
+          )
+          application.write_text(source, encoding='utf-8')
+
+          migration = Path(
+              'apps/privacy-service/migrations/0001_purpose_bound_privacy_access.sql'
+          )
+          source = migration.read_text(encoding='utf-8')
+          if 'privacy_grant_event_foreign_key' not in source:
+              marker = """CREATE INDEX IF NOT EXISTS privacy_decision_workspace_time_index"""
+              constraint = """ALTER TABLE privacy_access.privacy_access_grants
+  ADD CONSTRAINT privacy_grant_event_foreign_key
+  FOREIGN KEY (consumed_event_id)
+  REFERENCES privacy_access.privacy_access_events(access_event_id)
+  DEFERRABLE INITIALLY DEFERRED;
+
+"""
+              source = source.replace(marker, constraint + marker, 1)
+          migration.write_text(source, encoding='utf-8')
+
+          integration = Path(
+              'apps/privacy-service/src/postgres-privacy-access-repository.integration.test.ts'
+          )
+          source = integration.read_text(encoding='utf-8')
+          source = source.replace(
+              'function application(pool: Pool) {\n  const identifiers = [DECISION_ID, GRANT_ID];',
+              'function application(\n  pool: Pool,\n  identifiers: string[] = [DECISION_ID, GRANT_ID],\n  clock: () => Date = () => new Date(NOW.getTime()),\n) {',
+          )
+          source = source.replace(
+              '    clock: () => new Date(NOW.getTime()),',
+              '    clock,',
+          )
+          source = source.replace(
+              '    const restarted = application(restartedPool);',
+              '    const restarted = application(restartedPool, [EVENT_ID]);',
+          )
+          old_manual = """    await administrativePool.query(
+      `UPDATE privacy_access.privacy_access_grants
+       SET consumed_at = $1::timestamptz,
+           consumed_event_id = $2::uuid
+       WHERE grant_id = $3::uuid`,
+      [NOW.toISOString(), EVENT_ID, GRANT_ID],
+    );
+    await expect(
+      service.consume({
+        workspaceId: WORKSPACE_ID,
+        actorId: ACTOR_ID,
+        grantToken: issued.grantToken ?? '',
+      }),
+    ).rejects.toThrow();"""
+          new_expired = """    const expired = application(
+      administrativePool,
+      [EVENT_ID],
+      () => new Date('2026-08-07T07:00:31.000Z'),
+    );
+    await expect(
+      expired.consume({
+        workspaceId: WORKSPACE_ID,
+        actorId: ACTOR_ID,
+        grantToken: issued.grantToken ?? '',
+      }),
+    ).rejects.toThrow();"""
+          source = source.replace(old_manual, new_expired)
+          integration.write_text(source, encoding='utf-8')
+          PY
+
+      - name: Add remaining validation and documentation regressions
+        run: |
+          cat >> apps/privacy-service/src/privacy-access-coverage.test.ts <<'EOF'
+
+          describe('privacy application defensive dependency evidence', () => {
+            it('rejects malformed repository and reader boundaries', async () => {
+              expect(
+                () =>
+                  new PrivacyAccessApplication({
+                    repository: {} as never,
+                    grantKeyRing: ring(),
+                    auditDigestKey: AUDIT_KEY,
+                  }),
+              ).toThrow(PrivacyAccessApplicationError);
+              const service = new PrivacyAccessApplication({
+                repository: new MemoryRepository(),
+                grantKeyRing: ring(),
+                auditDigestKey: AUDIT_KEY,
+                clock: () => NOW,
+              });
+              const { readOriginalPersonalData } = await import(
+                './privacy-access-application'
+              );
+              await expect(
+                readOriginalPersonalData(
+                  service,
+                  {
+                    workspaceId: WORKSPACE_ID,
+                    actorId: ACTOR_ID,
+                    grantToken: 'invalid',
+                  },
+                  {} as never,
+                ),
+              ).rejects.toEqual(new PrivacyAccessApplicationError());
+            });
+          });
+          EOF
+
+          cat > apps/privacy-service/src/server-production-coverage.test.ts <<'EOF'
+          import { NestFactory } from '@nestjs/core';
+          import { describe, expect, it, vi } from 'vitest';
+          import { AppModule } from './main';
+          import {
+            productionPrivacyNestFactory,
+            type PrivacyNestApplication,
+          } from './server';
+
+          describe('production privacy Nest factory', () => {
+            it('delegates exactly once to NestFactory.create', async () => {
+              const application: PrivacyNestApplication = {
+                setGlobalPrefix: vi.fn(),
+                enableShutdownHooks: vi.fn(),
+                listen: vi.fn(async () => undefined),
+              };
+              const spy = vi
+                .spyOn(NestFactory, 'create')
+                .mockResolvedValueOnce(application as never);
+              await expect(
+                productionPrivacyNestFactory(AppModule),
+              ).resolves.toBe(application);
+              expect(spy).toHaveBeenCalledWith(AppModule);
+              spy.mockRestore();
+            });
+          });
+          EOF
+
+      - name: Format complete implementation
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/privacy-service/package.json \
+            apps/privacy-service/tsconfig.json \
+            apps/privacy-service/nest-cli.json \
+            apps/privacy-service/vitest.config.ts \
+            'apps/privacy-service/src/**/*.ts' \
+            AGENTS.md ARCHITECTURE.md CLAUDE.md CHANGELOG.md README.md \
+            docs/operations/purpose-bound-pii-access.md \
+            docs/research/2026-08-07-purpose-bound-pii-access-standards.md \
+            docs/superpowers/specs/2026-08-07-purpose-bound-pii-access-design.md \
+            docs/superpowers/plans/2026-08-07-purpose-bound-pii-access.md
+
+      - name: Verify complete service and real PostgreSQL evidence
+        run: |
+          pnpm --filter @life-os/privacy-service lint
+          pnpm --filter @life-os/privacy-service test
+          pnpm --filter @life-os/privacy-service build
+
+      - name: Validate the modular Compose overlay
+        env:
+          PRIVACY_GRANT_ACTIVE_KEY_ID: privacy-grant-active
+          PRIVACY_GRANT_ACTIVE_KEY_SECRET: test-only-privacy-grant-secret-material-0001
+          PRIVACY_CONTEXT_ACTIVE_KEY_ID: privacy-context-active
+          PRIVACY_CONTEXT_ACTIVE_KEY_SECRET: test-only-privacy-context-secret-material-0001
+          PRIVACY_AUDIT_DIGEST_KEY: test-only-privacy-audit-digest-material-0001
+        run: docker compose -f compose.yaml -f compose.privacy.yaml config --quiet
+
+      - name: Commit verified hardening and remove temporary workflows
+        run: |
+          set -Eeuo pipefail
+          rm -f \
+            .github/workflows/bootstrap-privacy-service.yml \
+            .github/workflows/repair-initial-privacy-contracts.yml \
+            .github/workflows/verify-privacy-core.yml \
+            .github/workflows/verify-privacy-service-current.yml \
+            .github/workflows/repair-privacy-service-v2.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'feat(privacy): harden purpose-bound access service'
+          git push origin HEAD:feat/purpose-bound-pii-access
