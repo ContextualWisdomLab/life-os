@@ -207,7 +207,7 @@ describeWithPostgres('PostgreSQL purpose-bound privacy access', () => {
     expect(grants.rows).toEqual([
       expect.objectContaining({
         consumed_at: expect.any(Date),
-        consumed_event_id: EVENT_ID,
+        consumed_event_id: events.rows[0]?.access_event_id,
       }),
     ]);
     await restartedPool.end();
