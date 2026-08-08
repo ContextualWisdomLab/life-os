@@ -7,6 +7,8 @@ on:
     paths:
       - .github/workflows/diagnose-commercial-development-lockfile.yml
       - packages/commercial-development-agent/package.json
+      - packages/commercial-development-agent/src/contracts.mjs
+      - packages/commercial-development-agent/src/contracts.test.mjs
       - pnpm-lock.yaml
 
 permissions:
@@ -36,14 +38,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Generate canonical lockfile evidence without repository mutation
+      - name: Generate canonical lockfile and focused contract evidence
         shell: bash
         run: |
           set -Eeuo pipefail
           corepack enable
           test "$(pnpm --version)" = '10.15.0'
           test "$(git rev-parse HEAD)" = '${{ github.event.pull_request.head.sha }}'
-          cp pnpm-lock.yaml "$RUNNER_TEMP/pnpm-lock.before.yaml"
           pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
           pnpm install --frozen-lockfile --ignore-scripts
           git diff --no-ext-diff -- pnpm-lock.yaml > "$RUNNER_TEMP/pnpm-lock.patch"
@@ -54,7 +55,16 @@ jobs:
           cp pnpm-lock.yaml "$RUNNER_TEMP/lockfile-evidence/pnpm-lock.yaml"
           cp "$RUNNER_TEMP/pnpm-lock.patch" "$RUNNER_TEMP/lockfile-evidence/pnpm-lock.patch"
 
-      - name: Upload generated lockfile evidence
+          set +e
+          pnpm --filter @life-os/commercial-development-agent exec vitest run \
+            src/contracts.test.mjs --no-file-parallelism \
+            >"$RUNNER_TEMP/lockfile-evidence/contracts-test.log" 2>&1
+          contract_status="$?"
+          set -e
+          printf '%s\n' "$contract_status" \
+            > "$RUNNER_TEMP/lockfile-evidence/contracts-test-status.txt"
+
+      - name: Upload generated diagnostic evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: commercial-development-lockfile-${{ github.run_id }}
