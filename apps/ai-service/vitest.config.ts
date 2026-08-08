@@ -1,10 +1,10 @@
 import { defineConfig } from 'vitest/config';
 
-/** Complete AI-service production coverage gate. */
+/** Complete AI-service production coverage gate for explicit full-suite coverage runs. */
 export default defineConfig({
   test: {
     coverage: {
-      enabled: true,
+      enabled: process.argv.includes('--coverage'),
       provider: 'v8',
       reporter: [['text', { maxCols: 1_000 }], 'json', 'json-summary'],
       include: ['src/**/*.ts'],
