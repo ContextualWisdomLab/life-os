@@ -9,6 +9,8 @@ on:
       - packages/commercial-development-agent/package.json
       - packages/commercial-development-agent/src/contracts.mjs
       - packages/commercial-development-agent/src/contracts.test.mjs
+      - packages/commercial-development-agent/src/prompt-builder.mjs
+      - packages/commercial-development-agent/src/prompt-builder.test.mjs
       - packages/commercial-development-agent/src/workflow-contract.test.mjs
       - product/opencode-commercial-development-policy.json
       - pnpm-lock.yaml
@@ -44,8 +46,11 @@ jobs:
           pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
           pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Run policy path regression
-        run: pnpm --filter @life-os/commercial-development-agent exec vitest run src/contracts.test.mjs --no-file-parallelism
+      - name: Run development policy and prompt regressions
+        run: >-
+          pnpm --filter @life-os/commercial-development-agent exec vitest run
+          src/contracts.test.mjs src/prompt-builder.test.mjs
+          --no-file-parallelism
 
       - name: Emit bounded canonical lockfile evidence
         if: always()
@@ -74,6 +79,8 @@ jobs:
           name: commercial-development-source-diagnostic
           path: |
             .github/workflows/opencode-commercial-development.yml
+            packages/commercial-development-agent/src/prompt-builder.mjs
+            packages/commercial-development-agent/src/prompt-builder.test.mjs
             packages/commercial-development-agent/src/workflow-contract.test.mjs
           if-no-files-found: error
           retention-days: 1
