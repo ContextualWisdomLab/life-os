@@ -250,6 +250,21 @@ function requireRootFile(value) {
   return path;
 }
 
+/** Requires one normalized repository-relative file path without traversal. */
+function requireRepositoryFile(value) {
+  const path = requireString(value, { maximumBytes: 1_024 });
+  const segments = path.split('/');
+  if (
+    path.startsWith('/') ||
+    path.endsWith('/') ||
+    path.includes('\\') ||
+    segments.some((segment) => segment === '' || segment === '.' || segment === '..')
+  ) {
+    return invalid();
+  }
+  return path;
+}
+
 /** Requires one exact LifeOS issue or pull-request URL. */
 function requireLifeOsReferenceUrl(value, expectedKind, expectedNumber) {
   const url = requireString(value, { maximumBytes: 512 });
@@ -341,7 +356,7 @@ export function normalizeCommercialDevelopmentPolicy(value) {
     ? input.allowed_root_files.map(requireRootFile)
     : invalid();
   const prohibitedExactPaths = Array.isArray(input.prohibited_exact_paths)
-    ? input.prohibited_exact_paths.map(requireRootFile)
+    ? input.prohibited_exact_paths.map(requireRepositoryFile)
     : invalid();
   if (
     allowedRootFiles.length === 0 ||
