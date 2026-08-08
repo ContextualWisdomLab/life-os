@@ -8,7 +8,10 @@ import { createCommercialDevelopmentReceipt } from './receipt.mjs';
 
 const POLICY = JSON.parse(
   readFileSync(
-    new URL('../../../product/opencode-commercial-development-policy.json', import.meta.url),
+    new URL(
+      '../../../product/opencode-commercial-development-policy.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 );
@@ -137,8 +140,7 @@ describe('bounded commercial development dry run', () => {
       opencodeVersion: '1.2.3',
       diff,
       branchName: `automation/opencode-commercial-${RUN_ID}`,
-      pullRequestUrl:
-        'https://github.com/ContextualWisdomLab/life-os/pull/120',
+      pullRequestUrl: 'https://github.com/ContextualWisdomLab/life-os/pull/120',
       completedAt: '2026-08-07T02:20:00.000Z',
       validations: [
         { name: 'issue_policy', status: 'passed' },

@@ -129,8 +129,7 @@ function receipt(overrides = {}) {
     additions: 2,
     deletions: 0,
     branch_name: `automation/opencode-commercial-${RUN_ID}`,
-    pull_request_url:
-      'https://github.com/ContextualWisdomLab/life-os/pull/120',
+    pull_request_url: 'https://github.com/ContextualWisdomLab/life-os/pull/120',
     started_at: '2026-08-07T01:00:00.000Z',
     completed_at: '2026-08-07T01:01:00.000Z',
     validations: [{ name: 'diff_policy', status: 'passed' }],
@@ -154,8 +153,7 @@ function receiptInput(overrides = {}) {
       deletions: 0,
     },
     branchName: `automation/opencode-commercial-${RUN_ID}`,
-    pullRequestUrl:
-      'https://github.com/ContextualWisdomLab/life-os/pull/120',
+    pullRequestUrl: 'https://github.com/ContextualWisdomLab/life-os/pull/120',
     completedAt: '2026-08-07T01:01:00.000Z',
     validations: [{ name: 'diff_policy', status: 'passed' }],
     ...overrides,
@@ -164,9 +162,7 @@ function receiptInput(overrides = {}) {
 
 /** Creates a controllable in-memory asynchronous file-system seam. */
 function memoryFileSystem(initialValue = receiptInput()) {
-  const files = new Map([
-    [INPUT_PATH, `${JSON.stringify(initialValue)}\n`],
-  ]);
+  const files = new Map([[INPUT_PATH, `${JSON.stringify(initialValue)}\n`]]);
   const controls = {
     statFile: true,
     statSize: undefined,
@@ -334,14 +330,14 @@ describe('exhaustive issue selection boundaries', () => {
   it('sorts eligible issues by policy title order and then number', () => {
     const policy = {
       ...POLICY,
-      eligible_issue_titles: [
-        'Second buyer outcome',
-        issue().title,
-      ],
+      eligible_issue_titles: ['Second buyer outcome', issue().title],
     };
     const selected = selectCommercialDevelopmentIssue({
       issues: [
-        issue({ number: 130, url: 'https://github.com/ContextualWisdomLab/life-os/issues/130' }),
+        issue({
+          number: 130,
+          url: 'https://github.com/ContextualWisdomLab/life-os/issues/130',
+        }),
         issue({
           number: 131,
           url: 'https://github.com/ContextualWisdomLab/life-os/issues/131',
@@ -396,7 +392,11 @@ describe('exhaustive prompt and receipt composition boundaries', () => {
 
   it('wraps contract and unexpected prompt failures', () => {
     expect(() =>
-      buildCommercialDevelopmentPrompt({ run: run(), issue: issue(), policy: {} }),
+      buildCommercialDevelopmentPrompt({
+        run: run(),
+        issue: issue(),
+        policy: {},
+      }),
     ).toThrow(CommercialDevelopmentPromptError);
     const hostile = new Proxy(
       {},
@@ -454,10 +454,22 @@ describe('exhaustive diff validation boundaries', () => {
   it.each([
     { ...diffEvidence(), files: [42] },
     { ...diffEvidence(), files: [{ ...diffEvidence().files[0], status: 'C' }] },
-    { ...diffEvidence(), files: [{ ...diffEvidence().files[0], binary: 'no' }] },
-    { ...diffEvidence(), files: [{ ...diffEvidence().files[0], symlink: 'no' }] },
-    { ...diffEvidence(), files: [{ ...diffEvidence().files[0], submodule: 'no' }] },
-    { ...diffEvidence(), files: [{ ...diffEvidence().files[0], content: 'x\u0000' }] },
+    {
+      ...diffEvidence(),
+      files: [{ ...diffEvidence().files[0], binary: 'no' }],
+    },
+    {
+      ...diffEvidence(),
+      files: [{ ...diffEvidence().files[0], symlink: 'no' }],
+    },
+    {
+      ...diffEvidence(),
+      files: [{ ...diffEvidence().files[0], submodule: 'no' }],
+    },
+    {
+      ...diffEvidence(),
+      files: [{ ...diffEvidence().files[0], content: 'x\u0000' }],
+    },
     { ...diffEvidence(), files: [{ ...diffEvidence().files[0], bytes: 0 }] },
     {
       ...diffEvidence(),
@@ -511,7 +523,13 @@ describe('exhaustive CLI file-system and argument boundaries', () => {
     ['receipt', '--input', INPUT_PATH, '--input', INPUT_PATH],
     ['receipt', '--input', '', '--output', OUTPUT_PATH],
     ['receipt', '--input', ' /tmp/input.json', '--output', OUTPUT_PATH],
-    ['receipt', '--input', `/tmp/${'x'.repeat(4_097)}`, '--output', OUTPUT_PATH],
+    [
+      'receipt',
+      '--input',
+      `/tmp/${'x'.repeat(4_097)}`,
+      '--output',
+      OUTPUT_PATH,
+    ],
   ])('rejects exhaustive malformed arguments %#', async (argv) => {
     await expect(runCommercialDevelopmentCli(argv)).rejects.toBeInstanceOf(
       CommercialDevelopmentCliError,
@@ -536,9 +554,9 @@ describe('exhaustive CLI file-system and argument boundaries', () => {
 
   it('rejects a malformed atomic-publication UUID', async () => {
     const fs = memoryFileSystem();
-    await expect(runReceiptCli(fs.seam, () => 'not-a-uuid')).rejects.toBeInstanceOf(
-      CommercialDevelopmentCliError,
-    );
+    await expect(
+      runReceiptCli(fs.seam, () => 'not-a-uuid'),
+    ).rejects.toBeInstanceOf(CommercialDevelopmentCliError);
     expect(fs.seam.writeFile).not.toHaveBeenCalled();
   });
 

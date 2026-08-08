@@ -10,7 +10,10 @@ import { COMMERCIAL_DEVELOPMENT_RUN_SCHEMA } from './contracts.mjs';
 
 const POLICY = JSON.parse(
   readFileSync(
-    new URL('../../../product/opencode-commercial-development-policy.json', import.meta.url),
+    new URL(
+      '../../../product/opencode-commercial-development-policy.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 );
@@ -128,7 +131,9 @@ describe('commercial development prompt builder', () => {
       issue: issue({ body: 'Quote "value" and newline\nvalue.' }),
       policy: POLICY,
     });
-    expect(prompt.text).toContain('"body": "Quote \\"value\\" and newline\\nvalue."');
+    expect(prompt.text).toContain(
+      '"body": "Quote \\"value\\" and newline\\nvalue."',
+    );
     expect(prompt.text).not.toContain('eval ');
     expect(prompt.text).not.toContain('source ');
   });

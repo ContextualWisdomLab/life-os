@@ -132,7 +132,7 @@ describe('OpenCode commercial development workflow contract', () => {
     const capture = step('Capture candidate through trusted boundary');
     expect(capture).toContain('packages/commercial-development-agent');
     expect(capture).toContain('--policy "$GITHUB_WORKSPACE/$POLICY_PATH"');
-    expect(capture).toContain("stat.S_ISREG");
+    expect(capture).toContain('stat.S_ISREG');
     expect(capture).toContain('object_type_rejected');
     expect(capture).toContain(
       'node packages/commercial-development-agent/src/cli.mjs validate-diff',
@@ -190,9 +190,7 @@ describe('OpenCode commercial development workflow contract', () => {
   it('rechecks the live repository lease immediately before both remote writes', () => {
     const mutation = step('Commit, push, and open one draft pull request');
     expect(mutation).toContain('assert_live_lease()');
-    expect(
-      mutation.match(/^\s*assert_live_lease$/gmu),
-    ).toHaveLength(2);
+    expect(mutation.match(/^\s*assert_live_lease$/gmu)).toHaveLength(2);
     expect(mutation).toContain('git ls-remote origin refs/heads/main');
     expect(mutation).toContain('pulls?state=open&per_page=1');
     expect(mutation).toContain('selected_issue_digest');

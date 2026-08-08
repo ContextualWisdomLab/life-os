@@ -92,11 +92,7 @@ const RECEIPT_REASON_CODES = Object.freeze({
     'provider_unavailable',
     'opencode_unavailable',
   ]),
-  rejected: new Set([
-    'prompt_rejected',
-    'diff_rejected',
-    'base_changed',
-  ]),
+  rejected: new Set(['prompt_rejected', 'diff_rejected', 'base_changed']),
   failed: new Set([
     'invalid_configuration',
     'verification_failed',
@@ -132,10 +128,7 @@ function requireRecord(value) {
 function requireExactKeys(value, expectedKeys) {
   const expected = new Set(expectedKeys);
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.size ||
-    keys.some((key) => !expected.has(key))
-  ) {
+  if (keys.length !== expected.size || keys.some((key) => !expected.has(key))) {
     invalid();
   }
 }
@@ -193,11 +186,7 @@ function requireUntrustedText(value, maximumBytes) {
 
 /** Requires one bounded safe integer. */
 function requireInteger(value, minimum, maximum) {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < minimum ||
-    value > maximum
-  ) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     return invalid();
   }
   return value;
@@ -272,7 +261,9 @@ function requireRepositoryFile(value) {
     path.startsWith('/') ||
     path.endsWith('/') ||
     path.includes('\\') ||
-    segments.some((segment) => segment === '' || segment === '.' || segment === '..')
+    segments.some(
+      (segment) => segment === '' || segment === '.' || segment === '..',
+    )
   ) {
     return invalid();
   }
@@ -345,7 +336,9 @@ export function normalizeCommercialDevelopmentPolicy(value) {
     maximumBytes: maximumIssueTitleBytes,
   });
   const excludedIssueNumbers = Array.isArray(input.excluded_issue_numbers)
-    ? input.excluded_issue_numbers.map((item) => requireInteger(item, 1, 1_000_000_000))
+    ? input.excluded_issue_numbers.map((item) =>
+        requireInteger(item, 1, 1_000_000_000),
+      )
     : invalid();
   if (new Set(excludedIssueNumbers).size !== excludedIssueNumbers.length) {
     return invalid();
@@ -402,11 +395,7 @@ export function normalizeCommercialDevelopmentPolicy(value) {
     allowed_root_files: allowedRootFiles,
     prohibited_path_prefixes: prohibitedPathPrefixes,
     prohibited_exact_paths: prohibitedExactPaths,
-    maximum_changed_files: requireInteger(
-      input.maximum_changed_files,
-      1,
-      100,
-    ),
+    maximum_changed_files: requireInteger(input.maximum_changed_files, 1, 100),
     maximum_changed_bytes: requireInteger(
       input.maximum_changed_bytes,
       2_048,
@@ -425,18 +414,10 @@ export function normalizeCommercialDevelopmentPolicy(value) {
       1,
       1_000,
     ),
-    maximum_open_issues: requireInteger(
-      input.maximum_open_issues,
-      1,
-      1_000,
-    ),
+    maximum_open_issues: requireInteger(input.maximum_open_issues, 1, 1_000),
     maximum_opencode_minutes: maximumOpenCodeMinutes,
     maximum_workflow_minutes: maximumWorkflowMinutes,
-    receipt_retention_days: requireInteger(
-      input.receipt_retention_days,
-      1,
-      90,
-    ),
+    receipt_retention_days: requireInteger(input.receipt_retention_days, 1, 90),
     default_reasoning_effort: reasoningEffort,
     maximum_recursive_depth: requireInteger(
       input.maximum_recursive_depth,
@@ -600,7 +581,9 @@ export function validateCommercialDevelopmentReceipt(value) {
   }
   let pullRequestUrl = null;
   if (input.pull_request_url !== null) {
-    const pullUrl = requireString(input.pull_request_url, { maximumBytes: 512 });
+    const pullUrl = requireString(input.pull_request_url, {
+      maximumBytes: 512,
+    });
     const match = LIFE_OS_ISSUE_OR_PULL_PATTERN.exec(pullUrl);
     if (match === null || match[1] !== 'pull') {
       return invalid();

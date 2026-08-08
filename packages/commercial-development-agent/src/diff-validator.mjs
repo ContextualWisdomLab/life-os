@@ -54,11 +54,7 @@ const PRIVILEGED_EXECUTABLE_PATTERNS = Object.freeze([
   /\brm\s+-rf\s+\/(?:\s|$)/u,
   /\bcurl\b[^\n|]*\|\s*(?:bash|sh)\b/iu,
 ]);
-const EVIDENCE_KEYS = Object.freeze([
-  'base_sha',
-  'current_base_sha',
-  'files',
-]);
+const EVIDENCE_KEYS = Object.freeze(['base_sha', 'current_base_sha', 'files']);
 const FILE_KEYS = Object.freeze([
   'path',
   'status',
@@ -94,21 +90,14 @@ function isRecord(value) {
 function requireExactKeys(value, expectedKeys) {
   const expected = new Set(expectedKeys);
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.size ||
-    keys.some((key) => !expected.has(key))
-  ) {
+  if (keys.length !== expected.size || keys.some((key) => !expected.has(key))) {
     invalid();
   }
 }
 
 /** Requires one bounded safe integer. */
 function requireInteger(value, minimum = 0, maximum = 1_000_000_000) {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < minimum ||
-    value > maximum
-  ) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     return invalid();
   }
   return value;
@@ -263,18 +252,13 @@ export function validateCommercialDevelopmentDiff(value, policyValue) {
     if (
       files.some(
         (item) =>
-          item.binary ||
-          item.symlink ||
-          item.submodule ||
-          item.status === 'R',
+          item.binary || item.symlink || item.submodule || item.status === 'R',
       )
     ) {
       return result(false, 'object_rejected', counts);
     }
     if (
-      files.some((item) =>
-        containsProhibitedContent(item.path, item.content),
-      )
+      files.some((item) => containsProhibitedContent(item.path, item.content))
     ) {
       return result(false, 'content_rejected', counts);
     }

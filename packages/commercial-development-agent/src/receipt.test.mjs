@@ -9,7 +9,10 @@ import {
 
 const POLICY = JSON.parse(
   readFileSync(
-    new URL('../../../product/opencode-commercial-development-policy.json', import.meta.url),
+    new URL(
+      '../../../product/opencode-commercial-development-policy.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 );
@@ -59,8 +62,7 @@ describe('commercial development receipt composition', () => {
         deletions: 12,
       },
       branchName: `automation/opencode-commercial-${RUN_ID}`,
-      pullRequestUrl:
-        'https://github.com/ContextualWisdomLab/life-os/pull/120',
+      pullRequestUrl: 'https://github.com/ContextualWisdomLab/life-os/pull/120',
       completedAt: '2026-08-07T01:30:00.000Z',
       validations: [
         { name: 'issue_policy', status: 'passed' },

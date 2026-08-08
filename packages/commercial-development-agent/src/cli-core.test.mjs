@@ -72,17 +72,20 @@ describe('commercial development CLI core', () => {
     const outputPath = join(directory, 'selected.json');
 
     await expect(
-      runCommercialDevelopmentCli([
-        'select',
-        '--policy',
-        POLICY_PATH,
-        '--issues',
-        issuesPath,
-        '--pulls',
-        pullsPath,
-        '--output',
-        outputPath,
-      ], { uuidFactory: () => '22222222-2222-4222-8222-222222222222' }),
+      runCommercialDevelopmentCli(
+        [
+          'select',
+          '--policy',
+          POLICY_PATH,
+          '--issues',
+          issuesPath,
+          '--pulls',
+          pullsPath,
+          '--output',
+          outputPath,
+        ],
+        { uuidFactory: () => '22222222-2222-4222-8222-222222222222' },
+      ),
     ).resolves.toEqual(issue());
     expect(await output('selected.json')).toEqual(issue());
     expect((await stat(outputPath)).mode & 0o777).toBe(0o600);

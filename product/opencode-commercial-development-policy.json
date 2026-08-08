@@ -4,17 +4,8 @@
     "Add durable Today workspace synchronization with optimistic concurrency"
   ],
   "excluded_issue_numbers": [21],
-  "allowed_path_prefixes": [
-    "apps/",
-    "packages/",
-    "docs/",
-    "product/"
-  ],
-  "allowed_root_files": [
-    "README.md",
-    "ARCHITECTURE.md",
-    "CHANGELOG.md"
-  ],
+  "allowed_path_prefixes": ["apps/", "packages/", "docs/", "product/"],
+  "allowed_root_files": ["README.md", "ARCHITECTURE.md", "CHANGELOG.md"],
   "prohibited_path_prefixes": [
     ".github/",
     ".git/",
@@ -49,10 +40,5 @@
   "default_reasoning_effort": "high",
   "maximum_recursive_depth": 1,
   "maximum_decomposition_steps": 8,
-  "allowed_roles": [
-    "planner",
-    "worker",
-    "verifier",
-    "synthesizer"
-  ]
+  "allowed_roles": ["planner", "worker", "verifier", "synthesizer"]
 }

@@ -7,7 +7,10 @@ import {
 
 const POLICY = JSON.parse(
   readFileSync(
-    new URL('../../../product/opencode-commercial-development-policy.json', import.meta.url),
+    new URL(
+      '../../../product/opencode-commercial-development-policy.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 );
@@ -47,7 +50,10 @@ describe('deterministic commercial issue selection', () => {
     expect(
       selectCommercialDevelopmentIssue({
         issues: [
-          issue({ number: 121, url: 'https://github.com/ContextualWisdomLab/life-os/issues/121' }),
+          issue({
+            number: 121,
+            url: 'https://github.com/ContextualWisdomLab/life-os/issues/121',
+          }),
           issue(),
         ],
         openPullRequests: [],
@@ -74,7 +80,10 @@ describe('deterministic commercial issue selection', () => {
       selectCommercialDevelopmentIssue({
         issues: [
           issue({ title: 'Unallowlisted feature' }),
-          issue({ number: 21, url: 'https://github.com/ContextualWisdomLab/life-os/issues/21' }),
+          issue({
+            number: 21,
+            url: 'https://github.com/ContextualWisdomLab/life-os/issues/21',
+          }),
         ],
         openPullRequests: [],
         policy: POLICY,

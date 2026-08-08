@@ -60,8 +60,7 @@ function validatePullRequest(value, policy) {
     typeof value.title !== 'string' ||
     value.title.trim() !== value.title ||
     value.title.length === 0 ||
-    Buffer.byteLength(value.title, 'utf8') >
-      policy.maximum_issue_title_bytes ||
+    Buffer.byteLength(value.title, 'utf8') > policy.maximum_issue_title_bytes ||
     typeof value.body !== 'string' ||
     value.body.trim() !== value.body ||
     Buffer.byteLength(value.body, 'utf8') > policy.maximum_issue_body_bytes ||

@@ -41,7 +41,9 @@ describe('commercial development authority boundary', () => {
     'product/opencode-commercial-development-policy.json',
     '.github/workflows/opencode-commercial-development.yml',
   ])('rejects candidate mutation of trusted authority path %s', (path) => {
-    expect(validateCommercialDevelopmentDiff(candidate(path), POLICY)).toMatchObject({
+    expect(
+      validateCommercialDevelopmentDiff(candidate(path), POLICY),
+    ).toMatchObject({
       accepted: false,
       reason_code: 'path_rejected',
     });

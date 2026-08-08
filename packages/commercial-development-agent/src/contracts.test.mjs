@@ -110,8 +110,7 @@ function receipt() {
     additions: 120,
     deletions: 12,
     branch_name: `automation/opencode-commercial-${RUN_ID}`,
-    pull_request_url:
-      'https://github.com/ContextualWisdomLab/life-os/pull/120',
+    pull_request_url: 'https://github.com/ContextualWisdomLab/life-os/pull/120',
     started_at: STARTED_AT,
     completed_at: COMPLETED_AT,
     validations: [

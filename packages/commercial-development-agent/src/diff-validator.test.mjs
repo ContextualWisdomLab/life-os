@@ -7,7 +7,10 @@ import {
 
 const POLICY = JSON.parse(
   readFileSync(
-    new URL('../../../product/opencode-commercial-development-policy.json', import.meta.url),
+    new URL(
+      '../../../product/opencode-commercial-development-policy.json',
+      import.meta.url,
+    ),
     'utf8',
   ),
 );
@@ -19,7 +22,7 @@ const PRIVATE_KEY_BLOCK = ['-----BEGIN ', 'PRIVATE KEY-----\nprivate\n'].join(
 /** Returns one safe changed-file fixture. */
 function file(overrides = {}) {
   const content =
-    '/** Returns one durable Today view. */\nexport function durableTodayView() {\n  return Object.freeze({ status: \'ready\' });\n}\n';
+    "/** Returns one durable Today view. */\nexport function durableTodayView() {\n  return Object.freeze({ status: 'ready' });\n}\n";
   return {
     path: 'apps/planning-service/src/durable-today.ts',
     status: 'A',
@@ -43,7 +46,7 @@ function evidence(overrides = {}) {
       file(),
       file({
         path: 'apps/planning-service/src/durable-today.test.ts',
-        content: 'import { describe, expect, it } from \'vitest\';\n',
+        content: "import { describe, expect, it } from 'vitest';\n",
         bytes: 54,
         additions: 1,
       }),

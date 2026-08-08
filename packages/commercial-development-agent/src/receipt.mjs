@@ -50,10 +50,7 @@ function isRecord(value) {
 function requireExactKeys(value, expectedKeys) {
   const expected = new Set(expectedKeys);
   const keys = Object.keys(value);
-  if (
-    keys.length !== expected.size ||
-    keys.some((key) => !expected.has(key))
-  ) {
+  if (keys.length !== expected.size || keys.some((key) => !expected.has(key))) {
     invalid();
   }
 }
@@ -110,8 +107,7 @@ export function createCommercialDevelopmentReceipt(value) {
       run_id: run.run_id,
       repository: run.repository,
       base_sha: run.base_sha,
-      issue:
-        issue === null ? null : { number: issue.number, url: issue.url },
+      issue: issue === null ? null : { number: issue.number, url: issue.url },
       status: value.status,
       reason_code: value.reasonCode,
       opencode_version: value.opencodeVersion,

@@ -107,7 +107,11 @@ function parseArguments(argv) {
 /** Reads one bounded regular JSON file without retaining parse details. */
 async function readBoundedJson(path, fileSystem) {
   const metadata = await fileSystem.stat(path);
-  if (!metadata.isFile() || metadata.size < 1 || metadata.size > MAXIMUM_JSON_BYTES) {
+  if (
+    !metadata.isFile() ||
+    metadata.size < 1 ||
+    metadata.size > MAXIMUM_JSON_BYTES
+  ) {
     return invalid();
   }
   const content = await fileSystem.readFile(path, { encoding: 'utf8' });
@@ -212,10 +216,7 @@ async function executeCommand(command, options, fileSystem) {
  * Runs one deterministic command and atomically writes its JSON result. The
  * function never invokes a model, GitHub API, shell, or remote mutation.
  */
-export async function runCommercialDevelopmentCli(
-  argv,
-  dependencies = {},
-) {
+export async function runCommercialDevelopmentCli(argv, dependencies = {}) {
   try {
     const parsed = parseArguments(argv);
     const fileSystem =
