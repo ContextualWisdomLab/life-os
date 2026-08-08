@@ -1,0 +1,101 @@
+name: Repair commercial development formatting
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+    paths:
+      - .github/workflows/repair-commercial-development-format.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-commercial-development-format-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/opencode-commercial-development-loop'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Apply canonical Prettier output and push only formatting changes
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          TARGET_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -Eeuo pipefail
+
+          readonly expected_branch='feat/opencode-commercial-development-loop'
+          test "$TARGET_BRANCH" = "$expected_branch"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          remote_head="$(git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$EXPECTED_HEAD"
+
+          corepack enable
+          test "$(pnpm --version)" = '10.15.0'
+          pnpm install --frozen-lockfile --ignore-scripts
+
+          targets=(
+            packages/commercial-development-agent/src/authority-policy.test.mjs
+            packages/commercial-development-agent/src/cli-core.mjs
+            packages/commercial-development-agent/src/cli-core.test.mjs
+            packages/commercial-development-agent/src/contracts.mjs
+            packages/commercial-development-agent/src/contracts.test.mjs
+            packages/commercial-development-agent/src/diff-validator.mjs
+            packages/commercial-development-agent/src/diff-validator.test.mjs
+            packages/commercial-development-agent/src/dry-run.integration.test.mjs
+            packages/commercial-development-agent/src/exhaustive-coverage.test.mjs
+            packages/commercial-development-agent/src/issue-selector.mjs
+            packages/commercial-development-agent/src/issue-selector.test.mjs
+            packages/commercial-development-agent/src/prompt-builder.test.mjs
+            packages/commercial-development-agent/src/receipt.mjs
+            packages/commercial-development-agent/src/receipt.test.mjs
+            packages/commercial-development-agent/src/workflow-contract.test.mjs
+            product/opencode-commercial-development-policy.json
+            docs/superpowers/specs/2026-08-07-opencode-commercial-development-loop-design.md
+          )
+
+          pnpm exec prettier --single-quote --write "${targets[@]}"
+          git diff --check -- "${targets[@]}"
+          pnpm --filter @life-os/commercial-development-agent lint
+
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -gt 0
+          for path in "${changed[@]}"; do
+            allowed=false
+            for target in "${targets[@]}"; do
+              if [ "$path" = "$target" ]; then
+                allowed=true
+                break
+              fi
+            done
+            test "$allowed" = true
+          done
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${targets[@]}"
+          git commit -m 'style(agent): apply canonical Prettier output'
+
+          remote_head="$(git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$EXPECTED_HEAD"
+          git push --dry-run origin "HEAD:refs/heads/$TARGET_BRANCH"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
