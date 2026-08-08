@@ -1,21 +1,27 @@
 name: Apply commercial development RCA contract
 
 on:
-  push:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
     branches:
-      - feat/opencode-commercial-development-loop
+      - main
     paths:
       - .github/workflows/apply-commercial-development-rca-contract.yml
 
 permissions: {}
 
 concurrency:
-  group: apply-commercial-development-rca-contract-${{ github.ref }}
+  group: apply-commercial-development-rca-contract-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   apply:
-    if: github.event.before == '3886a92b60f457ffaeee93995d91c4c04f84138d'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/opencode-commercial-development-loop'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -32,15 +38,81 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build and verify the current-main merge candidate
+      - name: Refresh, reproduce, repair, and verify
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -Eeuo pipefail
+          branch='feat/opencode-commercial-development-loop'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/$branch:refs/remotes/origin/$branch"
+          test "$(git rev-parse origin/$branch)" = "$EXPECTED_HEAD_SHA"
+          base_head="$(git rev-parse origin/main)"
+          git merge --no-edit --no-ff origin/main
           corepack enable
-          git fetch origin main
-          preview="$RUNNER_TEMP/commercial-development-merge-preview"
-          git worktree add --detach "$preview" HEAD
-          cd "$preview"
-          git merge --no-commit --no-ff origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tests_path = Path('packages/commercial-development-agent/src/contracts.test.mjs')
+          tests = tests_path.read_text(encoding='utf-8')
+          old_valid = """  it('validates one bounded open GitHub issue', () => {
+    const validated = validateCommercialDevelopmentIssue(issue(), policy());
+    expect(validated).toEqual(issue());
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
+  it.each([
+"""
+          new_valid = """  it('validates one bounded open GitHub issue', () => {
+    const validated = validateCommercialDevelopmentIssue(issue(), policy());
+    expect(validated).toEqual(issue());
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
+  it('preserves bounded multiline issue text as untrusted data', () => {
+    const value = {
+      ...issue(),
+      body: '\\tFirst line\\r\\nSecond line\\n',
+    };
+    expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
+  });
+
+  it.each([
+"""
+          if tests.count(old_valid) != 1:
+              raise SystemExit('unexpected projected-issue test shape')
+          tests = tests.replace(old_valid, new_valid, 1)
+
+          old_invalid = """    { ...issue(), body: 'x'.repeat(16_385) },
+    { ...issue(), body: 'line\\u0000break' },
+"""
+          new_invalid = """    { ...issue(), body: null },
+    { ...issue(), body: 'x'.repeat(16_385) },
+    { ...issue(), body: 'line\\u0000break' },
+"""
+          if tests.count(old_invalid) != 1:
+              raise SystemExit('unexpected unsafe-body test shape')
+          tests = tests.replace(old_invalid, new_invalid, 1)
+          tests_path.write_text(tests, encoding='utf-8')
+          PY
+
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+          pnpm install --frozen-lockfile --ignore-scripts
+          set +e
+          pnpm --filter @life-os/commercial-development-agent exec vitest run \
+            src/contracts.test.mjs src/prompt-builder.test.mjs \
+            --no-file-parallelism >"$RUNNER_TEMP/rca-red.log" 2>&1
+          red_status="$?"
+          set -e
+          cat "$RUNNER_TEMP/rca-red.log"
+          test "$red_status" -ne 0
+          grep -F 'preserves bounded multiline issue text as untrusted data' \
+            "$RUNNER_TEMP/rca-red.log"
 
           python3 - <<'PY'
           from pathlib import Path
@@ -101,52 +173,8 @@ function requireInteger(value, minimum, maximum) {
               raise SystemExit('unexpected issue-body contract shape')
           contracts = contracts.replace(old_body, new_body, 1)
           contracts_path.write_text(contracts, encoding='utf-8')
-
-          tests_path = Path('packages/commercial-development-agent/src/contracts.test.mjs')
-          tests = tests_path.read_text(encoding='utf-8')
-          old_valid = """  it('validates one bounded open GitHub issue', () => {
-    const validated = validateCommercialDevelopmentIssue(issue(), policy());
-    expect(validated).toEqual(issue());
-    expect(Object.isFrozen(validated)).toBe(true);
-  });
-
-  it.each([
-"""
-          new_valid = """  it('validates one bounded open GitHub issue', () => {
-    const validated = validateCommercialDevelopmentIssue(issue(), policy());
-    expect(validated).toEqual(issue());
-    expect(Object.isFrozen(validated)).toBe(true);
-  });
-
-  it('preserves bounded multiline issue text as untrusted data', () => {
-    const value = {
-      ...issue(),
-      body: '\\tFirst line\\r\\nSecond line\\n',
-    };
-    expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
-  });
-
-  it.each([
-"""
-          if tests.count(old_valid) != 1:
-              raise SystemExit('unexpected projected-issue test shape')
-          tests = tests.replace(old_valid, new_valid, 1)
-
-          old_invalid = """    { ...issue(), body: 'x'.repeat(16_385) },
-    { ...issue(), body: 'line\\u0000break' },
-"""
-          new_invalid = """    { ...issue(), body: null },
-    { ...issue(), body: 'x'.repeat(16_385) },
-    { ...issue(), body: 'line\\u0000break' },
-"""
-          if tests.count(old_invalid) != 1:
-              raise SystemExit('unexpected unsafe-body test shape')
-          tests = tests.replace(old_invalid, new_invalid, 1)
-          tests_path.write_text(tests, encoding='utf-8')
           PY
 
-          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
-          pnpm install --frozen-lockfile --ignore-scripts
           pnpm --filter @life-os/commercial-development-agent exec vitest run \
             src/contracts.test.mjs src/prompt-builder.test.mjs \
             --no-file-parallelism
@@ -154,20 +182,7 @@ function requireInteger(value, minimum, maximum) {
           pnpm --filter @life-os/commercial-development-agent run typecheck
           pnpm --filter @life-os/commercial-development-agent run build
           pnpm --filter @life-os/commercial-development-agent run test
-          git diff --check
 
-          cp packages/commercial-development-agent/src/contracts.mjs \
-            "$GITHUB_WORKSPACE/packages/commercial-development-agent/src/contracts.mjs"
-          cp packages/commercial-development-agent/src/contracts.test.mjs \
-            "$GITHUB_WORKSPACE/packages/commercial-development-agent/src/contracts.test.mjs"
-          cp pnpm-lock.yaml "$GITHUB_WORKSPACE/pnpm-lock.yaml"
-          git merge --abort
-          cd "$GITHUB_WORKSPACE"
-          git worktree remove --force "$preview"
-
-      - name: Commit verified fixes and remove temporary diagnostics
-        run: |
-          set -Eeuo pipefail
           git rm .github/workflows/diagnose-commercial-development-lockfile.yml
           git rm .github/workflows/apply-commercial-development-rca-contract.yml
           git diff --check
@@ -180,10 +195,14 @@ function requireInteger(value, minimum, maximum) {
             'pnpm-lock.yaml' \
             | LC_ALL=C sort)"
           test "$actual" = "$expected"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add packages/commercial-development-agent/src/contracts.mjs \
             packages/commercial-development-agent/src/contracts.test.mjs \
             pnpm-lock.yaml
           git commit -m 'fix(agent): verify RCA prompt on realistic issue evidence'
-          git push origin HEAD:feat/opencode-commercial-development-loop
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/$branch:refs/remotes/origin/$branch"
+          test "$(git rev-parse origin/$branch)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse origin/main)" = "$base_head"
+          git push origin "HEAD:refs/heads/$branch"
