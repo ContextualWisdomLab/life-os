@@ -1,0 +1,59 @@
+name: Diagnose commercial development lockfile
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/diagnose-commercial-development-lockfile.yml
+      - packages/commercial-development-agent/package.json
+      - pnpm-lock.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-commercial-development-lockfile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Generate and verify canonical lockfile
+        run: |
+          set -Eeuo pipefail
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+          pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Emit bounded canonical lockfile evidence
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          from pathlib import Path
+
+          lockfile = Path('pnpm-lock.yaml').read_bytes()
+          encoded = base64.b64encode(lockfile).decode('ascii')
+          width = 30000
+          chunks = [encoded[index : index + width] for index in range(0, len(encoded), width)]
+          print(f'LOCKFILE_SHA256={hashlib.sha256(lockfile).hexdigest()}')
+          print(f'LOCKFILE_BYTES={len(lockfile)}')
+          print(f'LOCKFILE_CHUNKS={len(chunks)}')
+          for index, chunk in enumerate(chunks):
+              print(f'LOCKFILE_CHUNK_{index:04d}={chunk}')
+          PY
