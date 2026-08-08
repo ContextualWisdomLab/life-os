@@ -207,6 +207,14 @@ describe('external issue projection contract', () => {
     expect(Object.isFrozen(validated)).toBe(true);
   });
 
+  it('preserves bounded multiline issue text as untrusted data', () => {
+    const value = {
+      ...issue(),
+      body: '\tFirst line\r\nSecond line\n',
+    };
+    expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
+  });
+
   it.each([
     { ...issue(), number: 0 },
     { ...issue(), number: 1.5 },
@@ -214,6 +222,7 @@ describe('external issue projection contract', () => {
     { ...issue(), url: 'https://github.com/other/repo/issues/119' },
     { ...issue(), title: '' },
     { ...issue(), title: 'x'.repeat(513) },
+    { ...issue(), body: null },
     { ...issue(), body: 'x'.repeat(16_385) },
     { ...issue(), body: 'line\u0000break' },
     { ...issue(), state: 'closed' },
