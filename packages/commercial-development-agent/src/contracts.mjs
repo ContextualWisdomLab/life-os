@@ -6,6 +6,8 @@ const ROLE_PATTERN = /^[a-z][a-z0-9_]{1,63}$/u;
 const VALIDATION_NAME_PATTERN = /^[a-z][a-z0-9_]{1,63}$/u;
 const MODEL_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
+const UNTRUSTED_TEXT_CONTROL_CHARACTER_PATTERN =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const SECRET_SHAPED_PATTERN = /^(?:sk-|nvapi-|gh[pousr]_)/iu;
 const LIFE_OS_ISSUE_OR_PULL_PATTERN =
   /^https:\/\/github\.com\/ContextualWisdomLab\/life-os\/(issues|pull)\/([1-9]\d*)$/u;
@@ -171,6 +173,18 @@ function requireString(
     bytes < minimumBytes ||
     (maximumBytes !== undefined && bytes > maximumBytes) ||
     (pattern !== undefined && !pattern.test(value))
+  ) {
+    return invalid();
+  }
+  return value;
+}
+
+/** Preserves bounded untrusted issue text while rejecting unsafe controls. */
+function requireUntrustedText(value, maximumBytes) {
+  if (
+    typeof value !== 'string' ||
+    UNTRUSTED_TEXT_CONTROL_CHARACTER_PATTERN.test(value) ||
+    byteLength(value) > maximumBytes
   ) {
     return invalid();
   }
@@ -507,11 +521,7 @@ export function validateCommercialDevelopmentIssue(value, policyValue) {
     title: requireString(input.title, {
       maximumBytes: policy.maximum_issue_title_bytes,
     }),
-    body: requireString(input.body, {
-      maximumBytes: policy.maximum_issue_body_bytes,
-      allowEmpty: true,
-      minimumBytes: 0,
-    }),
+    body: requireUntrustedText(input.body, policy.maximum_issue_body_bytes),
     state: 'open',
   });
 }
