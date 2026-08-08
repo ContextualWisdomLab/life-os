@@ -1,97 +1,208 @@
-name: Diagnose commercial development lockfile
+name: Finalize commercial development RCA contract
 
 on:
   pull_request:
-    branches: [main]
+    types:
+      - opened
+      - synchronize
+      - reopened
+    branches:
+      - main
     paths:
       - .github/workflows/diagnose-commercial-development-lockfile.yml
-      - .github/workflows/opencode-commercial-development.yml
-      - packages/commercial-development-agent/package.json
+      - .github/workflows/apply-commercial-development-rca-contract.yml
       - packages/commercial-development-agent/src/contracts.mjs
       - packages/commercial-development-agent/src/contracts.test.mjs
       - packages/commercial-development-agent/src/prompt-builder.mjs
       - packages/commercial-development-agent/src/prompt-builder.test.mjs
-      - packages/commercial-development-agent/src/workflow-contract.test.mjs
-      - product/opencode-commercial-development-policy.json
+      - packages/commercial-development-agent/package.json
       - pnpm-lock.yaml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: diagnose-commercial-development-lockfile-${{ github.event.pull_request.number || github.ref }}
+  group: finalize-commercial-development-rca-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  generate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/opencode-commercial-development-loop'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - name: Checkout pull request merge candidate
+      - name: Checkout exact feature branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: feat/opencode-commercial-development-loop
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Generate and verify canonical lockfile
+      - name: Reproduce, repair, and verify the current-main candidate
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -Eeuo pipefail
-          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
-          pnpm install --frozen-lockfile --ignore-scripts
+          branch='feat/opencode-commercial-development-loop'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/$branch:refs/remotes/origin/$branch"
+          test "$(git rev-parse origin/$branch)" = "$EXPECTED_HEAD_SHA"
+          base_head="$(git rev-parse origin/main)"
+          git merge --no-edit --no-ff origin/main
+          corepack enable
 
-      - name: Run development policy and prompt regressions
-        run: >-
-          pnpm --filter @life-os/commercial-development-agent exec vitest run
-          src/contracts.test.mjs src/prompt-builder.test.mjs
-          --no-file-parallelism
-
-      - name: Emit bounded canonical lockfile evidence
-        if: always()
-        run: |
-          set -Eeuo pipefail
           python3 - <<'PY'
-          import base64
-          import hashlib
           from pathlib import Path
 
-          lockfile = Path('pnpm-lock.yaml').read_bytes()
-          encoded = base64.b64encode(lockfile).decode('ascii')
-          width = 30000
-          chunks = [encoded[index : index + width] for index in range(0, len(encoded), width)]
-          print(f'LOCKFILE_SHA256={hashlib.sha256(lockfile).hexdigest()}')
-          print(f'LOCKFILE_BYTES={len(lockfile)}')
-          print(f'LOCKFILE_CHUNKS={len(chunks)}')
-          for index, chunk in enumerate(chunks):
-              print(f'LOCKFILE_CHUNK_{index:04d}={chunk}')
+          tests_path = Path('packages/commercial-development-agent/src/contracts.test.mjs')
+          tests = tests_path.read_text(encoding='utf-8')
+          old_valid = """  it('validates one bounded open GitHub issue', () => {
+    const validated = validateCommercialDevelopmentIssue(issue(), policy());
+    expect(validated).toEqual(issue());
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
+  it.each([
+"""
+          new_valid = """  it('validates one bounded open GitHub issue', () => {
+    const validated = validateCommercialDevelopmentIssue(issue(), policy());
+    expect(validated).toEqual(issue());
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
+  it('preserves bounded multiline issue text as untrusted data', () => {
+    const value = {
+      ...issue(),
+      body: '\\tFirst line\\r\\nSecond line\\n',
+    };
+    expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
+  });
+
+  it.each([
+"""
+          if tests.count(old_valid) != 1:
+              raise SystemExit('unexpected projected-issue test shape')
+          tests = tests.replace(old_valid, new_valid, 1)
+          old_invalid = """    { ...issue(), body: 'x'.repeat(16_385) },
+    { ...issue(), body: 'line\\u0000break' },
+"""
+          new_invalid = """    { ...issue(), body: null },
+    { ...issue(), body: 'x'.repeat(16_385) },
+    { ...issue(), body: 'line\\u0000break' },
+"""
+          if tests.count(old_invalid) != 1:
+              raise SystemExit('unexpected unsafe-body test shape')
+          tests = tests.replace(old_invalid, new_invalid, 1)
+          tests_path.write_text(tests, encoding='utf-8')
           PY
 
-      - name: Upload bounded source diagnostic
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: commercial-development-source-diagnostic
-          path: |
-            .github/workflows/opencode-commercial-development.yml
-            packages/commercial-development-agent/src/prompt-builder.mjs
-            packages/commercial-development-agent/src/prompt-builder.test.mjs
-            packages/commercial-development-agent/src/workflow-contract.test.mjs
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 9
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+          pnpm install --frozen-lockfile --ignore-scripts
+          set +e
+          pnpm --filter @life-os/commercial-development-agent exec vitest run \
+            src/contracts.test.mjs src/prompt-builder.test.mjs \
+            --no-file-parallelism >"$RUNNER_TEMP/rca-red.log" 2>&1
+          red_status="$?"
+          set -e
+          cat "$RUNNER_TEMP/rca-red.log"
+          test "$red_status" -ne 0
+          grep -F 'preserves bounded multiline issue text as untrusted data' \
+            "$RUNNER_TEMP/rca-red.log"
 
-      - name: Upload canonical lockfile diagnostic
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: commercial-development-lockfile-diagnostic
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 9
+          python3 - <<'PY'
+          from pathlib import Path
+
+          contracts_path = Path('packages/commercial-development-agent/src/contracts.mjs')
+          contracts = contracts_path.read_text(encoding='utf-8')
+          old_constant = "const CONTROL_CHARACTER_PATTERN = /[\\u0000-\\u001f\\u007f]/u;\n"
+          new_constant = (
+              old_constant
+              + "const UNTRUSTED_TEXT_CONTROL_CHARACTER_PATTERN =\n"
+              + "  /[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/u;\n"
+          )
+          if contracts.count(old_constant) != 1:
+              raise SystemExit('unexpected control-character contract shape')
+          contracts = contracts.replace(old_constant, new_constant, 1)
+          old_helper = """  return value;
+}
+
+/** Requires one bounded safe integer. */
+function requireInteger(value, minimum, maximum) {
+"""
+          new_helper = """  return value;
+}
+
+/** Preserves bounded untrusted issue text while rejecting unsafe controls. */
+function requireUntrustedText(value, maximumBytes) {
+  if (
+    typeof value !== 'string' ||
+    UNTRUSTED_TEXT_CONTROL_CHARACTER_PATTERN.test(value) ||
+    byteLength(value) > maximumBytes
+  ) {
+    return invalid();
+  }
+  return value;
+}
+
+/** Requires one bounded safe integer. */
+function requireInteger(value, minimum, maximum) {
+"""
+          if contracts.count(old_helper) != 1:
+              raise SystemExit('unexpected string-helper contract shape')
+          contracts = contracts.replace(old_helper, new_helper, 1)
+          old_body = """    body: requireString(input.body, {
+      maximumBytes: policy.maximum_issue_body_bytes,
+      allowEmpty: true,
+      minimumBytes: 0,
+    }),
+"""
+          new_body = """    body: requireUntrustedText(
+      input.body,
+      policy.maximum_issue_body_bytes,
+    ),
+"""
+          if contracts.count(old_body) != 1:
+              raise SystemExit('unexpected issue-body contract shape')
+          contracts = contracts.replace(old_body, new_body, 1)
+          contracts_path.write_text(contracts, encoding='utf-8')
+          PY
+
+          pnpm --filter @life-os/commercial-development-agent exec vitest run \
+            src/contracts.test.mjs src/prompt-builder.test.mjs \
+            --no-file-parallelism
+          pnpm --filter @life-os/commercial-development-agent run lint
+          pnpm --filter @life-os/commercial-development-agent run typecheck
+          pnpm --filter @life-os/commercial-development-agent run build
+          pnpm --filter @life-os/commercial-development-agent run test
+
+          git rm .github/workflows/diagnose-commercial-development-lockfile.yml
+          git rm .github/workflows/apply-commercial-development-rca-contract.yml
+          git diff --check
+          actual="$(git status --short | awk '{print $2}' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            '.github/workflows/apply-commercial-development-rca-contract.yml' \
+            '.github/workflows/diagnose-commercial-development-lockfile.yml' \
+            'packages/commercial-development-agent/src/contracts.mjs' \
+            'packages/commercial-development-agent/src/contracts.test.mjs' \
+            'pnpm-lock.yaml' \
+            | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          git add packages/commercial-development-agent/src/contracts.mjs \
+            packages/commercial-development-agent/src/contracts.test.mjs \
+            pnpm-lock.yaml
+          git commit -m 'fix(agent): verify RCA prompt on realistic issue evidence'
+
+          git fetch --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/heads/$branch:refs/remotes/origin/$branch"
+          test "$(git rev-parse origin/$branch)" = "$EXPECTED_HEAD_SHA"
+          test "$(git rev-parse origin/main)" = "$base_head"
+          git push origin "HEAD:refs/heads/$branch"
