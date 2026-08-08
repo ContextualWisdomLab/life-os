@@ -6,6 +6,9 @@ on:
     paths:
       - .github/workflows/diagnose-commercial-development-lockfile.yml
       - packages/commercial-development-agent/package.json
+      - packages/commercial-development-agent/src/contracts.mjs
+      - packages/commercial-development-agent/src/contracts.test.mjs
+      - product/opencode-commercial-development-policy.json
       - pnpm-lock.yaml
 
 permissions:
@@ -39,7 +42,11 @@ jobs:
           pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
           pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Run policy path regression
+        run: pnpm --filter @life-os/commercial-development-agent exec vitest run src/contracts.test.mjs --no-file-parallelism
+
       - name: Emit bounded canonical lockfile evidence
+        if: always()
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
@@ -59,6 +66,7 @@ jobs:
           PY
 
       - name: Upload canonical lockfile diagnostic
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: commercial-development-lockfile-diagnostic
