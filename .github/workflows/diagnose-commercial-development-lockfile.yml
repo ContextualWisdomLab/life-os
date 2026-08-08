@@ -5,9 +5,11 @@ on:
     branches: [main]
     paths:
       - .github/workflows/diagnose-commercial-development-lockfile.yml
+      - .github/workflows/opencode-commercial-development.yml
       - packages/commercial-development-agent/package.json
       - packages/commercial-development-agent/src/contracts.mjs
       - packages/commercial-development-agent/src/contracts.test.mjs
+      - packages/commercial-development-agent/src/workflow-contract.test.mjs
       - product/opencode-commercial-development-policy.json
       - pnpm-lock.yaml
 
@@ -64,6 +66,18 @@ jobs:
           for index, chunk in enumerate(chunks):
               print(f'LOCKFILE_CHUNK_{index:04d}={chunk}')
           PY
+
+      - name: Upload bounded source diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: commercial-development-source-diagnostic
+          path: |
+            .github/workflows/opencode-commercial-development.yml
+            packages/commercial-development-agent/src/workflow-contract.test.mjs
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 9
 
       - name: Upload canonical lockfile diagnostic
         if: always()
