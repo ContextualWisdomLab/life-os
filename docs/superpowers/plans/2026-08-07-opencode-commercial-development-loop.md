@@ -194,7 +194,12 @@ Add a workflow-contract test that rejects:
 - mutable GitHub Action tags;
 - missing CLI-version verification;
 - OpenCode invocation with GitHub credentials;
-- provider credentials outside the one model step.
+- provider credentials outside the one bridge step;
+- provider-side `/v1/models` discovery instead of one offline, explicitly whitelisted NVIDIA catalog entry;
+- project-local OpenCode configuration that can override the private provider boundary;
+- Docker commands executed as the isolated model user;
+- Compose parsing that does not select the accepted candidate file explicitly;
+- missing pull-request CI startup, health probes, diagnostics, or teardown for the Compose infrastructure.
 
 ### GREEN
 
@@ -247,14 +252,16 @@ Workflow sequence:
 2. bounded issue evidence collection;
 3. issue selection and prompt creation;
 4. UUIDv4 branch creation from exact main SHA;
-5. loopback bridge invocation with the NVIDIA credential, followed by OpenCode with only a placeholder provider key and no GitHub credential;
-6. deterministic diff validation;
-7. repository tests selected from changed packages plus root gates;
-8. base-SHA recheck;
-9. commit and push the bounded branch;
-10. create a draft pull request;
-11. publish a sanitized receipt;
-12. clean temporary files.
+5. disable project-local OpenCode configuration, explicitly reload reviewed repository instructions, register and whitelist the selected NVIDIA model independently of the bundled snapshot, and validate the effective catalog offline;
+6. loopback bridge invocation with the NVIDIA credential, followed by OpenCode with only a placeholder provider key and no GitHub credential;
+7. deterministic diff validation;
+8. credential-free repository format, lint, typecheck, test, and build gates under the isolated model account;
+9. explicit candidate-file Compose parsing in a separate trusted step without granting the model account Docker-socket authority;
+10. base-SHA recheck;
+11. commit and push the bounded branch;
+12. create a draft pull request whose normal CI boots digest-pinned Compose infrastructure, executes a PostgreSQL query, and validates NATS JetStream before validation can pass;
+13. publish a sanitized receipt that distinguishes model-catalog configuration failure from provider unavailability;
+14. clean temporary files.
 
 Provider absence or failure ends with a successful sanitized unavailable receipt and no branch push.
 

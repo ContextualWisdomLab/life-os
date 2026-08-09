@@ -242,20 +242,44 @@ jobs:
           COREPACK_HOME="$trusted_corepack_home" \
             corepack install --global "$package_manager"
           chmod -R u=rwX,go=rX "$trusted_corepack_home"
-          MODEL_HOME="$model_home" NIM_BRIDGE_PORT="$NIM_BRIDGE_PORT" python3 - <<'PYCONFIG'
+          MODEL_HOME="$model_home" MODEL_WORKSPACE="$model_workspace" NIM_BRIDGE_PORT="$NIM_BRIDGE_PORT" RECEIPT_DIR="$RECEIPT_DIR" python3 - <<'PYCONFIG'
           import json
           import os
           from pathlib import Path
+
+          run = json.loads(
+              (Path(os.environ['RECEIPT_DIR']) / 'run.json').read_text(encoding='utf-8')
+          )
+          model_label = run['model_label']
+          provider_id, separator, model_id = model_label.partition('/')
+          if provider_id != 'nvidia' or separator != '/' or not model_id:
+              raise SystemExit('invalid_nvidia_model_label')
+          model_workspace_path = Path(os.environ['MODEL_WORKSPACE'])
+          instruction_files = [
+              model_workspace_path / 'AGENTS.md',
+              model_workspace_path / 'CLAUDE.md',
+          ]
+          if any(not path.is_file() for path in instruction_files):
+              raise SystemExit('missing_reviewed_model_instruction')
+          instruction_paths = [str(path) for path in instruction_files]
 
           config = {
               '$schema': 'https://opencode.ai/config.json',
               'autoupdate': False,
               'share': 'disabled',
+              'enabled_providers': ['nvidia'],
+              'model': model_label,
+              'small_model': model_label,
+              'instructions': instruction_paths,
               'provider': {
                   'nvidia': {
+                      'whitelist': [model_id],
+                      'models': {model_id: {'name': model_id}},
                       'options': {
                           'baseURL': f"http://127.0.0.1:{os.environ['NIM_BRIDGE_PORT']}/v1",
                           'apiKey': 'local-loopback-placeholder',
+                          'timeout': 60_000,
+                          'chunkTimeout': 30_000,
                       },
                   },
               },
@@ -305,9 +329,28 @@ jobs:
             echo 'MODEL_NETWORK_PHASE=model'
           } >> "$GITHUB_ENV"
 
+      - name: Validate the explicit OpenCode model catalog
+        id: model_catalog
+        if: steps.branch.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          OPENCODE_MODEL="$(jq -r '.model_label' "$RECEIPT_DIR/run.json")"
+          sudo -u opencode_model env -i \
+            HOME="$MODEL_HOME" \
+            PATH="$PATH" \
+            COREPACK_HOME="$TRUSTED_COREPACK_HOME" \
+            COREPACK_ENABLE_NETWORK=0 \
+            OPENCODE_CONFIG="$MODEL_HOME/opencode.json" \
+            OPENCODE_DISABLE_AUTOUPDATE=true \
+            OPENCODE_DISABLE_MODELS_FETCH=true \
+            OPENCODE_DISABLE_PROJECT_CONFIG=true \
+            NVIDIA_API_KEY=local-loopback-placeholder \
+            bash -c 'cd "$1" && catalog="$(pnpm --filter @life-os/commercial-development-agent exec opencode models nvidia)" && test "$catalog" = "$2"' \
+              _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL"
+
       - name: Start loopback NVIDIA credential bridge
         id: bridge
-        if: steps.branch.outcome == 'success'
+        if: steps.model_catalog.outcome == 'success'
         env:
           NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
         run: |
@@ -451,6 +494,8 @@ jobs:
             COREPACK_ENABLE_NETWORK=0 \
             OPENCODE_CONFIG="$MODEL_HOME/opencode.json" \
             OPENCODE_DISABLE_AUTOUPDATE=true \
+            OPENCODE_DISABLE_MODELS_FETCH=true \
+            OPENCODE_DISABLE_PROJECT_CONFIG=true \
             NVIDIA_API_KEY=local-loopback-placeholder \
             bash -c 'cd "$1" && timeout --signal=TERM --kill-after=30s 90m pnpm --filter @life-os/commercial-development-agent exec opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
               _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL" \
@@ -692,7 +737,8 @@ jobs:
         id: verification
         if: steps.diff.outputs.accepted == 'true'
         run: |
-          set +e
+          set -Eeuo pipefail
+          status=0
           sudo -u opencode_model env -i \
             HOME="$MODEL_HOME" \
             PATH="$PATH" \
@@ -705,12 +751,10 @@ jobs:
             HABIT_DATABASE_URL="$HABIT_DATABASE_URL" \
             NOTIFICATION_DATABASE_URL="$NOTIFICATION_DATABASE_URL" \
             PRIVACY_DATABASE_URL="$PRIVACY_DATABASE_URL" \
-            bash -c 'cd "$1" && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && docker compose config >/dev/null' \
+            bash -c 'cd "$1" && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build' \
               _ "$MODEL_WORKSPACE" \
-            > "$RECEIPT_DIR/verification.log" 2>&1
-          status=$?
+            > "$RECEIPT_DIR/verification.log" 2>&1 || status=$?
           sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
-          set -e
           chmod 0600 "$RECEIPT_DIR/verification.log"
           if [ "$status" -eq 0 ]; then
             echo 'passed=true' >> "$GITHUB_OUTPUT"
@@ -718,8 +762,26 @@ jobs:
             echo 'passed=false' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Materialize verified candidate through trusted boundary
+      - name: Validate Compose configuration through trusted boundary
+        id: compose_config
         if: steps.verification.outputs.passed == 'true'
+        run: |
+          set -Eeuo pipefail
+          status=0
+          docker compose \
+            --file "$MODEL_WORKSPACE/compose.yaml" \
+            --project-directory "$MODEL_WORKSPACE" \
+            config --quiet \
+            > "$RECEIPT_DIR/compose-validation.log" 2>&1 || status=$?
+          chmod 0600 "$RECEIPT_DIR/compose-validation.log"
+          if [ "$status" -eq 0 ]; then
+            echo 'passed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'passed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Materialize verified candidate through trusted boundary
+        if: steps.compose_config.outputs.passed == 'true'
         run: |
           set -Eeuo pipefail
           python3 - <<'PYMATERIALIZE'
@@ -801,7 +863,7 @@ jobs:
 
       - name: Recheck the exact main base before remote mutation
         id: base
-        if: steps.verification.outputs.passed == 'true'
+        if: steps.compose_config.outputs.passed == 'true'
         run: |
           set -Eeuo pipefail
           current="$(timeout 30s git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
@@ -876,10 +938,12 @@ jobs:
         env:
           OPEN_PULL_REQUESTS: ${{ steps.github_evidence.outputs.open_pull_requests }}
           SELECTED: ${{ steps.selection.outputs.selected }}
+          MODEL_CATALOG_OUTCOME: ${{ steps.model_catalog.outcome }}
           BRIDGE_REASON: ${{ steps.bridge.outputs.reason }}
           MODEL_REASON: ${{ steps.model.outputs.reason }}
           DIFF_ACCEPTED: ${{ steps.diff.outputs.accepted }}
           VERIFICATION_PASSED: ${{ steps.verification.outputs.passed }}
+          COMPOSE_CONFIG_PASSED: ${{ steps.compose_config.outputs.passed }}
           BASE_MATCHED: ${{ steps.base.outputs.matched }}
           PR_CREATED: ${{ steps.mutation.outputs.created }}
           BRANCH_NAME: ${{ steps.branch.outputs.branch_name }}
@@ -916,15 +980,20 @@ jobs:
 
           open_prs = os.environ.get('OPEN_PULL_REQUESTS', '0')
           selected = os.environ.get('SELECTED', 'false') == 'true'
+          model_catalog_outcome = os.environ.get('MODEL_CATALOG_OUTCOME', '')
           bridge_reason = os.environ.get('BRIDGE_REASON', '')
           model_reason = os.environ.get('MODEL_REASON', '')
           diff_accepted = os.environ.get('DIFF_ACCEPTED', '') == 'true'
-          verification = os.environ.get('VERIFICATION_PASSED', '') == 'true'
+          source_verification = os.environ.get('VERIFICATION_PASSED', '') == 'true'
+          compose_configuration = os.environ.get('COMPOSE_CONFIG_PASSED', '') == 'true'
+          verification = source_verification and compose_configuration
           base_matched = os.environ.get('BASE_MATCHED', '') == 'true'
           pr_created = os.environ.get('PR_CREATED', '') == 'true'
 
           if open_prs != '0' or not selected:
               status, reason = 'unavailable', 'no_eligible_issue'
+          elif model_catalog_outcome != 'success':
+              status, reason = 'failed', 'invalid_configuration'
           elif bridge_reason == 'provider_credential_missing':
               status, reason = 'unavailable', 'provider_credential_missing'
           elif bridge_reason != 'completed' or model_reason != 'completed':
@@ -943,10 +1012,12 @@ jobs:
           validations = [
               {'name': 'open_pull_request_drain', 'status': 'passed' if open_prs == '0' else 'failed'},
               {'name': 'issue_policy', 'status': 'passed' if selected else 'skipped'},
-              {'name': 'credential_bridge', 'status': 'skipped' if not selected else 'passed' if bridge_reason == 'completed' else 'failed'},
-              {'name': 'provider_run', 'status': 'skipped' if not selected or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'},
-              {'name': 'diff_policy', 'status': 'passed' if diff_accepted else 'skipped' if not selected else 'failed'},
-              {'name': 'repository_verification', 'status': 'passed' if verification else 'skipped' if not diff_accepted else 'failed'},
+              {'name': 'model_catalog', 'status': 'skipped' if not selected or open_prs != '0' else 'passed' if model_catalog_outcome == 'success' else 'failed'},
+              {'name': 'credential_bridge', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if bridge_reason == 'completed' else 'failed'},
+              {'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'},
+              {'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'},
+              {'name': 'repository_verification', 'status': 'passed' if source_verification else 'skipped' if not diff_accepted else 'failed'},
+              {'name': 'compose_configuration', 'status': 'passed' if compose_configuration else 'skipped' if not source_verification else 'failed'},
               {'name': 'base_sha', 'status': 'passed' if base_matched else 'skipped' if not verification else 'failed'},
           ]
           input_value = {
@@ -1012,6 +1083,7 @@ jobs:
             "$RECEIPT_DIR/prompt.txt" \
             "$RECEIPT_DIR/opencode.log" \
             "$RECEIPT_DIR/verification.log" \
+            "$RECEIPT_DIR/compose-validation.log" \
             "$RECEIPT_DIR/nim-bridge.py" \
             "$RECEIPT_DIR/issues.json" \
             "$RECEIPT_DIR/pulls.json" \
