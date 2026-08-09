@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- A canonical product documentation graph covering the PRD, TRD, architecture decisions, logical ERD/data model, UML interaction/deployment views, threat model, test strategy, operability boundary, requirements traceability, and a machine-checked documentation contract.
 - An hourly and manually dispatchable NVIDIA NIM live-conformance harness that pins contextual-orchestrator to an exact reviewed commit, compares strong single-route reasoning with bounded conducted workflows, and retains only validated credential-free quality, safety, orchestration, usage, and ablation evidence.
 - A versioned, immutable AI proposal quality evaluator that separates production validity, semantic operation conformance, evidence grounding, benign utility, forbidden-text leakage, and prompt-injection resistance across realistic English, Korean, temporal, empty-context, completed-item, and adversarial fixtures.
 - An explicit `contextual-orchestrator` proposal-model mode with bounded OpenAI-compatible transport, strict structured output, model provenance, and an independent local rule-based default.
@@ -23,6 +24,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Canonical documentation now marks early browser-only local-first, single-application, and UUIDv7 design proposals as superseded where they conflict with the current multi-user modular MSA and UUIDv4 protected-main contracts.
+- Root architecture and agent handoff documents now include current notification/privacy bounded contexts and distinguish protected-main, active-PR, partial, planned, research-only, superseded, and out-of-scope behavior.
 - Live contextual-orchestrator responses now classify successful empty bodies as evaluation failures, emit exactly one terminal observation, canonicalize retained timestamps safely, and preserve null metric denominators instead of fabricating deltas.
 - Stale AI proposal revision conflicts now belong to the technology-independent audit domain while the PostgreSQL adapter preserves its compatibility export.
 - Planning search now normalizes browser query text and prevents stale or unmounted requests from replacing the latest visible result state.
