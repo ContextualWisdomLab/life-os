@@ -48,7 +48,9 @@ sequenceDiagram
 
 ### NVIDIA credential
 
-`NVIDIA_NIM_API_KEY` is present in exactly one workflow step. That step maps it to the environment variable required by the reviewed OpenCode NVIDIA provider, unsets the repository-secret name, invokes one bounded OpenCode process, and deletes the private home, configuration, prompt, and log in an `always()` cleanup step.
+`NVIDIA_NIM_API_KEY` is present in exactly one workflow step. That step starts a loopback HTTP bridge as the separate system user `opencode_bridge`; only that bridge receives the credential and forwards bounded requests to NVIDIA NIM. OpenCode runs as `opencode_model` with `NVIDIA_API_KEY=local-loopback-placeholder` and a provider base URL pointing to the bridge.
+
+During model execution, UID-based `iptables` rules reject other IPv4 and all IPv6 egress from `opencode_model`, permitting only the configured loopback bridge port. The workflow terminates the bridge before repository verification and removes the model and bridge processes, firewall rules, private homes, configuration, prompt, bridge code, and log in the `always()` cleanup step.
 
 The credential must never appear in:
 
@@ -56,12 +58,14 @@ The credential must never appear in:
 - issue or pull-request bodies;
 - retained receipts or artifacts;
 - model prompts or source files;
+- the OpenCode/model process;
+- repository tests or scripts;
 - test logs;
 - the `@life-os/commercial-development-agent` process;
 - the GitHub mutation step;
 - the existing review-agent credential scheme.
 
-A suspected credential disclosure requires immediate secret rotation, cancellation of active runs, deletion of unreferenced automation branches, and review of workflow logs and draft pull requests. Do not retain or upload the raw OpenCode log while investigating.
+A suspected credential disclosure requires immediate secret rotation, cancellation of active runs, deletion of unreferenced automation branches, and review of workflow logs and draft pull requests. Do not retain or upload the raw OpenCode log while investigating. Treat `opencode_bridge`, rather than the OpenCode/model process, as the credential-bearing process during exposure analysis.
 
 ### GitHub credential
 
@@ -90,19 +94,21 @@ Retention is seven days. The receipt records counts, stable classifications, exa
 
 ## Failure handling
 
-| Reason code | Operator interpretation | Remote mutation |
-| --- | --- | --- |
-| `no_eligible_issue` | Open PRs remain or no allowlisted issue is available | None |
-| `provider_credential_missing` | NVIDIA secret is absent | None |
-| `provider_unavailable` | Provider or OpenCode run failed | None |
-| `opencode_unavailable` | Exact OpenCode CLI cannot execute | None |
-| `invalid_configuration` | Policy, model, or workflow configuration is invalid | None |
-| `prompt_rejected` | Prompt exceeds or violates the fixed contract | None |
-| `diff_rejected` | Working-tree output violates path, object, size, content, or no-change policy | None |
-| `base_changed` | `main` advanced after the run began | None |
-| `verification_failed` | Repository tests or build failed | None |
-| `draft_pull_request_failed` | A validated commit could not become a draft PR | Possible unreferenced automation branch; reconcile immediately |
-| `completed` | One draft PR was created; normal review is still required | One branch and one draft PR |
+| Reason code                   | Operator interpretation                                                       | Remote mutation                                                |
+| ----------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `no_eligible_issue`           | Open PRs remain or no allowlisted issue is available                          | None                                                           |
+| `provider_credential_missing` | NVIDIA secret is absent                                                       | None                                                           |
+| `provider_unavailable`        | Provider or OpenCode run failed                                               | None                                                           |
+| `opencode_unavailable`        | Exact OpenCode CLI cannot execute                                             | None                                                           |
+| `invalid_configuration`       | Policy, model, or workflow configuration is invalid                           | None                                                           |
+| `prompt_rejected`             | Prompt exceeds or violates the fixed contract                                 | None                                                           |
+| `diff_rejected`               | Working-tree output violates path, object, size, content, or no-change policy | None                                                           |
+| `base_changed`                | `main` advanced after the run began                                           | None                                                           |
+| `verification_failed`         | Repository tests or build failed                                              | None                                                           |
+| `draft_pull_request_failed`   | A validated commit could not become a draft PR                                | Possible unreferenced automation branch; reconcile immediately |
+| `completed`                   | One draft PR was created; normal review is still required                     | One branch and one draft PR                                    |
+
+The receipt contract reserves `opencode_unavailable`, `invalid_configuration`, and `prompt_rejected`; the current workflow receipt composer does not emit those codes.
 
 ## Branch reconciliation
 
