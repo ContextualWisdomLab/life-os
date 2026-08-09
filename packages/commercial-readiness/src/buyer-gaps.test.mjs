@@ -4,6 +4,7 @@ import {
   collectBuyerGapSnapshot,
   evaluateBuyerGaps,
   validateBuyerGapRegistry,
+  validateBuyerGapSnapshot,
 } from './buyer-gaps.mjs';
 
 const manifest = Object.freeze({
@@ -86,6 +87,21 @@ describe('validateBuyerGapRegistry', () => {
   });
 });
 
+describe('validateBuyerGapSnapshot', () => {
+  it('rejects a non-string generated_at even when Date.parse would coerce it', () => {
+    assert.throws(
+      () =>
+        validateBuyerGapSnapshot({
+          schema: 'life-os.buyer-gap-snapshot.v1',
+          repository: 'ContextualWisdomLab/life-os',
+          generated_at: 2026,
+          issues: [],
+        }),
+      /Invalid buyer gap snapshot/,
+    );
+  });
+});
+
 describe('collectBuyerGapSnapshot', () => {
   it('retains only bounded registered issue state and makes fetch failure unknown', async () => {
     const validated = validateBuyerGapRegistry(
@@ -139,6 +155,28 @@ describe('collectBuyerGapSnapshot', () => {
     ]);
     assert.equal(JSON.stringify(result).includes('untrusted title'), false);
     assert.equal(JSON.stringify(result).includes('untrusted body'), false);
+  });
+
+  it('rejects a non-string generatedAt before provider access', async () => {
+    const validated = validateBuyerGapRegistry(registry([gap()]), manifest);
+    let providerCalled = false;
+    const client = {
+      async requestJson() {
+        providerCalled = true;
+        return { state: 'open', labels: [] };
+      },
+    };
+
+    await assert.rejects(
+      collectBuyerGapSnapshot(
+        client,
+        'ContextualWisdomLab/life-os',
+        validated,
+        2026,
+      ),
+      /Buyer gap snapshot collection input is invalid/,
+    );
+    assert.equal(providerCalled, false);
   });
 });
 
