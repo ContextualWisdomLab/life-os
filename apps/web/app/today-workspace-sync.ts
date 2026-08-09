@@ -17,19 +17,29 @@ export interface DurableTodayDocument {
 }
 
 export type WorkspaceTodayReadResult =
-  | { readonly kind: 'found'; readonly draft: TodayDraft; readonly revision: string }
+  | {
+      readonly kind: 'found';
+      readonly draft: TodayDraft;
+      readonly revision: string;
+    }
   | { readonly kind: 'missing' }
   | { readonly kind: 'unauthenticated' }
   | { readonly kind: 'unavailable' };
 
 export type WorkspaceTodaySaveResult =
-  | { readonly kind: 'saved'; readonly draft: TodayDraft; readonly revision: string }
+  | {
+      readonly kind: 'saved';
+      readonly draft: TodayDraft;
+      readonly revision: string;
+    }
   | { readonly kind: 'conflict'; readonly currentRevision: string | null }
   | { readonly kind: 'unauthenticated' }
   | { readonly kind: 'unavailable' };
 
 /** Converts validated browser-local state to the distinct durable wire version. */
-export function toDurableTodayDocument(draft: TodayDraft): DurableTodayDocument {
+export function toDurableTodayDocument(
+  draft: TodayDraft,
+): DurableTodayDocument {
   const safeDraft = parseTodayDraft(draft, draft.date);
   return Object.freeze({
     version: 'life-os.today.v1',
@@ -116,7 +126,9 @@ function parseDurableToday(value: unknown, date: string): TodayDraft {
 }
 
 /** Narrows the bounded BFF conflict shape to the current opaque revision token. */
-async function parseConflict(response: Response): Promise<string | null | undefined> {
+async function parseConflict(
+  response: Response,
+): Promise<string | null | undefined> {
   const value = await readBoundedJson(response);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
@@ -144,12 +156,15 @@ export async function fetchWorkspaceToday(
   fetcher: BrowserFetch = fetch,
 ): Promise<WorkspaceTodayReadResult> {
   try {
-    const response = await fetcher(`/api/planning/today/${encodeURIComponent(date)}`, {
-      method: 'GET',
-      credentials: 'same-origin',
-      cache: 'no-store',
-      headers: { accept: 'application/json' },
-    });
+    const response = await fetcher(
+      `/api/planning/today/${encodeURIComponent(date)}`,
+      {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { accept: 'application/json' },
+      },
+    );
     if (response.status === 401) return { kind: 'unauthenticated' };
     if (response.status === 404) return { kind: 'missing' };
     if (response.status !== 200) return { kind: 'unavailable' };
