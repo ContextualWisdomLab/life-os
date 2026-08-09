@@ -1,0 +1,1026 @@
+name: OpenCode Commercial Development
+
+on:
+  schedule:
+    - cron: '11 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: opencode-commercial-development-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  OPENCODE_PACKAGE_VERSION: '1.18.9'
+  POLICY_PATH: product/opencode-commercial-development-policy.json
+  NIM_BRIDGE_PORT: '8765'
+
+jobs:
+  develop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: write
+    env:
+      AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      AI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install reproducible dependencies
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Verify the exact OpenCode installation
+        run: |
+          set -Eeuo pipefail
+          version="$(pnpm --filter @life-os/commercial-development-agent exec opencode --version | head -n 1 | tr -d '\r')"
+          case "$version" in
+            *"$OPENCODE_PACKAGE_VERSION"*) ;;
+            *)
+              echo '::error::Installed OpenCode version does not match the reviewed package pin.'
+              exit 1
+              ;;
+          esac
+          help="$(pnpm --filter @life-os/commercial-development-agent exec opencode --help)"
+          grep -F -- '--pure' <<<"$help" > /dev/null
+          pnpm --filter @life-os/commercial-development-agent exec opencode run --help > /dev/null
+
+      - name: Prepare private evidence directory
+        run: |
+          set -Eeuo pipefail
+          receipt_dir="$RUNNER_TEMP/commercial-development"
+          install -d -m 0700 "$receipt_dir"
+          echo "RECEIPT_DIR=$receipt_dir" >> "$GITHUB_ENV"
+          base_sha="$(git rev-parse HEAD)"
+          echo "BASE_SHA=$base_sha" >> "$GITHUB_ENV"
+
+      - name: Run deterministic commercial readiness audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          node packages/commercial-readiness/src/cli.mjs snapshot \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --commit "$BASE_SHA" \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --output "$RECEIPT_DIR/github-snapshot.json"
+          node packages/commercial-readiness/src/cli.mjs audit \
+            --manifest product/capabilities.json \
+            --snapshot "$RECEIPT_DIR/github-snapshot.json" \
+            --policy product/commercial-readiness-policy.json \
+            --root . \
+            --output-json "$RECEIPT_DIR/commercial-readiness.json" \
+            --output-markdown "$RECEIPT_DIR/commercial-readiness.md"
+          chmod 0600 "$RECEIPT_DIR"/*
+
+      - name: Collect bounded GitHub issue and pull request evidence
+        id: github_evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null) | {number, url: .html_url, title, body: (.body // ""), state}' \
+            | jq -s '.' \
+            > "$RECEIPT_DIR/issues.json"
+          gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[] | {number, url: .html_url, title, body: (.body // ""), state}' \
+            | jq -s '.' \
+            > "$RECEIPT_DIR/pulls.json"
+          chmod 0600 "$RECEIPT_DIR/issues.json" "$RECEIPT_DIR/pulls.json"
+          open_count="$(jq 'length' "$RECEIPT_DIR/pulls.json")"
+          echo "open_pull_requests=$open_count" >> "$GITHUB_OUTPUT"
+
+      - name: Select one eligible issue
+        id: selection
+        run: |
+          set -Eeuo pipefail
+          node packages/commercial-development-agent/src/cli.mjs select \
+            --policy "$GITHUB_WORKSPACE/$POLICY_PATH" \
+            --issues "$RECEIPT_DIR/issues.json" \
+            --pulls "$RECEIPT_DIR/pulls.json" \
+            --output "$RECEIPT_DIR/selected-issue.json"
+          if [ "$(jq -r 'type' "$RECEIPT_DIR/selected-issue.json")" = 'object' ]; then
+            echo 'selected=true' >> "$GITHUB_OUTPUT"
+            echo "issue_number=$(jq -r '.number' "$RECEIPT_DIR/selected-issue.json")" >> "$GITHUB_OUTPUT"
+          else
+            echo 'selected=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the isolated UUIDv4 feature branch
+        id: branch
+        if: steps.selection.outputs.selected == 'true' && steps.github_evidence.outputs.open_pull_requests == '0'
+        env:
+          CONFIGURED_MODEL: ${{ vars.OPENCODE_NVIDIA_MODEL }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import uuid
+          from datetime import datetime, timezone
+
+          run_id = str(uuid.uuid4())
+          configured = os.environ.get('CONFIGURED_MODEL', '').strip()
+          provider_model = configured or 'meta/llama-3.3-70b-instruct'
+          model_label = provider_model if provider_model.startswith('nvidia/') else f'nvidia/{provider_model}'
+          run = {
+              'schema': 'life-os.opencode-commercial-development-run.v1',
+              'run_id': run_id,
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'base_sha': os.environ['BASE_SHA'],
+              'started_at': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+              'model_label': model_label,
+              'reasoning_effort': 'high',
+              'recursive_depth': 1,
+              'decomposition_steps': 8,
+              'roles': ['planner', 'worker', 'verifier', 'synthesizer'],
+          }
+          receipt_dir = os.environ['RECEIPT_DIR']
+          run_path = os.path.join(receipt_dir, 'run.json')
+          with open(run_path, 'w', encoding='utf-8') as output:
+              json.dump(run, output, indent=2, ensure_ascii=False)
+              output.write('\n')
+          os.chmod(run_path, 0o600)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'run_id={run_id}\n')
+              output.write(f'model_label={model_label}\n')
+          PY
+          run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          branch_name="automation/opencode-commercial-${run_id}"
+          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+          git switch --create "$branch_name"
+
+      - name: Build the policy-isolated prompt
+        if: steps.branch.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          node packages/commercial-development-agent/src/cli.mjs prompt \
+            --policy "$GITHUB_WORKSPACE/$POLICY_PATH" \
+            --run "$RECEIPT_DIR/run.json" \
+            --issue "$RECEIPT_DIR/selected-issue.json" \
+            --output "$RECEIPT_DIR/prompt.json"
+          jq -r '.text' "$RECEIPT_DIR/prompt.json" > "$RECEIPT_DIR/prompt.txt"
+          chmod 0600 "$RECEIPT_DIR/prompt.json" "$RECEIPT_DIR/prompt.txt"
+
+      - name: Prepare disposable model workspace
+        if: steps.branch.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          command -v iptables > /dev/null
+          command -v ip6tables > /dev/null
+          sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_model
+          sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_bridge
+          run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          model_workspace="$RUNNER_TEMP/opencode-model-${run_id}"
+          model_home="$RUNNER_TEMP/opencode-model-home-${run_id}"
+          model_store="$RUNNER_TEMP/opencode-pnpm-store-${run_id}"
+          trusted_corepack_home="$RUNNER_TEMP/opencode-trusted-corepack-${run_id}"
+          install -d -m 0755 "$model_workspace" "$trusted_corepack_home"
+          install -d -m 0700 "$model_home" "$model_store"
+          echo "TRUSTED_COREPACK_HOME=$trusted_corepack_home" >> "$GITHUB_ENV"
+          rsync -a \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='coverage' \
+            --exclude='dist' \
+            --exclude='build' \
+            "$GITHUB_WORKSPACE/" "$model_workspace/"
+          git -C "$GITHUB_WORKSPACE" ls-files -z |
+            rsync -a --from0 --files-from=- \
+              "$GITHUB_WORKSPACE/" "$model_workspace/"
+          test ! -e "$model_workspace/.git"
+          cp "$RECEIPT_DIR/prompt.txt" "$model_workspace/.opencode-task.md"
+          trusted_store="$(pnpm store path)"
+          rsync -a "$trusted_store/" "$model_store/"
+          package_manager="$(
+            jq --exit-status --raw-output \
+              '.packageManager | select(test("^pnpm@[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+              package.json
+          )"
+          COREPACK_HOME="$trusted_corepack_home" \
+            corepack install --global "$package_manager"
+          chmod -R u=rwX,go=rX "$trusted_corepack_home"
+          MODEL_HOME="$model_home" NIM_BRIDGE_PORT="$NIM_BRIDGE_PORT" python3 - <<'PYCONFIG'
+          import json
+          import os
+          from pathlib import Path
+
+          config = {
+              '$schema': 'https://opencode.ai/config.json',
+              'autoupdate': False,
+              'share': 'disabled',
+              'provider': {
+                  'nvidia': {
+                      'options': {
+                          'baseURL': f"http://127.0.0.1:{os.environ['NIM_BRIDGE_PORT']}/v1",
+                          'apiKey': 'local-loopback-placeholder',
+                      },
+                  },
+              },
+              'permission': {
+                  'external_directory': 'deny',
+                  'webfetch': 'deny',
+                  'websearch': 'deny',
+                  'question': 'deny',
+                  'doom_loop': 'deny',
+                  'bash': {
+                      '*': 'deny',
+                      'pnpm *': 'allow',
+                      'node *': 'allow',
+                      'python3 *': 'allow',
+                      'grep *': 'allow',
+                      'rg *': 'allow',
+                      'find *': 'allow',
+                      'ls *': 'allow',
+                      'cat *': 'allow',
+                  },
+              },
+          }
+          path = Path(os.environ['MODEL_HOME']) / 'opencode.json'
+          path.write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
+          path.chmod(0o600)
+          PYCONFIG
+          sudo chown -R opencode_model:opencode_model "$model_workspace" "$model_home" "$model_store"
+          chmod 0700 "$GITHUB_WORKSPACE"
+          model_uid="$(id -u opencode_model)"
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -j REJECT
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT
+          sudo ip6tables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -j REJECT
+          sudo -u opencode_model env -i \
+            HOME="$model_home" \
+            PATH="$PATH" \
+            COREPACK_HOME="$trusted_corepack_home" \
+            COREPACK_ENABLE_NETWORK=0 \
+            pnpm --dir "$model_workspace" install \
+              --offline \
+              --frozen-lockfile \
+              --store-dir "$model_store"
+          {
+            echo "MODEL_WORKSPACE=$model_workspace"
+            echo "MODEL_HOME=$model_home"
+            echo "MODEL_STORE=$model_store"
+            echo "MODEL_UID=$model_uid"
+            echo 'MODEL_NETWORK_PHASE=model'
+          } >> "$GITHUB_ENV"
+
+      - name: Start loopback NVIDIA credential bridge
+        id: bridge
+        if: steps.branch.outcome == 'success'
+        env:
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+        run: |
+          set -Eeuo pipefail
+          if [ -z "$NVIDIA_NIM_API_KEY" ]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=provider_credential_missing' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bridge_home="$RUNNER_TEMP/opencode-bridge-${{ steps.branch.outputs.run_id }}"
+          echo "BRIDGE_HOME=$bridge_home" >> "$GITHUB_ENV"
+          sudo install -d -m 0700 -o opencode_bridge -g opencode_bridge "$bridge_home"
+          cat > "$RECEIPT_DIR/nim-bridge.py" <<'PY'
+          import http.client
+          import os
+          import threading
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+          LISTEN_HOST = '127.0.0.1'
+          UPSTREAM_HOST = 'integrate.api.nvidia.com'
+          UPSTREAM_PATH = '/v1/chat/completions'
+          MAX_REQUEST_BYTES = 1_048_576
+          MAX_RESPONSE_BYTES = 8_388_608
+          MAX_PROVIDER_REQUESTS = 64
+          UPSTREAM_TIMEOUT_SECONDS = 60
+          API_KEY = os.environ.get('NVIDIA_NIM_API_KEY', '')
+          if not API_KEY:
+              raise SystemExit('provider_credential_missing')
+
+          class Handler(BaseHTTPRequestHandler):
+              request_count = 0
+              request_lock = threading.Lock()
+
+              def log_message(self, _format, *args):
+                  return
+
+              def send_empty(self, status):
+                  self.send_response(status)
+                  self.send_header('Content-Length', '0')
+                  self.end_headers()
+
+              def do_GET(self):
+                  if self.path == '/healthz':
+                      self.send_empty(204)
+                  else:
+                      self.send_empty(404)
+
+              def do_POST(self):
+                  if self.path != UPSTREAM_PATH:
+                      self.send_empty(404)
+                      return
+                  with self.request_lock:
+                      if self.request_count >= MAX_PROVIDER_REQUESTS:
+                          self.send_empty(429)
+                          return
+                      type(self).request_count += 1
+                  raw_length = self.headers.get('Content-Length', '')
+                  if not raw_length.isdigit():
+                      self.send_empty(411)
+                      return
+                  length = int(raw_length)
+                  if length > MAX_REQUEST_BYTES:
+                      self.send_empty(413)
+                      return
+                  body = self.rfile.read(length)
+                  if len(body) != length:
+                      self.send_empty(400)
+                      return
+                  connection = http.client.HTTPSConnection(
+                      UPSTREAM_HOST,
+                      443,
+                      timeout=UPSTREAM_TIMEOUT_SECONDS,
+                  )
+                  try:
+                      connection.request(
+                          'POST',
+                          UPSTREAM_PATH,
+                          body=body,
+                          headers={
+                              'Authorization': f'Bearer {API_KEY}',
+                              'Content-Type': self.headers.get('Content-Type', 'application/json'),
+                              'Accept': self.headers.get('Accept', 'application/json'),
+                          },
+                      )
+                      response = connection.getresponse()
+                      payload = response.read(MAX_RESPONSE_BYTES + 1)
+                      if len(payload) > MAX_RESPONSE_BYTES:
+                          self.send_empty(502)
+                          return
+                      self.send_response(response.status)
+                      self.send_header(
+                          'Content-Type',
+                          response.getheader('Content-Type', 'application/json'),
+                      )
+                      self.send_header('Content-Length', str(len(payload)))
+                      self.end_headers()
+                      self.wfile.write(payload)
+                  except (OSError, http.client.HTTPException, TimeoutError):
+                      self.send_empty(502)
+                  finally:
+                      connection.close()
+
+          port = int(os.environ['NIM_BRIDGE_PORT'])
+          server = ThreadingHTTPServer((LISTEN_HOST, port), Handler)
+          server.serve_forever(poll_interval=0.25)
+          PY
+          chmod 0600 "$RECEIPT_DIR/nim-bridge.py"
+          sudo install -m 0500 -o opencode_bridge -g opencode_bridge \
+            "$RECEIPT_DIR/nim-bridge.py" "$bridge_home/nim-bridge.py"
+          export NIM_BRIDGE_PORT
+          sudo --preserve-env=NVIDIA_NIM_API_KEY,NIM_BRIDGE_PORT \
+            -u opencode_bridge \
+            python3 "$bridge_home/nim-bridge.py" </dev/null >/dev/null 2>&1 &
+          unset NVIDIA_NIM_API_KEY
+          for _ in $(seq 1 20); do
+            if curl --fail --silent --show-error --max-time 1 \
+              "http://127.0.0.1:${NIM_BRIDGE_PORT}/healthz" >/dev/null; then
+              bridge_pid="$(pgrep -u opencode_bridge -f "$bridge_home/nim-bridge.py" | head -n 1)"
+              test -n "$bridge_pid"
+              echo "BRIDGE_PID=$bridge_pid" >> "$GITHUB_ENV"
+              echo 'available=true' >> "$GITHUB_OUTPUT"
+              echo 'reason=completed' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 0.25
+          done
+          echo 'available=false' >> "$GITHUB_OUTPUT"
+          echo 'reason=provider_unavailable' >> "$GITHUB_OUTPUT"
+
+      - name: Run one bounded OpenCode implementation
+        id: model
+        if: steps.bridge.outputs.available == 'true'
+        run: |
+          set -Eeuo pipefail
+          OPENCODE_MODEL="$(jq -r '.model_label' "$RECEIPT_DIR/run.json")"
+          set +e
+          sudo -u opencode_model env -i \
+            HOME="$MODEL_HOME" \
+            PATH="$PATH" \
+            COREPACK_HOME="$TRUSTED_COREPACK_HOME" \
+            COREPACK_ENABLE_NETWORK=0 \
+            OPENCODE_CONFIG="$MODEL_HOME/opencode.json" \
+            OPENCODE_DISABLE_AUTOUPDATE=true \
+            NVIDIA_API_KEY=local-loopback-placeholder \
+            bash -c 'cd "$1" && timeout --signal=TERM --kill-after=30s 90m pnpm --filter @life-os/commercial-development-agent exec opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
+              _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL" \
+            > "$RECEIPT_DIR/opencode.log" 2>&1
+          status=$?
+          set -e
+          chmod 0600 "$RECEIPT_DIR/opencode.log"
+
+          sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
+          for _ in $(seq 1 20); do
+            if ! pgrep --euid opencode_model >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.25
+          done
+          if pgrep --euid opencode_model >/dev/null 2>&1; then
+            echo '::error::model_process_cleanup_failed'
+            sudo pkill --signal KILL --euid opencode_model 2>/dev/null || true
+            status=70
+          fi
+          sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true
+          sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$MODEL_UID" -d 127.0.0.0/8 -j REJECT
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport 5432 -j ACCEPT
+          echo 'MODEL_NETWORK_PHASE=verification' >> "$GITHUB_ENV"
+
+          if [ "$status" -eq 0 ]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+            echo 'reason=completed' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=provider_unavailable' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Capture candidate through trusted boundary
+        id: diff
+        if: steps.model.outputs.available == 'true'
+        run: |
+          set -Eeuo pipefail
+          chmod 0755 "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          import difflib
+          import filecmp
+          import json
+          import os
+          import pathlib
+          import stat
+          import subprocess
+
+          base = os.environ['BASE_SHA']
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          candidate = pathlib.Path(os.environ['MODEL_WORKSPACE'])
+          receipt_dir = pathlib.Path(os.environ['RECEIPT_DIR'])
+          excluded_names = {'.git', 'node_modules', 'coverage', 'dist', 'build'}
+          task_path = '.opencode-task.md'
+
+          def run(*args):
+              try:
+                  return subprocess.check_output(args, cwd=root, timeout=30)
+              except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                  raise SystemExit('trusted_git_evidence_failed') from None
+
+          tracked = {
+              value.decode('utf-8', 'strict')
+              for value in run('git', 'ls-files', '-z').split(b'\0')
+              if value
+          }
+          staged_modes = {}
+          for record in run('git', 'ls-files', '--stage', '-z').split(b'\0'):
+              if not record:
+                  continue
+              metadata, path = record.split(b'\t', 1)
+              staged_modes[path.decode('utf-8', 'strict')] = (
+                  metadata.split(b' ', 1)[0].decode('ascii')
+              )
+
+          candidate_paths = set()
+          for directory, directories, files in os.walk(candidate, followlinks=False):
+              directory_path = pathlib.Path(directory)
+              relative_directory = directory_path.relative_to(candidate)
+              retained_directories = []
+              for name in directories:
+                  path = directory_path / name
+                  relative = (relative_directory / name).as_posix()
+                  if name in excluded_names:
+                      continue
+                  metadata = path.lstat()
+                  if stat.S_ISLNK(metadata.st_mode):
+                      candidate_paths.add(relative)
+                      continue
+                  retained_directories.append(name)
+              directories[:] = retained_directories
+              for name in files:
+                  if name in excluded_names:
+                      continue
+                  path = directory_path / name
+                  relative = (relative_directory / name).as_posix()
+                  if relative == task_path:
+                      continue
+                  candidate_paths.add(relative)
+
+          paths = sorted(tracked | candidate_paths)
+          entries = []
+          for path in paths:
+              trusted_path = root / path
+              candidate_path = candidate / path
+              trusted_exists = path in tracked and os.path.lexists(trusted_path)
+              candidate_exists = os.path.lexists(candidate_path)
+
+              if trusted_exists and candidate_exists:
+                  trusted_metadata = trusted_path.lstat()
+                  candidate_metadata = candidate_path.lstat()
+                  trusted_regular = stat.S_ISREG(trusted_metadata.st_mode)
+                  candidate_regular = stat.S_ISREG(candidate_metadata.st_mode)
+                  trusted_symlink = stat.S_ISLNK(trusted_metadata.st_mode)
+                  candidate_symlink = stat.S_ISLNK(candidate_metadata.st_mode)
+                  if trusted_regular and candidate_regular:
+                      if filecmp.cmp(trusted_path, candidate_path, shallow=False):
+                          continue
+                  elif trusted_symlink and candidate_symlink:
+                      if os.readlink(trusted_path) == os.readlink(candidate_path):
+                          continue
+                  status_value = 'M'
+              elif candidate_exists:
+                  status_value = 'A'
+              elif trusted_exists:
+                  status_value = 'D'
+              else:
+                  continue
+
+              if status_value == 'D':
+                  old_metadata = trusted_path.lstat()
+                  old_regular = stat.S_ISREG(old_metadata.st_mode)
+                  old_binary = not old_regular
+                  old_content = ''
+                  if old_regular and old_metadata.st_size <= 1_048_576:
+                      try:
+                          old_content = trusted_path.read_text(encoding='utf-8')
+                      except UnicodeDecodeError:
+                          old_binary = True
+                  entries.append(
+                      {
+                          'path': path,
+                          'status': 'D',
+                          'bytes': 0,
+                          'additions': 0,
+                          'deletions': 0 if old_binary else len(old_content.splitlines()),
+                          'binary': old_binary,
+                          'symlink': stat.S_ISLNK(old_metadata.st_mode),
+                          'submodule': staged_modes.get(path) == '160000',
+                          'content': '',
+                      }
+                  )
+                  continue
+
+              metadata = candidate_path.lstat()
+              regular = stat.S_ISREG(metadata.st_mode)
+              symlink = stat.S_ISLNK(metadata.st_mode)
+              submodule = staged_modes.get(path) == '160000'
+              binary = not regular
+              content = ''
+              if regular and metadata.st_size <= 1_048_576:
+                  try:
+                      content = candidate_path.read_text(encoding='utf-8')
+                  except UnicodeDecodeError:
+                      binary = True
+              elif regular:
+                  binary = True
+
+              additions = 0
+              deletions = 0
+              if not binary:
+                  old_content = ''
+                  if status_value == 'M':
+                      old_metadata = trusted_path.lstat()
+                      if stat.S_ISREG(old_metadata.st_mode) and old_metadata.st_size <= 1_048_576:
+                          try:
+                              old_content = trusted_path.read_text(encoding='utf-8')
+                          except UnicodeDecodeError:
+                              binary = True
+                  if not binary:
+                      changes = difflib.ndiff(
+                          old_content.splitlines(),
+                          content.splitlines(),
+                      )
+                      for line in changes:
+                          if line.startswith('+ '):
+                              additions += 1
+                          elif line.startswith('- '):
+                              deletions += 1
+
+              # object_type_rejected: non-regular model output is never opened.
+              entries.append(
+                  {
+                      'path': path,
+                      'status': status_value,
+                      'bytes': metadata.st_size,
+                      'additions': additions,
+                      'deletions': deletions,
+                      'binary': binary,
+                      'symlink': symlink,
+                      'submodule': submodule,
+                      'content': content,
+                  }
+              )
+
+          remote = run(
+              'git',
+              'ls-remote',
+              'origin',
+              'refs/heads/main',
+          ).decode('ascii').split()
+          current_base = remote[0] if len(remote) == 2 else ''
+          evidence = {
+              'base_sha': base,
+              'current_base_sha': current_base,
+              'files': entries,
+          }
+          output_path = receipt_dir / 'diff.json'
+          output_path.write_text(
+              json.dumps(evidence, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+          output_path.chmod(0o600)
+          PY
+          node packages/commercial-development-agent/src/cli.mjs validate-diff \
+            --policy "$GITHUB_WORKSPACE/$POLICY_PATH" \
+            --evidence "$RECEIPT_DIR/diff.json" \
+            --output "$RECEIPT_DIR/diff-decision.json"
+          accepted="$(jq -r '.accepted' "$RECEIPT_DIR/diff-decision.json")"
+          reason="$(jq -r '.reason_code' "$RECEIPT_DIR/diff-decision.json")"
+          echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          if [ "$accepted" != 'true' ]; then
+            exit 0
+          fi
+
+      - name: Verify the accepted repository change
+        id: verification
+        if: steps.diff.outputs.accepted == 'true'
+        run: |
+          set +e
+          sudo -u opencode_model env -i \
+            HOME="$MODEL_HOME" \
+            PATH="$PATH" \
+            COREPACK_HOME="$TRUSTED_COREPACK_HOME" \
+            COREPACK_ENABLE_NETWORK=0 \
+            AI_DATABASE_URL="$AI_DATABASE_URL" \
+            AI_TEST_DATABASE_URL="$AI_TEST_DATABASE_URL" \
+            IDENTITY_DATABASE_URL="$IDENTITY_DATABASE_URL" \
+            PLANNING_DATABASE_URL="$PLANNING_DATABASE_URL" \
+            HABIT_DATABASE_URL="$HABIT_DATABASE_URL" \
+            NOTIFICATION_DATABASE_URL="$NOTIFICATION_DATABASE_URL" \
+            PRIVACY_DATABASE_URL="$PRIVACY_DATABASE_URL" \
+            bash -c 'cd "$1" && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && docker compose config >/dev/null' \
+              _ "$MODEL_WORKSPACE" \
+            > "$RECEIPT_DIR/verification.log" 2>&1
+          status=$?
+          sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
+          set -e
+          chmod 0600 "$RECEIPT_DIR/verification.log"
+          if [ "$status" -eq 0 ]; then
+            echo 'passed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'passed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Materialize verified candidate through trusted boundary
+        if: steps.verification.outputs.passed == 'true'
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PYMATERIALIZE'
+          import json
+          import os
+          import pathlib
+          import stat
+          import tempfile
+
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          candidate = pathlib.Path(os.environ['MODEL_WORKSPACE'])
+          receipt_dir = pathlib.Path(os.environ['RECEIPT_DIR'])
+          evidence = json.loads((receipt_dir / 'diff.json').read_text(encoding='utf-8'))
+          changed_paths = []
+
+          def reject_symlinked_ancestors(path):
+              cursor = path.parent
+              while True:
+                  if cursor.is_symlink():
+                      raise SystemExit('post_verification_candidate_changed')
+                  if cursor == root:
+                      return
+                  if root not in cursor.parents:
+                      raise SystemExit('post_verification_candidate_changed')
+                  cursor = cursor.parent
+
+          for item in evidence['files']:
+              relative = pathlib.PurePosixPath(item['path'])
+              candidate_path = candidate.joinpath(*relative.parts)
+              target_path = root.joinpath(*relative.parts)
+              reject_symlinked_ancestors(target_path)
+              changed_paths.append(item['path'])
+
+              if item['status'] == 'D':
+                  if os.path.lexists(candidate_path):
+                      raise SystemExit('post_verification_candidate_changed')
+                  if target_path.exists() or target_path.is_symlink():
+                      metadata = target_path.lstat()
+                      if not stat.S_ISREG(metadata.st_mode):
+                          raise SystemExit('post_verification_candidate_changed')
+                      target_path.unlink()
+                  continue
+
+              if not candidate_path.exists() or candidate_path.is_symlink():
+                  raise SystemExit('post_verification_candidate_changed')
+              metadata = candidate_path.lstat()
+              if not stat.S_ISREG(metadata.st_mode):
+                  raise SystemExit('post_verification_candidate_changed')
+              payload = candidate_path.read_bytes()
+              expected = item['content'].encode('utf-8')
+              if payload != expected or len(payload) != item['bytes']:
+                  raise SystemExit('post_verification_candidate_changed')
+
+              parent = target_path.parent
+              parent.mkdir(parents=True, exist_ok=True)
+              mode = 0o644
+              if target_path.exists():
+                  target_metadata = target_path.lstat()
+                  if not stat.S_ISREG(target_metadata.st_mode):
+                      raise SystemExit('post_verification_candidate_changed')
+                  mode = stat.S_IMODE(target_metadata.st_mode)
+              descriptor, temporary_name = tempfile.mkstemp(prefix='.opencode-', dir=parent)
+              try:
+                  with os.fdopen(descriptor, 'wb') as output:
+                      output.write(payload)
+                      output.flush()
+                      os.fsync(output.fileno())
+                  os.chmod(temporary_name, mode)
+                  os.replace(temporary_name, target_path)
+              finally:
+                  if os.path.exists(temporary_name):
+                      os.unlink(temporary_name)
+
+          (receipt_dir / 'changed-paths.z').write_bytes(
+              b''.join(path.encode('utf-8') + b'\0' for path in changed_paths)
+          )
+          PYMATERIALIZE
+          git diff --check
+
+      - name: Recheck the exact main base before remote mutation
+        id: base
+        if: steps.verification.outputs.passed == 'true'
+        run: |
+          set -Eeuo pipefail
+          current="$(timeout 30s git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [ "$current" = "$BASE_SHA" ]; then
+            echo 'matched=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matched=false' >> "$GITHUB_OUTPUT"
+            echo 'reason=base_changed' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit, push, and open one draft pull request
+        id: mutation
+        if: steps.base.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          branch="automation/opencode-commercial-${run_id}"
+          issue_number="$(jq -r '.number' "$RECEIPT_DIR/selected-issue.json")"
+          selected_issue_digest="$(jq -cS '{number,url,title,body,state}' "$RECEIPT_DIR/selected-issue.json" | sha256sum | awk '{print $1}')"
+          authorization="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+          remote_branch_created=false
+          pull_request_created=false
+
+          assert_live_lease() {
+            current_main="$(timeout 30s git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+            test "$current_main" = "$BASE_SHA"
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=1" --jq 'length')" = '0'
+            live_issue_digest="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" --jq '{number,url:.html_url,title,body:(.body // ""),state}' | jq -cS . | sha256sum | awk '{print $1}')"
+            test "$live_issue_digest" = "$selected_issue_digest"
+            remote_sha="$(timeout 30s git ls-remote origin "refs/heads/$branch" | awk 'NR == 1 {print $1}')"
+            if [ -n "$remote_sha" ] && [ "$remote_sha" != "$local_sha" ]; then
+              echo '::error::remote automation branch changed concurrently'
+              exit 1
+            fi
+          }
+
+          cleanup_remote_branch() {
+            if [ "$remote_branch_created" = true ] && [ "$pull_request_created" != true ]; then
+              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${authorization}" \
+                push origin --delete "$branch" || true
+            fi
+          }
+          trap cleanup_remote_branch EXIT
+
+          git config user.name 'opencode-commercial-development[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --pathspec-from-file="$RECEIPT_DIR/changed-paths.z" --pathspec-file-nul
+          git diff --cached --check
+          git commit -m "feat: implement bounded buyer gap from issue #${issue_number}"
+          local_sha="$(git rev-parse HEAD)"
+          assert_live_lease
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${authorization}" \
+            push origin "HEAD:${branch}"
+          remote_branch_created=true
+          assert_live_lease
+          pull_request_url="$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$branch" \
+            --draft \
+            --title "feat: implement bounded buyer gap from issue #${issue_number}" \
+            --body "Automated bounded implementation for #${issue_number}. This draft requires the normal exact-head checks, human and automated review, and no-bypass merge loop.")"
+          pull_request_created=true
+          trap - EXIT
+          echo "pull_request_url=$pull_request_url" >> "$GITHUB_OUTPUT"
+          echo 'created=true' >> "$GITHUB_OUTPUT"
+
+      - name: Compose credential-free development receipt
+        if: always()
+        env:
+          OPEN_PULL_REQUESTS: ${{ steps.github_evidence.outputs.open_pull_requests }}
+          SELECTED: ${{ steps.selection.outputs.selected }}
+          BRIDGE_REASON: ${{ steps.bridge.outputs.reason }}
+          MODEL_REASON: ${{ steps.model.outputs.reason }}
+          DIFF_ACCEPTED: ${{ steps.diff.outputs.accepted }}
+          VERIFICATION_PASSED: ${{ steps.verification.outputs.passed }}
+          BASE_MATCHED: ${{ steps.base.outputs.matched }}
+          PR_CREATED: ${{ steps.mutation.outputs.created }}
+          BRANCH_NAME: ${{ steps.branch.outputs.branch_name }}
+          PULL_REQUEST_URL: ${{ steps.mutation.outputs.pull_request_url }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          directory = Path(os.environ['RECEIPT_DIR'])
+          run_path = directory / 'run.json'
+          if run_path.exists():
+              run = json.loads(run_path.read_text(encoding='utf-8'))
+          else:
+              run = {
+                  'schema': 'life-os.opencode-commercial-development-run.v1',
+                  'run_id': '00000000-0000-4000-8000-000000000001',
+                  'repository': os.environ['GITHUB_REPOSITORY'],
+                  'base_sha': os.environ.get('BASE_SHA', os.environ['GITHUB_SHA']),
+                  'started_at': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+                  'model_label': 'nvidia/default-chat-model',
+                  'reasoning_effort': 'high',
+                  'recursive_depth': 1,
+                  'decomposition_steps': 8,
+                  'roles': ['planner', 'worker', 'verifier', 'synthesizer'],
+              }
+          issue_path = directory / 'selected-issue.json'
+          issue = json.loads(issue_path.read_text(encoding='utf-8')) if issue_path.exists() else None
+          diff_path = directory / 'diff-decision.json'
+          diff = json.loads(diff_path.read_text(encoding='utf-8')) if diff_path.exists() else None
+
+          open_prs = os.environ.get('OPEN_PULL_REQUESTS', '0')
+          selected = os.environ.get('SELECTED', 'false') == 'true'
+          bridge_reason = os.environ.get('BRIDGE_REASON', '')
+          model_reason = os.environ.get('MODEL_REASON', '')
+          diff_accepted = os.environ.get('DIFF_ACCEPTED', '') == 'true'
+          verification = os.environ.get('VERIFICATION_PASSED', '') == 'true'
+          base_matched = os.environ.get('BASE_MATCHED', '') == 'true'
+          pr_created = os.environ.get('PR_CREATED', '') == 'true'
+
+          if open_prs != '0' or not selected:
+              status, reason = 'unavailable', 'no_eligible_issue'
+          elif bridge_reason == 'provider_credential_missing':
+              status, reason = 'unavailable', 'provider_credential_missing'
+          elif bridge_reason != 'completed' or model_reason != 'completed':
+              status, reason = 'unavailable', 'provider_unavailable'
+          elif not diff_accepted:
+              status, reason = 'rejected', 'diff_rejected'
+          elif not verification:
+              status, reason = 'failed', 'verification_failed'
+          elif not base_matched:
+              status, reason = 'rejected', 'base_changed'
+          elif not pr_created:
+              status, reason = 'failed', 'draft_pull_request_failed'
+          else:
+              status, reason = 'completed', 'completed'
+
+          validations = [
+              {'name': 'open_pull_request_drain', 'status': 'passed' if open_prs == '0' else 'failed'},
+              {'name': 'issue_policy', 'status': 'passed' if selected else 'skipped'},
+              {'name': 'credential_bridge', 'status': 'skipped' if not selected else 'passed' if bridge_reason == 'completed' else 'failed'},
+              {'name': 'provider_run', 'status': 'skipped' if not selected or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'},
+              {'name': 'diff_policy', 'status': 'passed' if diff_accepted else 'skipped' if not selected else 'failed'},
+              {'name': 'repository_verification', 'status': 'passed' if verification else 'skipped' if not diff_accepted else 'failed'},
+              {'name': 'base_sha', 'status': 'passed' if base_matched else 'skipped' if not verification else 'failed'},
+          ]
+          input_value = {
+              'run': run,
+              'policy': json.loads(Path(os.environ['POLICY_PATH']).read_text(encoding='utf-8')),
+              'issue': issue if selected else None,
+              'status': status,
+              'reasonCode': reason,
+              'opencodeVersion': os.environ['OPENCODE_PACKAGE_VERSION'],
+              'diff': None if diff is None else {
+                  'changed_files': diff['changed_files'],
+                  'changed_bytes': diff['changed_bytes'],
+                  'additions': diff['additions'],
+                  'deletions': diff['deletions'],
+              },
+              'branchName': os.environ.get('BRANCH_NAME') if pr_created else None,
+              'pullRequestUrl': os.environ.get('PULL_REQUEST_URL') if pr_created else None,
+              'completedAt': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+              'validations': validations,
+          }
+          target = directory / 'receipt-input.json'
+          target.write_text(json.dumps(input_value, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          target.chmod(0o600)
+          PY
+          node packages/commercial-development-agent/src/cli.mjs receipt \
+            --input "$RECEIPT_DIR/receipt-input.json" \
+            --output "$RECEIPT_DIR/receipt.json"
+
+      - name: Upload credential-free development receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: opencode-commercial-development-receipt-${{ github.run_id }}
+          path: ${{ runner.temp }}/commercial-development/receipt.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 9
+
+      - name: Remove private agent material
+        if: always()
+        run: |
+          set +e
+          sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true
+          sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
+          if [ -n "${MODEL_UID:-}" ]; then
+            if [ "${MODEL_NETWORK_PHASE:-}" = 'verification' ]; then
+              sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport 5432 -j ACCEPT 2>/dev/null || true
+              sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.0/8 -j REJECT 2>/dev/null || true
+            fi
+            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT 2>/dev/null || true
+            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT 2>/dev/null || true
+            sudo ip6tables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT 2>/dev/null || true
+          fi
+          chmod 0755 "$GITHUB_WORKSPACE" 2>/dev/null
+          sudo rm -rf \
+            "${MODEL_WORKSPACE:-$RUNNER_TEMP/nonexistent-model-workspace}" \
+            "${MODEL_HOME:-$RUNNER_TEMP/nonexistent-model-home}" \
+            "${MODEL_STORE:-$RUNNER_TEMP/nonexistent-model-store}" \
+            "${TRUSTED_COREPACK_HOME:-$RUNNER_TEMP/nonexistent-trusted-corepack}" \
+            "${BRIDGE_HOME:-$RUNNER_TEMP/nonexistent-bridge-home}"
+          rm -rf \
+            "$RECEIPT_DIR/prompt.json" \
+            "$RECEIPT_DIR/prompt.txt" \
+            "$RECEIPT_DIR/opencode.log" \
+            "$RECEIPT_DIR/verification.log" \
+            "$RECEIPT_DIR/nim-bridge.py" \
+            "$RECEIPT_DIR/issues.json" \
+            "$RECEIPT_DIR/pulls.json" \
+            "$RECEIPT_DIR/selected-issue.json" \
+            "$RECEIPT_DIR/diff.json" \
+            "$RECEIPT_DIR/diff-decision.json" \
+            "$RECEIPT_DIR/changed-paths.z" \
+            "$RECEIPT_DIR/receipt-input.json" \
+            "$RECEIPT_DIR/github-snapshot.json" \
+            "$RECEIPT_DIR/commercial-readiness.json" \
+            "$RECEIPT_DIR/commercial-readiness.md" \
+            "$RECEIPT_DIR/run.json"
