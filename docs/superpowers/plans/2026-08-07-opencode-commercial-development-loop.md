@@ -6,13 +6,13 @@
 
 **Architecture:** `@life-os/commercial-development-agent` owns versioned deterministic policy. GitHub Actions gathers bounded public repository evidence, creates one UUIDv4 automation branch, runs one exact pinned OpenCode CLI process without a GitHub token, validates the resulting diff, then commits and opens a draft pull request through a separate credentialed step. Provider absence produces a sanitized receipt and no repository mutation.
 
-**Tech stack:** Node.js 22, TypeScript-free ESM for a minimal runtime surface, Node test runner, GitHub Actions, GitHub CLI, exact OpenCode package pin, NVIDIA NIM hosted inference, existing commercial-readiness CLI.
+**Tech stack:** Node.js 22, TypeScript-free ESM for a minimal runtime surface, Vitest, GitHub Actions, GitHub CLI, exact OpenCode package pin, NVIDIA NIM hosted inference, existing commercial-readiness CLI.
 
 ## Global constraints
 
 - Never reference or use `COPILOT_GITHUB_TOKEN`.
 - Do not change the credential scheme of existing review agents.
-- `NVIDIA_NIM_API_KEY` is visible only to the OpenCode invocation step.
+- `NVIDIA_NIM_API_KEY` is visible only to the loopback NVIDIA credential bridge step.
 - OpenCode receives no `GITHUB_TOKEN` or `GH_TOKEN`.
 - All internal run, branch, and receipt identifiers are UUIDv4 strings.
 - The model cannot change `.github/`, `infra/`, secrets, repository settings, lockfiles, dependency manifests, releases, tags, deployments, or branch protection in the initial slice.
@@ -129,7 +129,7 @@ Use real temporary Git repositories to prove:
 
 ### GREEN
 
-Parse `git diff --numstat`, `git diff --name-status`, `git ls-files --stage`, and `git diff --check` through a narrow injected command seam. Reject before any remote push.
+Build deterministic evidence by comparing the trusted checkout with the candidate workspace through filesystem metadata and Python `filecmp`/`difflib`, then validate the resulting JSON with `validateCommercialDevelopmentDiff`. After materializing an accepted candidate, run `git diff --check` as a separate pre-mutation check. Reject before any remote push.
 
 ### REFACTOR
 
@@ -228,7 +228,7 @@ Assert:
 - all actions pinned by full SHA;
 - single-flight concurrency;
 - 120-minute workflow and 90-minute OpenCode timeout;
-- separate read-only selection/model job and credentialed mutation job;
+- one `develop` job with separate selection, credential-bridge, model, validation, and credentialed mutation steps;
 - `NVIDIA_NIM_API_KEY` appears in exactly one step;
 - `GITHUB_TOKEN`, `GH_TOKEN`, and review-agent credentials are absent from the OpenCode step;
 - `COPILOT_GITHUB_TOKEN` is absent from the repository workflow;
@@ -247,7 +247,7 @@ Workflow sequence:
 2. bounded issue evidence collection;
 3. issue selection and prompt creation;
 4. UUIDv4 branch creation from exact main SHA;
-5. OpenCode invocation with only the NVIDIA alias and no GitHub credential;
+5. loopback bridge invocation with the NVIDIA credential, followed by OpenCode with only a placeholder provider key and no GitHub credential;
 6. deterministic diff validation;
 7. repository tests selected from changed packages plus root gates;
 8. base-SHA recheck;
