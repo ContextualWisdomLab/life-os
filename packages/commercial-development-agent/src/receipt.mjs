@@ -147,10 +147,7 @@ export function serializeCommercialDevelopmentReceipt(value) {
   try {
     const receipt = validateCommercialDevelopmentReceipt(value);
     return `${JSON.stringify(receipt, null, 2)}\n`;
-  } catch (error) {
-    if (error instanceof CommercialDevelopmentReceiptError) {
-      throw error;
-    }
+  } catch {
     return invalid();
   }
 }
