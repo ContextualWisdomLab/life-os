@@ -31,12 +31,23 @@ function issueLink(number) {
     : 'untracked';
 }
 
+/**
+ * Renders the capability identifiers attached to one canonical buyer gap.
+ * Capability IDs describe configured evidence maturity; they do not replace
+ * the independently reconciled buyer-gap state owned by the canonical issue.
+ */
 function capabilityList(capabilityIds) {
   return (Array.isArray(capabilityIds) ? capabilityIds : [])
     .map((id) => `\`${sanitizeUntrustedText(id)}\``)
     .join(', ');
 }
 
+/**
+ * Appends canonical buyer-visible gap evidence to the Markdown report.
+ * `report.buyer_gaps` and `report.buyer_gap_unknown` come from the explicit
+ * repository gap registry plus live issue-state reconciliation, independently
+ * from capability evidence maturity.
+ */
 function renderCanonicalBuyerGaps(lines, report, maxGaps) {
   const hasBuyerEvidence = Number.isSafeInteger(
     report.summary?.unresolved_buyer_gaps,
@@ -76,6 +87,12 @@ function renderCanonicalBuyerGaps(lines, report, maxGaps) {
   lines.push('');
 }
 
+/**
+ * Appends configured capability-evidence gaps to the Markdown report.
+ * These entries describe missing repository evidence for registered
+ * capabilities and are deliberately separate from canonical buyer-visible
+ * gaps, which can remain open even when capability maturity is at target.
+ */
 function renderCapabilityEvidenceGaps(lines, report, maxGaps) {
   lines.push('## Capability evidence gaps', '');
   if (!Array.isArray(report.gaps) || report.gaps.length === 0) {
@@ -102,6 +119,13 @@ function renderCapabilityEvidenceGaps(lines, report, maxGaps) {
   }
 }
 
+/**
+ * Produces the credential-safe Markdown issue body for one readiness snapshot.
+ * The renderer reports configured capability evidence and canonical buyer-gap
+ * reconciliation as independent dimensions, then lists PR-drain evidence. The
+ * returned Markdown never promotes one dimension to proof that the other is
+ * complete.
+ */
 export function renderCommercialReadinessIssue(
   report,
   snapshot,

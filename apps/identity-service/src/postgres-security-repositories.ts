@@ -36,6 +36,7 @@ interface SessionRow {
   user_id: unknown;
   workspace_id: unknown;
   token_hash: unknown;
+  authenticated_at: unknown;
   created_at: unknown;
   expires_at: unknown;
   revoked_at: unknown;
@@ -238,6 +239,7 @@ function mapSessionRow(row: SessionRow): SessionRecord {
     userId: requireString(row.user_id, 'Stored session is invalid'),
     workspaceId: requireString(row.workspace_id, 'Stored session is invalid'),
     tokenHash: requireString(row.token_hash, 'Stored session is invalid'),
+    authenticatedAt: toIsoString(row.authenticated_at, 'Stored session is invalid'),
     createdAt: toIsoString(row.created_at, 'Stored session is invalid'),
     expiresAt: toIsoString(row.expires_at, 'Stored session is invalid'),
     revokedAt: optionalIsoString(row.revoked_at, 'Stored session is invalid'),
@@ -258,16 +260,18 @@ export class PostgresSessionRepository implements SessionRepository {
         user_id,
         workspace_id,
         token_hash,
+        authenticated_at,
         created_at,
         expires_at,
         revoked_at,
         rotated_from_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         session.id,
         session.userId,
         session.workspaceId,
         session.tokenHash,
+        session.authenticatedAt,
         session.createdAt,
         session.expiresAt,
         session.revokedAt,
@@ -283,6 +287,7 @@ export class PostgresSessionRepository implements SessionRepository {
          user_id,
          workspace_id,
          token_hash,
+         authenticated_at,
          created_at,
          expires_at,
          revoked_at,

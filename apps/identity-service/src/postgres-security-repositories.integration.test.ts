@@ -219,7 +219,7 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     );
   });
 
-  it('enforces workspace ownership and rotates persisted sessions atomically at revocation', async () => {
+  it('enforces workspace ownership and preserves authentication age across persisted rotation', async () => {
     const userId = randomUUID();
     const otherUserId = randomUUID();
     const workspaceId = randomUUID();
@@ -235,8 +235,9 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     );
 
     const repository = new PostgresSessionRepository(sqlClient);
+    let now = new Date('2026-08-03T01:30:00.000Z');
     const service = new SessionService(repository, {
-      now: () => new Date('2026-08-03T01:30:00.000Z'),
+      now: () => now,
       ttlMs: 60 * 60 * 1000,
     });
     const issued = await service.create(userId, workspaceId);
@@ -244,9 +245,11 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     const stored = await pool.query<{
       token_hash: string;
       workspace_id: string;
+      authenticated_at: Date;
+      created_at: Date;
       revoked_at: Date | null;
     }>(
-      `SELECT token_hash, workspace_id, revoked_at
+      `SELECT token_hash, workspace_id, authenticated_at, created_at, revoked_at
        FROM identity.sessions
        WHERE id = $1`,
       [issued.session.id],
@@ -254,11 +257,14 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     expect(stored.rows[0]).toMatchObject({
       token_hash: sha256Hex(issued.token),
       workspace_id: workspaceId,
+      authenticated_at: new Date(issued.session.authenticatedAt),
+      created_at: new Date(issued.session.createdAt),
       revoked_at: null,
     });
     expect(stored.rows[0]?.token_hash).not.toBe(issued.token);
     await expect(service.authenticate(issued.token)).resolves.toEqual(issued.session);
 
+    now = new Date('2026-08-03T01:45:00.000Z');
     const rotated = await service.rotate(issued.token);
     await expect(service.authenticate(issued.token)).rejects.toThrowError(
       'Session is invalid or expired',
@@ -269,18 +275,33 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
       'SELECT revoked_at FROM identity.sessions WHERE id = $1',
       [issued.session.id],
     );
-    const replacement = await pool.query<{ rotated_from_id: string | null }>(
-      'SELECT rotated_from_id FROM identity.sessions WHERE id = $1',
+    const replacement = await pool.query<{
+      rotated_from_id: string | null;
+      authenticated_at: Date;
+      created_at: Date;
+    }>(
+      `SELECT rotated_from_id, authenticated_at, created_at
+       FROM identity.sessions
+       WHERE id = $1`,
       [rotated.session.id],
     );
     expect(oldSession.rows[0]?.revoked_at).toBeInstanceOf(Date);
     expect(replacement.rows[0]?.rotated_from_id).toBe(issued.session.id);
+    expect(replacement.rows[0]?.authenticated_at.toISOString()).toBe(
+      issued.session.authenticatedAt,
+    );
+    expect(replacement.rows[0]?.created_at.toISOString()).toBe(
+      rotated.session.createdAt,
+    );
+    expect(rotated.session.authenticatedAt).toBe(issued.session.authenticatedAt);
+    expect(rotated.session.createdAt).not.toBe(issued.session.createdAt);
 
     const crossTenantSession: SessionRecord = {
       id: randomUUID(),
       userId: otherUserId,
       workspaceId,
       tokenHash: 'a'.repeat(64),
+      authenticatedAt: '2026-08-03T01:30:00.000Z',
       createdAt: '2026-08-03T01:30:00.000Z',
       expiresAt: '2026-08-03T02:30:00.000Z',
       revokedAt: null,

@@ -22,6 +22,22 @@ function snapshot(overrides = {}) {
   };
 }
 
+function readinessReport() {
+  return {
+    schema: 'life-os.commercial-readiness-report.v1',
+    generated_at: '2026-08-09T11:00:00.000Z',
+    commit_sha: 'a'.repeat(40),
+    summary: {
+      total_capabilities: 22,
+      at_target: 22,
+      unresolved_gaps: 0,
+      weighted_maturity_percent: 100,
+    },
+    capabilities: [],
+    gaps: [],
+  };
+}
+
 describe('validateBuyerGapSnapshot', () => {
   it('accepts and freezes a minimal external issue-state projection', () => {
     const value = validateBuyerGapSnapshot(snapshot());
@@ -39,12 +55,14 @@ describe('validateBuyerGapSnapshot', () => {
       snapshot({ generated_at: 'not-a-date' }),
       snapshot({ issues: [{ ...issue, body: 'untrusted' }] }),
       snapshot({ issues: [issue, issue] }),
-      snapshot({ issues: Array.from({ length: 101 }, (_, index) => ({
-        number: index + 1,
-        state: 'open',
-        state_reason: null,
-        labels: [],
-      })) }),
+      snapshot({
+        issues: Array.from({ length: 101 }, (_, index) => ({
+          number: index + 1,
+          state: 'open',
+          state_reason: null,
+          labels: [],
+        })),
+      }),
       snapshot({
         issues: [
           {
@@ -67,20 +85,7 @@ describe('validateBuyerGapSnapshot', () => {
 
 describe('attachBuyerGapEvidence', () => {
   it('preserves configured capability maturity while adding explicit product-gap dimensions', () => {
-    const report = {
-      schema: 'life-os.commercial-readiness-report.v1',
-      generated_at: '2026-08-09T11:00:00.000Z',
-      commit_sha: 'a'.repeat(40),
-      summary: {
-        total_capabilities: 22,
-        at_target: 22,
-        unresolved_gaps: 0,
-        weighted_maturity_percent: 100,
-      },
-      capabilities: [],
-      gaps: [],
-    };
-    const result = attachBuyerGapEvidence(report, {
+    const result = attachBuyerGapEvidence(readinessReport(), {
       unresolved: [
         {
           gap_id: 'data.portability-completion',
@@ -100,5 +105,71 @@ describe('attachBuyerGapEvidence', () => {
     assert.equal(result.summary.unresolved_buyer_gaps, 1);
     assert.equal(result.summary.unknown_buyer_gap_states, 0);
     assert.equal(result.buyer_gaps[0].issue_number, 55);
+  });
+
+  it('rejects malformed buyer-gap evidence before reading collection members', () => {
+    const invalidEvidence = [
+      null,
+      {},
+      { unresolved: [], resolved: [], unknown: 'not-an-array' },
+      { unresolved: [], resolved: 'not-an-array', unknown: [] },
+      { unresolved: 'not-an-array', resolved: [], unknown: [] },
+    ];
+
+    for (const evidence of invalidEvidence) {
+      assert.throws(
+        () => attachBuyerGapEvidence(readinessReport(), evidence),
+        /Buyer gap evidence is invalid/,
+      );
+    }
+  });
+
+  it('rejects malformed items inside every buyer-gap evidence collection', () => {
+    const validItem = {
+      gap_id: 'data.portability-completion',
+      issue_number: 55,
+      capability_ids: ['data.portability-rights'],
+      state: 'open',
+      resolution: null,
+    };
+    const invalidItems = [
+      { ...validItem, state: 'closed' },
+      { ...validItem, issue_number: 0 },
+      { ...validItem, capability_ids: [] },
+      { ...validItem, resolution: 'completed' },
+      { ...validItem, unexpected: true },
+    ];
+
+    for (const item of invalidItems) {
+      assert.throws(
+        () =>
+          attachBuyerGapEvidence(readinessReport(), {
+            unresolved: [item],
+            resolved: [],
+            unknown: [],
+          }),
+        /Buyer gap evidence is invalid/,
+      );
+    }
+
+    assert.throws(
+      () =>
+        attachBuyerGapEvidence(readinessReport(), {
+          unresolved: [],
+          resolved: [{ ...validItem, state: 'closed', resolution: null }],
+          unknown: [],
+        }),
+      /Buyer gap evidence is invalid/,
+    );
+
+    assert.throws(
+      () =>
+        attachBuyerGapEvidence(readinessReport(), {
+          unresolved: [],
+          resolved: [],
+          unknown: [{ ...validItem, state: 'unknown', resolution: 'completed' }],
+        }),
+      /Buyer gap evidence is invalid/,
+    );
   });
 });
