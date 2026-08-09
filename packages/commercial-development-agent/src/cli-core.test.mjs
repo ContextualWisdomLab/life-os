@@ -205,10 +205,49 @@ describe('commercial development CLI core', () => {
     ['select', '--unknown', POLICY_PATH],
     ['select', '--policy', 'relative.json'],
     ['select', '--policy', `${POLICY_PATH}\n`],
+    [
+      'select',
+      '--policy',
+      `${POLICY_PATH}\u0001`,
+      '--issues',
+      POLICY_PATH,
+      '--pulls',
+      POLICY_PATH,
+      '--output',
+      POLICY_PATH,
+    ],
   ])('rejects invalid CLI arguments %#', async (argv) => {
     await expect(runCommercialDevelopmentCli(argv)).rejects.toBeInstanceOf(
       CommercialDevelopmentCliError,
     );
+  });
+
+  it('rejects malformed and non-string atomic publication identifiers', async () => {
+    const inputPath = await fixture('receipt-input.json', {
+      run: run(),
+      policy: JSON.parse(await readFile(POLICY_PATH, 'utf8')),
+      issue: null,
+      status: 'unavailable',
+      reasonCode: 'provider_credential_missing',
+      opencodeVersion: '1.2.3',
+      diff: null,
+      branchName: null,
+      pullRequestUrl: null,
+      completedAt: '2026-08-07T01:00:01.000Z',
+      validations: [{ name: 'provider_credential', status: 'failed' }],
+    });
+    const argv = [
+      'receipt',
+      '--input',
+      inputPath,
+      '--output',
+      join(directory, 'receipt.json'),
+    ];
+    for (const uuidFactory of [() => 'not-a-uuid', () => 42]) {
+      await expect(
+        runCommercialDevelopmentCli(argv, { uuidFactory }),
+      ).rejects.toBeInstanceOf(CommercialDevelopmentCliError);
+    }
   });
 
   it('rejects malformed and oversized JSON without retaining its content', async () => {
