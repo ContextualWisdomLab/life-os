@@ -1,4 +1,4 @@
-import type { ActiveSession, ConsumedOAuthTransaction } from './auth-security';
+import type { ConsumedOAuthTransaction } from './auth-security';
 import type {
   IdentityProvider,
   MaybePromise,
@@ -62,12 +62,17 @@ export interface ExternalIdentityProvisioner {
   }): Promise<ProvisionedAccount>;
 }
 
+/** Minimum session metadata needed to issue one browser cookie. */
+export interface WorkspaceIssuedSession {
+  expiresAt: string;
+}
+
 /** Issues and revokes opaque workspace-scoped application sessions. */
 export interface WorkspaceSessionIssuer {
   create(
     userId: string,
     workspaceId: string,
-  ): Promise<{ session: ActiveSession; token: string }>;
+  ): Promise<{ session: WorkspaceIssuedSession; token: string }>;
   revoke(token: string): Promise<void>;
 }
 

@@ -68,6 +68,7 @@ function sessionFixture(): SessionRecord {
     userId: 'c89f36b4-1f3c-4e62-a4e1-7ba3eb3b8ac3',
     workspaceId: 'd89f36b4-1f3c-4e62-a4e1-7ba3eb3b8ac4',
     tokenHash: 'c'.repeat(64),
+    authenticatedAt: '2026-08-03T00:00:00.000Z',
     createdAt: '2026-08-03T00:00:00.000Z',
     expiresAt: '2026-09-02T00:00:00.000Z',
     revokedAt: null,
@@ -176,7 +177,7 @@ describe('PostgresOAuthTransactionRepository', () => {
 });
 
 describe('PostgresSessionRepository', () => {
-  it('persists and maps workspace-scoped sessions with parameterized SQL', async () => {
+  it('persists and maps workspace-scoped sessions with authentication provenance', async () => {
     const client = new RecordingSqlClient();
     const repository = new PostgresSessionRepository(client);
     const session = sessionFixture();
@@ -184,8 +185,10 @@ describe('PostgresSessionRepository', () => {
     await repository.save(session);
     const saveCall = requireCall(client);
     expect(saveCall.text).toContain('INSERT INTO identity.sessions');
+    expect(saveCall.text).toContain('authenticated_at');
     expect(saveCall.text).not.toContain(session.tokenHash);
     expect(saveCall.values).toContain(session.workspaceId);
+    expect(saveCall.values).toContain(session.authenticatedAt);
 
     client.enqueue({
       rowCount: 1,
@@ -195,6 +198,7 @@ describe('PostgresSessionRepository', () => {
           user_id: session.userId,
           workspace_id: session.workspaceId,
           token_hash: session.tokenHash,
+          authenticated_at: session.authenticatedAt,
           created_at: session.createdAt,
           expires_at: session.expiresAt,
           revoked_at: null,
