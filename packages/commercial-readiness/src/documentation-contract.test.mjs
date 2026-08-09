@@ -42,6 +42,7 @@ const REQUIRED_ADR_NUMBERS = Object.freeze([
   '0006',
   '0007',
   '0008',
+  '0009',
 ]);
 
 /** Reads one repository-owned UTF-8 file. */
