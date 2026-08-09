@@ -114,7 +114,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-PLAN-002 | Provide tenant-safe search over durable planning objects with bounded Unicode-normalized behavior. | Implemented on protected main | `capture.search` |
 | PRD-PLAN-003 | Provide a fast capture experience without presenting local drafts as durable records. | Implemented on protected main | quick-capture component/e2e |
 | PRD-PLAN-004 | Provide a Today action loop with bounded priorities and completion workflow. | Implemented on protected main | `today.action-loop` |
-| PRD-PLAN-005 | Prevent stale concurrent updates from silently overwriting newer durable Today state across devices. | Partial | durable planning exists; full optimistic multi-device Today synchronization remains a tracked product gap |
+| PRD-PLAN-005 | Prevent stale concurrent updates from silently overwriting newer durable Today state across devices. | Partial | issue #121; durable planning exists but full optimistic multi-device Today synchronization remains incomplete |
 | PRD-PLAN-006 | Keep planning source-of-truth inside planning-service; review/search projections never become mutation authority. | Implemented on protected main | service ownership and repository tests |
 
 ### Habits and reviews
@@ -130,9 +130,9 @@ A release should be judged by how many of these steps work end-to-end, not by th
 
 | ID | Requirement | Status | Representative evidence |
 | --- | --- | --- | --- |
-| PRD-CAL-001 | Synchronize selected commitments through explicit provider adapters with idempotency/concurrency protection. | Implemented on protected main | `calendar.time-blocking`; CalDAV/Google tests |
+| PRD-CAL-001 | Synchronize selected commitments through explicit provider adapters with idempotency/concurrency protection. | Implemented on protected main | `calendar.time-blocking`; CalDAV/Google tests; completed #51 |
 | PRD-CAL-002 | Avoid duplicate/destructive provider updates through deterministic identifiers and strong preconditions. | Implemented on protected main | provider integration tests |
-| PRD-CAL-003 | Store/refresh/revoke per-user Google Calendar credentials for hosted multi-user use. | Partial | current README explicitly defers durable per-user credential lifecycle |
+| PRD-CAL-003 | Store/refresh/revoke per-user Google Calendar credentials for hosted multi-user use. | Partial | issue #129; current adapter still uses an operator-supplied runtime token rather than a complete per-user credential lifecycle |
 | PRD-NOT-001 | Deliver timezone-correct bounded reminders with fatigue controls. | Implemented on protected main | `notifications.reminders` |
 | PRD-NOT-002 | Recover expired claims/retries without duplicate inbox delivery. | Implemented on protected main | notification integration tests |
 
@@ -145,7 +145,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-AI-003 | Derive actor/workspace context from the authenticated web boundary and never forward browser credentials. | Implemented on protected main | same-origin AI BFF tests |
 | PRD-AI-004 | Keep deterministic proposal-quality/safety evaluation independent of live-provider availability. | Implemented on protected main | proposal evaluator + NIM conformance split |
 | PRD-AI-005 | Permit deeper orchestration only when measured quality/control evidence justifies it against a strong single-route baseline. | Accepted architecture / implemented evaluation support | `ARCHITECTURE.md`, NIM conformance harness |
-| PRD-AI-006 | Autonomous developer automation may create bounded reviewed work but may not become product data authority. | Implemented on active PR | PR #122; not protected-main behavior yet |
+| PRD-AI-006 | Autonomous developer automation may create bounded reviewed work but may not become product data authority. | Implemented on protected main | PR #122 merged as `876850018a17323900844e79845ba395b7bf6a9a`; `.github/workflows/opencode-commercial-development.yml`; `packages/commercial-development-agent/` |
 
 ### Privacy, security and data rights
 
@@ -154,7 +154,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-PRIV-001 | Protect sensitive data through purpose-bound authorization, tenant scope, encryption/secret boundaries and auditable access rather than blanket masking. | Implemented on protected main | privacy-service work merged in #124 |
 | PRD-PRIV-002 | Make privacy access decisions/evidence append-only and grants bounded/single-use where designed. | Implemented on protected main | privacy PostgreSQL/security tests |
 | PRD-PRIV-003 | Keep credentials, raw prompts/responses, hidden reasoning and unbounded tenant content out of retained public artifacts. | Implemented on protected main | repository-wide contracts/security tests |
-| PRD-PRIV-004 | Provide user-facing export/deletion lifecycle with durable job/audit evidence before claiming complete data-rights UX. | Partial | legal/privacy guidance exists; full end-to-end product evidence must be maintained in traceability |
+| PRD-PRIV-004 | Provide user-facing export/deletion lifecycle with durable job/audit evidence before claiming complete data-rights UX. | Partial | issue #55; identity-owned core exists but concrete domain participation, durable orchestration/reconciliation, recent-auth and delivery/audit lifecycle remain incomplete |
 
 ### Integration and extensibility
 
@@ -172,7 +172,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-WEB-001 | Provide responsive installable PWA behavior on phone/tablet/desktop. | Implemented on protected main | `mobile.pwa` |
 | PRD-WEB-002 | Make core journeys keyboard operable with visible focus and non-color-only status. | Implemented on protected main | accessibility tests/e2e |
 | PRD-WEB-003 | Provide structurally complete Korean and English message catalogs. | Implemented on protected main | `accessibility.localization` / changelog |
-| PRD-WEB-004 | Preserve/recover explicitly local offline drafts without silently uploading them. | Partial | local Today draft distinction exists; complete offline conflict recovery remains a product gap |
+| PRD-WEB-004 | Preserve/recover explicitly local offline drafts without silently uploading them. | Partial | local Today draft distinction exists; complete reconnect/conflict recovery overlaps issue #121 |
 
 ### Backup, deployment and operations
 
