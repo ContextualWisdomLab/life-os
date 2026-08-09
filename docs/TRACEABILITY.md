@@ -23,8 +23,8 @@ An entry marked `Implemented on active PR` is not protected-main evidence.
 | PRD-PLAN-005 full durable Today optimistic multi-device sync | Partial | issue #121 | durable planning exists; full aggregate contract not yet canonical protected-main evidence | require conflict/offline/multi-device integration evidence before upgrading |
 | PRD-HAB-001 recurring habit + history | Implemented on protected main | `habit.recurring-core` | `apps/habit-service/` | habit service/PostgreSQL integration tests |
 | PRD-REV-001 guided review | Implemented on protected main | `review.guided-loop` | `apps/review-service/` | review service integration tests |
-| PRD-CAL-001 calendar synchronization | Implemented on protected main | `calendar.time-blocking` | `apps/integration-calendar-service/` | calendar sync integration tests |
-| PRD-CAL-003 hosted per-user Google token lifecycle | Partial | issue #51 follow-up boundary | current adapter uses operator-supplied runtime token in documented slice | README explicitly defers per-user storage/refresh/revocation |
+| PRD-CAL-001 calendar synchronization | Implemented on protected main | `calendar.time-blocking`; completed issue #51 | `apps/integration-calendar-service/` | calendar sync integration tests |
+| PRD-CAL-003 hosted per-user Google token lifecycle | Partial | issue #129 | current adapter uses operator-supplied runtime token in documented slice | encrypted per-user storage/refresh/revocation/provider-selection gap is explicit |
 | PRD-NOT-001 bounded reminders | Implemented on protected main | `notifications.reminders` | `apps/notification-service/src/reminder-scheduler.ts` | scheduler/integration tests; `docs/operations/notification-persistence.md` |
 | PRD-NOT-002 durable claim/retry/idempotency | Implemented on protected main | notification persistence | `postgres-reminder-repository.ts` + runtime | PostgreSQL/concurrency integration tests |
 | PRD-AI-001 inert proposals | Implemented on protected main | ADR-0004 / AI service | proposal service/audit domain | no-silent-mutation + proposal tests |
@@ -34,7 +34,7 @@ An entry marked `Implemented on active PR` is not protected-main evidence.
 | PRD-AI-006 autonomous OpenCode development loop | Implemented on active PR | PR #122 / issue #120 | `feat/opencode-commercial-development-loop` | not protected-main evidence until merge |
 | PRD-PRIV-001 purpose-bound sensitive access | Implemented on protected main | ADR-0005 | `apps/privacy-service/` | privacy service PostgreSQL/security tests |
 | PRD-PRIV-002 bounded grants + append-only evidence | Implemented on protected main | privacy access domain | privacy decision/grant/event persistence | exact expiry/concurrency/immutability tests |
-| PRD-PRIV-004 end-user export/deletion UX | Partial | issue #55 | identity/privacy/legal pieces exist | complete tenant export/deletion orchestration remains an explicit live issue |
+| PRD-PRIV-004 end-user export/deletion UX | Partial | issue #55 | identity-owned data-rights core exists | concrete domain adapters, durable orchestration/reconciliation, recent-auth enforcement and delivery/audit follow-ups remain open |
 | PRD-INT-001 versioned plugin contract | Implemented on protected main | plugin integration | `packages/plugin-sdk/`, `apps/integration-service/` | plugin contract integration tests |
 | PRD-INT-003 plugin install/secrets/outbound delivery | Planned | plugin follow-up boundary | no shipped generic authority claim | requires separate auth/SSRF/audit design and tests |
 | PRD-WEB-001 installable responsive PWA | Implemented on protected main | `mobile.pwa` | manifest/service worker/web app | `mobile-pwa.spec.ts` |
@@ -71,13 +71,13 @@ When sources disagree, use this order:
 
 ## 5. Known gaps exposed by this baseline
 
-The maintenance loop must refetch issues/PRs and protected main before selecting work. At this baseline the live issue queue confirms several product gaps that the generated commercial-readiness score does not currently surface as unresolved capability gaps.
+The maintenance loop must refetch issues/PRs and protected main before selecting work. At this baseline the live issue queue confirms product gaps that the generated commercial-readiness score does not currently surface as unresolved capability gaps.
 
 ### Highest-impact known gaps
 
 1. **Issue #121 — durable Today workspace synchronization / optimistic concurrency.** Durable planning exists, but complete multi-device/local-draft migration/conflict flow is not proven as one protected-main vertical slice.
-2. **Issue #55 — complete tenant export and deletion orchestration.** Privacy access controls and legal docs are strong, but the customer-facing data-rights lifecycle remains incomplete.
-3. **Issue #51 follow-up — hosted per-user calendar credential lifecycle.** Calendar provider adapters exist; durable encrypted token storage/refresh/revocation/discovery remains explicitly deferred in current README.
+2. **Issue #55 — complete tenant export and deletion orchestration.** The identity-owned core export/erasure coordinator is implemented, but complete domain participation, durable request/receipt/reconciliation, gateway recent-auth, retention/legal-hold/backup-expiry, encrypted delivery and download-audit follow-ups remain incomplete.
+3. **Issue #129 — hosted per-user calendar credential lifecycle.** Conflict-safe CalDAV and Google provider adapters exist; encrypted per-user credential persistence/refresh/revocation/discovery/selection remains incomplete. The original CalDAV issue #51 is closed as completed rather than being kept open to represent a different product gap.
 4. **Plugin runtime last mile.** Versioned contract exists; install/secret/outbound delivery/inbound commands need explicit least-authority, SSRF and audit design before productization.
 5. **Offline/PWA durable reconciliation.** Installable PWA/local draft distinction exists; complete reconnect/conflict recovery is not yet a protected-main product claim and overlaps issue #121.
 6. **Stable release evidence.** Active development remains under `Unreleased`; integrated release gates must pass together before version/tag/release claims.
@@ -88,9 +88,11 @@ The maintenance loop must refetch issues/PRs and protected main before selecting
 
 ## 6. Commercial-readiness scoring caveat
 
-Issue #21 currently reports `22/22` capabilities at target and zero unresolved buyer gaps from the configured capability manifest, while live issues #121 and #55 explicitly describe incomplete high-impact customer journeys. Therefore `product/capabilities.json` maturity is valuable evidence for its registered capability set but is **not sufficient by itself to prove whole-product gap exhaustion**.
+Issue #21 currently reports `22/22` capabilities at target and zero unresolved buyer gaps from the configured capability manifest, while live issues #121, #55 and #129 explicitly describe incomplete high-impact customer journeys. The audit currently derives capability gaps from static configured evidence maturity; file/test existence for the registered slice can therefore reach target even when a broader customer outcome has accepted follow-up work.
 
-The autonomous maintenance loop must combine capability-manifest evidence with open issues, end-to-end PRD journey coverage, canonical traceability, operator/release acceptance and fresh source inspection. A 100% configured maturity score is not equivalent to a complete product.
+**Issue #128 now tracks this audit defect.** Commercial readiness must distinguish configured capability-evidence maturity from whole-product buyer-gap exhaustion and reconcile gap identity deterministically without treating arbitrary untrusted issue prose as executable policy.
+
+Until #128 is implemented, `product/capabilities.json` maturity is useful evidence for its registered capability set but is **not sufficient by itself to prove whole-product gap exhaustion**. The autonomous maintenance loop must combine it with open canonical gap state, end-to-end PRD journey coverage, this traceability matrix, operator/release acceptance and fresh source inspection. A 100% configured maturity score is not equivalent to a complete product.
 
 ## 7. Updating traceability
 
