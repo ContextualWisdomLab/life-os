@@ -11,6 +11,7 @@ import {
   mergePullRequestThroughApi,
   syncReadinessIssue,
 } from './github-client.mjs';
+import { validateProductGapRegistry } from './product-gap-schema.mjs';
 import { renderCommercialReadinessIssue } from './render.mjs';
 import {
   validateCapabilityManifest,
@@ -185,18 +186,22 @@ async function commandAudit(options) {
     'outputJson',
     'outputMarkdown',
   ]);
-  const [manifestValue, snapshotValue, policy] = await Promise.all([
-    readJsonFile(options.manifest),
-    readJsonFile(options.snapshot),
-    loadPolicy(options.policy),
-  ]);
+  const [manifestValue, productGapValue, snapshotValue, policy] =
+    await Promise.all([
+      readJsonFile(options.manifest),
+      readJsonFile(resolve(options.root, 'product/product-gaps.json')),
+      readJsonFile(options.snapshot),
+      loadPolicy(options.policy),
+    ]);
   const manifest = validateCapabilityManifest(manifestValue);
+  const productGapRegistry = validateProductGapRegistry(productGapValue);
   const snapshot = validateGitHubSnapshot(snapshotValue);
   const report = await evaluateCapabilities(manifest, {
     rootDir: options.root,
     generatedAt: snapshot.generated_at,
     commitSha: snapshot.commit_sha,
     openIssues: snapshot.issues,
+    registeredProductGaps: productGapRegistry.gaps,
   });
   const markdown = renderCommercialReadinessIssue(report, snapshot, {
     marker: policy.readiness_issue_marker,
