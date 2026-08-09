@@ -1,0 +1,21 @@
+{
+  "schema": "life-os.product-gap-registry.v1",
+  "gaps": [
+    {
+      "capability_id": "automation.commercial-readiness-loop",
+      "tracking_issue": 128
+    },
+    {
+      "capability_id": "today.action-loop",
+      "tracking_issue": 121
+    },
+    {
+      "capability_id": "data.portability-rights",
+      "tracking_issue": 55
+    },
+    {
+      "capability_id": "calendar.time-blocking",
+      "tracking_issue": 129
+    }
+  ]
+}
