@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
@@ -59,18 +59,20 @@ async function withTemporaryDatabase(
   const adminPool = new Pool({
     connectionString: databaseUrl(sourceUrl, 'postgres'),
   });
+  let adminClient: PoolClient | undefined;
   let migrationPool: Pool | undefined;
   let lockHeld = false;
 
   try {
-    await adminPool.query('SELECT pg_advisory_lock($1::bigint)', [
+    adminClient = await adminPool.connect();
+    await adminClient.query('SELECT pg_advisory_lock($1::bigint)', [
       TEMPORARY_DATABASE_LOCK_KEY,
     ]);
     lockHeld = true;
-    await adminPool.query(
+    await adminClient.query(
       'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
     );
-    await adminPool.query('CREATE DATABASE life_os_identity_migration_test');
+    await adminClient.query('CREATE DATABASE life_os_identity_migration_test');
     migrationPool = new Pool({
       connectionString: databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME),
     });
@@ -81,18 +83,19 @@ async function withTemporaryDatabase(
       await migrationPool?.end();
     } finally {
       try {
-        if (lockHeld) {
+        if (lockHeld && adminClient) {
           try {
-            await adminPool.query(
+            await adminClient.query(
               'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
             );
           } finally {
-            await adminPool.query('SELECT pg_advisory_unlock($1::bigint)', [
+            await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
               TEMPORARY_DATABASE_LOCK_KEY,
             ]);
           }
         }
       } finally {
+        adminClient?.release();
         await adminPool.end();
       }
     }
