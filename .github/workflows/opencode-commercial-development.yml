@@ -26,6 +26,28 @@ jobs:
       contents: write
       issues: read
       pull-requests: write
+    env:
+      AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      AI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout exact main source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -185,9 +207,10 @@ jobs:
           command -v ip6tables > /dev/null
           sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_model
           sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_bridge
-          model_workspace="$RUNNER_TEMP/opencode-model-${{ steps.branch.outputs.run_id }}"
-          model_home="$RUNNER_TEMP/opencode-model-home-${{ steps.branch.outputs.run_id }}"
-          model_store="$RUNNER_TEMP/opencode-pnpm-store-${{ steps.branch.outputs.run_id }}"
+          run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          model_workspace="$RUNNER_TEMP/opencode-model-${run_id}"
+          model_home="$RUNNER_TEMP/opencode-model-home-${run_id}"
+          model_store="$RUNNER_TEMP/opencode-pnpm-store-${run_id}"
           install -d -m 0755 "$model_workspace"
           install -d -m 0700 "$model_home" "$model_store"
           rsync -a \
@@ -201,40 +224,46 @@ jobs:
           cp "$RECEIPT_DIR/prompt.txt" "$model_workspace/.opencode-task.md"
           trusted_store="$(pnpm store path)"
           rsync -a "$trusted_store/" "$model_store/"
-          cat > "$model_home/opencode.json" <<JSON
-          {
-            "$schema": "https://opencode.ai/config.json",
-            "autoupdate": false,
-            "share": "disabled",
-            "provider": {
-              "nvidia": {
-                "options": {
-                  "baseURL": "http://127.0.0.1:${NIM_BRIDGE_PORT}/v1",
-                  "apiKey": "local-loopback-placeholder"
-                }
-              }
-            },
-            "permission": {
-              "external_directory": "deny",
-              "webfetch": "deny",
-              "websearch": "deny",
-              "question": "deny",
-              "doom_loop": "deny",
-              "bash": {
-                "*": "deny",
-                "pnpm *": "allow",
-                "node *": "allow",
-                "python3 *": "allow",
-                "grep *": "allow",
-                "rg *": "allow",
-                "find *": "allow",
-                "ls *": "allow",
-                "cat *": "allow"
-              }
-            }
+          MODEL_HOME="$model_home" NIM_BRIDGE_PORT="$NIM_BRIDGE_PORT" python3 - <<'PYCONFIG'
+          import json
+          import os
+          from pathlib import Path
+
+          config = {
+              '$schema': 'https://opencode.ai/config.json',
+              'autoupdate': False,
+              'share': 'disabled',
+              'provider': {
+                  'nvidia': {
+                      'options': {
+                          'baseURL': f"http://127.0.0.1:{os.environ['NIM_BRIDGE_PORT']}/v1",
+                          'apiKey': 'local-loopback-placeholder',
+                      },
+                  },
+              },
+              'permission': {
+                  'external_directory': 'deny',
+                  'webfetch': 'deny',
+                  'websearch': 'deny',
+                  'question': 'deny',
+                  'doom_loop': 'deny',
+                  'bash': {
+                      '*': 'deny',
+                      'pnpm *': 'allow',
+                      'node *': 'allow',
+                      'python3 *': 'allow',
+                      'grep *': 'allow',
+                      'rg *': 'allow',
+                      'find *': 'allow',
+                      'ls *': 'allow',
+                      'cat *': 'allow',
+                  },
+              },
           }
-          JSON
-          chmod 0600 "$model_home/opencode.json"
+          path = Path(os.environ['MODEL_HOME']) / 'opencode.json'
+          path.write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
+          path.chmod(0o600)
+          PYCONFIG
           sudo chown -R opencode_model:opencode_model "$model_workspace" "$model_home" "$model_store"
           chmod 0700 "$GITHUB_WORKSPACE"
           model_uid="$(id -u opencode_model)"
@@ -254,6 +283,7 @@ jobs:
             echo "MODEL_HOME=$model_home"
             echo "MODEL_STORE=$model_store"
             echo "MODEL_UID=$model_uid"
+            echo 'MODEL_NETWORK_PHASE=model'
           } >> "$GITHUB_ENV"
 
       - name: Start loopback NVIDIA credential bridge
@@ -391,10 +421,9 @@ jobs:
       - name: Run one bounded OpenCode implementation
         id: model
         if: steps.bridge.outputs.available == 'true'
-        env:
-          OPENCODE_MODEL: ${{ steps.branch.outputs.model_label }}
         run: |
           set -Eeuo pipefail
+          OPENCODE_MODEL="$(jq -r '.model_label' "$RECEIPT_DIR/run.json")"
           set +e
           sudo -u opencode_model env -i \
             HOME="$MODEL_HOME" \
@@ -408,6 +437,25 @@ jobs:
           status=$?
           set -e
           chmod 0600 "$RECEIPT_DIR/opencode.log"
+
+          sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
+          for _ in $(seq 1 20); do
+            if ! pgrep --euid opencode_model >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.25
+          done
+          if pgrep --euid opencode_model >/dev/null 2>&1; then
+            echo '::error::model_process_cleanup_failed'
+            sudo pkill --signal KILL --euid opencode_model 2>/dev/null || true
+            status=70
+          fi
+          sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true
+          sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$MODEL_UID" -d 127.0.0.0/8 -j REJECT
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport 5432 -j ACCEPT
+          echo 'MODEL_NETWORK_PHASE=verification' >> "$GITHUB_ENV"
+
           if [ "$status" -eq 0 ]; then
             echo 'available=true' >> "$GITHUB_OUTPUT"
             echo 'reason=completed' >> "$GITHUB_OUTPUT"
@@ -416,7 +464,7 @@ jobs:
             echo 'reason=provider_unavailable' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Materialize candidate through trusted boundary
+      - name: Capture candidate through trusted boundary
         id: diff
         if: steps.model.outputs.available == 'true'
         run: |
@@ -618,40 +666,108 @@ jobs:
           if [ "$accepted" != 'true' ]; then
             exit 0
           fi
-          rsync -rt --delete \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='coverage' \
-            --exclude='dist' \
-            --exclude='build' \
-            --exclude='.opencode-task.md' \
-            --exclude='.github' \
-            --exclude='packages/commercial-development-agent' \
-            --exclude='product/opencode-commercial-development-policy.json' \
-            --exclude='package.json' \
-            --exclude='pnpm-lock.yaml' \
-            --exclude='pnpm-workspace.yaml' \
-            "$MODEL_WORKSPACE/" "$GITHUB_WORKSPACE/"
-          git diff --check
 
       - name: Verify the accepted repository change
         id: verification
         if: steps.diff.outputs.accepted == 'true'
         run: |
           set +e
-          pnpm format:check && \
-          pnpm lint && \
-          pnpm typecheck && \
-          pnpm test && \
-          pnpm build && \
-          docker compose config > /dev/null
+          sudo -u opencode_model env -i \
+            HOME="$MODEL_HOME" \
+            PATH="$PATH" \
+            AI_DATABASE_URL="$AI_DATABASE_URL" \
+            AI_TEST_DATABASE_URL="$AI_TEST_DATABASE_URL" \
+            IDENTITY_DATABASE_URL="$IDENTITY_DATABASE_URL" \
+            PLANNING_DATABASE_URL="$PLANNING_DATABASE_URL" \
+            HABIT_DATABASE_URL="$HABIT_DATABASE_URL" \
+            NOTIFICATION_DATABASE_URL="$NOTIFICATION_DATABASE_URL" \
+            PRIVACY_DATABASE_URL="$PRIVACY_DATABASE_URL" \
+            bash -c 'cd "$1" && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && docker compose config >/dev/null' \
+              _ "$MODEL_WORKSPACE" \
+            > "$RECEIPT_DIR/verification.log" 2>&1
           status=$?
+          sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
           set -e
+          chmod 0600 "$RECEIPT_DIR/verification.log"
           if [ "$status" -eq 0 ]; then
             echo 'passed=true' >> "$GITHUB_OUTPUT"
           else
             echo 'passed=false' >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Materialize verified candidate through trusted boundary
+        if: steps.verification.outputs.passed == 'true'
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PYMATERIALIZE'
+          import json
+          import os
+          import pathlib
+          import stat
+          import tempfile
+
+          root = pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          candidate = pathlib.Path(os.environ['MODEL_WORKSPACE'])
+          receipt_dir = pathlib.Path(os.environ['RECEIPT_DIR'])
+          evidence = json.loads((receipt_dir / 'diff.json').read_text(encoding='utf-8'))
+          changed_paths = []
+
+          for item in evidence['files']:
+              relative = pathlib.PurePosixPath(item['path'])
+              candidate_path = candidate.joinpath(*relative.parts)
+              target_path = root.joinpath(*relative.parts)
+              changed_paths.append(item['path'])
+
+              if item['status'] == 'D':
+                  if os.path.lexists(candidate_path):
+                      raise SystemExit('post_verification_candidate_changed')
+                  if target_path.exists() or target_path.is_symlink():
+                      metadata = target_path.lstat()
+                      if not stat.S_ISREG(metadata.st_mode):
+                          raise SystemExit('post_verification_candidate_changed')
+                      target_path.unlink()
+                  continue
+
+              if not candidate_path.exists() or candidate_path.is_symlink():
+                  raise SystemExit('post_verification_candidate_changed')
+              metadata = candidate_path.lstat()
+              if not stat.S_ISREG(metadata.st_mode):
+                  raise SystemExit('post_verification_candidate_changed')
+              payload = candidate_path.read_bytes()
+              expected = item['content'].encode('utf-8')
+              if payload != expected or len(payload) != item['bytes']:
+                  raise SystemExit('post_verification_candidate_changed')
+
+              target_path.parent.mkdir(parents=True, exist_ok=True)
+              parent = target_path.parent
+              cursor = parent
+              while cursor != root:
+                  if cursor.is_symlink():
+                      raise SystemExit('post_verification_candidate_changed')
+                  cursor = cursor.parent
+              mode = 0o644
+              if target_path.exists():
+                  target_metadata = target_path.lstat()
+                  if not stat.S_ISREG(target_metadata.st_mode):
+                      raise SystemExit('post_verification_candidate_changed')
+                  mode = stat.S_IMODE(target_metadata.st_mode)
+              descriptor, temporary_name = tempfile.mkstemp(prefix='.opencode-', dir=parent)
+              try:
+                  with os.fdopen(descriptor, 'wb') as output:
+                      output.write(payload)
+                      output.flush()
+                      os.fsync(output.fileno())
+                  os.chmod(temporary_name, mode)
+                  os.replace(temporary_name, target_path)
+              finally:
+                  if os.path.exists(temporary_name):
+                      os.unlink(temporary_name)
+
+          (receipt_dir / 'changed-paths.z').write_bytes(
+              b''.join(path.encode('utf-8') + b'\0' for path in changed_paths)
+          )
+          PYMATERIALIZE
+          git diff --check
 
       - name: Recheck the exact main base before remote mutation
         id: base
@@ -673,16 +789,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          branch='${{ steps.branch.outputs.branch_name }}'
-          issue_number='${{ steps.selection.outputs.issue_number }}'
+          run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          branch="automation/opencode-commercial-${run_id}"
+          issue_number="$(jq -r '.number' "$RECEIPT_DIR/selected-issue.json")"
+          selected_issue_digest="$(jq -cS '{number,url,title,body,state}' "$RECEIPT_DIR/selected-issue.json" | sha256sum | awk '{print $1}')"
+          authorization="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+          remote_branch_created=false
+          pull_request_created=false
+
+          assert_live_lease() {
+            current_main="$(timeout 30s git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+            test "$current_main" = "$BASE_SHA"
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=1" --jq 'length')" = '0'
+            live_issue_digest="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" --jq '{number,url:.html_url,title,body:(.body // ""),state}' | jq -cS . | sha256sum | awk '{print $1}')"
+            test "$live_issue_digest" = "$selected_issue_digest"
+            remote_sha="$(git ls-remote origin "refs/heads/$branch" | awk 'NR == 1 {print $1}')"
+            if [ -n "$remote_sha" ] && [ "$remote_sha" != "$local_sha" ]; then
+              echo '::error::remote automation branch changed concurrently'
+              exit 1
+            fi
+          }
+
+          cleanup_remote_branch() {
+            if [ "$remote_branch_created" = true ] && [ "$pull_request_created" != true ]; then
+              git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${authorization}" \
+                push origin --delete "$branch" || true
+            fi
+          }
+          trap cleanup_remote_branch EXIT
+
           git config user.name 'opencode-commercial-development[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add --pathspec-from-file="$RECEIPT_DIR/changed-paths.z" --pathspec-file-nul
           git diff --cached --check
           git commit -m "feat: implement bounded buyer gap from issue #${issue_number}"
-          authorization="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+          local_sha="$(git rev-parse HEAD)"
+          assert_live_lease
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${authorization}" \
             push origin "HEAD:${branch}"
+          remote_branch_created=true
+          assert_live_lease
           pull_request_url="$(gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base main \
@@ -690,6 +836,8 @@ jobs:
             --draft \
             --title "feat: implement bounded buyer gap from issue #${issue_number}" \
             --body "Automated bounded implementation for #${issue_number}. This draft requires the normal exact-head checks, human and automated review, and no-bypass merge loop.")"
+          pull_request_created=true
+          trap - EXIT
           echo "pull_request_url=$pull_request_url" >> "$GITHUB_OUTPUT"
           echo 'created=true' >> "$GITHUB_OUTPUT"
 
@@ -811,13 +959,16 @@ jobs:
         if: always()
         run: |
           set +e
-          if id opencode_bridge >/dev/null 2>&1; then
-            sudo pkill -u opencode_bridge -f nim-bridge.py
-          fi
+          sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true
+          sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
           if [ -n "${MODEL_UID:-}" ]; then
-            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT
-            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT
-            sudo ip6tables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT
+            if [ "${MODEL_NETWORK_PHASE:-}" = 'verification' ]; then
+              sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport 5432 -j ACCEPT 2>/dev/null || true
+              sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.0/8 -j REJECT 2>/dev/null || true
+            fi
+            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT 2>/dev/null || true
+            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT 2>/dev/null || true
+            sudo ip6tables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT 2>/dev/null || true
           fi
           chmod 0755 "$GITHUB_WORKSPACE" 2>/dev/null
           sudo rm -rf \
@@ -829,12 +980,14 @@ jobs:
             "$RECEIPT_DIR/prompt.json" \
             "$RECEIPT_DIR/prompt.txt" \
             "$RECEIPT_DIR/opencode.log" \
+            "$RECEIPT_DIR/verification.log" \
             "$RECEIPT_DIR/nim-bridge.py" \
             "$RECEIPT_DIR/issues.json" \
             "$RECEIPT_DIR/pulls.json" \
             "$RECEIPT_DIR/selected-issue.json" \
             "$RECEIPT_DIR/diff.json" \
             "$RECEIPT_DIR/diff-decision.json" \
+            "$RECEIPT_DIR/changed-paths.z" \
             "$RECEIPT_DIR/receipt-input.json" \
             "$RECEIPT_DIR/github-snapshot.json" \
             "$RECEIPT_DIR/commercial-readiness.json" \
