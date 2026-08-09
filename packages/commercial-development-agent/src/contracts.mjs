@@ -7,7 +7,7 @@ const VALIDATION_NAME_PATTERN = /^[a-z][a-z0-9_]{1,63}$/u;
 const MODEL_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const UNTRUSTED_TEXT_CONTROL_CHARACTER_PATTERN =
-  /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/u;
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const SECRET_SHAPED_PATTERN = /^(?:sk-|nvapi-|gh[pousr]_)/iu;
 const LIFE_OS_ISSUE_OR_PULL_PATTERN =
   /^https:\/\/github\.com\/ContextualWisdomLab\/life-os\/(issues|pull)\/([1-9]\d*)$/u;
@@ -520,7 +520,7 @@ export function validateCommercialDevelopmentReceipt(value) {
     pattern: VALIDATION_NAME_PATTERN,
   });
   if (
-    !(status in RECEIPT_REASON_CODES) ||
+    !Object.hasOwn(RECEIPT_REASON_CODES, status) ||
     !RECEIPT_REASON_CODES[status].has(reasonCode)
   ) {
     return invalid();
