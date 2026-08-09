@@ -27,7 +27,7 @@ function manifest() {
         acquisition_impact: 5,
         effort: 4,
         dependencies: [],
-        tracking_issue: 121,
+        tracking_issue: null,
         evidence: [
           {
             maturity: 'production',
@@ -44,6 +44,9 @@ function manifest() {
 const evaluation = {
   generatedAt: '2026-08-09T11:00:00.000Z',
   commitSha: 'a'.repeat(40),
+  registeredProductGaps: [
+    { capability_id: 'today.action-loop', tracking_issue: 121 },
+  ],
 };
 
 describe('registered product gap reconciliation', () => {
