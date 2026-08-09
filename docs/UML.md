@@ -2,11 +2,13 @@
 
 **Baseline:** protected `main` at `876850018a17323900844e79845ba395b7bf6a9a`
 
-These diagrams are architecture documentation, not proof that every target path is fully implemented. Sections explicitly state current status. Service names and authority boundaries must remain synchronized with protected-main code.
+These diagrams are architecture documentation, not proof that every target path is fully implemented. Sections explicitly state current status. Service names and authority boundaries must remain synchronized with protected-main code and current active-PR evidence.
 
 ## 1. Component / bounded-context view
 
-**Status:** Implemented on protected main, with some external-credential/product journeys partial.
+**Status:** Implemented on protected main
+
+The bounded contexts and service-owned persistence ports shown here exist on protected main. Some external-credential and complete buyer journeys remain partial and are called out in the scoped sections below.
 
 ```mermaid
 flowchart TB
@@ -57,7 +59,9 @@ Each database edge above represents only the owning service's persistence port. 
 
 ## 2. Login and workspace authorization sequence
 
-**Status:** Identity OAuth/session behavior implemented; exact personal-workspace provisioning details follow identity protected-main source.
+**Status:** Implemented on protected main
+
+Identity OAuth/session behavior is implemented. Exact personal-workspace provisioning details follow current identity protected-main source and tests rather than this diagram alone.
 
 ```mermaid
 sequenceDiagram
@@ -89,7 +93,9 @@ Provider credentials and browser cookies do not become arbitrary downstream-serv
 
 ## 3. Goal → Project → Task and Habit lifecycle
 
-**Status:** Goal/project/task and recurring-habit persistence are implemented. This is a logical domain flow; physical relationships follow planning/habit service implementations. Milestones/task dependencies from historical planning are not shown as protected-main persisted states; see `docs/DATA_MODEL.md`.
+**Status:** Implemented on protected main
+
+Goal/project/task and recurring-habit persistence are implemented. This is a logical domain flow; physical relationships follow planning/habit service implementations. Milestones/task dependencies from historical planning are not shown as protected-main persisted states; see `docs/DATA_MODEL.md`.
 
 ```mermaid
 stateDiagram-v2
@@ -114,7 +120,9 @@ Review evidence does not directly rewrite planning/habit source-of-truth records
 
 ## 4. Today planning and stale-state boundary
 
-**Status:** Today action loop and local-draft/durable-record distinction are implemented. Full multi-device optimistic-concurrency synchronization of a complete durable Today aggregate is partial / issue #121.
+**Status:** Implemented on active PR
+
+Protected main already has the Today action loop and local-draft/durable-record distinction. PR #127 implements the complete bounded durable Today aggregate, explicit local-to-durable synchronization, optimistic concurrency, idempotency and conflict/recheck browser journey for issue #121. This sequence must not be treated as protected-main evidence until that exact PR head merges.
 
 ```mermaid
 sequenceDiagram
@@ -125,28 +133,30 @@ sequenceDiagram
 
     User->>Browser: Capture / select Today priorities
     Browser->>Browser: Maintain explicitly labeled local draft state
-    Browser->>Gateway: Search or durable planning request
-    Gateway->>Planning: Tenant-scoped request
-    Planning-->>Gateway: Durable goals/projects/tasks + revision evidence where available
+    Browser->>Gateway: Check current durable Today state
+    Gateway->>Planning: Tenant-scoped GET / durable aggregate lookup
+    Planning-->>Gateway: Durable aggregate + strong revision evidence
     Gateway-->>Browser: Current durable evidence
     Browser->>Browser: Discard stale async response if ownership/query/navigation changed
-    User->>Browser: Explicit durable mutation
-    Browser->>Gateway: Mutation + concurrency/idempotency evidence
-    Gateway->>Planning: Authorized write
+    User->>Browser: Explicit save/load/reconcile action
+    Browser->>Gateway: Mutation + If-Match/If-None-Match + idempotency evidence
+    Gateway->>Planning: Authorized write derived from session workspace
     alt preconditions current
         Planning-->>Gateway: Accepted durable revision
         Gateway-->>Browser: Confirm durable state
     else stale/conflicting
         Planning-->>Gateway: Credential-free conflict/current revision evidence
-        Gateway-->>Browser: Reconcile explicitly; no silent overwrite
+        Gateway-->>Browser: Recheck and reconcile explicitly; no silent overwrite
     end
 ```
 
-The final full-aggregate concurrency contract is a product gap until current protected-main code proves it end-to-end.
+Issue #121 remains open until the reviewed implementation is protected-main evidence and its acceptance gates are complete.
 
 ## 5. Reminder delivery sequence
 
-**Status:** Implemented on protected main for durable PostgreSQL reminder scheduling/in-app delivery behavior.
+**Status:** Implemented on protected main
+
+This sequence describes durable PostgreSQL reminder scheduling and in-app delivery behavior.
 
 ```mermaid
 sequenceDiagram
@@ -172,7 +182,9 @@ sequenceDiagram
 
 ## 6. Calendar synchronization sequence
 
-**Status:** CalDAV/Google provider adapters implemented; hosted per-user Google credential persistence/refresh/revocation/provider selection is partial / issue #129.
+**Status:** Implemented on protected main
+
+CalDAV/Google provider adapters are implemented. Hosted per-user Google credential persistence, refresh, revocation and provider/calendar selection remain `Partial` under issue #129.
 
 ```mermaid
 sequenceDiagram
@@ -200,7 +212,9 @@ sequenceDiagram
 
 ## 7. AI proposal and explicit decision sequence
 
-**Status:** Implemented on protected main for proposal generation/persistence/evidence/decision history. This diagram does not imply automatic planning mutation.
+**Status:** Implemented on protected main
+
+Proposal generation, persistence, evidence and decision history are implemented. This diagram does not imply automatic planning mutation.
 
 ```mermaid
 sequenceDiagram
@@ -230,7 +244,9 @@ The AI service is not a generic planning command bus.
 
 ## 8. Purpose-bound privacy access sequence
 
-**Status:** Implemented on protected main for privacy-service authorization/grant/evidence core; user-facing data-rights UX remains partial / issue #55.
+**Status:** Implemented on protected main
+
+The privacy-service authorization/grant/evidence core is implemented. Complete user-facing export/deletion orchestration remains `Partial` under issue #55.
 
 ```mermaid
 sequenceDiagram
@@ -258,7 +274,9 @@ No other bounded service is permitted to use this `Store`; other services intera
 
 ## 9. Backup and restore state flow
 
-**Status:** Implemented logical dump/restore tier; PITR is not claimed.
+**Status:** Implemented on protected main
+
+The verified logical dump/restore tier is implemented. PITR is not claimed.
 
 ```mermaid
 stateDiagram-v2
@@ -279,7 +297,9 @@ stateDiagram-v2
 
 ## 10. Deployment topology
 
-**Status:** Compose and Kubernetes reference artifacts exist. Cluster, DB/NATS managed services, ingress/TLS/DNS, registry pipeline and secret manager remain operator-owned.
+**Status:** Implemented on protected main
+
+Compose and Kubernetes provider-neutral reference artifacts exist. Cluster, DB/NATS managed services, ingress/TLS/DNS, registry pipeline and secret manager remain operator-owned; `reference` describes scope rather than a separate implementation status.
 
 ```mermaid
 flowchart TB
