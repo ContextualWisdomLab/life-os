@@ -1,0 +1,63 @@
+name: PR140 guarded current-main integration
+
+on:
+  push:
+    branches:
+      - docs/canonical-product-architecture-baseline-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr140-guarded-main-integration
+  cancel-in-progress: false
+
+env:
+  EXPECTED_MAIN_SHA: f4cae6d83eadb00019d2962a650c55c59a3349ae
+
+jobs:
+  merge-main:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pushed branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Guard branch and live main
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_remote="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test "$current_remote" = "$GITHUB_SHA"
+          git fetch --no-tags origin main
+          actual_main="$(git rev-parse origin/main)"
+          test "$actual_main" = "$EXPECTED_MAIN_SHA"
+          if git merge-base --is-ancestor "$EXPECTED_MAIN_SHA" HEAD; then
+            echo 'Expected main is already an ancestor; no repair is needed.' >&2
+            exit 1
+          fi
+
+      - name: Merge protected main without rewriting history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-ff --no-commit -X ours "$EXPECTED_MAIN_SHA"
+          git rm --quiet .github/workflows/pr140-merge-current-main.yml
+          git diff --cached --check
+          git commit -m 'chore(docs): integrate protected main into canonical baseline'
+
+      - name: Verify exact merge parents and non-force push
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^1)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_MAIN_SHA"
+          current_remote="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test "$current_remote" = "$GITHUB_SHA"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
