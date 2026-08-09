@@ -13,6 +13,11 @@ import {
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const TEST_DATABASE_NAME = 'life_os_data_rights_ledger_test';
+if (!/^[a-z][a-z0-9_]*$/u.test(TEST_DATABASE_NAME)) {
+  throw new Error('TEST_DATABASE_NAME must be a safe PostgreSQL identifier');
+}
+const DROP_TEST_DATABASE = `DROP DATABASE IF EXISTS "${TEST_DATABASE_NAME}" WITH (FORCE)`;
+const CREATE_TEST_DATABASE = `CREATE DATABASE "${TEST_DATABASE_NAME}"`;
 const MIGRATION_DIRECTORY = resolve(__dirname, '../migrations');
 
 class NodePostgresDataRightsClient implements DataRightsRequestSqlClient {
@@ -38,10 +43,8 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     const adminUrl = new URL(DATABASE_URL);
     adminUrl.pathname = '/postgres';
     adminPool = new Pool({ connectionString: adminUrl.toString() });
-    await adminPool.query(
-      'DROP DATABASE IF EXISTS life_os_data_rights_ledger_test WITH (FORCE)',
-    );
-    await adminPool.query('CREATE DATABASE life_os_data_rights_ledger_test');
+    await adminPool.query(DROP_TEST_DATABASE);
+    await adminPool.query(CREATE_TEST_DATABASE);
 
     const testUrl = new URL(DATABASE_URL);
     testUrl.pathname = `/${TEST_DATABASE_NAME}`;
@@ -62,9 +65,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     } finally {
       if (adminPool) {
         try {
-          await adminPool.query(
-            'DROP DATABASE IF EXISTS life_os_data_rights_ledger_test WITH (FORCE)',
-          );
+          await adminPool.query(DROP_TEST_DATABASE);
         } finally {
           await adminPool.end();
         }
@@ -122,6 +123,31 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         completedAt: '2026-08-09T19:45:00.000Z',
       }),
     ).resolves.toMatchObject({ kind: 'completed' });
+    await expect(
+      ledger.completeRequest({
+        requestId,
+        workspaceId,
+        receiptDigest,
+        completedAt: '2026-08-09T19:46:00.000Z',
+      }),
+    ).resolves.toMatchObject({ kind: 'replayed' });
+    await expect(
+      ledger.completeRequest({
+        requestId,
+        workspaceId,
+        receiptDigest: 'c'.repeat(64),
+        completedAt: '2026-08-09T19:46:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(DataRightsRequestConflictError);
+
+    await expect(
+      pool.query(
+        `UPDATE identity.data_rights_requests
+         SET receipt_digest = $2
+         WHERE request_id = $1::uuid`,
+        [requestId, 'd'.repeat(64)],
+      ),
+    ).rejects.toThrow();
 
     await pool.query(`DELETE FROM identity.workspaces WHERE id = $1::uuid`, [workspaceId]);
     await pool.query(`DELETE FROM identity.users WHERE id = $1::uuid`, [userId]);
@@ -184,5 +210,32 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         requestedAt: '2026-08-09T20:01:00.000Z',
       }),
     ).rejects.toBeInstanceOf(DataRightsRequestConflictError);
+  });
+
+  it('enforces request kind, digest, completion consistency, receipt digest, and time ordering constraints', async () => {
+    const base = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    const invalidRows: ReadonlyArray<readonly unknown[]> = [
+      [...base, 'invalid-kind', 'a'.repeat(64), 'pending', null, '2026-08-09T20:00:00.000Z', null],
+      [...base, 'export', 'not-a-digest', 'pending', null, '2026-08-09T20:00:00.000Z', null],
+      [...base, 'export', 'a'.repeat(64), 'completed', null, '2026-08-09T20:00:00.000Z', '2026-08-09T20:01:00.000Z'],
+      [...base, 'export', 'a'.repeat(64), 'completed', 'not-a-digest', '2026-08-09T20:00:00.000Z', '2026-08-09T20:01:00.000Z'],
+      [...base, 'export', 'a'.repeat(64), 'completed', 'b'.repeat(64), '2026-08-09T20:02:00.000Z', '2026-08-09T20:01:00.000Z'],
+    ];
+
+    for (const values of invalidRows) {
+      await expect(
+        pool.query(
+          `INSERT INTO identity.data_rights_requests (
+             request_id, workspace_id, requested_by_user_id, idempotency_key,
+             request_kind, request_digest, request_status, receipt_digest,
+             requested_at, completed_at
+           ) VALUES (
+             $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+             $5, $6, $7, $8, $9::timestamptz, $10::timestamptz
+           )`,
+          values,
+        ),
+      ).rejects.toThrow();
+    }
   });
 });
