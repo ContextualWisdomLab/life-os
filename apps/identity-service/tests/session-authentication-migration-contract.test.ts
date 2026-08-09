@@ -14,15 +14,22 @@ async function readMigration(fileName: string): Promise<string> {
   return readFile(resolve(process.cwd(), 'migrations', fileName), 'utf8');
 }
 
+/** Collapses SQL layout whitespace without changing the asserted SQL tokens. */
+function normalizeSql(source: string): string {
+  return source.replace(/\s+/gu, ' ').trim();
+}
+
 describe('session authentication-age migration contract', () => {
   it('stages authentication constraints before the full validation migration', async () => {
-    const migration = await readMigration(AUTHENTICATION_MIGRATION);
+    const migration = normalizeSql(
+      await readMigration(AUTHENTICATION_MIGRATION),
+    );
 
     expect(migration).toContain(
-      `CONSTRAINT sessions_authentication_present CHECK (authenticated_at IS NOT NULL) ${STAGED_VALIDATION_CLAUSE}`,
+      `ADD CONSTRAINT sessions_authentication_present CHECK (authenticated_at IS NOT NULL) ${STAGED_VALIDATION_CLAUSE}`,
     );
     expect(migration).toContain(
-      `CONSTRAINT sessions_authentication_not_after_creation CHECK (authenticated_at <= created_at) ${STAGED_VALIDATION_CLAUSE}`,
+      `ADD CONSTRAINT sessions_authentication_not_after_creation CHECK (authenticated_at <= created_at) ${STAGED_VALIDATION_CLAUSE}`,
     );
     expect(
       migration.includes(`ALTER COLUMN authenticated_at ${SET_NOT_NULL_CLAUSE}`),
@@ -31,7 +38,9 @@ describe('session authentication-age migration contract', () => {
   });
 
   it('validates both constraints before the short final not-null transition', async () => {
-    const migration = await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION);
+    const migration = normalizeSql(
+      await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION),
+    );
     const presenceValidation = migration.indexOf(
       `${VALIDATE_CONSTRAINT_CLAUSE} sessions_authentication_present`,
     );
@@ -46,6 +55,8 @@ describe('session authentication-age migration contract', () => {
     expect(chronologyValidation).toBeGreaterThanOrEqual(0);
     expect(notNullTransition).toBeGreaterThan(presenceValidation);
     expect(notNullTransition).toBeGreaterThan(chronologyValidation);
-    expect(migration).toMatch(/DROP CONSTRAINT sessions_authentication_present/u);
+    expect(migration).toContain(
+      'DROP CONSTRAINT sessions_authentication_present',
+    );
   });
 });
