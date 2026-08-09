@@ -37,7 +37,8 @@ flowchart TB
     D -->|No| I[Select one eligible buyer-gap issue]
     I --> P[Build bounded versioned OpenCode prompt]
     P --> O[OpenCode Agent]
-    N[NVIDIA_NIM_API_KEY] -->|OpenCode step only| O
+    N[NVIDIA_NIM_API_KEY] -->|Bridge step only| B[Loopback bridge as opencode_bridge]
+    B -->|Loopback provider API| O
     O --> W[Temporary UUIDv4 feature branch worktree]
     W --> V[Deterministic diff and policy validator]
     V -->|Rejected| R[Sanitized unavailable/rejected receipt]
@@ -47,7 +48,7 @@ flowchart TB
     G --> M
 ```
 
-The model step never receives the GitHub token. GitHub mutation occurs only in later deterministic steps after diff validation. The NVIDIA credential is scoped only to the OpenCode process and is not forwarded to tests, scripts, comments, artifacts, or pull-request bodies.
+The model step receives neither the GitHub token nor the NVIDIA credential. GitHub mutation occurs only in later deterministic steps after diff validation. A separate loopback bridge running as `opencode_bridge` receives `NVIDIA_NIM_API_KEY`; OpenCode runs as `opencode_model` with a placeholder API-key value and may reach only the bridge port during model execution. The credential is not forwarded to OpenCode, repository tests or scripts, comments, artifacts, or pull-request bodies.
 
 ## Central `.github` and modular MSA integration
 
@@ -57,7 +58,7 @@ The LifeOS package is repository-local and independently executable. Its inputs 
 central .github reusable workflow
   -> calls repository-local commercial-development-agent CLI
   -> supplies bounded GitHub event metadata
-  -> supplies NVIDIA_NIM_API_KEY only to OpenCode invocation
+  -> supplies NVIDIA_NIM_API_KEY only to the loopback credential bridge
   -> receives a sanitized receipt
 
 LifeOS repository
@@ -73,7 +74,7 @@ The existing review-agent credential scheme is untouched. The development agent 
 
 The initial slice may implement only an open same-repository issue that satisfies all conditions:
 
-- issue body is bounded and contains no control characters;
+- issue body is bounded, preserves TAB/CR/LF, and contains no prohibited control characters;
 - issue is not a pull request;
 - issue is not the living commercial-readiness issue;
 - issue does not request credential, secret, billing, branch-protection, repository visibility, release, destructive data, or external-account changes;
@@ -136,13 +137,17 @@ Initial hard limits:
 
 The workflow installs one exact OpenCode package version recorded in `pnpm-lock.yaml` and verifies `opencode --version` before use. It does not use an unpinned installer script, mutable action tag, or floating package version.
 
-The OpenCode process receives:
+A loopback NVIDIA credential bridge runs as `opencode_bridge` and alone receives `secrets.NVIDIA_NIM_API_KEY`. It forwards bounded chat-completion requests to NVIDIA NIM.
 
-- `NVIDIA_API_KEY`, mapped only for the process from `secrets.NVIDIA_NIM_API_KEY`;
+The OpenCode process runs as `opencode_model` and receives:
+
+- `NVIDIA_API_KEY=local-loopback-placeholder`;
 - one explicit NVIDIA provider/model identifier;
-- a private temporary OpenCode configuration;
+- a private provider configuration whose base URL points to the loopback bridge;
 - the bounded prompt;
-- a working directory on the temporary UUIDv4 branch.
+- a private source workspace without `.git`.
+
+UID-based `iptables` rules deny other model-process egress during model execution, allowing only the configured IPv4 loopback bridge port and denying IPv6. The bridge is terminated before repository verification.
 
 The process does not receive `GITHUB_TOKEN`, `GH_TOKEN`, `COPILOT_GITHUB_TOKEN`, browser credentials, review-agent secrets, deployment credentials, or unrelated repository secrets. Provider absence or outage produces `provider_unavailable`; it does not make the deterministic audit or merge drain fail.
 
@@ -279,7 +284,7 @@ National Institute of Standards and Technology. (2023). _Artificial intelligence
 
 National Institute of Standards and Technology. (2024). _Artificial intelligence risk management framework: Generative artificial intelligence profile_ (NIST AI 600-1). https://doi.org/10.6028/NIST.AI.600-1
 
-Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2026). _Learning to orchestrate agents in natural language with the Conductor_ [Conference paper]. International Conference on Learning Representations. https://openreview.net/pdf?id=4a133f1e2ca67ceaedb45c3a123cc8125c694ff5
+Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2026). _Learning to orchestrate agents in natural language with the Conductor_ [Conference paper]. International Conference on Learning Representations. https://openreview.net/forum?id=U23A2BUKYt
 
 NVIDIA Corporation. (2026). _API reference—NVIDIA NIM for large language models_. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
 
