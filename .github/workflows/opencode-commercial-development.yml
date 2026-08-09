@@ -117,12 +117,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           gh api \
+            --paginate \
             "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" \
-            --jq '[.[] | select(.pull_request == null) | {number, url: .html_url, title, body: (.body // ""), state}]' \
+            --jq '.[] | select(.pull_request == null) | {number, url: .html_url, title, body: (.body // ""), state}' \
+            | jq -s '.' \
             > "$RECEIPT_DIR/issues.json"
           gh api \
+            --paginate \
             "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
-            --jq '[.[] | {number, url: .html_url, title, body: (.body // ""), state}]' \
+            --jq '.[] | {number, url: .html_url, title, body: (.body // ""), state}' \
+            | jq -s '.' \
             > "$RECEIPT_DIR/pulls.json"
           chmod 0600 "$RECEIPT_DIR/issues.json" "$RECEIPT_DIR/pulls.json"
           open_count="$(jq 'length' "$RECEIPT_DIR/pulls.json")"
@@ -212,8 +216,10 @@ jobs:
           model_workspace="$RUNNER_TEMP/opencode-model-${run_id}"
           model_home="$RUNNER_TEMP/opencode-model-home-${run_id}"
           model_store="$RUNNER_TEMP/opencode-pnpm-store-${run_id}"
-          install -d -m 0755 "$model_workspace"
+          trusted_corepack_home="$RUNNER_TEMP/opencode-trusted-corepack-${run_id}"
+          install -d -m 0755 "$model_workspace" "$trusted_corepack_home"
           install -d -m 0700 "$model_home" "$model_store"
+          echo "TRUSTED_COREPACK_HOME=$trusted_corepack_home" >> "$GITHUB_ENV"
           rsync -a \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -221,10 +227,21 @@ jobs:
             --exclude='dist' \
             --exclude='build' \
             "$GITHUB_WORKSPACE/" "$model_workspace/"
+          git -C "$GITHUB_WORKSPACE" ls-files -z |
+            rsync -a --from0 --files-from=- \
+              "$GITHUB_WORKSPACE/" "$model_workspace/"
           test ! -e "$model_workspace/.git"
           cp "$RECEIPT_DIR/prompt.txt" "$model_workspace/.opencode-task.md"
           trusted_store="$(pnpm store path)"
           rsync -a "$trusted_store/" "$model_store/"
+          package_manager="$(
+            jq --exit-status --raw-output \
+              '.packageManager | select(test("^pnpm@[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+              package.json
+          )"
+          COREPACK_HOME="$trusted_corepack_home" \
+            corepack install --global "$package_manager"
+          chmod -R u=rwX,go=rX "$trusted_corepack_home"
           MODEL_HOME="$model_home" NIM_BRIDGE_PORT="$NIM_BRIDGE_PORT" python3 - <<'PYCONFIG'
           import json
           import os
@@ -274,7 +291,8 @@ jobs:
           sudo -u opencode_model env -i \
             HOME="$model_home" \
             PATH="$PATH" \
-            COREPACK_HOME="$model_home/.cache/corepack" \
+            COREPACK_HOME="$trusted_corepack_home" \
+            COREPACK_ENABLE_NETWORK=0 \
             pnpm --dir "$model_workspace" install \
               --offline \
               --frozen-lockfile \
@@ -429,6 +447,8 @@ jobs:
           sudo -u opencode_model env -i \
             HOME="$MODEL_HOME" \
             PATH="$PATH" \
+            COREPACK_HOME="$TRUSTED_COREPACK_HOME" \
+            COREPACK_ENABLE_NETWORK=0 \
             OPENCODE_CONFIG="$MODEL_HOME/opencode.json" \
             OPENCODE_DISABLE_AUTOUPDATE=true \
             NVIDIA_API_KEY=local-loopback-placeholder \
@@ -676,6 +696,8 @@ jobs:
           sudo -u opencode_model env -i \
             HOME="$MODEL_HOME" \
             PATH="$PATH" \
+            COREPACK_HOME="$TRUSTED_COREPACK_HOME" \
+            COREPACK_ENABLE_NETWORK=0 \
             AI_DATABASE_URL="$AI_DATABASE_URL" \
             AI_TEST_DATABASE_URL="$AI_TEST_DATABASE_URL" \
             IDENTITY_DATABASE_URL="$IDENTITY_DATABASE_URL" \
@@ -713,10 +735,22 @@ jobs:
           evidence = json.loads((receipt_dir / 'diff.json').read_text(encoding='utf-8'))
           changed_paths = []
 
+          def reject_symlinked_ancestors(path):
+              cursor = path.parent
+              while True:
+                  if cursor.is_symlink():
+                      raise SystemExit('post_verification_candidate_changed')
+                  if cursor == root:
+                      return
+                  if root not in cursor.parents:
+                      raise SystemExit('post_verification_candidate_changed')
+                  cursor = cursor.parent
+
           for item in evidence['files']:
               relative = pathlib.PurePosixPath(item['path'])
               candidate_path = candidate.joinpath(*relative.parts)
               target_path = root.joinpath(*relative.parts)
+              reject_symlinked_ancestors(target_path)
               changed_paths.append(item['path'])
 
               if item['status'] == 'D':
@@ -739,13 +773,8 @@ jobs:
               if payload != expected or len(payload) != item['bytes']:
                   raise SystemExit('post_verification_candidate_changed')
 
-              target_path.parent.mkdir(parents=True, exist_ok=True)
               parent = target_path.parent
-              cursor = parent
-              while cursor != root:
-                  if cursor.is_symlink():
-                      raise SystemExit('post_verification_candidate_changed')
-                  cursor = cursor.parent
+              parent.mkdir(parents=True, exist_ok=True)
               mode = 0o644
               if target_path.exists():
                   target_metadata = target_path.lstat()
@@ -804,7 +833,7 @@ jobs:
             test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=1" --jq 'length')" = '0'
             live_issue_digest="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" --jq '{number,url:.html_url,title,body:(.body // ""),state}' | jq -cS . | sha256sum | awk '{print $1}')"
             test "$live_issue_digest" = "$selected_issue_digest"
-            remote_sha="$(git ls-remote origin "refs/heads/$branch" | awk 'NR == 1 {print $1}')"
+            remote_sha="$(timeout 30s git ls-remote origin "refs/heads/$branch" | awk 'NR == 1 {print $1}')"
             if [ -n "$remote_sha" ] && [ "$remote_sha" != "$local_sha" ]; then
               echo '::error::remote automation branch changed concurrently'
               exit 1
@@ -914,8 +943,8 @@ jobs:
           validations = [
               {'name': 'open_pull_request_drain', 'status': 'passed' if open_prs == '0' else 'failed'},
               {'name': 'issue_policy', 'status': 'passed' if selected else 'skipped'},
-              {'name': 'credential_bridge', 'status': 'passed' if bridge_reason == 'completed' else 'failed'},
-              {'name': 'provider_run', 'status': 'passed' if model_reason == 'completed' else 'failed'},
+              {'name': 'credential_bridge', 'status': 'skipped' if not selected else 'passed' if bridge_reason == 'completed' else 'failed'},
+              {'name': 'provider_run', 'status': 'skipped' if not selected or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'},
               {'name': 'diff_policy', 'status': 'passed' if diff_accepted else 'skipped' if not selected else 'failed'},
               {'name': 'repository_verification', 'status': 'passed' if verification else 'skipped' if not diff_accepted else 'failed'},
               {'name': 'base_sha', 'status': 'passed' if base_matched else 'skipped' if not verification else 'failed'},
@@ -976,6 +1005,7 @@ jobs:
             "${MODEL_WORKSPACE:-$RUNNER_TEMP/nonexistent-model-workspace}" \
             "${MODEL_HOME:-$RUNNER_TEMP/nonexistent-model-home}" \
             "${MODEL_STORE:-$RUNNER_TEMP/nonexistent-model-store}" \
+            "${TRUSTED_COREPACK_HOME:-$RUNNER_TEMP/nonexistent-trusted-corepack}" \
             "${BRIDGE_HOME:-$RUNNER_TEMP/nonexistent-bridge-home}"
           rm -rf \
             "$RECEIPT_DIR/prompt.json" \
