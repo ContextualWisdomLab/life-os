@@ -321,8 +321,11 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
     );
     const current = await runtime.todayService.getToday(workspaceId, date);
     expect(current?.revision).toBe(
-      (fulfilled[0] as PromiseFulfilledResult<{ aggregate: { revision: string } }>).value
-        .aggregate.revision,
+      (
+        fulfilled[0] as PromiseFulfilledResult<{
+          aggregate: { revision: string };
+        }>
+      ).value.aggregate.revision,
     );
   });
 
