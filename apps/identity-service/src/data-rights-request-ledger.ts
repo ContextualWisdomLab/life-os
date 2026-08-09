@@ -49,6 +49,13 @@ export interface BeginDataRightsRequest {
   readonly requestedAt: string;
 }
 
+/** Validated input for tenant-and-actor scoped request-status lookup. */
+export interface GetDataRightsRequest {
+  readonly requestId: string;
+  readonly workspaceId: string;
+  readonly requestedByUserId: string;
+}
+
 /** Validated input for binding an immutable terminal receipt to one request. */
 export interface CompleteDataRightsRequest {
   readonly requestId: string;
@@ -135,7 +142,11 @@ function requireStoredDigest(value: unknown): string {
 
 function parseInstant(value: unknown, invalid: () => never): string {
   const candidate =
-    value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+    value instanceof Date
+      ? value.toISOString()
+      : typeof value === 'string'
+        ? value
+        : '';
   if (!ISO_INSTANT_PATTERN.test(candidate)) {
     return invalid();
   }
@@ -188,7 +199,10 @@ function parseRequestRow(row: DataRightsRequestRow): DataRightsRequestRecord {
     return invalidPersistence();
   }
   const requestedAt = requireStoredInstant(row.requested_at);
-  if (completedAt !== null && new Date(completedAt).getTime() < new Date(requestedAt).getTime()) {
+  if (
+    completedAt !== null &&
+    new Date(completedAt).getTime() < new Date(requestedAt).getTime()
+  ) {
     return invalidPersistence();
   }
   return Object.freeze({
@@ -221,6 +235,14 @@ function validateBeginInput(input: BeginDataRightsRequest): BeginDataRightsReque
     idempotencyKey: requireInputUuid(input.idempotencyKey),
     requestDigest: requireInputDigest(input.requestDigest),
     requestedAt: requireInputInstant(input.requestedAt),
+  });
+}
+
+function validateGetInput(input: GetDataRightsRequest): GetDataRightsRequest {
+  return Object.freeze({
+    requestId: requireInputUuid(input.requestId),
+    workspaceId: requireInputUuid(input.workspaceId),
+    requestedByUserId: requireInputUuid(input.requestedByUserId),
   });
 }
 
@@ -257,6 +279,26 @@ function requireReplayIdentity(
 export class PostgresDataRightsRequestLedger {
   /** Creates the ledger over a least-authority fixed-query SQL client. */
   constructor(private readonly client: DataRightsRequestSqlClient) {}
+
+  /** Returns one request only when request, workspace, and requesting actor match. */
+  async getRequest(
+    input: GetDataRightsRequest,
+  ): Promise<DataRightsRequestRecord | undefined> {
+    const safe = validateGetInput(input);
+    const result = await this.client.query<DataRightsRequestRow>(
+      `SELECT request_id, workspace_id, requested_by_user_id, request_kind,
+              idempotency_key, request_digest, request_status, receipt_digest,
+              requested_at, completed_at
+       FROM identity.data_rights_requests
+       WHERE request_id = $1::uuid
+         AND workspace_id = $2::uuid
+         AND requested_by_user_id = $3::uuid
+       LIMIT 2`,
+      [safe.requestId, safe.workspaceId, safe.requestedByUserId],
+    );
+    const row = oneOrUndefined(result.rows);
+    return row ? parseRequestRow(row) : undefined;
+  }
 
   /** Creates one tenant-bound request or returns its exact durable replay. */
   async beginRequest(input: BeginDataRightsRequest): Promise<{
@@ -365,7 +407,10 @@ export class PostgresDataRightsRequestLedger {
       throw new DataRightsRequestConflictError();
     }
     const request = parseRequestRow(existingRow);
-    if (request.status !== 'completed' || request.receiptDigest !== safe.receiptDigest) {
+    if (
+      request.status !== 'completed' ||
+      request.receiptDigest !== safe.receiptDigest
+    ) {
       throw new DataRightsRequestConflictError();
     }
     return Object.freeze({ kind: 'replayed', request });
