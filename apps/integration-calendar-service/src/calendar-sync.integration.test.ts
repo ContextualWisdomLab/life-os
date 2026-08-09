@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
@@ -13,6 +14,8 @@ const WORKSPACE_ID = 'e021b411-f75e-4490-97a4-f1f6ee811849';
 const OTHER_WORKSPACE_ID = '474c83ae-08af-4a63-957b-49eb2093a61d';
 const BLOCK_ID = '1f06da41-cf62-4387-adad-6f53dd8ee66c';
 const SYNTHETIC_CSRF_TOKEN = 'synthetic-test-csrf-token';
+const CALENDAR_CONTEXT_SECRET =
+  'calendar-integration-test-context-secret-material';
 
 interface StoredCalendarResource {
   readonly calendarData: string;
@@ -65,6 +68,21 @@ function unfoldIcalendar(value: string): string {
   return value.replace(/\r\n[ \t]/g, '');
 }
 
+function trustedWorkspaceHeaders(workspaceId: string): Record<string, string> {
+  const issuedAt = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac('sha256', CALENDAR_CONTEXT_SECRET)
+    .update(
+      `life-os.calendar-workspace.v1\n${workspaceId}\n${issuedAt}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
+
 async function postSync(
   port: number,
   workspaceId: string,
@@ -76,13 +94,66 @@ async function postSync(
       'content-type': 'application/json',
       'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
       'x-workspace-id': workspaceId,
+      ...trustedWorkspaceHeaders(workspaceId),
     },
     body: JSON.stringify(body),
   });
 }
 
 describe('calendar synchronization HTTP boundary', () => {
+  it('rejects legacy client-selected workspace authority and accepts the signed workspace context', async () => {
+    const previousSecret = process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+    process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_SECRET;
+    const provider = new ConflictSafeRecordingProvider();
+    const app = await NestFactory.create(CalendarAppModule.register(provider), {
+      logger: false,
+    });
+    await app.listen(0, '127.0.0.1');
+
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const legacyResponse = await fetch(
+        `http://127.0.0.1:${address.port}/v1/calendar/sync`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
+            'x-workspace-id': WORKSPACE_ID,
+          },
+          body: JSON.stringify(timeBlock()),
+        },
+      );
+      expect(legacyResponse.status).toBe(401);
+      expect(provider.resources.size).toBe(0);
+
+      const trustedResponse = await fetch(
+        `http://127.0.0.1:${address.port}/v1/calendar/sync`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
+            ...trustedWorkspaceHeaders(WORKSPACE_ID),
+          },
+          body: JSON.stringify(timeBlock()),
+        },
+      );
+      expect(trustedResponse.status).toBe(200);
+      expect(provider.resources.size).toBe(1);
+    } finally {
+      await app.close();
+      if (previousSecret === undefined) {
+        delete process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = previousSecret;
+      }
+    }
+  });
+
   it('prevents duplicates and silent overwrites while retaining tenant isolation', async () => {
+    const previousSecret = process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+    process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_SECRET;
     const provider = new ConflictSafeRecordingProvider();
     const app = await NestFactory.create(CalendarAppModule.register(provider), {
       logger: false,
@@ -164,6 +235,7 @@ describe('calendar synchronization HTTP boundary', () => {
           headers: {
             'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
             'x-workspace-id': WORKSPACE_ID,
+            ...trustedWorkspaceHeaders(WORKSPACE_ID),
           },
         },
       );
@@ -176,6 +248,11 @@ describe('calendar synchronization HTTP boundary', () => {
       expect(ownershipInjection.status).toBe(400);
     } finally {
       await app.close();
+      if (previousSecret === undefined) {
+        delete process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = previousSecret;
+      }
     }
   });
 });
