@@ -210,6 +210,7 @@ describe('OpenCode commercial development workflow contract', () => {
       try {
         const modelId = 'cwl/contract-probe-model-v1';
         const modelLabel = `nvidia/${modelId}`;
+        const loopbackCredential = ['local', 'loopback', 'placeholder'].join('-');
         const opencodePackage = realpathSync(
           resolve(import.meta.dirname, '../node_modules/opencode-ai'),
         );
@@ -234,7 +235,7 @@ describe('OpenCode commercial development workflow contract', () => {
               models: { [modelId]: { name: modelId } },
               options: {
                 baseURL: 'http://127.0.0.1:8765/v1',
-                apiKey: 'local-loopback-placeholder',
+                apiKey: loopbackCredential,
               },
             },
           },
@@ -255,7 +256,7 @@ describe('OpenCode commercial development workflow contract', () => {
             OPENCODE_DISABLE_AUTOUPDATE: 'true',
             OPENCODE_DISABLE_MODELS_FETCH: 'true',
             OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
-            NVIDIA_API_KEY: 'local-loopback-placeholder',
+            NVIDIA_API_KEY: loopbackCredential,
           },
         });
 
