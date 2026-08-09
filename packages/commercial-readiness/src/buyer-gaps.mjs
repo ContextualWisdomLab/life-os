@@ -359,29 +359,117 @@ export function evaluateBuyerGaps(registry, snapshot) {
   return { unresolved, resolved, unknown };
 }
 
+function failBuyerGapEvidence() {
+  throw new Error('Buyer gap evidence is invalid');
+}
+
+function normalizeAttachedGapEvidence(value, expectedState) {
+  if (
+    !exactKeys(
+      value,
+      new Set(['gap_id', 'issue_number', 'capability_ids', 'state', 'resolution']),
+    ) ||
+    typeof value.gap_id !== 'string' ||
+    !GAP_ID_PATTERN.test(value.gap_id) ||
+    value.gap_id.length > 100 ||
+    value.state !== expectedState ||
+    !Array.isArray(value.capability_ids) ||
+    value.capability_ids.length === 0 ||
+    value.capability_ids.length > MAX_CAPABILITIES_PER_GAP
+  ) {
+    failBuyerGapEvidence();
+  }
+
+  const issueNumber = normalizeIssueNumber(
+    value.issue_number,
+    failBuyerGapEvidence,
+  );
+  const capabilityIds = value.capability_ids.map((capabilityId) => {
+    if (
+      typeof capabilityId !== 'string' ||
+      !CAPABILITY_ID_PATTERN.test(capabilityId)
+    ) {
+      failBuyerGapEvidence();
+    }
+    return capabilityId;
+  });
+  if (new Set(capabilityIds).size !== capabilityIds.length) {
+    failBuyerGapEvidence();
+  }
+
+  const validResolution =
+    expectedState === 'closed'
+      ? ['completed', 'not_planned', 'duplicate'].includes(value.resolution)
+      : value.resolution === null;
+  if (!validResolution) {
+    failBuyerGapEvidence();
+  }
+
+  return Object.freeze({
+    gap_id: value.gap_id,
+    issue_number: issueNumber,
+    capability_ids: Object.freeze([...capabilityIds]),
+    state: expectedState,
+    resolution: value.resolution,
+  });
+}
+
+function normalizeBuyerGapEvidence(value) {
+  if (
+    !exactKeys(value, new Set(['unresolved', 'resolved', 'unknown'])) ||
+    !Array.isArray(value.unresolved) ||
+    !Array.isArray(value.resolved) ||
+    !Array.isArray(value.unknown) ||
+    value.unresolved.length > MAX_GAPS ||
+    value.resolved.length > MAX_GAPS ||
+    value.unknown.length > MAX_GAPS ||
+    value.unresolved.length + value.resolved.length + value.unknown.length > MAX_GAPS
+  ) {
+    failBuyerGapEvidence();
+  }
+
+  const unresolved = value.unresolved.map((item) =>
+    normalizeAttachedGapEvidence(item, 'open'),
+  );
+  const resolved = value.resolved.map((item) =>
+    normalizeAttachedGapEvidence(item, 'closed'),
+  );
+  const unknown = value.unknown.map((item) =>
+    normalizeAttachedGapEvidence(item, 'unknown'),
+  );
+  const gapIds = new Set();
+  const issueNumbers = new Set();
+  for (const item of [...unresolved, ...resolved, ...unknown]) {
+    if (gapIds.has(item.gap_id) || issueNumbers.has(item.issue_number)) {
+      failBuyerGapEvidence();
+    }
+    gapIds.add(item.gap_id);
+    issueNumbers.add(item.issue_number);
+  }
+
+  return Object.freeze({
+    unresolved: Object.freeze(unresolved),
+    resolved: Object.freeze(resolved),
+    unknown: Object.freeze(unknown),
+  });
+}
+
 /** Adds buyer-gap evidence without reinterpreting capability maturity. */
 export function attachBuyerGapEvidence(report, evidence) {
   if (!isPlainObject(report) || !isPlainObject(report.summary)) {
     throw new Error('Commercial readiness report is invalid');
   }
-  if (
-    !isPlainObject(evidence) ||
-    !Array.isArray(evidence.unresolved) ||
-    !Array.isArray(evidence.resolved) ||
-    !Array.isArray(evidence.unknown)
-  ) {
-    throw new Error('Buyer gap evidence is invalid');
-  }
+  const normalizedEvidence = normalizeBuyerGapEvidence(evidence);
   return {
     ...report,
     summary: {
       ...report.summary,
       capability_evidence_gaps: report.summary.unresolved_gaps,
-      unresolved_buyer_gaps: evidence.unresolved.length,
-      unknown_buyer_gap_states: evidence.unknown.length,
+      unresolved_buyer_gaps: normalizedEvidence.unresolved.length,
+      unknown_buyer_gap_states: normalizedEvidence.unknown.length,
     },
-    buyer_gaps: evidence.unresolved.map((item) => ({ ...item })),
-    buyer_gap_unknown: evidence.unknown.map((item) => ({ ...item })),
-    buyer_gap_resolved: evidence.resolved.map((item) => ({ ...item })),
+    buyer_gaps: normalizedEvidence.unresolved.map((item) => ({ ...item })),
+    buyer_gap_unknown: normalizedEvidence.unknown.map((item) => ({ ...item })),
+    buyer_gap_resolved: normalizedEvidence.resolved.map((item) => ({ ...item })),
   };
 }
