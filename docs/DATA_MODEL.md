@@ -1,7 +1,7 @@
 # LifeOS Logical Data Model and ERD
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 ## 1. Scope and authority
 
@@ -14,7 +14,7 @@ Shared UUIDs express logical relationships only. A relationship drawn across ser
 | Bounded context | Durable authority | Representative protected-main migration evidence |
 | --- | --- | --- |
 | Identity | user, external identity, workspace/session authority, authentication provenance, data-rights request ledger | `apps/identity-service/migrations/` including `0006_data_rights_request_ledger.sql` |
-| Planning | goals, projects, tasks and planning-owned durable state | `apps/planning-service/migrations/0001_initial_planning.sql` plus active Today work on PR #127 |
+| Planning | goals, projects, tasks, durable Today aggregate and planning-owned state | `apps/planning-service/migrations/0001_initial_planning.sql`, `0003_durable_today_sync.sql` |
 | Habit | recurring habit definitions/completions | `apps/habit-service/migrations/0001_recurring_habit_core.sql` |
 | Review | guided review completion/projection evidence | `apps/review-service/migrations/0001_guided_review_completions.sql` |
 | Notification | reminder inbox/claim/delivery evidence | `apps/notification-service/migrations/0001_durable_reminder_inbox.sql` |
@@ -38,8 +38,10 @@ erDiagram
     WORKSPACE ||--o{ PLANNING_GOAL : owns
     WORKSPACE ||--o{ PLANNING_PROJECT : owns
     WORKSPACE ||--o{ PLANNING_TASK : owns
+    WORKSPACE ||--o{ PLANNING_TODAY_AGGREGATE : owns
     PLANNING_GOAL o|--o{ PLANNING_PROJECT : directs
     PLANNING_PROJECT o|--o{ PLANNING_TASK : contains
+    PLANNING_TODAY_AGGREGATE ||--o{ PLANNING_TODAY_ACTION : contains
 
     WORKSPACE ||--o{ HABIT_DEFINITION : owns
     HABIT_DEFINITION ||--o{ HABIT_COMPLETION : records
@@ -71,20 +73,20 @@ Authentication age and session issuance/rotation are separate semantics. Session
 
 ## 5. Planning
 
-Protected-main planning migrations own the current durable goals/projects/tasks foundation. The logical hierarchy is:
+Protected main owns the durable goals/projects/tasks foundation and, after PR #127, the durable Today aggregate. The logical hierarchy is:
 
 ```text
 workspace
   -> goal
       -> project
           -> task
+  -> today aggregate (workspace + local date)
+      -> bounded priority/scheduled actions
 ```
 
+The Today persistence contract uses UUIDv4 aggregate/action/revision/idempotency identities, explicit create/update preconditions, deterministic transaction-scoped locking, replay-safe exact outcomes and bounded stale-write conflicts. Browser-local state is not represented as durable until the explicit save path succeeds.
+
 A task may be associated directly with a goal where the implementation contract permits it, but planning service remains the single mutation authority.
-
-### Active PR #127
-
-PR #127 adds a planning-owned versioned Today aggregate with local-date/workspace identity, opaque revision/idempotency evidence, bounded priorities/schedule state and optimistic concurrency. Those Today persistence objects are `Implemented on active PR`, not protected-main physical schema until merge.
 
 ## 6. Habit and review
 
