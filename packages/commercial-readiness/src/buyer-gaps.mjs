@@ -359,10 +359,17 @@ export function evaluateBuyerGaps(registry, snapshot) {
   return { unresolved, resolved, unknown };
 }
 
+/** Throws the stable boundary error used for malformed attached gap evidence. */
 function failBuyerGapEvidence() {
   throw new Error('Buyer gap evidence is invalid');
 }
 
+/**
+ * Validates and freezes one attached gap item for its owning evidence collection.
+ * The item must use exact buyer-gap keys, bounded identifiers, unique capability
+ * identifiers, the expected state, and a state-compatible resolution; otherwise
+ * the stable buyer-gap evidence validation error is thrown.
+ */
 function normalizeAttachedGapEvidence(value, expectedState) {
   if (
     !exactKeys(
@@ -414,6 +421,12 @@ function normalizeAttachedGapEvidence(value, expectedState) {
   });
 }
 
+/**
+ * Validates the three attached evidence collections as one bounded gap set.
+ * Each collection is normalized to its required state, total cardinality is
+ * bounded, and duplicate gap or canonical issue ownership fails closed before
+ * a readiness report can retain the evidence.
+ */
 function normalizeBuyerGapEvidence(value) {
   if (
     !exactKeys(value, new Set(['unresolved', 'resolved', 'unknown'])) ||
