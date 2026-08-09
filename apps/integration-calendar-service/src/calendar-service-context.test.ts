@@ -1,8 +1,8 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const SECRET = 'calendar-gateway-secret-material-32-bytes-minimum';
+const TEST_CONTEXT_KEY = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_291_200;
 
 interface CalendarContextModule {
@@ -27,7 +27,7 @@ async function contextModule(): Promise<CalendarContextModule> {
 }
 
 function signature(workspaceId: string, issuedAt: string): string {
-  return createHmac('sha256', SECRET)
+  return createHmac('sha256', TEST_CONTEXT_KEY)
     .update(`life-os.calendar-workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
     .digest('base64url');
 }
@@ -44,7 +44,7 @@ describe('trusted calendar workspace context', () => {
           issuedAt,
           signature: signature(WORKSPACE_ID, issuedAt),
         },
-        SECRET,
+        TEST_CONTEXT_KEY,
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
@@ -76,7 +76,7 @@ describe('trusted calendar workspace context', () => {
 
     for (const candidate of invalid) {
       expect(() =>
-        requireTrustedCalendarWorkspaceContext(candidate, SECRET, NOW_SECONDS),
+        requireTrustedCalendarWorkspaceContext(candidate, TEST_CONTEXT_KEY, NOW_SECONDS),
       ).toThrow();
     }
     expect(() =>
