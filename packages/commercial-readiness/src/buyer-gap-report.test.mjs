@@ -60,7 +60,14 @@ describe('canonical buyer-gap report', () => {
     assert.match(markdown, /Unresolved canonical buyer gaps: \*\*1\*\*/);
     assert.match(markdown, /calendar\.per-user-credentials/);
     assert.match(markdown, /#129/);
-    assert.doesNotMatch(markdown, /Unresolved buyer gaps: \*\*0\*\*/);
+    assert.doesNotMatch(
+      markdown,
+      /Unresolved canonical buyer gaps: \*\*0\*\*/,
+    );
+    assert.doesNotMatch(
+      markdown,
+      /No registered canonical buyer gaps remain/,
+    );
   });
 
   it('renders unknown canonical issue state explicitly instead of claiming exhaustion', () => {
