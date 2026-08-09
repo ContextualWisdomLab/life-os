@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DataRightsRequestConflictError,
+  DataRightsRequestPersistenceError,
   DataRightsRequestValidationError,
   PostgresDataRightsRequestLedger,
   type DataRightsRequestSqlClient,
@@ -206,6 +207,70 @@ describe('PostgresDataRightsRequestLedger', () => {
         completedAt: COMPLETED_AT,
       }),
     ).rejects.toBeInstanceOf(DataRightsRequestConflictError);
+  });
+
+  it('returns one request only through tenant-and-actor scoped status lookup', async () => {
+    const client = new RecordingSqlClient([[storedRow()]]);
+    const ledger = new PostgresDataRightsRequestLedger(client);
+
+    await expect(
+      ledger.getRequest({
+        requestId: REQUEST_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: ACTOR_USER_ID,
+      }),
+    ).resolves.toMatchObject({
+      requestId: REQUEST_ID,
+      workspaceId: WORKSPACE_ID,
+      requestedByUserId: ACTOR_USER_ID,
+      status: 'pending',
+    });
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]?.text).toContain('request_id = $1::uuid');
+    expect(client.calls[0]?.text).toContain('workspace_id = $2::uuid');
+    expect(client.calls[0]?.text).toContain('requested_by_user_id = $3::uuid');
+    expect(client.calls[0]?.values).toEqual([
+      REQUEST_ID,
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    ]);
+  });
+
+  it('returns undefined for an inaccessible request without widening the lookup', async () => {
+    const client = new RecordingSqlClient([[]]);
+    const ledger = new PostgresDataRightsRequestLedger(client);
+
+    await expect(
+      ledger.getRequest({
+        requestId: REQUEST_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: ACTOR_USER_ID,
+      }),
+    ).resolves.toBeUndefined();
+    expect(client.calls).toHaveLength(1);
+  });
+
+  it('fails closed on malformed or duplicate persisted status lookup evidence', async () => {
+    const invalidClient = new RecordingSqlClient([]);
+    const invalidLedger = new PostgresDataRightsRequestLedger(invalidClient);
+    await expect(
+      invalidLedger.getRequest({
+        requestId: 'not-a-uuid',
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: ACTOR_USER_ID,
+      }),
+    ).rejects.toBeInstanceOf(DataRightsRequestValidationError);
+    expect(invalidClient.calls).toHaveLength(0);
+
+    const duplicateClient = new RecordingSqlClient([[storedRow(), storedRow()]]);
+    const duplicateLedger = new PostgresDataRightsRequestLedger(duplicateClient);
+    await expect(
+      duplicateLedger.getRequest({
+        requestId: REQUEST_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: ACTOR_USER_ID,
+      }),
+    ).rejects.toBeInstanceOf(DataRightsRequestPersistenceError);
   });
 
   it('rejects malformed ownership, digest, kind, and time before querying PostgreSQL', async () => {
