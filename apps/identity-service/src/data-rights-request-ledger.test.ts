@@ -87,6 +87,7 @@ describe('PostgresDataRightsRequestLedger', () => {
     });
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]?.text).toContain('identity.data_rights_requests');
+    expect(client.calls[0]?.text).toContain('ON CONFLICT DO NOTHING');
     expect(client.calls[0]?.text).not.toContain(REQUEST_DIGEST);
     expect(client.calls[0]?.values).toEqual([
       REQUEST_ID,
@@ -109,12 +110,35 @@ describe('PostgresDataRightsRequestLedger', () => {
     });
     expect(client.calls).toHaveLength(2);
     expect(client.calls[1]?.text).toContain('idempotency_key = $2::uuid');
+    expect(client.calls[1]?.text).toContain('request_id = $3::uuid');
+    expect(client.calls[1]?.values).toEqual([
+      WORKSPACE_ID,
+      IDEMPOTENCY_KEY,
+      REQUEST_ID,
+    ]);
   });
 
   it('fails closed when an idempotency key is reused for another request', async () => {
     const client = new RecordingSqlClient([
       [],
       [storedRow({ request_digest: 'c'.repeat(64) })],
+    ]);
+    const ledger = new PostgresDataRightsRequestLedger(client);
+
+    await expect(ledger.beginRequest(beginInput())).rejects.toBeInstanceOf(
+      DataRightsRequestConflictError,
+    );
+  });
+
+  it('maps two distinct collision rows to a stable domain conflict', async () => {
+    const otherRequestId = '55555555-5555-4555-8555-555555555555';
+    const otherIdempotencyKey = '66666666-6666-4666-8666-666666666666';
+    const client = new RecordingSqlClient([
+      [],
+      [
+        storedRow({ request_id: otherRequestId }),
+        storedRow({ idempotency_key: otherIdempotencyKey }),
+      ],
     ]);
     const ledger = new PostgresDataRightsRequestLedger(client);
 
