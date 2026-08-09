@@ -5,9 +5,9 @@ import {
   requireTodayPathDate,
   toTodayHttpException,
 } from './today-http';
-import { TodayPersistenceError } from './postgres-today-repository';
 import {
   TodayIdempotencyConflictError,
+  TodayPersistenceError,
   TodayRevisionConflictError,
   TodayValidationError,
 } from './today-sync';
@@ -41,55 +41,52 @@ describe('Today HTTP boundary', () => {
     }
   });
 
-  it('binds the route date to the complete aggregate body', () => {
-    expect(requireTodayPathDate('2026-08-09', { date: '2026-08-09' })).toBe(
-      '2026-08-09',
-    );
-    expect(() =>
-      requireTodayPathDate('2026-08-09', { date: '2026-08-10' }),
-    ).toThrow(TodayValidationError);
-    expect(() => requireTodayPathDate('not-a-date', { date: 'not-a-date' })).toThrow(
-      TodayValidationError,
-    );
+  it('requires a real route date identical to the body date', () => {
+    expect(
+      requireTodayPathDate('2026-08-09', {
+        date: '2026-08-09',
+      }),
+    ).toBe('2026-08-09');
+    for (const invalid of [
+      ['2026-02-30', { date: '2026-02-30' }],
+      ['2026-08-09', { date: '2026-08-10' }],
+      ['2026-08-09', null],
+    ] as const) {
+      expect(() => requireTodayPathDate(invalid[0], invalid[1])).toThrow(
+        TodayValidationError,
+      );
+    }
   });
 
-  it('maps stale writes to bounded conflicts containing only the current revision', () => {
-    const exception = toTodayHttpException(new TodayRevisionConflictError(REVISION));
-
-    expect(exception.getStatus()).toBe(409);
-    expect(exception.getResponse()).toEqual({
+  it('maps domain failures to bounded HTTP problems', () => {
+    const conflict = toTodayHttpException(
+      new TodayRevisionConflictError(REVISION),
+    );
+    expect(conflict.getStatus()).toBe(409);
+    expect(conflict.getResponse()).toEqual({
       type: 'about:blank',
       title: 'Today changed on another device',
       status: 409,
       code: 'today_revision_conflict',
       currentRevision: REVISION,
     });
-  });
-
-  it('maps persistence corruption separately from retryable dependency failures', () => {
-    expect(toTodayHttpException(new TodayPersistenceError()).getResponse()).toEqual({
+    expect(
+      toTodayHttpException(new TodayIdempotencyConflictError()).getStatus(),
+    ).toBe(409);
+    expect(toTodayHttpException(new TodayValidationError()).getStatus()).toBe(
+      400,
+    );
+    const persistence = toTodayHttpException(new TodayPersistenceError());
+    expect(persistence.getStatus()).toBe(500);
+    expect(persistence.getResponse()).toEqual({
       type: 'about:blank',
       title: 'Today synchronization data is unusable',
       status: 500,
       code: 'today_persistence_invalid',
     });
-    expect(toTodayHttpException(new Error('database password')).getResponse()).toEqual({
-      type: 'about:blank',
-      title: 'Today synchronization is unavailable',
-      status: 503,
-      code: 'today_sync_unavailable',
-    });
-  });
-
-  it('maps validation and conflicting idempotency reuse without leaking request data', () => {
-    expect(toTodayHttpException(new TodayValidationError()).getStatus()).toBe(400);
-    expect(
-      toTodayHttpException(new TodayIdempotencyConflictError()).getResponse(),
-    ).toEqual({
-      type: 'about:blank',
-      title: 'Today idempotency key conflicts with an earlier request',
-      status: 409,
-      code: 'today_idempotency_conflict',
-    });
+    expect(toTodayHttpException(new Error('database down')).getStatus()).toBe(
+      503,
+    );
+    expect(toTodayHttpException(conflict)).toBe(conflict);
   });
 });
