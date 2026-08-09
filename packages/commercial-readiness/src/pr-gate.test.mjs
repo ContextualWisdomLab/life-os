@@ -8,7 +8,6 @@ function policy(overrides = {}) {
   return {
     default_branch: 'main',
     trusted_author_associations: ['OWNER', 'MEMBER', 'COLLABORATOR'],
-    trusted_author_logins: ['seonghobae'],
     required_workflows: [
       'CI',
       'SAST Semgrep',
@@ -35,7 +34,6 @@ function pullRequest(overrides = {}) {
     head_repo: 'ContextualWisdomLab/life-os',
     repository: 'ContextualWisdomLab/life-os',
     author_association: 'MEMBER',
-    author_login: 'seonghobae',
     behind_by: 0,
     reviews: [
       {
@@ -83,14 +81,14 @@ function pullRequest(overrides = {}) {
 }
 
 describe('evaluatePullRequestForMerge', () => {
-  it('accepts only a current, trusted, same-repository PR with every gate successful', () => {
+  it('accepts only a current same-repository PR with every gate successful', () => {
     assert.deepEqual(evaluatePullRequestForMerge(pullRequest(), policy()), {
       eligible: true,
       blockers: [],
     });
   });
 
-  it('accepts an explicitly allowlisted repository author when GitHub reports a weaker public association', () => {
+  it('uses repository branch provenance instead of PR-opener association as source trust', () => {
     const candidate = pullRequest({ author_association: 'CONTRIBUTOR' });
     assert.deepEqual(evaluatePullRequestForMerge(candidate, policy()), {
       eligible: true,
@@ -102,13 +100,6 @@ describe('evaluatePullRequestForMerge', () => {
     const cases = [
       [pullRequest({ draft: true }), 'draft'],
       [pullRequest({ head_repo: 'fork/life-os' }), 'fork'],
-      [
-        pullRequest({
-          author_association: 'CONTRIBUTOR',
-          author_login: 'external-contributor',
-        }),
-        'untrusted-author',
-      ],
       [
         pullRequest({ mergeable: false, mergeable_state: 'dirty' }),
         'merge-conflict',
