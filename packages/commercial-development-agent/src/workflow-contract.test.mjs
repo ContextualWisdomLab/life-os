@@ -48,6 +48,19 @@ describe('OpenCode commercial development workflow contract', () => {
     );
   });
 
+  it('paginates GitHub evidence into one fail-closed JSON array per resource', () => {
+    const evidence = step(
+      'Collect bounded GitHub issue and pull request evidence',
+    );
+
+    expect(evidence).toContain('set -Eeuo pipefail');
+    expect(evidence.match(/--paginate/gu)).toHaveLength(2);
+    expect(evidence.match(/\| jq -s '\\.'/gu)).toHaveLength(2);
+    expect(evidence).not.toContain("--jq '[.[]");
+    expect(evidence).toContain('> "$RECEIPT_DIR/issues.json"');
+    expect(evidence).toContain('> "$RECEIPT_DIR/pulls.json"');
+  });
+
   it('provisions the same disposable PostgreSQL boundary used by full CI', () => {
     expect(workflow).toContain(
       'AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test',
@@ -158,6 +171,40 @@ describe('OpenCode commercial development workflow contract', () => {
     );
   });
 
+  it('restores every tracked path and preloads an immutable Corepack cache before denying network', () => {
+    const workspace = step('Prepare disposable model workspace');
+    const model = step('Run one bounded OpenCode implementation');
+    const verification = step('Verify the accepted repository change');
+    const cleanup = step('Remove private agent material');
+
+    expect(workspace).toContain('git -C "$GITHUB_WORKSPACE" ls-files -z |');
+    expect(workspace).toContain('rsync -a --from0 --files-from=-');
+
+    const cacheInstall = workspace.indexOf(
+      'corepack install --global "$package_manager"',
+    );
+    const networkDeny = workspace.indexOf(
+      'iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -j REJECT',
+    );
+    expect(cacheInstall).toBeGreaterThanOrEqual(0);
+    expect(networkDeny).toBeGreaterThan(cacheInstall);
+    expect(workspace).toContain(
+      'chmod -R u=rwX,go=rX "$trusted_corepack_home"',
+    );
+    expect(workspace).not.toMatch(/chown[^\n]*trusted_corepack_home/u);
+
+    expect(workspace).toContain('COREPACK_HOME="$trusted_corepack_home"');
+    for (const isolatedStep of [model, verification]) {
+      expect(isolatedStep).toContain('COREPACK_HOME="$TRUSTED_COREPACK_HOME"');
+      expect(isolatedStep).toContain('COREPACK_ENABLE_NETWORK=0');
+    }
+    expect(workspace).toContain('COREPACK_ENABLE_NETWORK=0');
+    expect(cleanup).toContain('TRUSTED_COREPACK_HOME');
+
+    const capture = step('Capture candidate through trusted boundary');
+    expect(capture).toContain('paths = sorted(tracked | candidate_paths)');
+  });
+
   it('renders provider configuration safely and freezes the model writer before evidence', () => {
     const workspace = step('Prepare disposable model workspace');
     expect(workspace).toContain("'$schema': 'https://opencode.ai/config.json'");
@@ -195,6 +242,19 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(materialize).toContain('os.replace');
     expect(materialize).not.toContain('rsync -rt --delete');
 
+    const ancestorPreflight = materialize.indexOf(
+      'reject_symlinked_ancestors(target_path)',
+    );
+    expect(ancestorPreflight).toBeGreaterThanOrEqual(0);
+    expect(ancestorPreflight).toBeLessThan(
+      materialize.indexOf("if item['status'] == 'D':"),
+    );
+    expect(ancestorPreflight).toBeLessThan(
+      materialize.indexOf('parent.mkdir(parents=True, exist_ok=True)'),
+    );
+    expect(materialize).toContain('if cursor == root:');
+    expect(materialize).toContain('if root not in cursor.parents:');
+
     const mutation = step('Commit, push, and open one draft pull request');
     expect(mutation).toContain(
       '--pathspec-from-file="$RECEIPT_DIR/changed-paths.z"',
@@ -207,7 +267,8 @@ describe('OpenCode commercial development workflow contract', () => {
     const mutation = step('Commit, push, and open one draft pull request');
     expect(mutation).toContain('assert_live_lease()');
     expect(mutation.match(/^\s*assert_live_lease$/gmu)).toHaveLength(2);
-    expect(mutation).toContain('git ls-remote origin refs/heads/main');
+    expect(mutation.match(/git ls-remote/gu)).toHaveLength(2);
+    expect(mutation.match(/timeout 30s git ls-remote/gu)).toHaveLength(2);
     expect(mutation).toContain('pulls?state=open&per_page=1');
     expect(mutation).toContain('selected_issue_digest');
     expect(mutation).toContain('issues/${issue_number}');
@@ -254,6 +315,17 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).not.toContain('deployments: write');
     expect(workflow).not.toContain('environments: write');
     expect(workflow).not.toContain('actions: write');
+  });
+
+  it('marks bridge and provider validations skipped until their prerequisites run', () => {
+    const receipt = step('Compose credential-free development receipt');
+
+    expect(receipt).toContain(
+      `{'name': 'credential_bridge', 'status': 'skipped' if not selected else 'passed' if bridge_reason == 'completed' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'provider_run', 'status': 'skipped' if not selected or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'}`,
+    );
   });
 
   it('retains only credential-free receipts and removes model/bridge material', () => {
