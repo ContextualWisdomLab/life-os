@@ -31,48 +31,112 @@ function issueLink(number) {
     : 'untracked';
 }
 
+function capabilityList(capabilityIds) {
+  return (Array.isArray(capabilityIds) ? capabilityIds : [])
+    .map((id) => `\`${sanitizeUntrustedText(id)}\``)
+    .join(', ');
+}
+
+function renderCanonicalBuyerGaps(lines, report, maxGaps) {
+  const hasBuyerEvidence = Number.isSafeInteger(
+    report.summary?.unresolved_buyer_gaps,
+  );
+  lines.push('## Canonical buyer-visible gaps', '');
+  if (!hasBuyerEvidence) {
+    lines.push(
+      'Canonical buyer-gap state was not evaluated in this report; capability maturity must not be interpreted as whole-product gap exhaustion.',
+      '',
+    );
+    return;
+  }
+
+  const unresolved = Array.isArray(report.buyer_gaps) ? report.buyer_gaps : [];
+  const unknown = Array.isArray(report.buyer_gap_unknown)
+    ? report.buyer_gap_unknown
+    : [];
+  if (unresolved.length === 0 && unknown.length === 0) {
+    lines.push(
+      'No registered canonical buyer gaps remain open or unknown.',
+      '',
+    );
+    return;
+  }
+  for (const gap of unresolved.slice(0, maxGaps)) {
+    lines.push(
+      `- **${sanitizeUntrustedText(gap.gap_id)}** — ${issueLink(gap.issue_number)} — open`,
+      `  - Capability links: ${capabilityList(gap.capability_ids) || 'none'}`,
+    );
+  }
+  for (const gap of unknown.slice(0, maxGaps)) {
+    lines.push(
+      `- **${sanitizeUntrustedText(gap.gap_id)}** — ${issueLink(gap.issue_number)} — **state unknown**`,
+      `  - Capability links: ${capabilityList(gap.capability_ids) || 'none'}`,
+    );
+  }
+  lines.push('');
+}
+
+function renderCapabilityEvidenceGaps(lines, report, maxGaps) {
+  lines.push('## Capability evidence gaps', '');
+  if (!Array.isArray(report.gaps) || report.gaps.length === 0) {
+    lines.push(
+      'No capability evidence gaps remain at the configured target maturity levels.',
+      '',
+    );
+    return;
+  }
+  for (const gap of report.gaps.slice(0, maxGaps)) {
+    lines.push(
+      `### ${sanitizeUntrustedText(gap.capability_id)} · score ${gap.priority_score}`,
+      '',
+      `- Outcome: ${sanitizeUntrustedText(gap.outcome)}`,
+      `- Maturity: \`${gap.observed_maturity}\` → \`${gap.target_maturity}\``,
+      `- Tracking: ${issueLink(gap.tracking_issue)}`,
+      `- Missing evidence: ${
+        gap.missing_evidence
+          .map((path) => `\`${sanitizeUntrustedText(path)}\``)
+          .join(', ') || 'none recorded'
+      }`,
+      '',
+    );
+  }
+}
+
 export function renderCommercialReadinessIssue(
   report,
   snapshot,
   { marker, maxGaps = 15 },
 ) {
+  const capabilityEvidenceGaps = Number.isSafeInteger(
+    report.summary?.capability_evidence_gaps,
+  )
+    ? report.summary.capability_evidence_gaps
+    : report.summary.unresolved_gaps;
   const lines = [
     marker,
     '# LifeOS commercial readiness',
     '',
-    '> Generated from repository evidence. Documentation claims do not satisfy implementation or test probes.',
+    '> Generated from repository evidence. Documentation claims do not satisfy implementation or test probes. Capability maturity and canonical buyer-gap state are independent evidence dimensions.',
     '',
     `- Commit: \`${report.commit_sha}\``,
     `- Evidence timestamp: \`${report.generated_at}\``,
-    `- Weighted maturity: **${report.summary.weighted_maturity_percent}%**`,
+    `- Configured weighted maturity: **${report.summary.weighted_maturity_percent}%**`,
     `- Capabilities at target: **${report.summary.at_target}/${report.summary.total_capabilities}**`,
-    `- Unresolved buyer gaps: **${report.summary.unresolved_gaps}**`,
-    '',
-    '## Highest-impact buyer gaps',
-    '',
+    `- Capability evidence gaps: **${capabilityEvidenceGaps}**`,
   ];
 
-  if (report.gaps.length === 0) {
+  if (Number.isSafeInteger(report.summary?.unresolved_buyer_gaps)) {
     lines.push(
-      'No evidence-backed capability gaps remain at the current target levels.',
+      `- Unresolved canonical buyer gaps: **${report.summary.unresolved_buyer_gaps}**`,
+      `- Unknown canonical buyer-gap states: **${report.summary.unknown_buyer_gap_states}**`,
     );
   } else {
-    for (const gap of report.gaps.slice(0, maxGaps)) {
-      lines.push(
-        `### ${sanitizeUntrustedText(gap.capability_id)} · score ${gap.priority_score}`,
-        '',
-        `- Outcome: ${sanitizeUntrustedText(gap.outcome)}`,
-        `- Maturity: \`${gap.observed_maturity}\` → \`${gap.target_maturity}\``,
-        `- Tracking: ${issueLink(gap.tracking_issue)}`,
-        `- Missing evidence: ${
-          gap.missing_evidence
-            .map((path) => `\`${sanitizeUntrustedText(path)}\``)
-            .join(', ') || 'none recorded'
-        }`,
-        '',
-      );
-    }
+    lines.push('- Canonical buyer-gap evidence: **not evaluated**');
   }
+  lines.push('');
+
+  renderCanonicalBuyerGaps(lines, report, maxGaps);
+  renderCapabilityEvidenceGaps(lines, report, maxGaps);
 
   lines.push('## Pull request drain', '');
   const pulls = Array.isArray(snapshot.pull_requests)

@@ -1,5 +1,6 @@
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
+import { attachBuyerGapEvidence } from './buyer-gaps.mjs';
 import { MATURITY_LEVELS, MATURITY_RANK } from './schema.mjs';
 
 const REPORT_SCHEMA = 'life-os.commercial-readiness-report.v1';
@@ -117,9 +118,27 @@ function missingEvidenceForTarget(capability, evidenceResults) {
   ].sort();
 }
 
+/**
+ * Evaluates configured capability maturity against repository evidence.
+ *
+ * When `buyerGapEvidence` is undefined, this preserves the legacy v1 report:
+ * `summary.unresolved_gaps` is the count of capability-evidence gaps and no
+ * canonical buyer-gap collections or counts are added. When buyer-gap evidence
+ * is provided, capability maturity and `summary.unresolved_gaps` remain intact
+ * while `attachBuyerGapEvidence` adds separate unresolved/resolved/unknown
+ * canonical buyer-gap collections and their summary counts.
+ *
+ * @param {object} manifest validated capability manifest to evaluate
+ * @param {object} options evaluation inputs
+ * @param {string} options.rootDir repository root containing evidence paths
+ * @param {string} options.generatedAt ISO-compatible report timestamp
+ * @param {string} options.commitSha exact audited commit SHA
+ * @param {object|undefined} options.buyerGapEvidence optional canonical buyer-gap evaluation
+ * @returns {Promise<object>} immutable-input-derived commercial readiness report
+ */
 export async function evaluateCapabilities(
   manifest,
-  { rootDir, generatedAt, commitSha },
+  { rootDir, generatedAt, commitSha, buyerGapEvidence },
 ) {
   if (typeof rootDir !== 'string' || !rootDir)
     throw new Error('Repository root is required');
@@ -196,7 +215,7 @@ export async function evaluateCapabilities(
     weightedTarget += targetRank * capability.customer_impact;
   }
 
-  return {
+  const report = {
     schema: REPORT_SCHEMA,
     generated_at: new Date(generatedAt).toISOString(),
     commit_sha: commitSha.toLowerCase(),
@@ -212,4 +231,8 @@ export async function evaluateCapabilities(
     capabilities,
     gaps,
   };
+
+  return buyerGapEvidence === undefined
+    ? report
+    : attachBuyerGapEvidence(report, buyerGapEvidence);
 }

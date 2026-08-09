@@ -36,6 +36,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -51,15 +52,19 @@ jobs:
           node packages/commercial-readiness/src/cli.mjs snapshot \
             --repository "$GITHUB_REPOSITORY" \
             --policy product/commercial-readiness-policy.json \
-            --commit "$GITHUB_SHA" \
+            --commit "${{ github.event.pull_request.head.sha || github.sha }}" \
             --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --output "$EVIDENCE_DIR/github-snapshot.json"
 
-      - name: Audit product capabilities and buyer gaps
+      - name: Audit capability maturity and canonical buyer gaps
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node packages/commercial-readiness/src/cli.mjs audit \
+          node packages/commercial-readiness/src/buyer-gap-cli.mjs \
+            --repository "$GITHUB_REPOSITORY" \
             --manifest product/capabilities.json \
+            --buyer-gaps product/buyer-gaps.json \
             --snapshot "$EVIDENCE_DIR/github-snapshot.json" \
             --policy product/commercial-readiness-policy.json \
             --root . \
