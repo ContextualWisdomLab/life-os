@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
@@ -14,8 +14,7 @@ const WORKSPACE_ID = 'e021b411-f75e-4490-97a4-f1f6ee811849';
 const OTHER_WORKSPACE_ID = '474c83ae-08af-4a63-957b-49eb2093a61d';
 const BLOCK_ID = '1f06da41-cf62-4387-adad-6f53dd8ee66c';
 const SYNTHETIC_CSRF_TOKEN = 'synthetic-test-csrf-token';
-const CALENDAR_CONTEXT_SECRET =
-  'calendar-integration-test-context-secret-material';
+const CALENDAR_CONTEXT_KEY = randomBytes(32).toString('base64url');
 
 interface StoredCalendarResource {
   readonly calendarData: string;
@@ -70,7 +69,7 @@ function unfoldIcalendar(value: string): string {
 
 function trustedWorkspaceHeaders(workspaceId: string): Record<string, string> {
   const issuedAt = String(Math.floor(Date.now() / 1000));
-  const signature = createHmac('sha256', CALENDAR_CONTEXT_SECRET)
+  const signature = createHmac('sha256', CALENDAR_CONTEXT_KEY)
     .update(
       `life-os.calendar-workspace.v1\n${workspaceId}\n${issuedAt}`,
       'utf8',
@@ -103,7 +102,7 @@ async function postSync(
 describe('calendar synchronization HTTP boundary', () => {
   it('rejects legacy client-selected workspace authority and accepts the signed workspace context', async () => {
     const previousSecret = process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
-    process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_SECRET;
+    process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_KEY;
     const provider = new ConflictSafeRecordingProvider();
     const app = await NestFactory.create(CalendarAppModule.register(provider), {
       logger: false,
@@ -153,7 +152,7 @@ describe('calendar synchronization HTTP boundary', () => {
 
   it('prevents duplicates and silent overwrites while retaining tenant isolation', async () => {
     const previousSecret = process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
-    process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_SECRET;
+    process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_KEY;
     const provider = new ConflictSafeRecordingProvider();
     const app = await NestFactory.create(CalendarAppModule.register(provider), {
       logger: false,
