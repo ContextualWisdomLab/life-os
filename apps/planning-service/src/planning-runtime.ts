@@ -6,6 +6,8 @@ import {
   type PlanningSqlQueryResult,
   PostgresPlanningRepository,
 } from './postgres-planning-repository';
+import { PostgresTodayRepository } from './postgres-today-repository';
+import { TodaySyncService } from './today-sync';
 
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
 
@@ -131,6 +133,7 @@ export class PlanningRuntime implements OnApplicationShutdown {
   constructor(
     private readonly pool: PlanningPool,
     readonly service: PlanningService,
+    readonly todayService: TodaySyncService,
   ) {}
 
   async close(): Promise<void> {
@@ -151,8 +154,12 @@ export function createPlanningRuntime(
   poolFactory: PlanningPoolFactory = defaultPoolFactory,
 ): PlanningRuntime {
   const pool = poolFactory(createPlanningPoolConfiguration(environment));
-  const repository = new PostgresPlanningRepository(
-    new NodePostgresPlanningSqlClient(pool),
+  const client = new NodePostgresPlanningSqlClient(pool);
+  const repository = new PostgresPlanningRepository(client);
+  const todayRepository = new PostgresTodayRepository(client);
+  return new PlanningRuntime(
+    pool,
+    new PlanningService(repository),
+    new TodaySyncService(todayRepository),
   );
-  return new PlanningRuntime(pool, new PlanningService(repository));
 }

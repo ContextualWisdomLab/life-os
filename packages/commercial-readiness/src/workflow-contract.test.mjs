@@ -51,6 +51,15 @@ describe('commercial readiness workflow contract', () => {
     }
   });
 
+  it('requires pull-request CI to execute the browser journey suite', async () => {
+    const workflow = await repositoryFile('.github/workflows/ci.yml');
+    assert.match(
+      workflow,
+      /pnpm --filter @life-os\/web exec playwright install --with-deps chromium/u,
+    );
+    assert.match(workflow, /pnpm --filter @life-os\/web test:e2e/u);
+  });
+
   it('requires all review and security gates before merge mode can execute', async () => {
     const policy = JSON.parse(
       await repositoryFile('product/commercial-readiness-policy.json'),

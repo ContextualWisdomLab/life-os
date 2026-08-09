@@ -57,16 +57,20 @@ test('keeps browser-local capture distinct from durable workspace search', async
   await expect(backlog.getByText('Write a local release note')).toBeVisible();
   await expect(page.getByText(/Stored only in this browser/)).toBeVisible();
 
-  await page.getByLabel('Search durable workspace').fill('release evidence');
+  await page
+    .getByRole('textbox', { name: 'Search durable workspace' })
+    .fill('release evidence');
   await page.getByRole('button', { name: 'Search' }).click();
 
   const results = page.getByRole('list', { name: 'Workspace search results' });
   await expect(results.getByText('Release confidence')).toBeVisible();
   await expect(results.getByText('Release evidence project')).toBeVisible();
   await expect(results.getByText('Review release evidence')).toBeVisible();
-  await expect(page.getByRole('status')).toContainText(
-    '3 durable workspace results found.',
-  );
+  await expect(
+    page.getByRole('status').filter({
+      hasText: '3 durable workspace results found.',
+    }),
+  ).toBeVisible();
   await expect(results).not.toContainText('Write a local release note');
 });
 
@@ -86,12 +90,16 @@ test('announces empty, unauthenticated, and unavailable search states', async ({
     });
   });
 
-  const searchInput = page.getByLabel('Search durable workspace');
+  const searchInput = page.getByRole('textbox', {
+    name: 'Search durable workspace',
+  });
   await searchInput.fill('nothing here');
   await searchInput.press('Enter');
-  await expect(page.getByRole('status')).toContainText(
-    'No durable workspace records matched.',
-  );
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'No durable workspace records matched.',
+    }),
+  ).toBeVisible();
 
   responseStatus = 401;
   responseBody = {
@@ -102,9 +110,11 @@ test('announces empty, unauthenticated, and unavailable search states', async ({
   };
   await searchInput.fill('private work');
   await searchInput.press('Enter');
-  await expect(page.getByRole('status')).toContainText(
-    'Sign in to search durable workspace records.',
-  );
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'Sign in to search durable workspace records.',
+    }),
+  ).toBeVisible();
 
   responseStatus = 503;
   responseBody = {
@@ -115,9 +125,11 @@ test('announces empty, unauthenticated, and unavailable search states', async ({
   };
   await searchInput.fill('retry later');
   await searchInput.press('Enter');
-  await expect(page.getByRole('status')).toContainText(
-    'Workspace search is temporarily unavailable.',
-  );
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'Workspace search is temporarily unavailable.',
+    }),
+  ).toBeVisible();
 });
 
 test('keeps capture and search keyboard-operable on a mobile viewport', async ({
@@ -139,10 +151,14 @@ test('keeps capture and search keyboard-operable on a mobile viewport', async ({
     'Mobile capture',
   );
 
-  const searchInput = page.getByLabel('Search durable workspace');
+  const searchInput = page.getByRole('textbox', {
+    name: 'Search durable workspace',
+  });
   await searchInput.fill('Mobile search');
   await searchInput.press('Enter');
-  await expect(page.getByRole('status')).toContainText(
-    'No durable workspace records matched.',
-  );
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'No durable workspace records matched.',
+    }),
+  ).toBeVisible();
 });

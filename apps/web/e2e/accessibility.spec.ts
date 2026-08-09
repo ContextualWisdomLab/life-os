@@ -23,11 +23,15 @@ test('switches the complete core workflow to Korean and persists the choice', as
   await page.getByRole('button', { name: '기록', exact: true }).click();
   await expect(page.getByText('한국어 접근성 점검')).toBeVisible();
 
-  await page.getByLabel('워크스페이스 영구 기록 검색').fill('한');
+  await page
+    .getByRole('textbox', { name: '워크스페이스 영구 기록 검색' })
+    .fill('한');
   await page.getByRole('button', { name: '검색', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText(
-    '워크스페이스를 검색하려면 두 글자 이상 입력하세요.',
-  );
+  await expect(
+    page.getByRole('status').filter({
+      hasText: '워크스페이스를 검색하려면 두 글자 이상 입력하세요.',
+    }),
+  ).toBeVisible();
 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
@@ -45,7 +49,11 @@ test('exposes semantic landmarks, visible keyboard focus, and reduced motion', a
   await expect(
     page.getByRole('navigation', { name: 'Primary navigation' }),
   ).toBeVisible();
-  await expect(page.getByRole('status')).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({
+      hasText: 'This Today is browser-local only.',
+    }),
+  ).toBeVisible();
   await expect(page.locator('html')).toHaveCSS('scroll-behavior', 'auto');
 
   await page.keyboard.press('Tab');

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { QuickCapture } from './components/quick-capture';
+import { TodayWorkspaceSyncPanel } from './components/today-workspace-sync-panel';
 import {
   chooseSupportedLocale,
   formatMessage,
@@ -223,6 +224,14 @@ export function TodayClient({ generatedAt }: { readonly generatedAt: string }) {
         </header>
 
         <QuickCapture locale={locale} messages={messages} onCapture={capture} />
+        <TodayWorkspaceSyncPanel
+          draft={draft}
+          messages={messages}
+          onUseDraft={(workspaceDraft) => {
+            setDraft(workspaceDraft);
+            setMessageKey(null);
+          }}
+        />
         <p className="sr-status" aria-live="polite">
           {messageKey ? messages[messageKey] : ''}
         </p>
