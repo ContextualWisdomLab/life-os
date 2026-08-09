@@ -4,12 +4,15 @@ on:
   push:
     branches:
       - docs/canonical-product-architecture-baseline-v2
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr140-canonical-doc-format-${{ github.ref }}
+  group: pr140-canonical-doc-format-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -17,10 +20,11 @@ env:
 
 jobs:
   format:
+    if: github.event_name == 'push' || github.event.pull_request.number == 140
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout exact pushed head
+      - name: Checkout exact event revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
