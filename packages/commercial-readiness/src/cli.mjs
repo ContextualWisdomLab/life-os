@@ -196,6 +196,7 @@ async function commandAudit(options) {
     rootDir: options.root,
     generatedAt: snapshot.generated_at,
     commitSha: snapshot.commit_sha,
+    openIssues: snapshot.issues,
   });
   const markdown = renderCommercialReadinessIssue(report, snapshot, {
     marker: policy.readiness_issue_marker,
