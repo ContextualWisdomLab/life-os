@@ -1,7 +1,7 @@
 # LifeOS Test Strategy
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 ## 1. Principle
 
@@ -14,10 +14,10 @@ Changes follow red -> green -> refactor where behavior changes. A regression tes
 | Layer | Purpose | Representative targets |
 | --- | --- | --- |
 | Domain/unit | Deterministic invariants, malformed values, state transitions | planning/habit/review/identity/AI/privacy helpers |
-| Repository/persistence integration | Real PostgreSQL schema, durability, tenancy, constraints, replay/concurrency | identity data-rights ledger, planning, habit, notification, AI audit, privacy |
+| Repository/persistence integration | Real PostgreSQL schema, durability, tenancy, constraints, replay/concurrency | identity data-rights ledger, Today/planning, habit, notification, AI audit, privacy |
 | HTTP boundary integration | Authentication/authorization, size limits, problem/error semantics | identity/gateway/domain controllers |
 | Event contract | Version/type/tenant/replay semantics | shared contracts/NATS consumers |
-| Browser E2E | Buyer journeys, focus/accessibility/localization/PWA | onboarding, capture/Today and active PR #127 acceptance |
+| Browser E2E | Buyer journeys, focus/accessibility/localization/PWA | onboarding, capture/Today, current calendar flows |
 | Provider adapter | Bounded real/protocol behavior without leaking secrets | calendar adapters, model transport |
 | Security regression | Injection, privilege confusion, secret leakage, SSRF/trust boundaries | AppGuardrail/Semgrep/security suites + targeted tests |
 | Operations | backup/restore, deployment manifests, readiness and recovery | `infra/` scripts/workflows/runbooks |
@@ -48,11 +48,15 @@ When a change introduces or modifies PostgreSQL behavior, tests cover as applica
 
 Protected main tests the identity data-rights ledger against PostgreSQL, including immutable terminal receipt evidence and survival of bounded receipt metadata after source user/workspace erasure.
 
+### Today example
+
+Protected main now tests durable Today behavior against PostgreSQL, including deterministic transaction-scoped advisory lock ordering, exact idempotent replay under concurrency, stale-write conflicts, malformed lookup scope, corrupted persisted-state classification, transaction cleanup and DateStyle-independent date integrity.
+
 ## 5. Concurrency
 
 Concurrency tests must exercise the actual locking/precondition mechanism, not only sequential mocks. For stale-write-sensitive state, prove both successful current writes and rejected/reconciled stale writes.
 
-PR #127 must prove the Today aggregate's deterministic lock/revision/idempotency behavior on its exact final head before protected-main status is granted.
+The durable Today contract merged in PR #127 is a protected-main reference for this requirement.
 
 ## 6. Authentication and authorization
 
@@ -67,7 +71,7 @@ Security-sensitive tests cover:
 - signed-context method/path/tenant/time binding where used;
 - missing secret/configuration fail-closed behavior.
 
-PR #139 must prove that the calendar service no longer grants tenant authority from the legacy client-selected workspace header.
+PR #139 must prove that the calendar service no longer grants tenant authority from the legacy client-selected workspace header before that boundary becomes protected-main evidence.
 
 ## 7. Browser and accessibility
 
@@ -79,7 +83,8 @@ Core browser tests cover:
 - Korean/English structural parity;
 - local draft versus durable-state labeling;
 - stale async response suppression;
-- conflict/error recovery without destructive implicit action.
+- conflict/error recovery without destructive implicit action;
+- local edits made while durable Today save is in flight are not silently overwritten.
 
 ## 8. AI/model tests
 
@@ -116,6 +121,7 @@ Canonical documentation tests should verify more than file presence:
 - key service/API/event names match real source/configuration;
 - UUIDv4 and service-owned persistence claims are supported by migrations/source;
 - active PR claims name live PRs and are not promoted to protected-main status;
+- resolved buyer-gap issues are not kept artificially unresolved in canonical reporting;
 - canonical buyer gaps match the repository-owned buyer-gap registry and live issue state where the audit fetches it.
 
 A resolved historical review comment is never enough to prove a later source version still satisfies the contract.
