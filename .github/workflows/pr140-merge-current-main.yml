@@ -17,6 +17,7 @@ env:
 
 jobs:
   merge-main:
+    # The connector-owned refresh commit is the only intended trigger. A bot push must not recurse.
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
