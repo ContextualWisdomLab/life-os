@@ -172,6 +172,8 @@ Automation is work-conserving: a blocked PR/check/provider/tool path blocks only
 
 The bounded hourly OpenCode commercial-development workflow and deterministic policy package are **Implemented on protected main** from merged PR #122 (`876850018a17323900844e79845ba395b7bf6a9a`). The model does not receive generic GitHub/product-data authority; deterministic policy, exact-head/base/diff checks, and normal review/security/merge gates remain authoritative. Existing independent review-agent credentials are not repurposed.
 
+The pinned OpenCode configuration disables project-local overrides, explicitly reloads reviewed repository instructions, enables only NVIDIA, registers and whitelists one model label independently of the bundled catalog, pins primary and small-model work to it, and checks that effective catalog offline before its credential bridge starts; the bridge exposes no provider-wide discovery route. Model-generated source verification runs without Docker authority. A later trusted operation parses the accepted candidate's explicitly selected Compose file, while credential-free pull-request CI starts digest-pinned images, proves PostgreSQL query execution and NATS JetStream availability, binds published ports to loopback, and tears down unconditionally. This hardening is **Implemented on protected main** from merged PR #133 (`38dde3fa44f6ad24d848c378237e55cbee79b3f0`).
+
 ## 12. Canonical documentation hierarchy
 
 1. `docs/PRD.md` — product outcomes, users, requirements, scope, status.
