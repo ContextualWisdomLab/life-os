@@ -1,5 +1,6 @@
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
+import { attachBuyerGapEvidence } from './buyer-gaps.mjs';
 import { MATURITY_LEVELS, MATURITY_RANK } from './schema.mjs';
 
 const REPORT_SCHEMA = 'life-os.commercial-readiness-report.v1';
@@ -119,7 +120,7 @@ function missingEvidenceForTarget(capability, evidenceResults) {
 
 export async function evaluateCapabilities(
   manifest,
-  { rootDir, generatedAt, commitSha },
+  { rootDir, generatedAt, commitSha, buyerGapEvidence },
 ) {
   if (typeof rootDir !== 'string' || !rootDir)
     throw new Error('Repository root is required');
@@ -196,7 +197,7 @@ export async function evaluateCapabilities(
     weightedTarget += targetRank * capability.customer_impact;
   }
 
-  return {
+  const report = {
     schema: REPORT_SCHEMA,
     generated_at: new Date(generatedAt).toISOString(),
     commit_sha: commitSha.toLowerCase(),
@@ -212,4 +213,8 @@ export async function evaluateCapabilities(
     capabilities,
     gaps,
   };
+
+  return buyerGapEvidence === undefined
+    ? report
+    : attachBuyerGapEvidence(report, buyerGapEvidence);
 }
