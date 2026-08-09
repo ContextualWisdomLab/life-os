@@ -1,6 +1,6 @@
 # ADR-0004: AI proposals are inert and auditable
 
-**Status:** Accepted  
+**Status:** Accepted architecture  
 **Date:** 2026-08-09
 
 ## Context
