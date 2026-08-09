@@ -184,6 +184,7 @@ export function validateBuyerGapSnapshot(value) {
     value.schema !== SNAPSHOT_SCHEMA ||
     typeof value.repository !== 'string' ||
     !REPOSITORY_PATTERN.test(value.repository) ||
+    typeof value.generated_at !== 'string' ||
     !Number.isFinite(Date.parse(value.generated_at)) ||
     !Array.isArray(value.issues) ||
     value.issues.length > MAX_GAPS
@@ -242,6 +243,7 @@ export async function collectBuyerGapSnapshot(
     typeof client.requestJson !== 'function' ||
     typeof repository !== 'string' ||
     !REPOSITORY_PATTERN.test(repository) ||
+    typeof generatedAt !== 'string' ||
     !Number.isFinite(Date.parse(generatedAt)) ||
     !registry ||
     registry.schema !== REGISTRY_SCHEMA ||
