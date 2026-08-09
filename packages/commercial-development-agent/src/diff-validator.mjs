@@ -110,17 +110,13 @@ function requireCommitSha(value) {
     : invalid();
 }
 
-/** Requires one normalized relative POSIX repository path. */
+/** Requires one structurally bounded repository path string. */
 function requireRepositoryPath(value) {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
     Buffer.byteLength(value, 'utf8') > 1_024 ||
-    value.startsWith('/') ||
-    value.includes('\\') ||
-    CONTROL_NUL_PATTERN.test(value) ||
-    pathPosix.normalize(value) !== value ||
-    value.split('/').includes('..')
+    CONTROL_NUL_PATTERN.test(value)
   ) {
     return invalid();
   }
@@ -130,6 +126,10 @@ function requireRepositoryPath(value) {
 /** Returns whether the path belongs to the initial safe write surface. */
 function isAllowedPath(path, policy) {
   if (
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    pathPosix.normalize(path) !== path ||
+    path.split('/').includes('..') ||
     policy.prohibited_exact_paths.includes(path) ||
     policy.prohibited_path_prefixes.some((prefix) => path.startsWith(prefix))
   ) {
