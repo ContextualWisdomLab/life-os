@@ -387,7 +387,7 @@ describe('OpenCode commercial development workflow contract', () => {
       'docker compose up --detach --wait --wait-timeout 90',
     );
     expect(runtime).toContain(
-      "docker compose exec --no-tty postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1'",
+      "docker compose exec --no-TTY postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1'",
     );
     expect(runtime).toContain('http://127.0.0.1:8222/jsz');
     expect(runtime).toContain('jq -e \'(.streams | type) == "number"');

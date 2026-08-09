@@ -40,7 +40,7 @@ jobs:
           trap cleanup EXIT
 
           docker compose up --detach --wait --wait-timeout 90
-          docker compose exec --no-tty postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1' |
+          docker compose exec --no-TTY postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1' |
             grep -Fx 1
           curl --fail --silent --show-error --max-time 5 \
             http://127.0.0.1:8222/jsz |
