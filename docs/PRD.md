@@ -1,7 +1,7 @@
 # LifeOS Product Requirements Document
 
 **Version:** 1.0-draft  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`  
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`  
 **Product:** LifeOS  
 **Repository:** `ContextualWisdomLab/life-os`
 
@@ -116,7 +116,7 @@ A release is evaluated against this journey, not service count.
 | PRD-PLAN-002 | Tenant-safe bounded planning search. | Implemented on protected main | Planning search source and web tests. |
 | PRD-PLAN-003 | Keep browser-local quick capture/drafts distinct from durable records. | Implemented on protected main | Web capture/Today behavior. |
 | PRD-PLAN-004 | Provide a bounded Today action loop. | Implemented on protected main | Current Today UI/composition tests. |
-| PRD-PLAN-005 | Move Today state explicitly to workspace durability and reconcile stale multi-device edits. | Implemented on active PR | Issue #121, PR #127 at its current live head. Not protected-main evidence until merge. |
+| PRD-PLAN-005 | Move Today state explicitly to workspace durability and reconcile stale multi-device edits. | Implemented on protected main | PR #127 merged as `f4cae6d83eadb00019d2962a650c55c59a3349ae`; issue #121 closed completed. |
 
 ### Habits and reviews
 
@@ -170,13 +170,13 @@ A release is evaluated against this journey, not service count.
 | PRD-WEB-001 | Responsive installable PWA. | Implemented on protected main | PWA/browser tests. |
 | PRD-WEB-002 | Keyboard operability, visible focus and non-color-only essential state. | Implemented on protected main | Accessibility tests for current core journeys. |
 | PRD-WEB-003 | Structurally complete Korean/English catalogs. | Implemented on protected main | Message catalog tests. |
-| PRD-WEB-004 | Explicit reconnect/conflict experience for durable Today drafts. | Implemented on active PR | PR #127 bounded Today journey. |
+| PRD-WEB-004 | Explicit reconnect/conflict experience for durable Today drafts. | Implemented on protected main | PR #127 merged to protected main; browser conflict/retry acceptance is part of that slice. |
 
 ### Governance and readiness
 
 | ID | Requirement | Status | Evidence / gap |
 | --- | --- | --- | --- |
-| PRD-GOV-001 | Report capability maturity separately from canonical buyer-gap exhaustion. | Implemented on protected main | Current commercial-readiness issue #21 reports 22/22 maturity and four unresolved canonical buyer gaps separately. |
+| PRD-GOV-001 | Report capability maturity separately from canonical buyer-gap exhaustion. | Implemented on protected main | Current commercial-readiness issue #21 at `f4cae6d...` reports 22/22 maturity and three unresolved canonical buyer gaps. |
 | PRD-GOV-002 | Bind trusted evidence to repository provenance and exact commit identity. | Implemented on protected main | #135 and readiness source. |
 | PRD-GOV-003 | Distinguish exact contributor-head verification from synthetic merge-tree compatibility evidence. | Planned | Issue #132. |
 
