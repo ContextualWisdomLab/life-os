@@ -1,50 +1,83 @@
-# ADR 0002: OAuth transactions and session tokens
+# ADR 0002: OAuth transactions, session tokens, and authentication provenance
 
-- **Status:** Accepted
-- **Date:** 2026-08-03
+**Status:** Accepted architecture  
+**Date:** 2026-08-03
 
 ## Context
 
-LifeOS accepts Google and GitHub sign-in while maintaining provider-neutral internal identity records. Authorization callbacks must resist cross-site request forgery, authorization-code injection, authorization-server mix-up, replay, redirect substitution, and bearer-token disclosure. Internal identifiers must remain opaque, non-numeric, and non-sequential.
+LifeOS supports Google and GitHub sign-in while maintaining provider-neutral internal identity. OAuth callbacks must resist state/code injection, mix-up, replay, redirect substitution and bearer disclosure. Session rotation must not accidentally reset the real authentication age used by sensitive recent-authentication gates.
 
-The repository already contained provider authorization and token-exchange builders. This decision hardens the shared `auth-security` transaction and session layer rather than introducing a second implementation.
+## Decision drivers
+
+- provider-neutral identity;
+- tenant-safe session scope;
+- replay-resistant OAuth transactions;
+- recent-authentication correctness;
+- secret minimization in persistence/logging;
+- compatibility with protected-main identity migrations/tests.
+
+## Considered alternatives
+
+1. **Trust provider callback parameters without a server transaction** — rejected.
+2. **Persist raw state/session bearer values** — rejected.
+3. **Treat every session rotation as a new authentication ceremony** — rejected because it can defeat recent-authentication policy.
+4. **Server-owned one-time OAuth transactions plus digest-only sessions and explicit authentication provenance** — selected.
 
 ## Decision
 
 ### Authorization transactions
 
-- Every authorization attempt receives a cryptographically random, one-time `state` value.
-- The server persists only a SHA-256 digest of `state`.
-- The transaction is bound to the selected provider, a digest of the initiating browser session identifier, and the normalized redirect URI.
-- The same redirect URI must be used when building the authorization request and exchanging the authorization code.
-- Transactions expire after ten minutes by default and are consumed once.
-- Provider adapters must consume transactions atomically. A PostgreSQL adapter must use a conditional update or delete with `RETURNING`, scoped to the provider, state digest, browser-session digest, unconsumed status, and expiry.
-- Authorization requests use PKCE with the `S256` method. The verifier is a 64-byte random base64url value and the challenge is `BASE64URL(SHA256(verifier))`.
-- The verifier and Google OIDC nonce are server-side material. Persistent implementations must encrypt them at rest; neither is returned to the browser except that the nonce is included in the Google authorization request.
-- Each provider uses a distinct callback route or equivalent issuer verification to prevent authorization-server mix-up.
-- Redirect URIs require HTTPS, except for loopback HTTP during local development, and may not contain credentials or fragments.
+- generate cryptographically random one-time `state` and persist only its digest;
+- bind transaction to provider, initiating browser-session context and normalized redirect URI;
+- expire and atomically consume transactions;
+- use PKCE S256 and keep verifier/nonce as server-side sensitive material;
+- use distinct callback/issuer validation adequate to prevent provider mix-up;
+- require HTTPS redirects except narrowly bounded loopback development cases.
 
 ### Application sessions
 
-- Session bearer tokens are cryptographically random base64url values and are not entity identifiers.
-- Only a SHA-256 digest of a session token is persisted.
-- Session records use random UUIDv4 primary keys and bind both a user and one of that user's workspaces.
-- The database enforces workspace ownership with a composite foreign key.
-- Session rotation revokes the previous token before issuing a replacement and records the previous session ID.
-- Revocation is idempotent and does not disclose whether a supplied token existed.
-- Browser delivery uses `Secure`, `HttpOnly`, and an explicit `SameSite` policy. Production deployments must never place session tokens in URLs, logs, local storage, analytics payloads, or application telemetry.
+- bearer tokens are random secrets, not entity identifiers;
+- persist only bearer digests;
+- session records use UUIDv4 and bind user plus authorized workspace;
+- rotation revokes the previous bearer/session path according to the domain contract;
+- browser cookies are Secure/HttpOnly with explicit SameSite policy;
+- bearer/session values never enter URLs, analytics, logs or public artifacts.
 
-## Standards basis
+### Authentication provenance
 
-- RFC 7636, *Proof Key for Code Exchange by OAuth Public Clients*: https://www.rfc-editor.org/rfc/rfc7636
-- RFC 9700 / BCP 240, *Best Current Practice for OAuth 2.0 Security*: https://www.rfc-editor.org/rfc/rfc9700
-- GitHub OAuth authorization flow: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+- store the authentication instant separately from session issuance/rotation time;
+- compatible session rotation preserves the original authentication instant;
+- a recent-authentication policy evaluates the authentication ceremony age, not token/session age;
+- malformed/future/stale provenance fails closed for sensitive operations.
 
 ## Consequences
 
-- Stolen database rows do not directly reveal usable `state` or session bearer values.
-- OAuth transactions and sessions require expiry cleanup jobs.
-- A production repository needs encryption-key management for PKCE verifiers and OIDC nonces.
-- Existing callers must supply the initiating browser-session identifier and the exact redirect URI when creating and consuming transactions.
-- Existing sessions are backfilled to their owners' personal workspaces by migration `0003_oauth_binding_and_session_rotation.sql`.
-- Provider callback adapters remain responsible for network exchange, provider response validation, ID-token validation for Google, and profile retrieval; this ADR supplies the transaction and session primitives they must use.
+- OAuth transactions and sessions need expiry cleanup;
+- production deployments need encryption/key management for server-side OAuth verifier/nonce material where persisted;
+- callers must preserve exact provider/redirect/browser-transaction binding;
+- sensitive operations can distinguish a fresh bearer from a genuinely fresh authentication event.
+
+## Failure and recovery
+
+Consumed/expired/mismatched OAuth transactions fail without reusing state. Session rotation failure must not leave two unexpectedly authoritative bearers. Authentication-age migration uses staged compatibility/finalization so existing sessions cannot silently receive a fictitious fresh-auth timestamp.
+
+## Security and privacy impact
+
+Database disclosure does not directly reveal usable OAuth state or session bearer material. Provider identities stay separate from LifeOS primary IDs. Recent-authentication checks are resistant to token/session refresh being used as policy bypass.
+
+## Acceptance evidence
+
+Protected main contains OAuth/session transaction tests, session rotation migrations, authentication-age migration/tests and recent-authentication data-rights policy/application tests integrated through #134-#137.
+
+## Migration and rollback
+
+Identity migrations stage authentication provenance and finalize the required constraints only after compatible data state exists. Rollback/forward-fix must preserve the distinction between authentication time and session issuance; removing the new column/contract without policy reconciliation is unsafe.
+
+## Supersession
+
+This ADR remains authoritative for LifeOS login/session/authentication-provenance behavior until a later accepted ADR and protected-main migration/test evidence explicitly replace it.
+
+## Standards basis
+
+- RFC 7636, *Proof Key for Code Exchange by OAuth Public Clients*.
+- RFC 9700 / BCP 240, *Best Current Practice for OAuth 2.0 Security*.
