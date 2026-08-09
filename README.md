@@ -20,10 +20,14 @@ Start here when evaluating or changing the whole product:
 - [Architecture decisions](docs/adr/README.md)
 - [Logical data model / ERD](docs/DATA_MODEL.md)
 - [UML and interaction views](docs/UML.md)
+- [API and event contract registry](docs/API_CONTRACTS.md)
 - [Security policy](SECURITY.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [Privacy and data lifecycle](docs/PRIVACY_DATA_LIFECYCLE.md)
 - [Test strategy](docs/TEST_STRATEGY.md)
 - [Operability and deployment boundary](docs/OPERABILITY.md)
+- [Release, migration, and rollback contract](docs/RELEASE_AND_MIGRATION.md)
+- [Standards and research traceability](docs/STANDARDS_TRACEABILITY.md)
 - [Requirements and evidence traceability](docs/TRACEABILITY.md)
 - [Documentation completeness assessment](docs/DOCUMENTATION_ASSESSMENT.md)
 
@@ -119,7 +123,7 @@ The calendar integration service supports explicit `caldav` and `google` provide
 
 CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the current LifeOS provider contract.
 
-`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables unattended Google Calendar synchronization.
+`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and are tracked by issue #129 before a multi-user hosted deployment enables unattended Google Calendar synchronization.
 
 ## Notifications
 
@@ -134,6 +138,8 @@ The web boundary derives workspace/actor authority from the active session and s
 ## Privacy access
 
 The privacy service provides purpose-bound authorization and durable decision/grant/event evidence for sensitive-data access. It uses explicit actor/resource/purpose/lifetime boundaries rather than treating indiscriminate masking as a complete authorization model. Public logs/errors/artifacts remain content-minimized and credential-free.
+
+Complete tenant export/deletion productization remains partial and is tracked by issue #55; see [privacy and data lifecycle](docs/PRIVACY_DATA_LIFECYCLE.md).
 
 ## Plugin contract
 
