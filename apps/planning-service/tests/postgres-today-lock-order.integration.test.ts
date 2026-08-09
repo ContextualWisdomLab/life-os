@@ -9,6 +9,7 @@ import {
 } from '../src/planning-runtime';
 
 const DATABASE_URL = process.env.PLANNING_DATABASE_URL;
+const TEMPORARY_DATABASE_NAME = 'life_os_today_lock_test';
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 
 function requireDatabaseUrl(): string {
@@ -18,21 +19,10 @@ function requireDatabaseUrl(): string {
   return DATABASE_URL;
 }
 
-function databaseName(): string {
-  return `life_os_today_lock_${randomUUID().replaceAll('-', '')}`;
-}
-
 function databaseUrl(sourceUrl: string, name: string): string {
   const parsed = new URL(sourceUrl);
   parsed.pathname = `/${name}`;
   return parsed.toString();
-}
-
-function quotedIdentifier(value: string): string {
-  if (!/^life_os_today_lock_[0-9a-f]{32}$/u.test(value)) {
-    throw new Error('Temporary database name is invalid');
-  }
-  return `"${value}"`;
 }
 
 async function applyPlanningMigrations(pool: Pool): Promise<void> {
@@ -60,7 +50,6 @@ function draft(date: string) {
 describeWithDatabase('PostgreSQL Today lock ordering', () => {
   it('serializes repeated identical concurrent creates into one mutation and one replay', async () => {
     const sourceUrl = requireDatabaseUrl();
-    const temporaryDatabase = databaseName();
     const adminPool = new Pool({
       connectionString: databaseUrl(sourceUrl, 'postgres'),
     });
@@ -69,9 +58,10 @@ describeWithDatabase('PostgreSQL Today lock ordering', () => {
 
     try {
       await adminPool.query(
-        `CREATE DATABASE ${quotedIdentifier(temporaryDatabase)}`,
+        'DROP DATABASE IF EXISTS life_os_today_lock_test WITH (FORCE)',
       );
-      const temporaryUrl = databaseUrl(sourceUrl, temporaryDatabase);
+      await adminPool.query('CREATE DATABASE life_os_today_lock_test');
+      const temporaryUrl = databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME);
       migrationPool = new Pool({ connectionString: temporaryUrl });
       await applyPlanningMigrations(migrationPool);
       runtime = createPlanningRuntime({
@@ -110,7 +100,7 @@ describeWithDatabase('PostgreSQL Today lock ordering', () => {
       await runtime?.close();
       await migrationPool?.end();
       await adminPool.query(
-        `DROP DATABASE IF EXISTS ${quotedIdentifier(temporaryDatabase)} WITH (FORCE)`,
+        'DROP DATABASE IF EXISTS life_os_today_lock_test WITH (FORCE)',
       );
       await adminPool.end();
     }
