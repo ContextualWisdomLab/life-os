@@ -95,10 +95,7 @@ function parseArguments(argv) {
     }
     options[name] = requireAbsolutePath(value);
   }
-  if (
-    Object.keys(options).length !== COMMAND_OPTIONS[command].length ||
-    COMMAND_OPTIONS[command].some((name) => !Object.hasOwn(options, name))
-  ) {
+  if (Object.keys(options).length !== COMMAND_OPTIONS[command].length) {
     return invalid();
   }
   return Object.freeze({ command, options: Object.freeze(options) });
