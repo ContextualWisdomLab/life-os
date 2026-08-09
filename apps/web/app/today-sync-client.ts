@@ -95,6 +95,11 @@ function requireCookie(request: Request): string | undefined {
   return cookie;
 }
 
+/** Normalizes a media type token because RFC media types are case-insensitive. */
+function mediaType(value: string | null): string | undefined {
+  return value?.split(';', 1)[0]?.trim().toLowerCase();
+}
+
 /** Reads one body with a strict byte cap before returning text. */
 async function readBoundedText(
   response: Response,
@@ -136,7 +141,7 @@ async function readBoundedJson(
   response: Response,
   maximumBytes: number,
 ): Promise<unknown> {
-  const contentType = response.headers.get('content-type')?.split(';', 1)[0];
+  const contentType = mediaType(response.headers.get('content-type'));
   if (
     contentType !== 'application/json' &&
     contentType !== 'application/problem+json'
@@ -151,9 +156,7 @@ async function readBrowserPutBody(
   request: Request,
   date: string,
 ): Promise<string> {
-  if (
-    request.headers.get('content-type')?.split(';', 1)[0] !== 'application/json'
-  ) {
+  if (mediaType(request.headers.get('content-type')) !== 'application/json') {
     throw new Error('invalid media type');
   }
   if (request.body === null) throw new Error('missing body');
@@ -233,8 +236,7 @@ function parseRevisionConflict(value: unknown): string | null | undefined {
   if (
     record.type !== 'about:blank' ||
     record.status !== 409 ||
-    record.code !== 'today_revision_conflict' ||
-    record.title !== 'Today changed on another device'
+    record.code !== 'today_revision_conflict'
   ) {
     return undefined;
   }
