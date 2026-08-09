@@ -1,7 +1,7 @@
 # LifeOS API and Event Contract Registry
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 This registry records contract ownership and maturity. Exact request/response/event shapes remain authoritative in owning source packages, controllers, schemas and tests.
 
@@ -23,7 +23,7 @@ This registry records contract ownership and maturity. Exact request/response/ev
 | Login/OAuth/session | Identity service | Implemented on protected main | Google/GitHub provider flows and revocable sessions. |
 | Session introspection / trusted identity context | Identity service | Implemented on protected main | Used by authenticated web/gateway composition. |
 | Planning goals/projects/tasks/search | Planning service | Implemented on protected main | Planning service is sole mutation authority. |
-| Durable Today aggregate | Planning service | Implemented on active PR | PR #127; issue #121. |
+| Durable Today aggregate | Planning service | Implemented on protected main | PR #127 merged as `f4cae6d...`; issue #121 closed completed. |
 | Habit definition/completion | Habit service | Implemented on protected main | Tenant-scoped replay-safe completion. |
 | Guided review | Review service | Implemented on protected main | Projection/evidence boundary. |
 | Reminder/inbox operations | Notification service | Implemented on protected main | Durable occurrence/claim/outcome model. |
@@ -41,15 +41,18 @@ This registry records contract ownership and maturity. Exact request/response/ev
 
 ### Today aggregate
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
 - complete aggregate scoped to authenticated workspace and local date;
 - explicit create/update preconditions;
 - opaque revision token;
+- deterministic transaction-scoped advisory locking and fresh post-lock state checks;
 - exact idempotency replay returns the original outcome;
 - conflicting idempotency reuse fails closed;
 - stale revision returns a bounded conflict containing only current opaque revision evidence;
-- browser local draft is uploaded only after explicit user action.
+- malformed lookup scope fails before SQL;
+- corrupted persisted state is classified separately from transient retryable failures;
+- browser local draft is uploaded only after explicit user action and local edits made during an in-flight save are preserved.
 
 ### Data-rights request ledger
 
