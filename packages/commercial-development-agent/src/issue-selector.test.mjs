@@ -151,12 +151,13 @@ describe('deterministic commercial issue selection', () => {
       }),
     ).toEqual(eligible);
 
+    const referencingPullRequest = pullRequest({
+      body: 'Review\tcontext\r\nCloses #119\n',
+    });
     expect(
       selectCommercialDevelopmentIssue({
         issues: [eligible],
-        openPullRequests: [
-          pullRequest({ body: 'Review\tcontext\r\nCloses #119\n' }),
-        ],
+        openPullRequests: [referencingPullRequest],
         policy: POLICY,
       }),
     ).toBeUndefined();
