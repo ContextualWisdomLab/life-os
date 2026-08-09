@@ -29,6 +29,7 @@ FROM session_authentication_lineage AS lineage
 WHERE session_row.id = lineage.id;
 
 ALTER TABLE identity.sessions
-  ALTER COLUMN authenticated_at SET NOT NULL,
+  ADD CONSTRAINT sessions_authentication_present
+    CHECK (authenticated_at IS NOT NULL) NOT VALID,
   ADD CONSTRAINT sessions_authentication_not_after_creation
-    CHECK (authenticated_at <= created_at);
+    CHECK (authenticated_at <= created_at) NOT VALID;
