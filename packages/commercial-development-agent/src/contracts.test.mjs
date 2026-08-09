@@ -131,7 +131,7 @@ describe('commercial development policy contract', () => {
 
   it.each([
     null,
-    [],
+    [[]],
     {},
     { ...policy(), schema: 'wrong' },
     { ...policy(), extra: true },
@@ -231,6 +231,26 @@ describe('external issue projection contract', () => {
     expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
   });
 
+  it('preserves TAB, CR, and LF in bounded untrusted issue text', () => {
+    const value = {
+      ...issue(),
+      body: 'First\tfield\r\nSecond line\n',
+    };
+    expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
+  });
+
+  it.each(['\u0000', '\u000b', '\u000c', '\u001f', '\u007f'])(
+    'rejects prohibited issue-body control character %#',
+    (control) => {
+      expect(() =>
+        validateCommercialDevelopmentIssue(
+          { ...issue(), body: `before${control}after` },
+          policy(),
+        ),
+      ).toThrow(CommercialDevelopmentContractError);
+    },
+  );
+
   it.each([
     { ...issue(), number: 0 },
     { ...issue(), number: 1.5 },
@@ -279,6 +299,19 @@ describe('credential-free receipt contract', () => {
     };
     expect(validateCommercialDevelopmentReceipt(value)).toEqual(value);
   });
+
+  it.each(['toString', 'constructor'])(
+    'rejects inherited receipt status key %s with the stable contract error',
+    (status) => {
+      expect(() =>
+        validateCommercialDevelopmentReceipt({
+          ...receipt(),
+          status,
+          reason_code: 'completed',
+        }),
+      ).toThrow(CommercialDevelopmentContractError);
+    },
+  );
 
   it.each([
     { ...receipt(), schema: 'wrong' },
