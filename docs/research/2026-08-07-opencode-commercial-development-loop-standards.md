@@ -25,9 +25,13 @@ The OWASP Top 10 for LLM Applications identifies prompt injection, sensitive-inf
 
 ## OpenCode and NVIDIA provider boundary
 
-OpenCode exposes a non-interactive `run` command and provider/model configuration. LifeOS uses one exact reviewed `opencode-ai` package version and verifies both the installed version and command contract. Auto-update and sharing are disabled. The model receives a private configuration and a source archive without `.git`; Bash is denied by default except for reviewed `pnpm`, `node`, `python3`, `grep`, `rg`, `find`, `ls`, and `cat` command patterns, while web-fetch, web-search, and external-directory access are denied. The prompt is attached from a private file instead of carrying issue text in process arguments (Anomaly, 2026).
+OpenCode exposes a non-interactive `run` command and provider/model configuration. LifeOS uses one exact reviewed `opencode-ai` package version and verifies both the installed version and command contract. Auto-update, sharing, Models.dev refresh, and project-local configuration discovery are disabled; reviewed workspace instruction files are then loaded explicitly. The private configuration enables only NVIDIA, registers the reviewed identifier in `provider.nvidia.models`, whitelists it, pins primary and small-model work to that label, and requires `opencode models nvidia` to return exactly that fully qualified label before the bridge starts. Explicit registration avoids dependence on whether the identifier is present in the binary's bundled snapshot, so no provider `/v1/models` proxy is needed. The model receives a private configuration and a source archive without `.git`; Bash is denied by default except for reviewed `pnpm`, `node`, `python3`, `grep`, `rg`, `find`, `ls`, and `cat` command patterns, while web-fetch, web-search, and external-directory access are denied. The prompt is attached from a private file instead of carrying issue text in process arguments (Anomaly, 2026).
 
 NVIDIA NIM exposes hosted OpenAI-compatible inference authenticated with an API key. `NVIDIA_NIM_API_KEY` is mapped only to a loopback bridge running as `opencode_bridge`. OpenCode runs separately as `opencode_model` with a placeholder API-key value and an allowlisted minimal environment; UID-based `iptables` rules restrict its model-phase egress to the bridge. GitHub, review-agent, deployment, and unrelated repository credentials are absent. Provider availability is evidence, not a deterministic merge prerequisite (NVIDIA Corporation, 2026).
+
+### Docker Compose verification boundary
+
+Docker documents `--file` as the way to select a Compose configuration and `docker compose config` as parsing, resolving, and rendering the resulting application model; `docker compose up --wait` creates services and waits for them to be running or healthy. LifeOS selects the accepted candidate file explicitly and keeps parsing in a trusted step instead of granting Docker authority to `opencode_model`. Actual PostgreSQL query execution, NATS JetStream monitoring, bounded failure logs, and teardown run in ordinary credential-free pull-request CI, where no NVIDIA or GitHub write credential is present, container images are digest-pinned, and published development ports bind only to loopback (Docker, Inc., 2026a, 2026b, 2026c).
 
 ## Test-time compute allocation
 
@@ -73,6 +77,12 @@ Latency and token use are recorded for cost and capacity review but are not the 
 ## References
 
 Anomaly. (2026). _OpenCode documentation_. https://opencode.ai/docs/
+
+Docker, Inc. (2026a). _docker compose_. https://docs.docker.com/reference/cli/docker/compose/
+
+Docker, Inc. (2026b). _docker compose config_. https://docs.docker.com/reference/cli/docker/compose/config/
+
+Docker, Inc. (2026c). _docker compose up_. https://docs.docker.com/reference/cli/docker/compose/up/
 
 GitHub. (2026a). _Security hardening for GitHub Actions_. https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
 

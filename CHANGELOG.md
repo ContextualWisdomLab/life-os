@@ -23,6 +23,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- The OpenCode development loop now prevents project settings from overriding its pinned offline NVIDIA model, records catalog failures accurately, parses the accepted candidate's exact Compose file outside the model account, and requires digest-pinned PostgreSQL queries plus NATS JetStream probes in pull-request CI.
 - Live contextual-orchestrator responses now classify successful empty bodies as evaluation failures, emit exactly one terminal observation, canonicalize retained timestamps safely, and preserve null metric denominators instead of fabricating deltas.
 - Stale AI proposal revision conflicts now belong to the technology-independent audit domain while the PostgreSQL adapter preserves its compatibility export.
 - Planning search now normalizes browser query text and prevents stale or unmounted requests from replacing the latest visible result state.
@@ -32,6 +33,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- The commercial-development model account no longer performs Docker commands, never receives Docker-socket authority, and cannot trigger provider-wide model discovery through the credential bridge.
 - The scheduled live-model harness uses only `NVIDIA_NIM_API_KEY`, seeds it through the encrypted contextual-orchestrator credential registry, installs hash-locked dependencies from an exact commit, confines LifeOS traffic to loopback, allowlists NVIDIA NIM egress, and excludes provider credentials, prompts, responses, traces, and hidden reasoning from retained artifacts.
 - Proposal quality reports now discard nested model failures and response bodies, normalize labeled sentinel checks, expose no provider credential or mutation dependency, and measure prompt-injection resistance together with benign utility instead of rewarding blanket refusal.
 - External proposal generation now accepts only one credential-free HTTPS orchestrator origin, stops responses at 65536 bytes, enforces a bounded abort timeout, supplies no tools, treats planning context as untrusted data, and exposes only sanitized failures.
