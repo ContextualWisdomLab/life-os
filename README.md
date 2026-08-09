@@ -6,7 +6,28 @@ LifeOS connects everyday action to longer-term direction. It is designed as a mu
 
 ## Status
 
-LifeOS is in active foundation development. The current `main` branch contains the monorepo, gateway, bounded services, shared contracts, responsive web shell, PostgreSQL persistence, NATS JetStream configuration, security gates, and commercial-readiness evidence loop. Interfaces and migrations may still change before the first stable release.
+LifeOS is in active foundation development. The current `main` branch contains the monorepo, gateway, bounded services, responsive web shell, PostgreSQL persistence, NATS JetStream configuration, security gates, and commercial-readiness evidence loop. Interfaces and migrations may still change before the first stable release.
+
+Canonical documents distinguish protected-main behavior from active-PR, partial, planned, research-only, superseded, and out-of-scope work. Do not use the original 2026-08-02 combined design as a parallel current PRD/TRD; it is retained as historical design input.
+
+## Canonical documentation
+
+Start here when evaluating or changing the whole product:
+
+- [Product requirements](docs/PRD.md)
+- [Technical requirements](docs/TRD.md)
+- [Architecture](ARCHITECTURE.md)
+- [Architecture decisions](docs/adr/README.md)
+- [Logical data model / ERD](docs/DATA_MODEL.md)
+- [UML and interaction views](docs/UML.md)
+- [Security policy](SECURITY.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Test strategy](docs/TEST_STRATEGY.md)
+- [Operability and deployment boundary](docs/OPERABILITY.md)
+- [Requirements and evidence traceability](docs/TRACEABILITY.md)
+- [Documentation completeness assessment](docs/DOCUMENTATION_ASSESSMENT.md)
+
+Scoped implementation plans, feature designs, runbooks, standards/research, and legal material remain under `docs/superpowers/`, `docs/operations/`, `docs/research/`, and `docs/legal/` as supporting evidence.
 
 ## Architecture
 
@@ -14,13 +35,15 @@ LifeOS is in active foundation development. The current `main` branch contains t
 Web / PWA
    |
 API Gateway / BFF
-   |---------------------------------------------|
-Identity       Planning       Habit       Review
-   |              |             |           |
-PostgreSQL schemas / databases + NATS JetStream events
+   |-------------------------------------------------------------|
+Identity   Planning   Habit   Review   AI   Calendar   Privacy   Plugin
+                         |
+              Notification / event consumers
+
+Service-owned PostgreSQL persistence + versioned NATS JetStream events
 ```
 
-The MVP deliberately keeps goals, projects, milestones, and tasks in one Planning bounded context. Services own their persistence boundaries; direct cross-service table access is prohibited.
+The product deliberately keeps strongly coupled goals, projects, milestones, and tasks in one Planning bounded context. Services own their persistence boundaries; direct cross-service table access is prohibited. Internal identifiers are opaque UUIDv4 strings under the current protected-main contract.
 
 ## Repository layout
 
@@ -32,11 +55,16 @@ apps/
   planning-service/
   habit-service/
   review-service/
+  ai-service/
+  notification-service/
+  privacy-service/
   integration-calendar-service/
   integration-service/
 packages/
   contracts/
   plugin-sdk/
+  observability/
+  commercial-readiness/
 infra/
 docs/
 ```
@@ -57,7 +85,7 @@ docker compose up -d
 pnpm dev
 ```
 
-Default endpoints:
+Default endpoints include:
 
 - Web: `http://localhost:3000`
 - Gateway health: `http://localhost:4000/v1/health`
@@ -71,56 +99,78 @@ Default endpoints:
 - Plugin contract discovery: `http://localhost:4107/v1/plugin-contract`
 - NATS monitoring: `http://localhost:8222`
 
-Metrics endpoints contain operational data. Production ingress must restrict them to the monitoring network.
+Exact endpoints for each bounded service are owned by current source/contracts. Metrics endpoints contain operational data; production ingress must restrict them to the monitoring network.
 
 ## Authentication
 
-Google and GitHub OAuth are the required login providers. Provider credentials are supplied through environment variables and must never be committed. Deployment operators are responsible for provider registration, redirect URI policy, secret rotation, and production access controls.
+Google and GitHub OAuth are the required login providers. Provider credentials are supplied through environment variables/protected deployment secrets and must never be committed. Deployment operators are responsible for provider registration, redirect URI policy, secret rotation, and production access controls.
+
+LifeOS maps provider identities to opaque internal UUIDv4 identities. Browser-selected workspace/actor identifiers are not trusted as authorization merely because they are syntactically valid.
+
+## Planning, Today, habits, and reviews
+
+Planning-service owns durable goals, projects, milestones, tasks, search, and planning mutation rules. The web Today experience can maintain explicitly labeled browser-local draft state, but local state is not durable truth until an authorized service confirms persistence.
+
+Habit-service owns recurring habit definitions and completion history. Review-service owns review projections/snapshots and does not directly rewrite planning/habit source tables. Complete multi-device optimistic synchronization of the whole durable Today aggregate remains a product gap until protected-main evidence proves the end-to-end conflict/recovery contract.
 
 ## Calendar synchronization
 
 The calendar integration service supports explicit `caldav` and `google` provider modes. Set `CALENDAR_PROVIDER` and the matching variables in `.env.example` before starting the service.
 
-CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the LifeOS provider contract.
+CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the current LifeOS provider contract.
 
-`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables Google Calendar synchronization.
+`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables unattended Google Calendar synchronization.
+
+## Notifications
+
+The notification service provides durable PostgreSQL reminder occurrences, expiring worker claims, immutable outcomes, timezone-aware quiet hours/fatigue controls, and idempotent in-app delivery according to its current contracts. See [notification persistence](docs/operations/notification-persistence.md) for the scoped runbook.
+
+## AI proposals
+
+AI output is an inert proposal, not an execution command. The AI service persists proposal evidence before return and records explicit replay-safe accept/reject decision history. It has no generic planning mutation repository/command bus.
+
+The web boundary derives workspace/actor authority from the active session and signs the exact upstream context; browser credentials are not forwarded to the AI service. Deterministic proposal-quality/security gates are separate from bounded live-provider conformance.
+
+## Privacy access
+
+The privacy service provides purpose-bound authorization and durable decision/grant/event evidence for sensitive-data access. It uses explicit actor/resource/purpose/lifetime boundaries rather than treating indiscriminate masking as a complete authorization model. Public logs/errors/artifacts remain content-minimized and credential-free.
 
 ## Plugin contract
 
-The `@life-os/plugin-sdk` package defines strict versioned manifests, tenant-scoped CloudEvents 1.0 structured JSON envelopes, deterministic canonical serialization, and HMAC-SHA256 delivery-proof helpers. The integration service exposes contract discovery, manifest validation, and event preparation only.
+The `@life-os/plugin-sdk` package defines strict versioned manifests, tenant-scoped CloudEvents-style envelopes, deterministic canonical serialization, and delivery-proof helpers. The integration service exposes contract discovery, manifest validation, and event preparation only.
 
-This slice deliberately has no plugin installation, secret persistence, outbound webhook delivery, inbound commands, or direct database access. Those require separately reviewed least-privilege authorization, durable audit, and SSRF-safe delivery boundaries.
+The current slice deliberately has no generic plugin installation, durable plugin secret persistence, outbound webhook delivery, inbound arbitrary commands, or direct database access. Those require separately reviewed least-privilege authorization, durable audit, and SSRF-safe delivery boundaries.
 
 ## Backup and recovery
 
-`infra/backup/backup.sh` creates a private PostgreSQL custom-format archive, checksum, and non-secret metadata set. `infra/backup/restore.sh` verifies the selected archive and restores only into a deliberately empty non-system database. The Linux CI contract performs a real dump and restore with pinned PostgreSQL client tools and verifies exact tenant records, non-empty-target refusal, and checksum-corruption refusal.
+`infra/backup/backup.sh` creates a private PostgreSQL custom-format archive, checksum, and non-secret metadata set. `infra/backup/restore.sh` verifies the selected archive and restores only into a deliberately empty non-system database. CI contracts perform real dump/restore verification, including tenant records, non-empty-target refusal, and checksum-corruption refusal.
 
-This logical-dump tier is not point-in-time recovery and does not schedule, encrypt, replicate, or retain backups automatically. Deployment owners must follow the [backup and restore runbook](docs/operations/backup-and-restore.md), establish independent encrypted storage, rehearse recovery, and add WAL archiving when the required recovery point is shorter than the dump interval.
+This logical-dump tier is not point-in-time recovery and does not schedule, encrypt, replicate, or retain backups automatically. Deployment owners must follow the [backup and restore runbook](docs/operations/backup-and-restore.md), establish independent encrypted storage, rehearse recovery, and add WAL/PITR when required by their recovery objective.
 
 ## Production reference deployment
 
-`infra/kubernetes` contains a provider-neutral Kustomize reference for the current web and gateway edge workloads. It encodes a Restricted Pod Security namespace, non-root and read-only containers, probes, resource bounds, rolling updates, disruption budgets, topology spread, ClusterIP services, disabled service-account token automount, and default-deny network policy. The committed image digests and public origin are deliberately non-deployable sentinels.
+`infra/kubernetes` contains a provider-neutral Kustomize reference for current workloads. It encodes restricted runtime defaults such as non-root/read-only containers, probes, resource bounds, rolling updates, disruption budgets, topology spread, service-account restrictions, and default-deny network policy where the current manifests define them.
 
-The manual deployment workflow accepts only digest-pinned images and an exact HTTPS web origin, uses one shared renderer, optionally applies forward-only migrations, runs through the protected GitHub `production` environment, and performs server-side dry-run and diff. Before applying, it captures whether each Deployment exists and its current revision. A failed apply or rollout must either verify rollback to that captured revision or verify deletion of a first-time Deployment; a separate failure is reported when workload-state recovery itself fails. Namespace policy, completed migrations, external infrastructure, and other non-Deployment resources are not automatically reversed. The reference does not provision a cluster, database, NATS, ingress, TLS, DNS, image pipeline, or secret manager. Operators must follow the [production deployment runbook](docs/operations/production-deployment.md) and preserve those explicit ownership boundaries.
+The protected deployment path accepts only bounded reviewed inputs and verifies its claimed workload rollback/recovery behavior. The reference does not provision a cluster, database, NATS, ingress, TLS, DNS, image pipeline, or secret manager. Operators must follow the [production deployment runbook](docs/operations/production-deployment.md) and preserve those explicit ownership boundaries.
 
 ## Privacy and deployment responsibility
 
 This is a public repository. It contains synthetic examples only. Personal goals, health information, relationship data, credentials, access tokens, private prompts, customer data, and production exports must not be committed.
 
-The upstream project does not operate every LifeOS deployment. A self-hosting organization controls its deployment data and must establish its own privacy notice, retention policy, security controls, subprocessors, and legal basis. See the [upstream privacy notice](docs/legal/privacy.md) and [upstream project terms](docs/legal/terms.md) for the upstream project boundary.
+The upstream project does not operate every LifeOS deployment. A self-hosting organization controls its deployment data and must establish its own privacy notice, retention policy, security controls, subprocessors, legal basis, backups, monitoring, and incident response. See the [upstream privacy notice](docs/legal/privacy.md) and [upstream project terms](docs/legal/terms.md).
 
-## Documentation
+## Additional documentation
 
-- Product and architecture design: `docs/superpowers/specs/2026-08-02-life-os-design.md`
+- Historical initial combined design: `docs/superpowers/specs/2026-08-02-life-os-design.md` (**historical/superseded where canonical docs differ**)
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
-- [Plugin contract surface plan](docs/superpowers/plans/2026-08-04-plugin-contract-surface.md)
-- [PostgreSQL backup and restore runbook](docs/operations/backup-and-restore.md)
-- [Production Kubernetes deployment runbook](docs/operations/production-deployment.md)
-- [Upstream privacy notice](docs/legal/privacy.md)
-- [Upstream project terms](docs/legal/terms.md)
-- [Vulnerability reporting](SECURITY.md)
+- Plugin contract surface plan: `docs/superpowers/plans/2026-08-04-plugin-contract-surface.md`
+- Backup/restore runbook: `docs/operations/backup-and-restore.md`
+- Production deployment runbook: `docs/operations/production-deployment.md`
+- Upstream privacy notice: `docs/legal/privacy.md`
+- Upstream project terms: `docs/legal/terms.md`
+- Vulnerability reporting: `SECURITY.md`
 
 ## Contributing
 
