@@ -99,9 +99,7 @@ describeWithDatabase('PostgreSQL Today lock ordering', () => {
     } finally {
       await runtime?.close();
       await migrationPool?.end();
-      await adminPool.query(
-        'DROP DATABASE IF EXISTS life_os_today_lock_test WITH (FORCE)',
-      );
+      await adminPool.query('DROP DATABASE IF EXISTS life_os_today_lock_test');
       await adminPool.end();
     }
   }, 30_000);
