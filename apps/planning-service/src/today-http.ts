@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common';
+import { TodayPersistenceError } from './postgres-today-repository';
 import {
   TodayIdempotencyConflictError,
   TodayRevisionConflictError,
@@ -132,6 +133,13 @@ export function toTodayHttpException(error: unknown): HttpException {
       400,
       'Today synchronization request is invalid',
       'invalid_today_request',
+    );
+  }
+  if (error instanceof TodayPersistenceError) {
+    return problem(
+      500,
+      'Today synchronization data is unusable',
+      'today_persistence_invalid',
     );
   }
   return problem(
