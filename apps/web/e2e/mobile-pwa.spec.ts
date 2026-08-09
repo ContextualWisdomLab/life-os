@@ -9,7 +9,9 @@ const EXPECTED_PUBLIC_CACHE_PATHS = [
 test('exposes a standards-based install manifest', async ({ request }) => {
   const response = await request.get('/manifest.webmanifest');
   expect(response.ok()).toBe(true);
-  expect(response.headers()['content-type']).toContain('application/manifest+json');
+  expect(response.headers()['content-type']).toContain(
+    'application/manifest+json',
+  );
 
   const manifest = (await response.json()) as {
     readonly id?: string;
@@ -73,9 +75,7 @@ test('registers one bounded shell cache without storing Today HTML', async ({
           }),
         )
       ).flat();
-      return requests
-        .map((request) => new URL(request.url).pathname)
-        .sort();
+      return requests.map((request) => new URL(request.url).pathname).sort();
     });
   }
 
@@ -99,7 +99,9 @@ test('serves the credential-free fallback for an offline navigation', async ({
     .toBe('registered');
   await page.reload();
   await expect
-    .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
+    .poll(() =>
+      page.evaluate(() => Boolean(navigator.serviceWorker.controller)),
+    )
     .toBe(true);
 
   await context.setOffline(true);
@@ -109,7 +111,9 @@ test('serves the credential-free fallback for an offline navigation', async ({
       page.getByRole('heading', { name: 'LifeOS is offline.' }),
     ).toBeVisible();
     await expect(
-      page.getByText('this offline page does not read or cache your planning data'),
+      page.getByText(
+        'this offline page does not read or cache your planning data',
+      ),
     ).toBeVisible();
   } finally {
     await context.setOffline(false);

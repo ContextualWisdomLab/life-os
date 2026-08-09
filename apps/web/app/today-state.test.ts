@@ -11,10 +11,7 @@ import {
   toggleTodayCompletion,
   toggleTodayPriority,
 } from './today-state';
-import {
-  parseStoredTodayDraft,
-  serializeTodayDraft,
-} from './today-storage';
+import { parseStoredTodayDraft, serializeTodayDraft } from './today-storage';
 
 const DATE = '2026-08-04';
 const CREATED_AT = '2026-08-04T00:00:00.000Z';
@@ -82,11 +79,7 @@ describe('Today draft', () => {
   it('records completion evidence while retaining the committed priority', () => {
     let draft = toggleTodayPriority(withActions(1), IDS[0]);
     draft = scheduleTodayAction(draft, IDS[0], 23 * 60, 60);
-    draft = toggleTodayCompletion(
-      draft,
-      IDS[0],
-      '2026-08-04T23:59:00.000Z',
-    );
+    draft = toggleTodayCompletion(draft, IDS[0], '2026-08-04T23:59:00.000Z');
 
     assert.equal(draft.actions[0]?.status, 'done');
     assert.equal(draft.actions[0]?.priority, 1);

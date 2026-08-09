@@ -21,7 +21,9 @@ test('captures, commits, schedules, persists, and completes an action', async ({
   await expect(backlog.getByText('Review the release evidence')).toBeVisible();
   await backlog.getByRole('button', { name: 'Make priority' }).click();
 
-  await page.getByLabel('Start time for Review the release evidence').fill('09:00');
+  await page
+    .getByLabel('Start time for Review the release evidence')
+    .fill('09:00');
   await page
     .getByLabel('Duration for Review the release evidence')
     .selectOption('60');
@@ -33,7 +35,9 @@ test('captures, commits, schedules, persists, and completes an action', async ({
 
   await page.getByRole('button', { name: 'Complete' }).click();
   const completed = page.getByRole('region', { name: 'Completed' });
-  await expect(completed.getByText('Review the release evidence')).toBeVisible();
+  await expect(
+    completed.getByText('Review the release evidence'),
+  ).toBeVisible();
 });
 
 test('enforces the visible three-priority capacity', async ({ page }) => {
@@ -108,7 +112,9 @@ test('keeps a local Today private until the user explicitly migrates it', async 
   });
 
   await page.reload();
-  await expect(page.getByText('This Today is browser-local only.')).toBeVisible();
+  await expect(
+    page.getByText('This Today is browser-local only.'),
+  ).toBeVisible();
   expect(requestCount).toBe(0);
 
   await page
@@ -255,7 +261,8 @@ test('surfaces a stale-device conflict and requires an explicit recheck before u
     if (request.method() === 'GET') {
       getCount += 1;
       const revision = getCount === 1 ? oldRevision : newRevision;
-      const title = getCount === 1 ? 'Older workspace copy' : 'Newer device copy';
+      const title =
+        getCount === 1 ? 'Older workspace copy' : 'Newer device copy';
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

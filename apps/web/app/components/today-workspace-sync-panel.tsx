@@ -59,7 +59,9 @@ export function TodayWorkspaceSyncPanel({
 }) {
   const [state, setState] = useState<SyncState>('local');
   const [workspaceDraft, setWorkspaceDraft] = useState<TodayDraft | null>(null);
-  const [workspaceRevision, setWorkspaceRevision] = useState<string | null>(null);
+  const [workspaceRevision, setWorkspaceRevision] = useState<string | null>(
+    null,
+  );
   const currentDraft = useRef(draft);
   currentDraft.current = draft;
 
