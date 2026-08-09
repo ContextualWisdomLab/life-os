@@ -36,7 +36,7 @@ An entry marked `Implemented on active PR` is not protected-main evidence.
 | PRD-PRIV-002 bounded grants + append-only evidence | Implemented on protected main | privacy access domain | privacy decision/grant/event persistence | exact expiry/concurrency/immutability tests |
 | PRD-PRIV-004 end-user export/deletion UX | Partial | issue #55 | identity-owned data-rights core exists | concrete domain adapters, durable orchestration/reconciliation, recent-auth enforcement and delivery/audit follow-ups remain open |
 | PRD-INT-001 versioned plugin contract | Implemented on protected main | plugin integration | `packages/plugin-sdk/`, `apps/integration-service/` | plugin contract integration tests |
-| PRD-INT-003 plugin install/secrets/outbound delivery | Planned | plugin follow-up boundary | no shipped generic authority claim | requires separate auth/SSRF/audit design and tests |
+| PRD-INT-003 plugin installation/secrets/outbound delivery | Planned | issue #130 | validation/preparation surface exists; runtime authority is intentionally absent | installation grants, encrypted secrets, SSRF-safe delivery, retry/audit/revocation tests required |
 | PRD-WEB-001 installable responsive PWA | Implemented on protected main | `mobile.pwa` | manifest/service worker/web app | `mobile-pwa.spec.ts` |
 | PRD-WEB-002 accessibility | Implemented on protected main for current core flows | `accessibility.localization` | semantic web components/design tokens | accessibility E2E/current tests |
 | PRD-WEB-003 Korean/English localization | Implemented on protected main | `accessibility.localization` | `apps/web/messages/en.json`, `ko.json` | localization/catalog tests |
@@ -78,7 +78,7 @@ The maintenance loop must refetch issues/PRs and protected main before selecting
 1. **Issue #121 — durable Today workspace synchronization / optimistic concurrency.** Durable planning exists, but complete multi-device/local-draft migration/conflict flow is not proven as one protected-main vertical slice.
 2. **Issue #55 — complete tenant export and deletion orchestration.** The identity-owned core export/erasure coordinator is implemented, but complete domain participation, durable request/receipt/reconciliation, gateway recent-auth, retention/legal-hold/backup-expiry, encrypted delivery and download-audit follow-ups remain incomplete.
 3. **Issue #129 — hosted per-user calendar credential lifecycle.** Conflict-safe CalDAV and Google provider adapters exist; encrypted per-user credential persistence/refresh/revocation/discovery/selection remains incomplete. The original CalDAV issue #51 is closed as completed rather than being kept open to represent a different product gap.
-4. **Plugin runtime last mile.** Versioned contract exists; install/secret/outbound delivery/inbound commands need explicit least-authority, SSRF and audit design before productization.
+4. **Issue #130 — plugin runtime last mile.** Versioned manifest/event validation exists; installation grants, encrypted secret lifecycle, SSRF-safe outbound delivery, bounded retry/audit and revocation are explicitly tracked rather than implied by the validation-only contract.
 5. **Offline/PWA durable reconciliation.** Installable PWA/local draft distinction exists; complete reconnect/conflict recovery is not yet a protected-main product claim and overlaps issue #121.
 6. **Stable release evidence.** Active development remains under `Unreleased`; integrated release gates must pass together before version/tag/release claims.
 
@@ -88,7 +88,7 @@ The maintenance loop must refetch issues/PRs and protected main before selecting
 
 ## 6. Commercial-readiness scoring caveat
 
-Issue #21 currently reports `22/22` capabilities at target and zero unresolved buyer gaps from the configured capability manifest, while live issues #121, #55 and #129 explicitly describe incomplete high-impact customer journeys. The audit currently derives capability gaps from static configured evidence maturity; file/test existence for the registered slice can therefore reach target even when a broader customer outcome has accepted follow-up work.
+Issue #21 currently reports `22/22` capabilities at target and zero unresolved buyer gaps from the configured capability manifest, while live issues #121, #55, #129 and #130 explicitly describe incomplete high-impact customer/operator journeys. The audit currently derives capability gaps from static configured evidence maturity; file/test existence for the registered slice can therefore reach target even when a broader customer outcome has accepted follow-up work.
 
 **Issue #128 now tracks this audit defect.** Commercial readiness must distinguish configured capability-evidence maturity from whole-product buyer-gap exhaustion and reconcile gap identity deterministically without treating arbitrary untrusted issue prose as executable policy.
 
