@@ -140,14 +140,13 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
       }),
     ).rejects.toBeInstanceOf(DataRightsRequestConflictError);
 
-    await expect(
-      pool.query(
-        `UPDATE identity.data_rights_requests
-         SET receipt_digest = $2
-         WHERE request_id = $1::uuid`,
-        [requestId, 'd'.repeat(64)],
-      ),
-    ).rejects.toThrow();
+    const blockedMutation = await pool.query(
+      `UPDATE identity.data_rights_requests
+       SET receipt_digest = $2
+       WHERE request_id = $1::uuid`,
+      [requestId, 'd'.repeat(64)],
+    );
+    expect(blockedMutation.rowCount).toBe(0);
 
     await pool.query(`DELETE FROM identity.workspaces WHERE id = $1::uuid`, [workspaceId]);
     await pool.query(`DELETE FROM identity.users WHERE id = $1::uuid`, [userId]);
