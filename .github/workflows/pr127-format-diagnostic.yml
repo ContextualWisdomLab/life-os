@@ -1,29 +1,29 @@
-name: PR 127 bounded formatter
+name: PR 127 format diagnostic
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/durable-today-sync
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  format_once:
+  format_diagnostic:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    if: ${{ github.repository == 'ContextualWisdomLab/life-os' }}
+    if: ${{ github.event.pull_request.head.ref == 'feat/durable-today-sync' }}
     steps:
-      - name: Checkout exact branch head
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Enable Corepack
         run: corepack enable
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
-      - name: Format only known Today sources and self-remove
+      - name: Emit canonical Prettier patch
         shell: bash
         run: |
           set -euo pipefail
@@ -33,26 +33,11 @@ jobs:
             apps/web/app/today-workspace-sync.ts
           )
           pnpm exec prettier --single-quote --write "${files[@]}"
-          git rm -- .github/workflows/pr127-format-diagnostic.yml
-
-          unexpected="$(git diff --name-only -- . ':!.github/workflows/pr127-format-diagnostic.yml' | grep -v -E '^apps/web/app/(today-sync-client\.ts|today-sync-client\.test\.ts|today-workspace-sync\.ts)$' || true)"
-          if [[ -n "${unexpected}" ]]; then
-            printf 'Unexpected formatter paths:\n%s\n' "${unexpected}" >&2
-            exit 1
-          fi
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- "${files[@]}" .github/workflows/pr127-format-diagnostic.yml
-          if git diff --cached --quiet; then
+          echo '::group::PRETTIER_PATCH'
+          git diff -- "${files[@]}"
+          echo '::endgroup::'
+          if git diff --quiet -- "${files[@]}"; then
+            echo 'No formatting drift remains.'
             exit 0
           fi
-          git commit -m 'style(web): apply canonical Today formatting'
-
-          git fetch --no-tags origin refs/heads/feat/durable-today-sync:refs/remotes/origin/feat/durable-today-sync
-          remote_head="$(git rev-parse refs/remotes/origin/feat/durable-today-sync)"
-          if [[ "${remote_head}" != "${GITHUB_SHA}" ]]; then
-            echo "Branch moved; refusing formatter push." >&2
-            exit 1
-          fi
-          git push origin HEAD:refs/heads/feat/durable-today-sync
+          exit 1
