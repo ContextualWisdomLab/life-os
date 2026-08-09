@@ -175,11 +175,11 @@ async function readBrowserPutBody(
 
 /** Requires a strong revision ETag returned by planning-service. */
 function requireEtag(value: string | null): string {
-  const match = /^\"([0-9a-f-]+)\"$/iu.exec(value ?? '');
+  const match = /^"([0-9a-f-]+)"$/iu.exec(value ?? '');
   if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
     throw new Error('invalid etag');
   }
-  return `\"${match[1].toLowerCase()}\"`;
+  return `"${match[1].toLowerCase()}"`;
 }
 
 /** Restricts browser write authority to one strong match or explicit create. */
@@ -392,7 +392,7 @@ export async function handleTodaySyncRequest(
       safeDate,
     );
     const etag = requireEtag(planningResponse.headers.get('etag'));
-    if (`\"${String(aggregate.revision).toLowerCase()}\"` !== etag) {
+    if (`"${String(aggregate.revision).toLowerCase()}"` !== etag) {
       return unavailable();
     }
     return Response.json(aggregate, {
