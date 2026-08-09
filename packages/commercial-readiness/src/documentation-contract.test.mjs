@@ -139,12 +139,11 @@ test('canonical contracts keep data lifecycle and release gaps explicit', () => 
   assert.match(standards, /Peer-reviewed research/u);
 });
 
-test('traceability distinguishes active-PR evidence and live buyer gaps from protected-main evidence', () => {
+test('traceability records merged OpenCode automation and live buyer gaps accurately', () => {
   const traceability = readRepositoryText('docs/TRACEABILITY.md');
 
-  assert.match(traceability, /Implemented on active PR/u);
-  assert.match(traceability, /PR #122/u);
-  assert.match(traceability, /not protected-main evidence until merge/u);
+  assert.match(traceability, /PRD-AI-006 autonomous OpenCode development loop \| Implemented on protected main/u);
+  assert.match(traceability, /PR #122 merged as 876850018a17323900844e79845ba395b7bf6a9a/u);
   assert.match(traceability, /Issue #128 now tracks this audit defect/u);
   assert.match(traceability, /Issue #129/u);
 });
