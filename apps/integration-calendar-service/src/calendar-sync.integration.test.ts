@@ -150,6 +150,46 @@ describe('calendar synchronization HTTP boundary', () => {
     }
   });
 
+  it('returns calendar_context_unavailable without creating provider state when the verifier secret is missing', async () => {
+    const previousSecret = process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+    delete process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+    const provider = new ConflictSafeRecordingProvider();
+    const app = await NestFactory.create(CalendarAppModule.register(provider), {
+      logger: false,
+    });
+    await app.listen(0, '127.0.0.1');
+
+    try {
+      const address = app.getHttpServer().address() as AddressInfo;
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/v1/calendar/sync`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
+            ...trustedWorkspaceHeaders(WORKSPACE_ID),
+          },
+          body: JSON.stringify(timeBlock()),
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        status: 503,
+        code: 'calendar_context_unavailable',
+      });
+      expect(provider.resources.size).toBe(0);
+    } finally {
+      await app.close();
+      if (previousSecret === undefined) {
+        delete process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = previousSecret;
+      }
+    }
+  });
+
   it('prevents duplicates and silent overwrites while retaining tenant isolation', async () => {
     const previousSecret = process.env.CALENDAR_GATEWAY_CONTEXT_SECRET;
     process.env.CALENDAR_GATEWAY_CONTEXT_SECRET = CALENDAR_CONTEXT_KEY;
