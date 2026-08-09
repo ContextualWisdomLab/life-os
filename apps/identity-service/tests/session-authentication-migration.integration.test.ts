@@ -221,7 +221,7 @@ describeWithDatabase('session authentication-age migration', () => {
     });
   }, 30_000);
 
-  it('rejects a rotated session whose lineage crosses users', async () => {
+  it('rejects a rotation lineage that crosses valid user-workspace ownership pairs', async () => {
     await withTemporaryDatabase(async (migrationPool) => {
       const rootUserId = randomUUID();
       const childUserId = randomUUID();
@@ -233,13 +233,13 @@ describeWithDatabase('session authentication-age migration', () => {
         migrationPool,
         rootUserId,
         rootWorkspaceId,
-        'root-user',
+        'root-owner',
       );
       await insertUserAndWorkspace(
         migrationPool,
         childUserId,
         childWorkspaceId,
-        'child-user',
+        'child-owner',
       );
       await insertSession(migrationPool, {
         id: rootSessionId,
@@ -252,7 +252,7 @@ describeWithDatabase('session authentication-age migration', () => {
       await insertSession(migrationPool, {
         id: randomUUID(),
         userId: childUserId,
-        workspaceId: rootWorkspaceId,
+        workspaceId: childWorkspaceId,
         tokenSeed: '5',
         createdAt: '2026-08-03T01:15:00.000Z',
         expiresAt: '2026-08-03T02:15:00.000Z',
@@ -268,13 +268,12 @@ describeWithDatabase('session authentication-age migration', () => {
     });
   }, 30_000);
 
-  it('rejects a rotated session whose lineage crosses workspaces', async () => {
+  it('keeps cross-workspace user mismatches impossible before authentication-age migration', async () => {
     await withTemporaryDatabase(async (migrationPool) => {
       const rootUserId = randomUUID();
       const otherUserId = randomUUID();
       const rootWorkspaceId = randomUUID();
       const otherWorkspaceId = randomUUID();
-      const rootSessionId = randomUUID();
 
       await insertUserAndWorkspace(
         migrationPool,
@@ -288,30 +287,17 @@ describeWithDatabase('session authentication-age migration', () => {
         otherWorkspaceId,
         'other-workspace',
       );
-      await insertSession(migrationPool, {
-        id: rootSessionId,
-        userId: rootUserId,
-        workspaceId: rootWorkspaceId,
-        tokenSeed: '6',
-        createdAt: '2026-08-03T01:00:00.000Z',
-        expiresAt: '2026-08-03T02:00:00.000Z',
-      });
-      await insertSession(migrationPool, {
-        id: randomUUID(),
-        userId: rootUserId,
-        workspaceId: otherWorkspaceId,
-        tokenSeed: '7',
-        createdAt: '2026-08-03T01:15:00.000Z',
-        expiresAt: '2026-08-03T02:15:00.000Z',
-        rotatedFromId: rootSessionId,
-      });
 
-      await migrationPool.query(await readMigration(AUTHENTICATION_MIGRATION));
       await expect(
-        migrationPool.query(
-          await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION),
-        ),
-      ).rejects.toThrow(/sessions_authentication_present/u);
+        insertSession(migrationPool, {
+          id: randomUUID(),
+          userId: rootUserId,
+          workspaceId: otherWorkspaceId,
+          tokenSeed: '6',
+          createdAt: '2026-08-03T01:15:00.000Z',
+          expiresAt: '2026-08-03T02:15:00.000Z',
+        }),
+      ).rejects.toThrow(/sessions_workspace_owner_fk/u);
     });
   }, 30_000);
 });
