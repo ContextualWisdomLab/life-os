@@ -1,36 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
+import {
+  TODAY_VERSION,
+  canonicalTodayDate,
+  canonicalTodayDraft,
+  canonicalTodayUuidV4,
+  type DurableTodayAction,
+  type DurableTodayDraft,
+} from './today-invariants';
 
-const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
-const RFC_3339_UTC_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u;
-const MAXIMUM_ACTIONS = 50;
-const MAXIMUM_TITLE_CODE_POINTS = 160;
-const MAXIMUM_TITLE_BYTES = 1024;
-const MINIMUM_DURATION_MINUTES = 15;
-const MAXIMUM_DURATION_MINUTES = 240;
-const MINUTES_PER_DAY = 24 * 60;
-const TODAY_VERSION = 'life-os.today.v1' as const;
-
-/** Durable action state stored inside one workspace/date Today aggregate. */
-export interface DurableTodayAction {
-  readonly id: string;
-  readonly title: string;
-  readonly status: 'open' | 'done';
-  readonly priority: 1 | 2 | 3 | null;
-  readonly startMinute: number | null;
-  readonly durationMinutes: number | null;
-  readonly createdAt: string;
-  readonly completedAt: string | null;
-}
-
-/** Client-supplied complete Today state before server-owned identity/revision fields. */
-export interface DurableTodayDraft {
-  readonly version: typeof TODAY_VERSION;
-  readonly date: string;
-  readonly actions: readonly DurableTodayAction[];
-}
+export type { DurableTodayAction, DurableTodayDraft } from './today-invariants';
 
 /** Server-owned durable Today aggregate returned to authenticated callers. */
 export interface DurableTodayAggregate extends DurableTodayDraft {
@@ -55,6 +33,15 @@ export class TodayValidationError extends Error {
   constructor() {
     super('Today synchronization request is invalid');
     this.name = 'TodayValidationError';
+  }
+}
+
+/** Stable failure when durable Today rows violate repository invariants. */
+export class TodayPersistenceError extends Error {
+  /** Creates a credential-free persistence validation failure. */
+  constructor() {
+    super('Persisted Today data is invalid');
+    this.name = 'TodayPersistenceError';
   }
 }
 
@@ -101,6 +88,11 @@ export interface TodayRepository {
 interface IdempotencyRecord {
   readonly requestDigest: string;
   readonly result: TodayWriteResult;
+}
+
+/** Throws the domain validation error expected by shared invariant helpers. */
+function invalidTodayInput(): never {
+  throw new TodayValidationError();
 }
 
 /** In-memory adapter used by deterministic domain tests. */
@@ -157,220 +149,18 @@ export class InMemoryTodayRepository implements TodayRepository {
   }
 }
 
-/** Requires a canonical UUIDv4 identifier and lowercases it. */
-function requireUuidV4(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
-    throw new TodayValidationError();
-  }
-  return value.toLowerCase();
-}
-
-/** Requires a real Gregorian calendar date in canonical YYYY-MM-DD form. */
-function requireDate(value: unknown): string {
-  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) {
-    throw new TodayValidationError();
-  }
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
-    throw new TodayValidationError();
-  }
-  return value;
-}
-
-/** Requires one bounded user-visible action title. */
-function requireTitle(value: unknown): string {
-  if (typeof value !== 'string') {
-    throw new TodayValidationError();
-  }
-  const normalized = value.trim();
-  if (
-    !normalized ||
-    [...normalized].length > MAXIMUM_TITLE_CODE_POINTS ||
-    Buffer.byteLength(normalized, 'utf8') > MAXIMUM_TITLE_BYTES ||
-    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(normalized)
-  ) {
-    throw new TodayValidationError();
-  }
-  return normalized;
-}
-
-/** Requires a canonical UTC RFC3339 instant. */
-function requireInstant(value: unknown): string {
-  if (typeof value !== 'string' || !RFC_3339_UTC_PATTERN.test(value)) {
-    throw new TodayValidationError();
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new TodayValidationError();
-  }
-  return parsed.toISOString();
-}
-
-/** Requires a nullable quarter-hour schedule start. */
-function requireStartMinute(value: unknown): number | null {
-  if (value === null) return null;
-  if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < 0 ||
-    (value as number) >= MINUTES_PER_DAY ||
-    (value as number) % 15 !== 0
-  ) {
-    throw new TodayValidationError();
-  }
-  return value as number;
-}
-
-/** Requires a nullable bounded quarter-hour duration. */
-function requireDuration(value: unknown): number | null {
-  if (value === null) return null;
-  if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < MINIMUM_DURATION_MINUTES ||
-    (value as number) > MAXIMUM_DURATION_MINUTES ||
-    (value as number) % 15 !== 0
-  ) {
-    throw new TodayValidationError();
-  }
-  return value as number;
-}
-
-/** Validates one action and returns a canonical immutable representation. */
-function requireAction(value: unknown): DurableTodayAction {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TodayValidationError();
-  }
-  const action = value as Record<string, unknown>;
-  const exactKeys = [
-    'id',
-    'title',
-    'status',
-    'priority',
-    'startMinute',
-    'durationMinutes',
-    'createdAt',
-    'completedAt',
-  ];
-  if (
-    Object.keys(action).length !== exactKeys.length ||
-    exactKeys.some((key) => !Object.hasOwn(action, key))
-  ) {
-    throw new TodayValidationError();
-  }
-  const status = action.status;
-  if (status !== 'open' && status !== 'done') {
-    throw new TodayValidationError();
-  }
-  const priority = action.priority;
-  if (priority !== null && priority !== 1 && priority !== 2 && priority !== 3) {
-    throw new TodayValidationError();
-  }
-  const startMinute = requireStartMinute(action.startMinute);
-  const durationMinutes = requireDuration(action.durationMinutes);
-  if ((startMinute === null) !== (durationMinutes === null)) {
-    throw new TodayValidationError();
-  }
-  if (
-    startMinute !== null &&
-    durationMinutes !== null &&
-    startMinute + durationMinutes > MINUTES_PER_DAY
-  ) {
-    throw new TodayValidationError();
-  }
-  const completedAt =
-    action.completedAt === null ? null : requireInstant(action.completedAt);
-  if (
-    (status === 'done' && completedAt === null) ||
-    (status === 'open' && completedAt !== null)
-  ) {
-    throw new TodayValidationError();
-  }
-  return Object.freeze({
-    id: requireUuidV4(action.id),
-    title: requireTitle(action.title),
-    status,
-    priority,
-    startMinute,
-    durationMinutes,
-    createdAt: requireInstant(action.createdAt),
-    completedAt,
-  });
-}
-
-/** Enforces duplicate, priority and overlapping-open-schedule invariants. */
-function requireActionSet(values: unknown): readonly DurableTodayAction[] {
-  if (!Array.isArray(values) || values.length > MAXIMUM_ACTIONS) {
-    throw new TodayValidationError();
-  }
-  const actions = values.map(requireAction);
-  const identifiers = new Set<string>();
-  const priorities = new Set<number>();
-  for (const action of actions) {
-    if (identifiers.has(action.id)) {
-      throw new TodayValidationError();
-    }
-    identifiers.add(action.id);
-    if (action.priority !== null) {
-      if (priorities.has(action.priority)) {
-        throw new TodayValidationError();
-      }
-      priorities.add(action.priority);
-    }
-  }
-  const scheduled = actions
-    .filter(
-      (action) =>
-        action.status === 'open' &&
-        action.startMinute !== null &&
-        action.durationMinutes !== null,
-    )
-    .sort(
-      (left, right) =>
-        (left.startMinute ?? 0) - (right.startMinute ?? 0) ||
-        left.id.localeCompare(right.id),
-    );
-  for (let index = 1; index < scheduled.length; index += 1) {
-    const previous = scheduled[index - 1];
-    const current = scheduled[index];
-    if (
-      previous &&
-      current &&
-      (previous.startMinute ?? 0) + (previous.durationMinutes ?? 0) >
-        (current.startMinute ?? 0)
-    ) {
-      throw new TodayValidationError();
-    }
-  }
-  return Object.freeze(actions);
-}
-
-/** Validates one complete client Today document. */
-function requireDraft(value: unknown): DurableTodayDraft {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new TodayValidationError();
-  }
-  const draft = value as Record<string, unknown>;
-  if (
-    Object.keys(draft).length !== 3 ||
-    draft.version !== TODAY_VERSION ||
-    !Object.hasOwn(draft, 'date') ||
-    !Object.hasOwn(draft, 'actions')
-  ) {
-    throw new TodayValidationError();
-  }
-  return Object.freeze({
-    version: TODAY_VERSION,
-    date: requireDate(draft.date),
-    actions: requireActionSet(draft.actions),
-  });
-}
-
 /** Validates the initial-creation or exact-revision write condition. */
-function requirePrecondition(value: TodayWritePrecondition): TodayWritePrecondition {
+function requirePrecondition(
+  value: TodayWritePrecondition,
+): TodayWritePrecondition {
   if (value.kind === 'absent') {
     return Object.freeze({ kind: 'absent' });
   }
   if (value.kind === 'match') {
-    return Object.freeze({ kind: 'match', revision: requireUuidV4(value.revision) });
+    return Object.freeze({
+      kind: 'match',
+      revision: canonicalTodayUuidV4(value.revision, invalidTodayInput),
+    });
   }
   throw new TodayValidationError();
 }
@@ -408,8 +198,11 @@ export class TodaySyncService {
     workspaceId: string,
     date: string,
   ): Promise<DurableTodayAggregate | undefined> {
-    const safeWorkspaceId = requireUuidV4(workspaceId);
-    const safeDate = requireDate(date);
+    const safeWorkspaceId = canonicalTodayUuidV4(
+      workspaceId,
+      invalidTodayInput,
+    );
+    const safeDate = canonicalTodayDate(date, invalidTodayInput);
     const aggregate = await this.repository.getToday(safeWorkspaceId, safeDate);
     if (!aggregate) return undefined;
     if (aggregate.date !== safeDate) {
@@ -425,10 +218,16 @@ export class TodaySyncService {
     precondition: TodayWritePrecondition,
     idempotencyKey: string,
   ): Promise<TodayWriteResult> {
-    const safeWorkspaceId = requireUuidV4(workspaceId);
-    const safeDraft = requireDraft(draft);
+    const safeWorkspaceId = canonicalTodayUuidV4(
+      workspaceId,
+      invalidTodayInput,
+    );
+    const safeDraft = canonicalTodayDraft(draft, invalidTodayInput);
     const safePrecondition = requirePrecondition(precondition);
-    const safeIdempotencyKey = requireUuidV4(idempotencyKey);
+    const safeIdempotencyKey = canonicalTodayUuidV4(
+      idempotencyKey,
+      invalidTodayInput,
+    );
     return await this.repository.writeToday({
       workspaceId: safeWorkspaceId,
       draft: safeDraft,
