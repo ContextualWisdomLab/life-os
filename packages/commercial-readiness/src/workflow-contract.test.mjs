@@ -12,6 +12,34 @@ async function repositoryFile(path) {
   return await readFile(resolve(repositoryRoot, path), 'utf8');
 }
 
+function yamlTopLevelBlock(source, key) {
+  const lines = source.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === `${key}:`);
+  assert.notEqual(start, -1, `missing top-level YAML key: ${key}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^[A-Za-z0-9_.-]+:\s*(?:#.*)?$/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+function yamlJobBlock(source, jobName) {
+  const lines = source.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === `  ${jobName}:`);
+  assert.notEqual(start, -1, `missing workflow job: ${jobName}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
 describe('commercial readiness workflow contract', () => {
   it('runs hourly at a non-round minute and keeps writes off pull requests', async () => {
     const workflow = await repositoryFile(
@@ -51,13 +79,20 @@ describe('commercial readiness workflow contract', () => {
     }
   });
 
-  it('requires pull-request CI to execute the browser journey suite', async () => {
+  it('binds browser acceptance commands to the pull-request CI job', async () => {
     const workflow = await repositoryFile('.github/workflows/ci.yml');
+    const triggerBlock = yamlTopLevelBlock(workflow, 'on');
+    const browserJob = yamlJobBlock(workflow, 'browser-acceptance');
+
+    assert.match(triggerBlock, /^  pull_request:\s*$/mu);
     assert.match(
-      workflow,
-      /pnpm --filter @life-os\/web exec playwright install --with-deps chromium/u,
+      browserJob,
+      /^\s+run:\s*pnpm --filter @life-os\/web exec playwright install --with-deps chromium\s*$/mu,
     );
-    assert.match(workflow, /pnpm --filter @life-os\/web test:e2e/u);
+    assert.match(
+      browserJob,
+      /^\s+run:\s*pnpm --filter @life-os\/web test:e2e\s*$/mu,
+    );
   });
 
   it('requires all review and security gates before merge mode can execute', async () => {
