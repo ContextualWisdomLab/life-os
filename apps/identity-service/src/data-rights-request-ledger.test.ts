@@ -100,13 +100,20 @@ describe('PostgresDataRightsRequestLedger', () => {
     ]);
   });
 
-  it('returns an exact durable replay after an idempotency conflict', async () => {
-    const client = new RecordingSqlClient([[], [storedRow()]]);
+  it('returns an exact durable replay from pg-style Date timestamp values', async () => {
+    const client = new RecordingSqlClient([
+      [],
+      [storedRow({ requested_at: new Date(REQUESTED_AT) })],
+    ]);
     const ledger = new PostgresDataRightsRequestLedger(client);
 
     await expect(ledger.beginRequest(beginInput())).resolves.toMatchObject({
       kind: 'replayed',
-      request: { requestId: REQUEST_ID, requestDigest: REQUEST_DIGEST },
+      request: {
+        requestId: REQUEST_ID,
+        requestDigest: REQUEST_DIGEST,
+        requestedAt: REQUESTED_AT,
+      },
     });
     expect(client.calls).toHaveLength(2);
     expect(client.calls[1]?.text).toContain('idempotency_key = $2::uuid');
@@ -147,11 +154,12 @@ describe('PostgresDataRightsRequestLedger', () => {
     );
   });
 
-  it('stores one immutable terminal receipt and replays the same digest', async () => {
+  it('stores one immutable terminal receipt and replays pg-style Date timestamps', async () => {
     const completed = storedRow({
       request_status: 'completed',
       receipt_digest: RECEIPT_DIGEST,
-      completed_at: COMPLETED_AT,
+      requested_at: new Date(REQUESTED_AT),
+      completed_at: new Date(COMPLETED_AT),
     });
     const client = new RecordingSqlClient([[completed], [], [completed]]);
     const ledger = new PostgresDataRightsRequestLedger(client);
@@ -163,7 +171,10 @@ describe('PostgresDataRightsRequestLedger', () => {
         receiptDigest: RECEIPT_DIGEST,
         completedAt: COMPLETED_AT,
       }),
-    ).resolves.toMatchObject({ kind: 'completed' });
+    ).resolves.toMatchObject({
+      kind: 'completed',
+      request: { requestedAt: REQUESTED_AT, completedAt: COMPLETED_AT },
+    });
     await expect(
       ledger.completeRequest({
         requestId: REQUEST_ID,
