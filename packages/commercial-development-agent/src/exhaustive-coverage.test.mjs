@@ -229,7 +229,7 @@ describe('exhaustive external contract boundaries', () => {
 
   it.each([
     { ...issue(), body: '' },
-    { ...issue(), body: 'line\ttab' },
+    { ...issue(), body: 'line\u000bvertical-tab' },
     { ...issue(), title: 'line\nbreak' },
   ])('covers issue text block boundary %#', (value) => {
     if (value.body === '') {
@@ -315,7 +315,7 @@ describe('exhaustive issue selection boundaries', () => {
     { ...pullRequest(), title: 'x'.repeat(513) },
     { ...pullRequest(), title: 'line\nbreak' },
     { ...pullRequest(), body: 42 },
-    { ...pullRequest(), body: 'line\ttab' },
+    { ...pullRequest(), body: 'line\u000bvertical-tab' },
     { ...pullRequest(), extra: true },
   ])('fails closed on malformed pull-request projection %#', (value) => {
     expect(() =>
