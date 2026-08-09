@@ -158,7 +158,10 @@ async function readBrowserPutBody(
   }
   if (request.body === null) throw new Error('missing body');
   const browserResponse = new Response(request.body);
-  const text = await readBoundedText(browserResponse, MAXIMUM_BROWSER_BODY_BYTES);
+  const text = await readBoundedText(
+    browserResponse,
+    MAXIMUM_BROWSER_BODY_BYTES,
+  );
   const parsed = JSON.parse(text) as unknown;
   if (
     !parsed ||
@@ -224,7 +227,8 @@ function headers(
 
 /** Narrows a dependency revision conflict to fields the UI is allowed to reconcile. */
 function parseRevisionConflict(value: unknown): string | null | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return undefined;
   const record = value as Record<string, unknown>;
   if (
     record.type !== 'about:blank' ||
@@ -381,10 +385,7 @@ export async function handleTodaySyncRequest(
         'today_write_conflict',
       );
     }
-    if (
-      planningResponse.status !== 200 &&
-      planningResponse.status !== 201
-    ) {
+    if (planningResponse.status !== 200 && planningResponse.status !== 201) {
       return unavailable();
     }
     const aggregate = parseAggregate(
