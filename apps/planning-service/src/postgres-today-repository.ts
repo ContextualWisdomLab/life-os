@@ -303,23 +303,30 @@ export class PostgresTodayRepository implements TodayRepository {
 
   /**
    * Serializes each workspace/date and idempotency key with transaction-scoped
-   * advisory locks, then performs replay detection and create/update atomically.
+   * advisory locks in one explicit order, then performs replay detection and
+   * create/update atomically.
    */
   async writeToday(command: TodayWriteCommand): Promise<TodayWriteResult> {
     const result = await this.client.query<TodayWriteRow>(
-      `WITH locks AS MATERIALIZED (
-         SELECT
-           pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0)) AS aggregate_lock,
-           pg_advisory_xact_lock(hashtextextended($1::text || ':' || $3::text, 1)) AS idempotency_lock
+      `WITH aggregate_lock AS MATERIALIZED (
+         SELECT pg_advisory_xact_lock(
+           hashtextextended($1::text || ':' || $2::text, 0)
+         ) AS acquired
+       ),
+       idempotency_lock AS MATERIALIZED (
+         SELECT pg_advisory_xact_lock(
+           hashtextextended($1::text || ':' || $3::text, 1)
+         ) AS acquired
+         FROM aggregate_lock
        ),
        existing_replay AS MATERIALIZED (
          SELECT request_digest, result_kind, aggregate_id, revision_token, payload_json
-         FROM planning.today_idempotency_records, locks
+         FROM planning.today_idempotency_records, idempotency_lock
          WHERE workspace_id = $1 AND idempotency_key = $3
        ),
        current_aggregate AS MATERIALIZED (
          SELECT aggregate_id, revision_token
-         FROM planning.today_aggregates, locks
+         FROM planning.today_aggregates, idempotency_lock
          WHERE workspace_id = $1 AND local_date = $2
        ),
        updated AS (
@@ -342,7 +349,7 @@ export class PostgresTodayRepository implements TodayRepository {
             revision_token, payload_json, created_at, updated_at)
          SELECT $1, $2, $5, 1, $6, $7::jsonb,
                 clock_timestamp(), clock_timestamp()
-         FROM locks
+         FROM idempotency_lock
          WHERE $8 = 'absent'
            AND NOT EXISTS (SELECT 1 FROM existing_replay)
            AND NOT EXISTS (SELECT 1 FROM current_aggregate)
@@ -378,7 +385,7 @@ export class PostgresTodayRepository implements TodayRepository {
          COALESCE(replay.revision_token, mutation.revision_token, stored.revision_token) AS revision_token,
          COALESCE(replay.payload_json, mutation.payload_json, stored.payload_json) AS payload_json,
          current_aggregate.revision_token AS current_revision
-       FROM locks
+       FROM idempotency_lock
        LEFT JOIN existing_replay AS replay ON TRUE
        LEFT JOIN mutation ON TRUE
        LEFT JOIN stored_replay AS stored ON TRUE
