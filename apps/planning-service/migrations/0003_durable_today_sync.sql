@@ -17,7 +17,13 @@ CREATE TABLE planning.today_aggregates (
   CONSTRAINT today_aggregates_payload_check CHECK (
     jsonb_typeof(payload_json) = 'object'
     AND payload_json ->> 'version' = 'life-os.today.v1'
-    AND payload_json ->> 'date' = local_date::text
+    AND payload_json ->> 'date' ~ '^\d{4}-\d{2}-\d{2}$'
+    AND EXTRACT(YEAR FROM local_date)::integer =
+      substring(payload_json ->> 'date' FROM 1 FOR 4)::integer
+    AND EXTRACT(MONTH FROM local_date)::integer =
+      substring(payload_json ->> 'date' FROM 6 FOR 2)::integer
+    AND EXTRACT(DAY FROM local_date)::integer =
+      substring(payload_json ->> 'date' FROM 9 FOR 2)::integer
     AND jsonb_typeof(payload_json -> 'actions') = 'array'
   )
 );
