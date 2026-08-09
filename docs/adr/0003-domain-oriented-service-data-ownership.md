@@ -1,6 +1,6 @@
 # ADR-0003: Domain-oriented service and data ownership
 
-**Status:** Accepted  
+**Status:** Accepted architecture  
 **Date:** 2026-08-09
 
 ## Context
