@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  PlanningSqlClient,
-  PlanningSqlQueryResult,
-} from './postgres-planning-repository';
+import type { PlanningSqlQueryResult } from './postgres-planning-repository';
 import {
   PostgresTodayRepository,
   TodayPersistenceError,
+  type TodayTransactionalSqlClient,
 } from './postgres-today-repository';
 import {
   TodayIdempotencyConflictError,
@@ -26,8 +24,9 @@ interface QueryCall {
   values: readonly unknown[];
 }
 
-class RecordingClient implements PlanningSqlClient {
+class RecordingClient implements TodayTransactionalSqlClient {
   readonly calls: QueryCall[] = [];
+  transactionCalls = 0;
 
   constructor(private readonly responses: unknown[][]) {}
 
@@ -37,6 +36,13 @@ class RecordingClient implements PlanningSqlClient {
   ): Promise<PlanningSqlQueryResult<Row>> {
     this.calls.push({ text, values });
     return { rows: (this.responses.shift() ?? []) as Row[] };
+  }
+
+  async transaction<Result>(
+    operation: (client: TodayTransactionalSqlClient) => Promise<Result>,
+  ): Promise<Result> {
+    this.transactionCalls += 1;
+    return await operation(this);
   }
 }
 
@@ -59,11 +65,45 @@ function payload(title = 'Durable Today') {
   };
 }
 
-function command(): TodayWriteCommand {
+function aggregateRow(
+  revision = REVISION,
+  title = 'Durable Today',
+  aggregateId = AGGREGATE_ID,
+) {
+  return {
+    workspace_id: WORKSPACE_ID,
+    local_date: DATE,
+    aggregate_id: aggregateId,
+    revision_token: revision,
+    payload_json: payload(title),
+  };
+}
+
+function replayRow(
+  digest = REQUEST_DIGEST,
+  resultKind = 'created',
+  revision = REVISION,
+  title = 'Original response',
+) {
+  return {
+    request_digest: digest,
+    result_kind: resultKind,
+    aggregate_id: AGGREGATE_ID,
+    revision_token: revision,
+    payload_json: payload(title),
+  };
+}
+
+function command(
+  precondition: TodayWriteCommand['precondition'] = {
+    kind: 'match',
+    revision: REVISION,
+  },
+): TodayWriteCommand {
   return {
     workspaceId: WORKSPACE_ID,
     draft: payload() as TodayWriteCommand['draft'],
-    precondition: { kind: 'match', revision: REVISION },
+    precondition,
     idempotencyKey: IDEMPOTENCY_KEY,
     requestDigest: REQUEST_DIGEST,
     newAggregateId: AGGREGATE_ID,
@@ -73,17 +113,7 @@ function command(): TodayWriteCommand {
 
 describe('PostgresTodayRepository', () => {
   it('reads only one workspace/date aggregate and validates durable output', async () => {
-    const client = new RecordingClient([
-      [
-        {
-          workspace_id: WORKSPACE_ID,
-          local_date: DATE,
-          aggregate_id: AGGREGATE_ID,
-          revision_token: REVISION,
-          payload_json: payload(),
-        },
-      ],
-    ]);
+    const client = new RecordingClient([[aggregateRow()]]);
     const repository = new PostgresTodayRepository(client);
 
     await expect(repository.getToday(WORKSPACE_ID, DATE)).resolves.toEqual({
@@ -92,28 +122,23 @@ describe('PostgresTodayRepository', () => {
       revision: REVISION,
     });
     expect(client.calls[0]?.values).toEqual([WORKSPACE_ID, DATE]);
-    expect(client.calls[0]?.text).toContain('WHERE workspace_id = $1');
-    expect(client.calls[0]?.text).toContain('local_date = $2');
+    expect(client.calls[0]?.text).toContain('workspace_id = $1::uuid');
+    expect(client.calls[0]?.text).toContain('local_date = $2::date');
     expect(client.calls[0]?.text).toContain('LIMIT 2');
   });
 
-  it('executes one parameterized advisory-locked statement for optimistic update and replay evidence', async () => {
+  it('locks aggregate then idempotency key before an optimistic update', async () => {
     const client = new RecordingClient([
-      [
-        {
-          outcome: 'updated',
-          request_digest: REQUEST_DIGEST,
-          aggregate_id: AGGREGATE_ID,
-          revision_token: NEW_REVISION,
-          payload_json: payload(),
-          current_revision: REVISION,
-        },
-      ],
+      [],
+      [],
+      [],
+      [aggregateRow()],
+      [aggregateRow(NEW_REVISION)],
+      [{ stored: true }],
     ]);
     const repository = new PostgresTodayRepository(client);
-    const write = command();
 
-    await expect(repository.writeToday(write)).resolves.toEqual({
+    await expect(repository.writeToday(command())).resolves.toEqual({
       kind: 'updated',
       aggregate: {
         ...payload(),
@@ -121,37 +146,42 @@ describe('PostgresTodayRepository', () => {
         revision: NEW_REVISION,
       },
     });
-    expect(client.calls).toHaveLength(1);
+    expect(client.transactionCalls).toBe(1);
+    expect(client.calls).toHaveLength(6);
     expect(client.calls[0]?.text).toContain('pg_advisory_xact_lock');
-    expect(client.calls[0]?.text).toContain('today_idempotency_records');
-    expect(client.calls[0]?.text).toContain('revision_number = revision_number + 1');
-    expect(client.calls[0]?.text).not.toContain('Durable Today');
-    expect(client.calls[0]?.values).toEqual([
-      WORKSPACE_ID,
-      DATE,
-      IDEMPOTENCY_KEY,
-      REQUEST_DIGEST,
-      AGGREGATE_ID,
-      NEW_REVISION,
-      JSON.stringify(payload()),
-      'match',
-      REVISION,
+    expect(client.calls[0]?.values).toEqual([WORKSPACE_ID, DATE]);
+    expect(client.calls[1]?.text).toContain('pg_advisory_xact_lock');
+    expect(client.calls[1]?.values).toEqual([WORKSPACE_ID, IDEMPOTENCY_KEY]);
+    expect(client.calls[2]?.text).toContain('today_idempotency_records');
+    expect(client.calls[3]?.text).toContain('today_aggregates');
+    expect(client.calls[4]?.text).toContain('UPDATE planning.today_aggregates');
+    expect(client.calls[5]?.text).toContain(
+      'INSERT INTO planning.today_idempotency_records',
+    );
+    expect(client.calls.every((call) => !call.text.includes('Durable Today'))).toBe(
+      true,
+    );
+  });
+
+  it('creates an absent aggregate after the same ordered locks', async () => {
+    const client = new RecordingClient([
+      [],
+      [],
+      [],
+      [],
+      [aggregateRow(NEW_REVISION)],
+      [{ stored: true }],
     ]);
+    const repository = new PostgresTodayRepository(client);
+
+    await expect(
+      repository.writeToday(command({ kind: 'absent' })),
+    ).resolves.toMatchObject({ kind: 'created' });
+    expect(client.calls[4]?.text).toContain('INSERT INTO planning.today_aggregates');
   });
 
   it('returns the original response for an exact idempotent replay', async () => {
-    const client = new RecordingClient([
-      [
-        {
-          outcome: 'replayed',
-          request_digest: REQUEST_DIGEST,
-          aggregate_id: AGGREGATE_ID,
-          revision_token: REVISION,
-          payload_json: payload('Original response'),
-          current_revision: NEW_REVISION,
-        },
-      ],
-    ]);
+    const client = new RecordingClient([[], [], [replayRow()]]);
     const repository = new PostgresTodayRepository(client);
 
     await expect(repository.writeToday(command())).resolves.toEqual({
@@ -162,40 +192,14 @@ describe('PostgresTodayRepository', () => {
         revision: REVISION,
       },
     });
-  });
-
-  it('fails closed on stale revisions without exposing server content', async () => {
-    const client = new RecordingClient([
-      [
-        {
-          outcome: 'revision_conflict',
-          request_digest: REQUEST_DIGEST,
-          aggregate_id: null,
-          revision_token: null,
-          payload_json: null,
-          current_revision: REVISION,
-        },
-      ],
-    ]);
-    const repository = new PostgresTodayRepository(client);
-
-    await expect(repository.writeToday(command())).rejects.toEqual(
-      new TodayRevisionConflictError(REVISION),
-    );
+    expect(client.calls).toHaveLength(3);
   });
 
   it('fails closed when an idempotency key is reused for a different request', async () => {
     const client = new RecordingClient([
-      [
-        {
-          outcome: 'idempotency_conflict',
-          request_digest: 'b'.repeat(64),
-          aggregate_id: AGGREGATE_ID,
-          revision_token: REVISION,
-          payload_json: payload(),
-          current_revision: REVISION,
-        },
-      ],
+      [],
+      [],
+      [replayRow('b'.repeat(64))],
     ]);
     const repository = new PostgresTodayRepository(client);
 
@@ -204,21 +208,62 @@ describe('PostgresTodayRepository', () => {
     );
   });
 
-  it('rejects malformed or duplicate persistence rows', async () => {
-    const malformed = {
-      workspace_id: WORKSPACE_ID,
-      local_date: DATE,
-      aggregate_id: 'not-a-uuid',
-      revision_token: REVISION,
-      payload_json: payload(),
-    };
-    const duplicate = {
-      workspace_id: WORKSPACE_ID,
-      local_date: DATE,
-      aggregate_id: AGGREGATE_ID,
-      revision_token: REVISION,
-      payload_json: payload(),
-    };
+  it('fails closed on stale or missing optimistic revisions', async () => {
+    const stale = new PostgresTodayRepository(
+      new RecordingClient([[], [], [], [aggregateRow(NEW_REVISION)]]),
+    );
+    const missing = new PostgresTodayRepository(
+      new RecordingClient([[], [], [], []]),
+    );
+
+    await expect(stale.writeToday(command())).rejects.toEqual(
+      new TodayRevisionConflictError(NEW_REVISION),
+    );
+    await expect(missing.writeToday(command())).rejects.toEqual(
+      new TodayRevisionConflictError(null),
+    );
+  });
+
+  it('rejects create-if-absent when an aggregate already exists', async () => {
+    const repository = new PostgresTodayRepository(
+      new RecordingClient([[], [], [], [aggregateRow()]]),
+    );
+
+    await expect(
+      repository.writeToday(command({ kind: 'absent' })),
+    ).rejects.toEqual(new TodayRevisionConflictError(REVISION));
+  });
+
+  it('fails closed when mutation or replay persistence does not produce one row', async () => {
+    const missingMutation = new PostgresTodayRepository(
+      new RecordingClient([[], [], [], [aggregateRow()], []]),
+    );
+    const missingReplayReceipt = new PostgresTodayRepository(
+      new RecordingClient([
+        [],
+        [],
+        [],
+        [aggregateRow()],
+        [aggregateRow(NEW_REVISION)],
+        [],
+      ]),
+    );
+
+    await expect(missingMutation.writeToday(command())).rejects.toEqual(
+      new TodayRevisionConflictError(REVISION),
+    );
+    await expect(missingReplayReceipt.writeToday(command())).rejects.toBeInstanceOf(
+      TodayPersistenceError,
+    );
+  });
+
+  it('rejects malformed replay kinds and malformed or duplicate durable rows', async () => {
+    const malformedReplay = new PostgresTodayRepository(
+      new RecordingClient([[], [], [replayRow(REQUEST_DIGEST, 'invalid')]]),
+    );
+    const malformed = aggregateRow();
+    malformed.aggregate_id = 'not-a-uuid';
+    const duplicate = aggregateRow();
     const malformedRepository = new PostgresTodayRepository(
       new RecordingClient([[malformed]]),
     );
@@ -226,6 +271,9 @@ describe('PostgresTodayRepository', () => {
       new RecordingClient([[duplicate, duplicate]]),
     );
 
+    await expect(malformedReplay.writeToday(command())).rejects.toBeInstanceOf(
+      TodayPersistenceError,
+    );
     await expect(
       malformedRepository.getToday(WORKSPACE_ID, DATE),
     ).rejects.toBeInstanceOf(TodayPersistenceError);
