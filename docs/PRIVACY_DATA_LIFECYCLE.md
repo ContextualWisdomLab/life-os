@@ -1,7 +1,7 @@
 # LifeOS Privacy and Data Lifecycle
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 ## 1. Principles
 
@@ -126,9 +126,11 @@ Plugin credentials must be represented by encrypted secret handles, not manifest
 - model credentials never become browser or product-data credentials;
 - live provider evidence is separated from deterministic merge correctness.
 
-## 9. Browser-local data
+## 9. Browser-local and durable Today data
 
-Browser-local drafts/cache/offline state must be explicitly labeled as such. A local draft is not durable until an owning service accepts it. Automatic background migration of pre-existing personal drafts is not implied. PR #127 implements the bounded explicit Today migration/conflict journey on an active PR.
+**Status:** Implemented on protected main
+
+Browser-local drafts/cache/offline state are explicitly labeled as such. They are not durable until the planning service accepts them. The protected-main Today slice merged from PR #127 requires an explicit save action, uses revision/idempotency conflict semantics, and preserves local edits that occur while a save is in flight. There is no silent automatic migration of pre-existing local drafts.
 
 ## 10. Backup and erasure
 
