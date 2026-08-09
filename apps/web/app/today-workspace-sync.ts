@@ -89,9 +89,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 
 /** Requires one strong UUIDv4 ETag and returns the unquoted opaque revision. */
 function requireRevision(response: Response): string {
-  const match = /^"([0-9a-f-]+)"$/iu.exec(
-    response.headers.get('etag') ?? '',
-  );
+  const match = /^"([0-9a-f-]+)"$/iu.exec(response.headers.get('etag') ?? '');
   if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
     throw new Error('invalid revision');
   }
