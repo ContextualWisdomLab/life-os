@@ -6,7 +6,7 @@ import {
 
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const UNTRUSTED_TEXT_CONTROL_CHARACTER_PATTERN =
-  /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/u;
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const PULL_REQUEST_URL_PATTERN =
   /^https:\/\/github\.com\/ContextualWisdomLab\/life-os\/pull\/([1-9]\d*)$/u;
 const ISSUE_REFERENCE_PATTERNS = Object.freeze([
