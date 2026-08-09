@@ -123,6 +123,103 @@ test('keeps a local Today private until the user explicitly migrates it', async 
   expect(putCount).toBe(1);
 });
 
+test('keeps the local draft after a failed save and retries only after another explicit check', async ({
+  page,
+}) => {
+  let getCount = 0;
+  let putCount = 0;
+  const idempotencyKeys: string[] = [];
+  const revision = '77777777-7777-4777-8777-777777777777';
+
+  await page.route('**/api/planning/today/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'GET') {
+      getCount += 1;
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          type: 'about:blank',
+          title: 'Today aggregate was not found',
+          status: 404,
+          code: 'today_not_found',
+        }),
+      });
+      return;
+    }
+
+    expect(request.method()).toBe('PUT');
+    putCount += 1;
+    const requestHeaders = request.headers();
+    expect(requestHeaders['if-none-match']).toBe('*');
+    expect(requestHeaders['if-match']).toBeUndefined();
+    const idempotencyKey = requestHeaders['idempotency-key'] ?? '';
+    expect(idempotencyKey).toMatch(UUID_V4_PATTERN);
+    idempotencyKeys.push(idempotencyKey);
+
+    if (putCount === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          type: 'about:blank',
+          title: 'Today synchronization is unavailable',
+          status: 503,
+          code: 'today_sync_unavailable',
+        }),
+      });
+      return;
+    }
+
+    const document = request.postDataJSON() as {
+      version: string;
+      date: string;
+      actions: unknown[];
+    };
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      headers: { etag: `"${revision}"` },
+      body: JSON.stringify({
+        ...document,
+        aggregateId: '88888888-8888-4888-8888-888888888888',
+        revision,
+      }),
+    });
+  });
+
+  await page.reload();
+  await page.getByLabel('What needs your attention?').fill('Survive a workspace outage');
+  await page.getByRole('button', { name: 'Capture' }).click();
+  await page.getByRole('button', { name: 'Check workspace Today' }).click();
+  await page.getByRole('button', { name: 'Move local draft to workspace' }).click();
+
+  await expect(
+    page.getByText(
+      'Workspace Today is temporarily unavailable. Your local draft remains unchanged.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByText('Survive a workspace outage')).toBeVisible();
+  expect(getCount).toBe(1);
+  expect(putCount).toBe(1);
+  await expect(
+    page.getByRole('button', { name: 'Move local draft to workspace' }),
+  ).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Check workspace Today' }).click();
+  await page.getByRole('button', { name: 'Move local draft to workspace' }).click();
+
+  await expect(
+    page.getByText(
+      'The current local Today is saved durably. Later local edits still require another explicit save.',
+    ),
+  ).toBeVisible();
+  expect(getCount).toBe(2);
+  expect(putCount).toBe(2);
+  expect(idempotencyKeys).toHaveLength(2);
+  expect(idempotencyKeys[1]).not.toBe(idempotencyKeys[0]);
+});
+
 test('surfaces a stale-device conflict and requires an explicit recheck before using newer workspace state', async ({
   page,
 }) => {
