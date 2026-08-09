@@ -35,7 +35,7 @@ New ADRs must use an unused numeric prefix. Existing collisions are indexed with
 | [0005-purpose-bound-sensitive-data-access](0005-purpose-bound-sensitive-data-access.md) | Accepted architecture | Sensitive data uses purpose-bound authorization and auditable grants rather than blanket masking |
 | [0006-work-conserving-autonomous-maintenance](0006-work-conserving-autonomous-maintenance.md) | Accepted architecture | Autonomous maintenance is exact-head, work-conserving, and blocker-local |
 | [0007-canonical-documentation-graph](0007-canonical-documentation-graph.md) | Accepted architecture | Canonical docs require explicit as-built/planned/superseded status and code/test traceability |
-| [0008-separate-capability-maturity-from-buyer-gap-exhaustion](0008-separate-capability-maturity-from-buyer-gap-exhaustion.md) | Accepted architecture | Configured capability maturity and canonical buyer-gap exhaustion are independent readiness dimensions |
+| [0008-separate-capability-maturity-from-buyer-gap-exhaustion](0008-separate-capability-maturity-from-buyer-gap-exhaustion.md) | Implemented on protected main | Configured capability maturity and canonical buyer-gap exhaustion are independent readiness dimensions |
 | [0009-product-hosting-and-data-evolution](0009-product-hosting-and-data-evolution.md) | Accepted architecture | Multi-user server-backed, self-hostable LifeOS supersedes local-first-only and single-app primary architectures |
 
 ## ADR quality contract
