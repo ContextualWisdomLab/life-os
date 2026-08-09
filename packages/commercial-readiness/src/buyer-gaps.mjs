@@ -364,6 +364,14 @@ export function attachBuyerGapEvidence(report, evidence) {
   if (!isPlainObject(report) || !isPlainObject(report.summary)) {
     throw new Error('Commercial readiness report is invalid');
   }
+  if (
+    !isPlainObject(evidence) ||
+    !Array.isArray(evidence.unresolved) ||
+    !Array.isArray(evidence.resolved) ||
+    !Array.isArray(evidence.unknown)
+  ) {
+    throw new Error('Buyer gap evidence is invalid');
+  }
   return {
     ...report,
     summary: {
