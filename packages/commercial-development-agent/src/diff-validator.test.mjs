@@ -95,6 +95,32 @@ describe('commercial development diff policy', () => {
     ).toMatchObject({ accepted: true, reason_code: 'accepted' });
   });
 
+  it('accepts an allowlisted regular-file deletion with empty replacement content', () => {
+    expect(
+      validateCommercialDevelopmentDiff(
+        evidence({
+          files: [
+            file({
+              status: 'D',
+              bytes: 0,
+              additions: 0,
+              deletions: 4,
+              content: '',
+            }),
+          ],
+        }),
+        POLICY,
+      ),
+    ).toMatchObject({
+      accepted: true,
+      reason_code: 'accepted',
+      changed_files: 1,
+      changed_bytes: 0,
+      additions: 0,
+      deletions: 4,
+    });
+  });
+
   it('returns no_change without creating remote work', () => {
     expect(
       validateCommercialDevelopmentDiff(evidence({ files: [] }), POLICY),
