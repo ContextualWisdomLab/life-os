@@ -92,7 +92,7 @@ async function postSync(
     headers: {
       'content-type': 'application/json',
       'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-      'x-workspace-id': workspaceId,
+      'x-workspace-id': 'attacker-selected-workspace',
       ...trustedWorkspaceHeaders(workspaceId),
     },
     body: JSON.stringify(body),
