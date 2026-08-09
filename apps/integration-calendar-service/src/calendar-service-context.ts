@@ -16,19 +16,35 @@ export interface CalendarWorkspaceContextHeaders {
   readonly signature: unknown;
 }
 
+/** Marks a missing or unusable server-side verification configuration. */
+export class CalendarContextUnavailableError extends Error {
+  constructor() {
+    super('trusted calendar context is unavailable');
+    this.name = 'CalendarContextUnavailableError';
+  }
+}
+
+/** Marks an untrusted, malformed, stale, or forged calendar context. */
+export class CalendarContextInvalidError extends Error {
+  constructor() {
+    super('trusted calendar context is invalid');
+    this.name = 'CalendarContextInvalidError';
+  }
+}
+
 function requireSecret(secret: unknown): string {
   if (
     typeof secret !== 'string' ||
     Buffer.byteLength(secret, 'utf8') < MINIMUM_SECRET_BYTES
   ) {
-    throw new Error('trusted calendar context is unavailable');
+    throw new CalendarContextUnavailableError();
   }
   return secret;
 }
 
 function requireIssuedAt(value: unknown, nowSeconds: number): string {
   if (typeof value !== 'string' || !ISSUED_AT_PATTERN.test(value)) {
-    throw new Error('trusted calendar context is invalid');
+    throw new CalendarContextInvalidError();
   }
   const issuedAt = Number(value);
   if (
@@ -37,7 +53,7 @@ function requireIssuedAt(value: unknown, nowSeconds: number): string {
     issuedAt < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS ||
     issuedAt > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS
   ) {
-    throw new Error('trusted calendar context is invalid');
+    throw new CalendarContextInvalidError();
   }
   return value;
 }
@@ -71,7 +87,7 @@ export function requireTrustedCalendarWorkspaceContext(
     typeof headers.signature !== 'string' ||
     !SIGNATURE_PATTERN.test(headers.signature)
   ) {
-    throw new Error('trusted calendar context is invalid');
+    throw new CalendarContextInvalidError();
   }
   const workspaceId = headers.workspaceId.toLowerCase();
   const issuedAt = requireIssuedAt(headers.issuedAt, nowSeconds);
@@ -81,7 +97,7 @@ export function requireTrustedCalendarWorkspaceContext(
     providedSignature.length !== canonicalSignature.length ||
     !timingSafeEqual(providedSignature, canonicalSignature)
   ) {
-    throw new Error('trusted calendar context is invalid');
+    throw new CalendarContextInvalidError();
   }
   return workspaceId;
 }
