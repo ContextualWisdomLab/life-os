@@ -1,6 +1,6 @@
 # Claude operating contract for LifeOS
 
-`AGENTS.md` is the canonical repository-wide agent instruction file. `docs/PRD.md`, `docs/TRD.md`, `ARCHITECTURE.md`, `docs/adr/README.md`, `docs/DATA_MODEL.md`, `docs/UML.md`, `docs/THREAT_MODEL.md`, `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md`, and `docs/TRACEABILITY.md` are the canonical product/technical evidence graph. This document maps them into a concise execution order and must not override live branch protection, security policy, or protected-main behavior.
+`AGENTS.md` is the canonical repository-wide agent instruction file. The canonical product/technical evidence graph is `docs/PRD.md`, `docs/TRD.md`, `ARCHITECTURE.md`, `docs/adr/README.md`, `docs/DATA_MODEL.md`, `docs/UML.md`, `docs/API_CONTRACTS.md`, `SECURITY.md`, `docs/THREAT_MODEL.md`, `docs/PRIVACY_DATA_LIFECYCLE.md`, `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md`, `docs/RELEASE_AND_MIGRATION.md`, `docs/STANDARDS_TRACEABILITY.md`, `docs/TRACEABILITY.md`, and `docs/DOCUMENTATION_ASSESSMENT.md`. This document maps them into a concise execution order and must not override live branch protection, security policy, or protected-main behavior.
 
 ## Execution order
 
@@ -28,6 +28,7 @@ Before branch-affecting writes, refetch exact target head/base/ref/blob. If anot
 - Browser-local drafts/caches do not become durable truth until an authorized owning service confirms persistence.
 - AI proposals remain inert until a separately authorized domain execution capability exists.
 - Sensitive access uses purpose/resource/actor/lifetime controls and auditable evidence; blanket masking is not an authorization model.
+- The bounded hourly OpenCode commercial-development loop is protected-main automation after PR #122, but deterministic policy and normal review/security/exact-head gates remain authoritative and the automation has no product-data authority.
 
 ## Documentation discipline
 
@@ -52,8 +53,9 @@ Model-assisted tests/development use `NVIDIA_NIM_API_KEY` through the approved O
 - Persistence behavior uses realistic PostgreSQL tests for tenant, transaction, replay, concurrency and recovery semantics.
 - Core web journeys include accessibility/localization/mobile/PWA evidence where relevant.
 - Standards/research claims use appropriate primary/current sources with APA 7 traceability and publication-status distinctions.
+- API/event, privacy/data lifecycle, migration/rollback and operability docs remain synchronized with owning implementations.
 - `CHANGELOG.md` records buyer-visible behavior.
-- Canonical PRD/TRD/architecture/ADR/data/UML/threat/test/operability/traceability documents remain code-current.
+- Canonical evidence documents remain code-current and `docs/TRACEABILITY.md` distinguishes protected-main evidence from active-PR/planned gaps.
 - Release versions/tags are created only after exact integrated release readiness; unreleased work stays under `Unreleased`.
 
 ## Safe escalation
