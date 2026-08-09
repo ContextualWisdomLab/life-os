@@ -1,99 +1,93 @@
 # LifeOS Documentation Completeness Assessment
 
 **Assessment date:** 2026-08-10  
-**Protected-main baseline:** `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`  
+**Protected-main baseline:** `f4cae6d83eadb00019d2962a650c55c59a3349ae`  
 **Successor documentation branch:** `docs/canonical-product-architecture-baseline-v2`  
-**Verdict:** **The historical repository had substantial feature-level documentation but was not sufficient as one code-current whole-product record. This successor pack provides the required canonical families on current protected-main ancestry; it is a sufficient review baseline once exact-head validation/review passes, but it does not mean the product itself is feature-complete or release-ready.**
+**Verdict:** **Historical LifeOS material was extensive but insufficient as one code-current whole-product record. Successor PR #140 now supplies the required canonical families and has been reconciled through the protected-main durable Today merge; it is a sufficient commercial/acquisition review baseline only after its own current-head checks/review and live-base reconciliation pass. Documentation sufficiency does not mean the product is feature-complete or release-ready.**
 
-## 1. Why the historical material was insufficient
+## 1. Why historical material was insufficient
 
-The project accumulated strong implementation plans, feature specs, runbooks, research notes, migration tests, security policy, root architecture and changelog evidence. The deficiency was fragmentation and design drift, not lack of prose.
+The repository already had strong feature specifications, implementation plans, runbooks, research notes, migrations, tests, security policy, architecture and changelog evidence. The deficiency was fragmentation and design drift:
 
-A maintainer or acquirer had to reconcile:
+- early private/login-free/local-first product assumptions;
+- later Google/GitHub login, own backend and PostgreSQL decisions;
+- a single-application/Compose direction followed by domain-oriented MSA;
+- an old UUIDv7 proposal versus protected-main UUIDv4;
+- feature plans whose old “post-MVP” labels no longer matched implemented services;
+- active PR status mixed with shipped behavior;
+- capability maturity previously conflated with whole-product buyer-gap exhaustion.
 
-- an early login-free/private/local-first proposal;
-- later Google/GitHub login and server-side PostgreSQL decisions;
-- an early single-application/Compose direction;
-- the later domain-oriented modular MSA;
-- an old UUIDv7 proposal versus current UUIDv4 implementation;
-- feature plans whose old “post-MVP” labels no longer match protected main;
-- live issues/PRs versus old documentation status;
-- generated commercial-readiness evidence that previously conflated configured maturity with whole-product gap exhaustion.
-
-A repository that requires chat archaeology to reconstruct these distinctions is not acquisition-grade documentation.
+A maintainer or acquirer should not need chat history and old PR archaeology to resolve these conflicts.
 
 ## 2. Current canonical family matrix
 
-| Documentation family | Current successor artifact | Assessment |
+| Documentation family | Successor artifact | Assessment |
 | --- | --- | --- |
-| Product requirements | `docs/PRD.md` | Strong baseline; maps product journey and live maturity. |
-| Technical requirements | `docs/TRD.md` | Strong baseline; defines service/data/security/runtime/release contracts. |
-| Architecture | root `ARCHITECTURE.md` + canonical docs | Strong protected-main source; root documentation index still needs successor-link update in this PR. |
-| ADRs | existing ADRs + successor ADR index/additions | Must consolidate without renumbering/colliding with existing protected-main ADRs. |
-| Logical ERD / data model | `docs/DATA_MODEL.md` | Strong logical baseline; physical migrations remain authoritative. |
-| UML / sequences / deployment / failure views | `docs/UML.md` | Strong baseline with protected-main vs active-PR labels. |
-| API/event registry | `docs/API_CONTRACTS.md` | Sufficient ownership/maturity registry; exact shapes remain source-owned. |
-| Security policy | `SECURITY.md` | Existing upstream reporting policy remains authoritative. |
-| Threat model | `docs/THREAT_MODEL.md` | Sufficient architecture threat baseline with residual-gap ledger. |
-| Privacy/data lifecycle | `docs/PRIVACY_DATA_LIFECYCLE.md` | Strong baseline; accurately keeps #55/#129 incomplete. |
-| Test strategy | `docs/TEST_STRATEGY.md` | Strong baseline including exact-head and documentation semantic checks. |
-| Operability | `docs/OPERABILITY.md` | Strong operator/upstream boundary. |
+| Product requirements | `docs/PRD.md` | Strong code-current baseline. |
+| Technical requirements | `docs/TRD.md` | Strong shared runtime/security/data/release baseline. |
+| Architecture | root `ARCHITECTURE.md` | Strong bounded-context authority baseline. |
+| ADRs | `docs/adr/README.md`, ADR 0001-0009 | Sufficient material-decision baseline; extend when repository-wide authority changes. |
+| Logical ERD / data model | `docs/DATA_MODEL.md` | Strong logical baseline; physical service migrations remain authoritative. |
+| UML / sequences / deployment / failures | `docs/UML.md` | Strong baseline with explicit implementation maturity. |
+| API/event contracts | `docs/API_CONTRACTS.md` | Sufficient ownership/version/maturity registry; exact shapes remain source-owned. |
+| Security policy | `SECURITY.md` | Existing vulnerability-reporting policy remains authoritative. |
+| Threat model | `docs/THREAT_MODEL.md` | Sufficient architecture risk baseline with residual gaps. |
+| Privacy/data lifecycle | `docs/PRIVACY_DATA_LIFECYCLE.md` | Strong baseline; #55/#129 stay explicitly incomplete. |
+| Test strategy | `docs/TEST_STRATEGY.md` | Strong exact-head, persistence, browser and semantic-doc evidence policy. |
+| Operability | `docs/OPERABILITY.md` | Strong upstream/operator ownership boundary. |
 | Release/migration/rollback | `docs/RELEASE_AND_MIGRATION.md` | Sufficient repository-wide release contract. |
-| Standards/research traceability | `docs/STANDARDS_TRACEABILITY.md` | Sufficient index; scoped research notes remain the detail source. |
-| Requirement -> source/test/issue/PR traceability | `docs/TRACEABILITY.md` | Strong current baseline. |
-| Machine-checkable documentation consistency | successor documentation contract test | Required before this pack is considered merge-ready. |
+| Standards/research | `docs/STANDARDS_TRACEABILITY.md` | Sufficient index with APA 7 anchors; scoped research remains detailed evidence. |
+| Requirement-to-evidence traceability | `docs/TRACEABILITY.md` | Strong current baseline. |
+| Machine-checkable documentation consistency | `documentation-contract.test.mjs` | Required executable gate for this successor. |
 
 ## 3. Historical decisions reconciled
 
-### 3.1 Local-first-only primary product
+### Local-first/private primary product
 
 **Status:** Superseded
 
-Browser-local storage is still useful for explicit draft/offline behavior, but authentication, workspace authority and server-side domain persistence are the durable product architecture.
+Browser-local state remains useful for explicit drafts/offline behavior. Durable product authority is authenticated server-side bounded services.
 
-### 3.2 Private personal-only repository
-
-**Status:** Superseded
-
-LifeOS is an open-source/self-hostable product. Personal example data remains private and must not be committed.
-
-### 3.3 Single-Docker primary architecture
+### Single-Docker primary architecture
 
 **Status:** Superseded
 
-Compose remains a supported composition/development profile. It does not erase independently bounded service authority, migrations or database credentials.
+Compose remains a composition/development profile; service data ownership remains domain oriented.
 
-### 3.4 UUIDv7 internal IDs
-
-**Status:** Superseded
-
-Protected-main architecture and code use opaque UUIDv4 internal identifiers.
-
-### 3.5 AI as direct autonomous planner/mutator
+### UUIDv7 internal IDs
 
 **Status:** Superseded
 
-AI output is an inert auditable proposal; deterministic authorization and explicit product/user decisions remain authoritative.
+Protected main uses opaque UUIDv4 internal identifiers.
 
-### 3.6 “100% capability maturity means no buyer gaps”
+### Unbounded AI planner/agent authority
 
 **Status:** Superseded
 
-Protected main now reports capability maturity separately from repository-owned canonical buyer-gap state.
+AI output is an inert proposal. Deterministic authorization and explicit user/product decisions remain authoritative.
 
-## 4. Current implementation drift that the old docs PR missed
+### Capability maturity equals buyer-gap exhaustion
 
-While the original canonical docs PR #126 remained open, protected main advanced materially. Current protected-main evidence now includes:
+**Status:** Superseded
+
+Protected main separates configured capability maturity from canonical buyer-gap state.
+
+## 4. Protected-main evolution reconciled after PR #126
+
+PR #126 originally established a broad canonical pack but remained open while protected main advanced. Current protected-main evidence now includes:
 
 - buyer-gap accounting separated from capability maturity;
 - trusted-source provenance hardening;
 - authentication-age provenance across session rotation;
 - recent-authentication policy and authenticated data-rights application boundary;
-- durable data-rights request/receipt persistence with immutable terminal evidence.
+- durable data-rights request/receipt persistence with immutable terminal evidence;
+- durable Today workspace synchronization, optimistic concurrency, explicit local-draft migration and browser conflict/retry journeys merged from PR #127 as `f4cae6d83eadb00019d2962a650c55c59a3349ae`.
 
-Therefore a documentation branch based on the old `876850...` baseline cannot be considered code-current merely because its review threads were once resolved.
+Issue #121 closed completed after that merge. The current commercial-readiness issue reports 22/22 configured capability maturity, zero capability-evidence gaps and **three** unresolved canonical buyer gaps (#55, #129, #130).
 
-## 5. Current live product gaps documentation must preserve
+Therefore the old PR #126 branch cannot be considered current merely because its historical review threads were resolved.
+
+## 5. Remaining live product/governance gaps documentation must preserve
 
 ### #55 — complete data portability/erasure
 
@@ -101,17 +95,11 @@ Therefore a documentation branch based on the old `876850...` baseline cannot be
 
 Recent-authentication and durable identity-owned request/receipt foundations are protected-main behavior. Complete contributor adapters, orchestration/reconciliation, protected export delivery, retention/legal-hold/backup-expiry and operator recovery remain incomplete.
 
-### #121 / PR #127 — durable Today synchronization
-
-**Status:** Implemented on active PR
-
-The active PR implements the bounded durable Today aggregate and conflict journey. It remains active-PR evidence until exact-head gates pass and it merges.
-
 ### #129 / PR #139 — hosted calendar credentials and authority
 
 **Status:** Partial
 
-Conflict-safe provider adapters are protected-main. PR #139 implements the trusted workspace-context prerequisite. Full per-user encrypted credentials, OAuth state/PKCE, refresh/revocation, discovery/selection and migration from the development token remain incomplete.
+Conflict-safe provider adapters are protected-main. PR #139 is active for the trusted workspace-context prerequisite. Full per-user encrypted credentials, OAuth state/PKCE, refresh/revocation, discovery/selection and migration from the development token remain incomplete.
 
 ### #130 — plugin runtime last mile
 
@@ -123,54 +111,44 @@ Protected main validates/prepares plugin contracts. Installation grants, encrypt
 
 **Status:** Planned
 
-Required workflows still need a repository-wide explicit classification of exact contributor-head versus merge-tree compatibility evidence.
+Required workflows still need repository-wide explicit classification of exact contributor-head source verification versus merge-tree compatibility evidence.
 
-## 6. Why PR #126 should be superseded rather than conflict-heavy repaired
+## 6. PR #126 divergence and successor strategy
 
-At this assessment, PR #126 is materially diverged from live main and contains long-lived branch ancestry accumulated while multiple protected-main product changes integrated. Its unique canonical content is valuable, but carrying unrelated historical commits into the documentation merge is unnecessary risk.
+PR #126 contains valuable canonical material but accumulated a long-lived branch while many protected-main changes landed. Carrying unrelated stale ancestry into a documentation merge is unnecessary risk.
 
-The recovery strategy is:
+The selected recovery strategy is:
 
-1. start the successor branch from exact current protected main;
-2. preserve the canonical documentation families and durable decisions;
-3. reconcile them with newly integrated protected-main behavior and live PRs/issues;
-4. update root discoverability and deterministic documentation tests;
-5. open one successor documentation PR;
-6. verify the successor contains the required canonical families and current-state traceability;
-7. only then close #126 as superseded.
-
-This preserves content while eliminating stale ancestry rather than force-rebasing the old branch.
+1. preserve the durable canonical decisions/content;
+2. rebuild the integration path from recent protected main as PR #140;
+3. reconcile every subsequent main movement before merge;
+4. verify canonical link/status/source contracts and current CI/security/review;
+5. compare #140 with #126 for unique durable content;
+6. close #126 as superseded only after #140 is reviewable and preservation/currentness is proven.
 
 ## 7. Sufficiency definition
 
-The documentation baseline is considered sufficient for whole-product governance only when all are true:
+The documentation baseline is sufficient for whole-product governance only when:
 
-- PRD, TRD, Architecture, ADR, logical ERD/data model, UML, API/event, Security, Threat Model, Privacy/Data Lifecycle, Test Strategy, Operability, Release/Migration, Standards/Research and Traceability are discoverable from the repository root;
-- protected-main, active-PR, partial, planned and superseded states are not conflated;
-- every material requirement has source/test evidence or an explicit live gap;
-- every material architecture authority/ownership decision has an ADR or root invariant;
-- diagrams distinguish logical cross-service references from physical DB authority;
-- documentation claims are machine-checked against actual source/migrations where feasible;
-- no unresolved high-impact product gap is hidden by a maturity score;
-- documentation itself passes exact-head CI/security/review gates.
+- all canonical families above are discoverable from root README;
+- protected-main, active-PR, partial, planned and superseded behavior are not conflated;
+- each material requirement maps to source/test evidence or an explicit live gap;
+- material repository-wide authority decisions have ADR/root architecture coverage;
+- logical ERD/UML do not imply hidden cross-service SQL authority;
+- selected claims are machine-checked against actual source/migrations;
+- buyer gaps are not hidden by capability maturity;
+- the documentation PR itself passes current exact-head checks/review against current live base.
 
-## 8. What “sufficient documentation” does not mean
+## 8. What sufficiency does not mean
 
-It does **not** mean:
-
-- all buyer-visible product gaps are closed;
-- first stable release criteria are satisfied;
-- every external provider deployment is production configured;
-- all operators meet a fixed SLA/RPO/RTO;
-- every service has identical maturity;
-- an active PR has become protected-main behavior.
+It does **not** mean all buyer gaps are closed, first stable release is ready, every provider deployment is production configured, every operator meets a fixed SLA/RPO/RTO, or an active PR has become protected-main behavior.
 
 ## 9. Final assessment
 
-**Before the canonical baseline effort:** insufficient for whole-product governance despite strong feature-level evidence.
+**Before the canonical effort:** insufficient for whole-product governance despite extensive feature-level evidence.
 
-**Original PR #126:** broad and valuable, but no longer current enough to merge cleanly because protected main advanced while the branch accumulated unrelated ancestry.
+**PR #126:** valuable but materially stale/diverged as an integration path.
 
-**Successor v2 baseline:** the right recovery path because it starts from exact current main and preserves/reconciles the required documentation families without carrying stale branch ancestry. Once root links, ADR consolidation, documentation contract tests, current exact-head CI/security/review and successor PR verification complete, the documentation structure is sufficient as a commercial/acquisition review baseline.
+**PR #140 successor:** materially sufficient in scope and currentness for commercial/acquisition review once its own exact-head/live-base validation and review finish. It now reflects the protected-main Today merge rather than the stale active-PR state.
 
-The autonomous maintenance loop must then continue into #55, #121/#127, #129/#139, #130, #132 and the next buyer-visible gap rather than treating documentation sufficiency as product completion.
+After documentation integration, autonomous maintenance must continue #55, #129/#139, #130, #132 and the next buyer-visible gap. Documentation sufficiency is a governance gate, never the product-completion gate.
