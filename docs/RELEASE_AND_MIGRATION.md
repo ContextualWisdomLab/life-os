@@ -1,7 +1,7 @@
 # LifeOS Release, Migration and Rollback Contract
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 ## 1. Release principle
 
@@ -81,18 +81,18 @@ Before migration risk that can affect durable user state, operators must have re
 
 Restoring an old backup after user erasure/data-rights completion may require policy-driven reconciliation before normal operation.
 
-## 9. Active PR maturity
+## 9. Current maturity and live gaps
 
-Behavior implemented only on a live PR is documented as `Implemented on active PR`. It cannot be included in stable-release notes as protected-main behavior until merged and reverified.
+Protected main now includes the durable Today synchronization slice from PR #127; issue #121 is closed completed and commercial readiness no longer counts it as unresolved.
 
 At this baseline:
 
-- PR #127 — durable Today synchronization — active PR;
-- PR #139 — calendar trusted workspace context — active PR;
-- issue #55 — complete data rights — partial despite recent protected-main foundation;
-- issue #129 — per-user calendar credential lifecycle — partial;
-- issue #130 — plugin runtime delivery — planned;
-- issue #132 — exact source-head verification attribution — planned.
+- durable Today synchronization — `Implemented on protected main` through `f4cae6d83eadb00019d2962a650c55c59a3349ae`;
+- PR #139 — calendar trusted workspace context — `Implemented on active PR`;
+- issue #55 — complete data rights — `Partial` despite protected-main recent-auth/ledger foundations;
+- issue #129 — per-user calendar credential lifecycle — `Partial`;
+- issue #130 — plugin runtime delivery — `Planned`;
+- issue #132 — exact source-head verification attribution — `Planned`.
 
 ## 10. Release failure cases
 
