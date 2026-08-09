@@ -22,6 +22,7 @@ Deliver a reviewable end-to-end slice in which a signed-in user can explicitly m
 - [x] Add browser journey for stale-device conflict, recheck, and explicit newer-workspace selection.
 - [x] Add CI browser-acceptance job and a workflow contract test requiring it.
 - [x] Add scoped design, operations, and APA 7 standards documentation.
+- [x] Reconcile capability evidence with the protected buyer-gap accounting semantics merged through #131; configured capability maturity no longer implies whole-product gap exhaustion.
 
 ## Remaining before Ready
 
@@ -29,7 +30,6 @@ Deliver a reviewable end-to-end slice in which a signed-in user can explicitly m
 - [ ] Obtain exact-current-head planning/web tests, PostgreSQL integration, build, Compose, AppGuardrail, Semgrep, Security Scan, Commercial Readiness, and CodeRabbit evidence.
 - [ ] Resolve every actionable exact-head human/automated review finding.
 - [ ] Reconcile root `ARCHITECTURE.md`, `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md`, and canonical product documentation after the active documentation-baseline writer on PR #126 is no longer moving; do not race that branch.
-- [ ] Add/update capability evidence only after issue #128's gap-exhaustion semantics are safe enough that static evidence cannot falsely imply whole-product completion.
 - [ ] Re-evaluate branch ancestry against the then-current protected `main`; refresh only when it has integration value and preserve all exact-head evidence semantics.
 - [ ] Mark Ready only after implementation/documentation contracts are complete on one stable head.
 
@@ -45,5 +45,5 @@ The final head must prove:
 6. one concurrent same-revision writer wins in real PostgreSQL;
 7. a different workspace cannot read the aggregate;
 8. action content, cookies, credentials, SQL and internal errors do not escape public problems/artifacts;
-9. the Playwright buyer journey is a real CI gate, not an unexecuted repository fixture;
+9. the Playwright browser journey is a real CI gate, not an unexecuted repository fixture;
 10. all required repository security/review gates apply to the unchanged final head.
