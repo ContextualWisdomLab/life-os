@@ -1,7 +1,7 @@
 # LifeOS UML and Interaction Views
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 These Mermaid views describe component authority, buyer journeys and failure boundaries. `Implemented on active PR` views are intentionally labeled and do not become protected-main evidence before merge.
 
@@ -88,9 +88,9 @@ Review is evidence/projection; it does not silently rewrite planning state.
 
 ## 4. Today durable synchronization
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-**Evidence:** PR #127, issue #121.
+**Evidence:** PR #127 merged as `f4cae6d83eadb00019d2962a650c55c59a3349ae`; issue #121 closed completed.
 
 ```mermaid
 sequenceDiagram
@@ -107,19 +107,19 @@ sequenceDiagram
     Web->>Identity: Validate session
     Identity-->>Web: actor/workspace
     Web->>Planning: PUT aggregate + idempotency + precondition
-    Planning->>Pg: Deterministic workspace/date lock + write
-    alt current revision
-        Pg-->>Planning: New opaque revision
-        Planning-->>Web: Saved
-        Web-->>Browser: Replace durable revision only
+    Planning->>Pg: Deterministic transaction-scoped lock + fresh snapshot + write
+    alt current revision or exact replay
+        Pg-->>Planning: Durable result + opaque revision
+        Planning-->>Web: Saved / replayed result
+        Web-->>Browser: Replace durable revision while preserving later local edits
     else stale revision
         Pg-->>Planning: Conflict + current opaque revision
         Planning-->>Web: Credential-free conflict
         Web-->>Browser: Recheck / explicit resolution required
+    else corrupted persistence or invalid scope
+        Planning-->>Web: Bounded non-retryable failure
     end
 ```
-
-This view is not protected-main behavior until PR #127 merges.
 
 ## 5. Reminder flow
 
