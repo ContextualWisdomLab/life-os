@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  DataRightsRequestConflictError,
   PostgresDataRightsRequestLedger,
   type DataRightsRequestSqlClient,
   type DataRightsRequestSqlResult,
@@ -136,5 +137,46 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         request_status: 'completed',
       },
     ]);
+  });
+
+  it('maps request-id reuse with a different idempotency key to a stable domain conflict', async () => {
+    const userId = randomUUID();
+    const workspaceId = randomUUID();
+    const requestId = randomUUID();
+    const firstIdempotencyKey = randomUUID();
+    await pool.query(
+      `INSERT INTO identity.users (id, display_name) VALUES ($1::uuid, $2)`,
+      [userId, 'Request collision integration user'],
+    );
+    await pool.query(
+      `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
+       VALUES ($1::uuid, $2::uuid, $3, 'personal')`,
+      [workspaceId, userId, 'Request collision integration workspace'],
+    );
+    const ledger = new PostgresDataRightsRequestLedger(
+      new NodePostgresDataRightsClient(pool),
+    );
+
+    await ledger.beginRequest({
+      requestId,
+      workspaceId,
+      requestedByUserId: userId,
+      requestKind: 'export',
+      idempotencyKey: firstIdempotencyKey,
+      requestDigest: 'c'.repeat(64),
+      requestedAt: '2026-08-09T20:00:00.000Z',
+    });
+
+    await expect(
+      ledger.beginRequest({
+        requestId,
+        workspaceId,
+        requestedByUserId: userId,
+        requestKind: 'export',
+        idempotencyKey: randomUUID(),
+        requestDigest: 'd'.repeat(64),
+        requestedAt: '2026-08-09T20:01:00.000Z',
+      }),
+    ).rejects.toBeInstanceOf(DataRightsRequestConflictError);
   });
 });
