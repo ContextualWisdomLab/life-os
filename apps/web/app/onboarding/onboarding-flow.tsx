@@ -7,10 +7,7 @@ import {
   scheduleTodayAction,
   toggleTodayPriority,
 } from '../today-state';
-import {
-  parseStoredTodayDraft,
-  serializeTodayDraft,
-} from '../today-storage';
+import { parseStoredTodayDraft, serializeTodayDraft } from '../today-storage';
 import styles from './onboarding.module.css';
 
 const TODAY_STORAGE_KEY = 'life-os.today-draft.v1';
@@ -63,9 +60,7 @@ export function OnboardingFlow({
       const date = localDate();
       const stored = window.localStorage.getItem(TODAY_STORAGE_KEY);
       previousToday = stored;
-      previousCompletion = window.localStorage.getItem(
-        ONBOARDING_STORAGE_KEY,
-      );
+      previousCompletion = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
       let draft = parseStoredTodayDraft(stored, date);
       const actionId = globalThis.crypto.randomUUID();
       draft = addTodayAction(draft, {
@@ -128,7 +123,9 @@ export function OnboardingFlow({
           <span aria-hidden="true">L</span>
           <strong>LifeOS</strong>
         </a>
-        <p className={styles.eyebrow}>First plan · {generatedAt.slice(0, 10)}</p>
+        <p className={styles.eyebrow}>
+          First plan · {generatedAt.slice(0, 10)}
+        </p>
         <h1 id="onboarding-heading">Start with one believable commitment.</h1>
         <p className={styles.lede}>
           LifeOS works best when a direction becomes a visible action with an
@@ -137,8 +134,8 @@ export function OnboardingFlow({
         <div className={styles.boundary}>
           <strong>Local-first boundary</strong>
           <p>
-            This first plan is saved only in this browser. It is not synchronized
-            to an account or shared workspace yet.
+            This first plan is saved only in this browser. It is not
+            synchronized to an account or shared workspace yet.
           </p>
         </div>
       </section>
@@ -170,7 +167,9 @@ export function OnboardingFlow({
               <label htmlFor="onboarding-action">
                 What is the next visible action?
               </label>
-              <p>Choose something you can start without another planning session.</p>
+              <p>
+                Choose something you can start without another planning session.
+              </p>
               <input
                 id="onboarding-action"
                 autoComplete="off"

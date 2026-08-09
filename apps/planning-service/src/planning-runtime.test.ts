@@ -4,6 +4,7 @@ import {
   createPlanningPoolConfiguration,
   createPlanningRuntime,
   type PlanningPool,
+  type PlanningPoolConnection,
 } from './planning-runtime';
 
 const DATABASE_URL = [
@@ -13,11 +14,37 @@ const DATABASE_URL = [
   'life_os',
 ].join('/');
 
+class FakePlanningConnection implements PlanningPoolConnection {
+  readonly calls: string[] = [];
+  released: boolean | undefined;
+
+  constructor(private readonly failCommit = false) {}
+
+  async query<Row>(text: string): Promise<{ rows: Row[] }> {
+    this.calls.push(text);
+    if (this.failCommit && text === 'COMMIT') {
+      throw new Error('commit failed');
+    }
+    return { rows: [] };
+  }
+
+  release(destroy = false): void {
+    this.released = destroy;
+  }
+}
+
 class FakePlanningPool implements PlanningPool {
   endCalls = 0;
+  readonly connections: FakePlanningConnection[] = [];
 
   async query<Row>(): Promise<{ rows: Row[] }> {
     return { rows: [] };
+  }
+
+  async connect(): Promise<PlanningPoolConnection> {
+    const connection = new FakePlanningConnection();
+    this.connections.push(connection);
+    return connection;
   }
 
   async end(): Promise<void> {
@@ -91,5 +118,28 @@ describe('Planning runtime', () => {
     await runtime.onApplicationShutdown();
     await runtime.close();
     expect(pool.endCalls).toBe(1);
+  });
+
+  it('uses a dedicated transaction for Today writes and rolls back domain failures', async () => {
+    const pool = new FakePlanningPool();
+    const runtime = createPlanningRuntime(
+      { PLANNING_DATABASE_URL: DATABASE_URL },
+      () => pool,
+    );
+
+    await expect(
+      runtime.todayService.putToday(
+        '11111111-1111-4111-8111-111111111111',
+        { version: 'life-os.today.v1', date: '2026-08-09', actions: [] },
+        { kind: 'absent' },
+        '22222222-2222-4222-8222-222222222222',
+      ),
+    ).rejects.toThrow();
+
+    expect(pool.connections).toHaveLength(1);
+    expect(pool.connections[0]?.calls[0]).toBe('BEGIN');
+    expect(pool.connections[0]?.calls.at(-1)).toBe('ROLLBACK');
+    expect(pool.connections[0]?.released).toBe(false);
+    await runtime.close();
   });
 });

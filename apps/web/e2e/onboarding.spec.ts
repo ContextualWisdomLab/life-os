@@ -70,7 +70,10 @@ test('restores the existing Today draft when completion storage fails', async ({
       value: string,
     ): void {
       if (key === 'life-os.onboarding-completion.v1') {
-        throw new DOMException('Simulated storage failure', 'QuotaExceededError');
+        throw new DOMException(
+          'Simulated storage failure',
+          'QuotaExceededError',
+        );
       }
       nativeSetItem.call(this, key, value);
     };
@@ -107,7 +110,9 @@ test('restores the existing Today draft when completion storage fails', async ({
     .toBeNull();
 });
 
-test('fails closed when required planning inputs are absent', async ({ page }) => {
+test('fails closed when required planning inputs are absent', async ({
+  page,
+}) => {
   await page.getByRole('button', { name: 'Create my first plan' }).click();
   await expect(
     page.getByText('Name a direction and one visible next action.'),
