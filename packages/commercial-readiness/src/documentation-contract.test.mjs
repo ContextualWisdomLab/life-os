@@ -45,6 +45,18 @@ const REQUIRED_ADR_FILES = Object.freeze([
   '0008-separate-capability-maturity-from-buyer-gap-exhaustion.md',
   '0009-product-hosting-and-data-evolution.md',
 ]);
+const REQUIRED_ADR_SECTIONS = Object.freeze([
+  /^## Context$/mu,
+  /^## Drivers$/mu,
+  /^## Alternatives$/mu,
+  /^## Decision$/mu,
+  /^## Consequences$/mu,
+  /^## Failure(?: and |\/)recovery$/mu,
+  /^## Security(?: and |\/)privacy impact$/mu,
+  /^## Acceptance evidence$/mu,
+  /^## Migration(?: \/|\/)rollback$/mu,
+  /^## Supersession$/mu,
+]);
 
 /** Reads one repository-owned UTF-8 file. */
 function readRepositoryText(relativePath) {
@@ -217,19 +229,8 @@ test('ADR index targets every material ADR by stable filename and every ADR uses
       status !== undefined && CANONICAL_STATUSES.includes(status),
       `${fileName} has unsupported or missing ADR status: ${String(status)}`,
     );
-    for (const section of [
-      '## Context',
-      '## Drivers',
-      '## Alternatives',
-      '## Decision',
-      '## Consequences',
-      '## Failure and recovery',
-      '## Security and privacy impact',
-      '## Acceptance evidence',
-      '## Migration / rollback',
-      '## Supersession',
-    ]) {
-      assert.ok(adr.includes(section), `${fileName} missing ${section}`);
+    for (const sectionPattern of REQUIRED_ADR_SECTIONS) {
+      assert.match(adr, sectionPattern, `${fileName} missing required ADR section`);
     }
   }
 });
