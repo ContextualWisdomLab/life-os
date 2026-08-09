@@ -35,7 +35,11 @@ function aggregate(title = 'Durable Today') {
   };
 }
 
-function jsonResponse(value: unknown, status = 200, headers?: HeadersInit): Response {
+function jsonResponse(
+  value: unknown,
+  status = 200,
+  headers?: HeadersInit,
+): Response {
   return Response.json(value, {
     status,
     ...(headers === undefined ? {} : { headers }),
@@ -70,15 +74,30 @@ describe('Today synchronization BFF', () => {
     assert.equal(response.headers.get('etag'), `"${REVISION}"`);
     assert.deepEqual(await response.json(), aggregate());
     assert.equal(calls.length, 2);
-    assert.equal(calls[0]?.url, 'https://identity.example.test/v1/session');
+    assert.equal(
+      calls[0]?.url,
+      'https://identity.example.test/v1/session',
+    );
     assert.equal(calls[0]?.init?.headers instanceof Headers, true);
-    assert.equal((calls[0]?.init?.headers as Headers).get('cookie'), 'session=browser-secret');
-    assert.equal(calls[1]?.url, `https://planning.example.test/v1/today/${DATE}`);
+    assert.equal(
+      (calls[0]?.init?.headers as Headers).get('cookie'),
+      'session=browser-secret',
+    );
+    assert.equal(
+      calls[1]?.url,
+      `https://planning.example.test/v1/today/${DATE}`,
+    );
     const planningHeaders = calls[1]?.init?.headers as Headers;
     assert.equal(planningHeaders.has('cookie'), false);
     assert.equal(planningHeaders.get('x-life-os-workspace-id'), WORKSPACE_ID);
-    assert.equal(planningHeaders.get('x-life-os-context-issued-at'), '1786259200');
-    assert.equal(planningHeaders.get('x-life-os-context-signature')?.length, 43);
+    assert.equal(
+      planningHeaders.get('x-life-os-context-issued-at'),
+      '1786259200',
+    );
+    assert.equal(
+      planningHeaders.get('x-life-os-context-signature')?.length,
+      43,
+    );
   });
 
   it('forwards only the complete Today document and explicit concurrency/idempotency headers on PUT', async () => {
@@ -158,7 +177,12 @@ describe('Today synchronization BFF', () => {
       },
     );
 
-    const response = await handleTodaySyncRequest(request, DATE, ENVIRONMENT, fetcher);
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
 
     assert.equal(response.status, 201);
     const planningHeaders = calls[1]?.headers as Headers;
@@ -176,7 +200,12 @@ describe('Today synchronization BFF', () => {
       `https://life.example.test/api/planning/today/${DATE}`,
     );
 
-    const response = await handleTodaySyncRequest(request, DATE, ENVIRONMENT, fetcher);
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
 
     assert.equal(response.status, 401);
     assert.equal(calls, 1);
@@ -223,7 +252,12 @@ describe('Today synchronization BFF', () => {
       },
     );
 
-    const response = await handleTodaySyncRequest(request, DATE, ENVIRONMENT, fetcher);
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
 
     assert.equal(response.status, 409);
     assert.deepEqual(await response.json(), {
