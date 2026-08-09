@@ -1,6 +1,6 @@
 # LifeOS Operability and Deployment Boundary
 
-**Baseline:** protected `main` at `5c87a7ec3568a4ce47b25cad843f1bc5be91b294`
+**Baseline:** protected `main` at `876850018a17323900844e79845ba395b7bf6a9a`
 
 ## 1. Purpose
 
@@ -12,7 +12,7 @@ LifeOS does not turn a reference Compose/Kubernetes configuration into an operat
 
 ### Local development / Compose
 
-**Status:** Implemented on protected main.
+**Status:** Implemented on protected main
 
 Repository composition supports local development/self-hosting with LifeOS services and declared local dependencies. Operators still supply valid environment secrets/provider registrations where a feature needs them.
 
@@ -27,15 +27,15 @@ Do not infer production HA, PITR, ingress/TLS or secret-manager guarantees from 
 
 ### Portable self-hosted runtime
 
-**Status:** Accepted architecture / partially implemented operationally.
+**Status:** Partial
 
-A self-hoster can compose independent LifeOS workloads with operator-owned PostgreSQL, NATS, secret management, networking and external provider credentials.
+The repository provides a modular self-hostable composition and explicit service ownership, while production-grade external PostgreSQL/NATS, secret management, network/ingress, provider credentials and operated availability remain deployment-owner responsibilities. This status describes upstream operational completeness, not a collapse of the accepted modular architecture.
 
 ### Kubernetes production reference
 
-**Status:** Implemented on protected main as a provider-neutral reference.
+**Status:** Implemented on protected main
 
-Current repository artifacts encode hardened workload/reference behavior such as non-root/read-only containers, probes, resource bounds, rolling update/disruption/topology/network policies and protected deployment workflow behavior.
+Current repository artifacts encode a provider-neutral hardened reference with non-root/read-only containers, probes, resource bounds, rolling update/disruption/topology/network policies and protected deployment workflow behavior. `Reference` is a scope qualifier, not a separate status value.
 
 They deliberately do **not** provision:
 
@@ -162,7 +162,7 @@ See `docs/operations/production-deployment.md`.
 - Signed service-context keys use explicit active/overlap/retirement semantics where implemented.
 - Provider-specific token rotation/revocation belongs to the owning integration/identity service and operator configuration.
 
-Hosted Google Calendar unattended synchronization remains incomplete until durable per-user credential storage/refresh/revocation is implemented and operationally documented.
+Hosted Google Calendar unattended synchronization remains incomplete until durable per-user credential storage/refresh/revocation is implemented and operationally documented under issue #129.
 
 ## 11. Incident categories
 
