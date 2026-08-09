@@ -32,6 +32,17 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).toContain('timeout-minutes: 120');
   });
 
+  it('keeps runner-scoped expressions out of workflow-level environment', () => {
+    const jobsMarker = '\njobs:\n';
+    const jobsStart = workflow.indexOf(jobsMarker);
+    expect(jobsStart).toBeGreaterThanOrEqual(0);
+    const workflowLevel = workflow.slice(0, jobsStart);
+    expect(workflowLevel).not.toContain('${{ runner.');
+    expect(workflow).toContain(
+      '      RECEIPT_DIR: ${{ runner.temp }}/commercial-development',
+    );
+  });
+
   it('provisions the same disposable PostgreSQL boundary used by full CI', () => {
     expect(workflow).toContain(
       'AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test',
