@@ -89,7 +89,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 
 /** Requires one strong UUIDv4 ETag and returns the unquoted opaque revision. */
 function requireRevision(response: Response): string {
-  const match = /^\"([0-9a-f-]+)\"$/iu.exec(
+  const match = /^"([0-9a-f-]+)"$/iu.exec(
     response.headers.get('etag') ?? '',
   );
   if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
@@ -201,7 +201,7 @@ export async function saveWorkspaceToday(
       'idempotency-key': globalThis.crypto.randomUUID(),
     });
     if (revision === null) requestHeaders.set('if-none-match', '*');
-    else requestHeaders.set('if-match', `\"${revision.toLowerCase()}\"`);
+    else requestHeaders.set('if-match', `"${revision.toLowerCase()}"`);
     const response = await fetcher(
       `/api/planning/today/${encodeURIComponent(document.date)}`,
       {
