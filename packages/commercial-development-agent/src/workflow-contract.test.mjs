@@ -8,7 +8,6 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 const WORKFLOW_PATH = resolve(
@@ -211,7 +210,7 @@ describe('OpenCode commercial development workflow contract', () => {
       try {
         const modelId = 'cwl/contract-probe-model-v1';
         const modelLabel = `nvidia/${modelId}`;
-        const placeholderCredential = randomUUID();
+        const loopbackProbeValue = `catalog-probe:${modelLabel}`;
         const opencodePackage = realpathSync(
           resolve(import.meta.dirname, '../node_modules/opencode-ai'),
         );
@@ -236,7 +235,7 @@ describe('OpenCode commercial development workflow contract', () => {
               models: { [modelId]: { name: modelId } },
               options: {
                 baseURL: 'http://127.0.0.1:8765/v1',
-                apiKey: placeholderCredential,
+                apiKey: loopbackProbeValue,
               },
             },
           },
@@ -257,7 +256,7 @@ describe('OpenCode commercial development workflow contract', () => {
             OPENCODE_DISABLE_AUTOUPDATE: 'true',
             OPENCODE_DISABLE_MODELS_FETCH: 'true',
             OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
-            NVIDIA_API_KEY: placeholderCredential,
+            NVIDIA_API_KEY: loopbackProbeValue,
           },
         });
 
