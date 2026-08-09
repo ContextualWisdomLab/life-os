@@ -36,12 +36,15 @@ function aggregate(title = 'Durable Today') {
 }
 
 function jsonResponse(value: unknown, status = 200, headers?: HeadersInit): Response {
-  return Response.json(value, { status, headers });
+  return Response.json(value, {
+    status,
+    ...(headers === undefined ? {} : { headers }),
+  });
 }
 
 describe('Today synchronization BFF', () => {
   it('authenticates the browser, derives workspace server-side, and returns bounded GET state with ETag', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, init });
@@ -79,7 +82,7 @@ describe('Today synchronization BFF', () => {
   });
 
   it('forwards only the complete Today document and explicit concurrency/idempotency headers on PUT', async () => {
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const idempotencyKey = randomUUID();
     const draft = {
       version: 'life-os.today.v1',
