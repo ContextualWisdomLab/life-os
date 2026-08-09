@@ -33,16 +33,17 @@ const CANONICAL_STATUSES = Object.freeze([
   'Superseded',
   'Out of scope',
 ]);
-const REQUIRED_ADR_NUMBERS = Object.freeze([
-  '0001',
-  '0002',
-  '0003',
-  '0004',
-  '0005',
-  '0006',
-  '0007',
-  '0008',
-  '0009',
+const REQUIRED_ADR_FILES = Object.freeze([
+  '0001-opaque-non-numeric-identifiers.md',
+  '0002-oauth-transactions-and-session-tokens.md',
+  '0002-internal-identifiers-uuidv4.md',
+  '0003-domain-oriented-service-data-ownership.md',
+  '0004-inert-auditable-ai-proposals.md',
+  '0005-purpose-bound-sensitive-data-access.md',
+  '0006-work-conserving-autonomous-maintenance.md',
+  '0007-canonical-documentation-graph.md',
+  '0008-separate-capability-maturity-from-buyer-gap-exhaustion.md',
+  '0009-product-hosting-and-data-evolution.md',
 ]);
 
 /** Reads one repository-owned UTF-8 file. */
@@ -195,33 +196,37 @@ test('canonical requirement, API, and status fields use one exact vocabulary', (
   }
 });
 
-test('ADR index targets every material ADR and every ADR uses canonical status', () => {
+test('ADR index targets every material ADR by stable filename and every ADR uses canonical status', () => {
   const adrDirectory = join(REPOSITORY_ROOT, 'docs/adr');
   const adrIndex = readRepositoryText('docs/adr/README.md');
+  const indexTargets = new Set(localMarkdownTargets(adrIndex));
   const adrFiles = readdirSync(adrDirectory)
     .filter((name) => /^\d{4}-.+\.md$/u.test(name))
     .sort();
 
-  const byNumber = new Map(adrFiles.map((fileName) => [fileName.slice(0, 4), fileName]));
-  for (const number of REQUIRED_ADR_NUMBERS) {
-    assert.ok(byNumber.has(number), `missing material ADR ${number}`);
+  for (const fileName of REQUIRED_ADR_FILES) {
+    assert.ok(adrFiles.includes(fileName), `missing material ADR ${fileName}`);
   }
 
   for (const fileName of adrFiles) {
     const adr = readRepositoryText(`docs/adr/${fileName}`);
-    const number = fileName.slice(0, 4);
     const status = /^\*\*Status:\*\* ([^\r\n]+)$/mu.exec(adr)?.[1]?.trim();
-    const linkPattern = new RegExp(`\\[${number}\\]\\(([^)]+)\\)`, 'u');
-    const target = linkPattern.exec(adrIndex)?.[1];
-    assert.equal(target, fileName, `${fileName} has wrong or missing ADR index target`);
+    assert.ok(indexTargets.has(fileName), `${fileName} missing from ADR index`);
+    assertLocalLinkExists('docs/adr/README.md', fileName);
     assert.ok(
       status !== undefined && CANONICAL_STATUSES.includes(status),
       `${fileName} has unsupported or missing ADR status: ${String(status)}`,
     );
     for (const section of [
       '## Context',
+      '## Drivers',
+      '## Alternatives',
       '## Decision',
       '## Consequences',
+      '## Failure and recovery',
+      '## Security and privacy impact',
+      '## Acceptance evidence',
+      '## Migration / rollback',
       '## Supersession',
     ]) {
       assert.ok(adr.includes(section), `${fileName} missing ${section}`);
