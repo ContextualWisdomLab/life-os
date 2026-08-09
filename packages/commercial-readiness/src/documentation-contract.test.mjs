@@ -123,6 +123,22 @@ test('canonical architecture preserves service-owned persistence and inert AI au
   assert.match(threatModel, /AI proposals remain inert and auditable/u);
 });
 
+test('data and UML views preserve protected-main planning and event-direction truth', () => {
+  const dataModel = readRepositoryText('docs/DATA_MODEL.md');
+  const uml = readRepositoryText('docs/UML.md');
+
+  assert.match(
+    dataModel,
+    /Protected-main Planning migrations currently create only `planning\.goals`, `planning\.projects`, and `planning\.tasks`/u,
+  );
+  assert.match(dataModel, /`milestone_record` — planned\/logical/u);
+  assert.match(dataModel, /`task_dependency` — planned\/logical/u);
+  assert.match(uml, /Planning -\. publishes domain events \.-> NATS/u);
+  assert.match(uml, /NATS -\. delivers reminder\/event inputs \.-> Notification/u);
+  assert.match(uml, /planning-only DSN\/role\/schema/u);
+  assert.match(uml, /privacy-only DSN\/role\/schema/u);
+});
+
 test('canonical contracts keep data lifecycle and release gaps explicit', () => {
   const apiContracts = readRepositoryText('docs/API_CONTRACTS.md');
   const privacyLifecycle = readRepositoryText('docs/PRIVACY_DATA_LIFECYCLE.md');
@@ -143,7 +159,8 @@ test('traceability records merged OpenCode automation and live buyer gaps accura
   const traceability = readRepositoryText('docs/TRACEABILITY.md');
 
   assert.match(traceability, /PRD-AI-006 autonomous OpenCode development loop \| Implemented on protected main/u);
-  assert.match(traceability, /PR #122 merged as 876850018a17323900844e79845ba395b7bf6a9a/u);
+  assert.match(traceability, /PR #122 merged as `876850018a17323900844e79845ba395b7bf6a9a`/u);
   assert.match(traceability, /Issue #128 now tracks this audit defect/u);
   assert.match(traceability, /Issue #129/u);
+  assert.match(traceability, /Issue #130/u);
 });
