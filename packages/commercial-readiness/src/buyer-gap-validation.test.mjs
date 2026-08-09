@@ -123,4 +123,53 @@ describe('attachBuyerGapEvidence', () => {
       );
     }
   });
+
+  it('rejects malformed items inside every buyer-gap evidence collection', () => {
+    const validItem = {
+      gap_id: 'data.portability-completion',
+      issue_number: 55,
+      capability_ids: ['data.portability-rights'],
+      state: 'open',
+      resolution: null,
+    };
+    const invalidItems = [
+      { ...validItem, state: 'closed' },
+      { ...validItem, issue_number: 0 },
+      { ...validItem, capability_ids: [] },
+      { ...validItem, resolution: 'completed' },
+      { ...validItem, unexpected: true },
+    ];
+
+    for (const item of invalidItems) {
+      assert.throws(
+        () =>
+          attachBuyerGapEvidence(readinessReport(), {
+            unresolved: [item],
+            resolved: [],
+            unknown: [],
+          }),
+        /Buyer gap evidence is invalid/,
+      );
+    }
+
+    assert.throws(
+      () =>
+        attachBuyerGapEvidence(readinessReport(), {
+          unresolved: [],
+          resolved: [{ ...validItem, state: 'closed', resolution: null }],
+          unknown: [],
+        }),
+      /Buyer gap evidence is invalid/,
+    );
+
+    assert.throws(
+      () =>
+        attachBuyerGapEvidence(readinessReport(), {
+          unresolved: [],
+          resolved: [],
+          unknown: [{ ...validItem, state: 'unknown', resolution: 'completed' }],
+        }),
+      /Buyer gap evidence is invalid/,
+    );
+  });
 });
