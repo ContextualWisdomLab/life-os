@@ -1,15 +1,15 @@
 import { HttpException } from '@nestjs/common';
-import { TodayPersistenceError } from './postgres-today-repository';
+import {
+  canonicalTodayDate,
+  canonicalTodayUuidV4,
+} from './today-invariants';
 import {
   TodayIdempotencyConflictError,
+  TodayPersistenceError,
   TodayRevisionConflictError,
   TodayValidationError,
   type TodayWritePrecondition,
 } from './today-sync';
-
-const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 /** Bounded RFC 9457-compatible problem object for Today synchronization. */
 interface TodayProblem {
@@ -37,14 +37,26 @@ function problem(
   return new HttpException(body, status);
 }
 
+/** Throws the shared domain validation error for malformed request content. */
+function invalidTodayRequest(): never {
+  throw new TodayValidationError();
+}
+
+/** Throws the stable HTTP problem for malformed conditional headers. */
+function invalidTodayPrecondition(): never {
+  throw problem(
+    400,
+    'Today write preconditions are invalid',
+    'invalid_today_precondition',
+  );
+}
+
 /** Requires a real calendar date and exact agreement between route and body. */
 export function requireTodayPathDate(
   routeDate: unknown,
   body: unknown,
 ): string {
   if (
-    typeof routeDate !== 'string' ||
-    !DATE_PATTERN.test(routeDate) ||
     !body ||
     typeof body !== 'object' ||
     Array.isArray(body) ||
@@ -52,14 +64,7 @@ export function requireTodayPathDate(
   ) {
     throw new TodayValidationError();
   }
-  const parsed = new Date(`${routeDate}T00:00:00.000Z`);
-  if (
-    Number.isNaN(parsed.getTime()) ||
-    parsed.toISOString().slice(0, 10) !== routeDate
-  ) {
-    throw new TodayValidationError();
-  }
-  return routeDate;
+  return canonicalTodayDate(routeDate, invalidTodayRequest);
 }
 
 /**
@@ -78,33 +83,17 @@ export function parseTodayWritePrecondition(
     );
   }
   if (ifMatch !== undefined && ifNoneMatch !== undefined) {
-    throw problem(
-      400,
-      'Today write preconditions are invalid',
-      'invalid_today_precondition',
-    );
+    return invalidTodayPrecondition();
   }
   if (ifNoneMatch !== undefined) {
-    if (ifNoneMatch !== '*') {
-      throw problem(
-        400,
-        'Today write preconditions are invalid',
-        'invalid_today_precondition',
-      );
-    }
+    if (ifNoneMatch !== '*') return invalidTodayPrecondition();
     return Object.freeze({ kind: 'absent' });
   }
-  const match = /^"([0-9a-f-]+)"$/iu.exec(ifMatch ?? '');
-  if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
-    throw problem(
-      400,
-      'Today write preconditions are invalid',
-      'invalid_today_precondition',
-    );
-  }
+  const match = /^"([^"\r\n]+)"$/u.exec(ifMatch ?? '');
+  if (!match?.[1]) return invalidTodayPrecondition();
   return Object.freeze({
     kind: 'match',
-    revision: match[1].toLowerCase(),
+    revision: canonicalTodayUuidV4(match[1], invalidTodayPrecondition),
   });
 }
 
