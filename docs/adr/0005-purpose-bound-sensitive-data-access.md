@@ -1,6 +1,6 @@
 # ADR-0005: Purpose-bound sensitive-data access
 
-**Status:** Accepted  
+**Status:** Accepted architecture  
 **Date:** 2026-08-09
 
 ## Context
