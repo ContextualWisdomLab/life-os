@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { PlanningSqlQueryResult } from './postgres-planning-repository';
 import {
   PostgresTodayRepository,
-  TodayPersistenceError,
   type TodayTransactionalSqlClient,
 } from './postgres-today-repository';
 import {
   TodayIdempotencyConflictError,
+  TodayPersistenceError,
   TodayRevisionConflictError,
   type TodayWriteCommand,
 } from './today-sync';
