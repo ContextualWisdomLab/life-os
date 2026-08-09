@@ -5,6 +5,7 @@ import {
   requireTodayPathDate,
   toTodayHttpException,
 } from './today-http';
+import { TodayPersistenceError } from './postgres-today-repository';
 import {
   TodayIdempotencyConflictError,
   TodayRevisionConflictError,
@@ -65,6 +66,21 @@ describe('Today HTTP boundary', () => {
     });
   });
 
+  it('maps persistence corruption separately from retryable dependency failures', () => {
+    expect(toTodayHttpException(new TodayPersistenceError()).getResponse()).toEqual({
+      type: 'about:blank',
+      title: 'Today synchronization data is unusable',
+      status: 500,
+      code: 'today_persistence_invalid',
+    });
+    expect(toTodayHttpException(new Error('database password')).getResponse()).toEqual({
+      type: 'about:blank',
+      title: 'Today synchronization is unavailable',
+      status: 503,
+      code: 'today_sync_unavailable',
+    });
+  });
+
   it('maps validation and conflicting idempotency reuse without leaking request data', () => {
     expect(toTodayHttpException(new TodayValidationError()).getStatus()).toBe(400);
     expect(
@@ -74,12 +90,6 @@ describe('Today HTTP boundary', () => {
       title: 'Today idempotency key conflicts with an earlier request',
       status: 409,
       code: 'today_idempotency_conflict',
-    });
-    expect(toTodayHttpException(new Error('database password')).getResponse()).toEqual({
-      type: 'about:blank',
-      title: 'Today synchronization is unavailable',
-      status: 503,
-      code: 'today_sync_unavailable',
     });
   });
 });
