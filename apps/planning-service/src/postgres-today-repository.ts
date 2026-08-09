@@ -29,13 +29,19 @@ interface TodayAggregateRow {
   payload_json: unknown;
 }
 
-interface TodayWriteRow {
-  outcome: unknown;
+interface TodayReplayRow {
   request_digest: unknown;
+  result_kind: unknown;
   aggregate_id: unknown;
   revision_token: unknown;
   payload_json: unknown;
-  current_revision: unknown;
+}
+
+/** SQL client that can pin a sequence of statements to one database transaction. */
+export interface TodayTransactionalSqlClient extends PlanningSqlClient {
+  transaction<Result>(
+    operation: (client: PlanningSqlClient) => Promise<Result>,
+  ): Promise<Result>;
 }
 
 /** Stable failure when durable Today rows violate repository invariants. */
@@ -69,7 +75,10 @@ function requireDate(value: unknown): string {
     return invalidPersistence();
   }
   const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
     return invalidPersistence();
   }
   return value;
@@ -263,18 +272,16 @@ function parseAggregateRow(
   });
 }
 
-/** Accepts at most one durable row for a unique workspace/date lookup. */
+/** Accepts at most one durable row for a unique lookup. */
 function oneOrUndefined<Row>(rows: Row[]): Row | undefined {
   if (rows.length > 1) return invalidPersistence();
   return rows[0];
 }
 
-/** Requires a single write-result row from the atomic persistence statement. */
-function exactlyOne<Row>(result: PlanningSqlQueryResult<Row>): Row {
-  if (result.rows.length !== 1 || !result.rows[0]) {
-    return invalidPersistence();
-  }
-  return result.rows[0];
+/** Requires one stored idempotency result kind. */
+function requireStoredResultKind(value: unknown): 'created' | 'updated' {
+  if (value !== 'created' && value !== 'updated') return invalidPersistence();
+  return value;
 }
 
 /** Requires a stored request digest without accepting arbitrary text. */
@@ -285,10 +292,29 @@ function requireDigest(value: unknown): string {
   return value;
 }
 
+/** Builds a public aggregate from one stored idempotency row. */
+function parseReplayAggregate(
+  row: TodayReplayRow,
+  command: TodayWriteCommand,
+): DurableTodayAggregate {
+  requireStoredResultKind(row.result_kind);
+  return parseAggregateRow(
+    {
+      workspace_id: command.workspaceId,
+      local_date: command.draft.date,
+      aggregate_id: row.aggregate_id,
+      revision_token: row.revision_token,
+      payload_json: row.payload_json,
+    },
+    command.workspaceId,
+    command.draft.date,
+  );
+}
+
 /** PostgreSQL adapter for atomic, tenant-scoped durable Today synchronization. */
 export class PostgresTodayRepository implements TodayRepository {
-  /** Creates the adapter over the planning-service parameterized SQL client. */
-  constructor(private readonly client: PlanningSqlClient) {}
+  /** Creates the adapter over a transaction-capable planning SQL client. */
+  constructor(private readonly client: TodayTransactionalSqlClient) {}
 
   /** Reads at most one aggregate from exactly one workspace and local date. */
   async getToday(
@@ -307,143 +333,140 @@ export class PostgresTodayRepository implements TodayRepository {
   }
 
   /**
-   * Serializes each workspace/date and idempotency key with transaction-scoped
-   * advisory locks in one explicit order, then performs replay detection and
-   * create/update atomically.
+   * Acquires aggregate and idempotency locks as separate statements on one
+   * dedicated transaction. Any statement that waits for a lock therefore takes
+   * its READ COMMITTED snapshot only after the wait completes.
    */
   async writeToday(command: TodayWriteCommand): Promise<TodayWriteResult> {
-    const result = await this.client.query<TodayWriteRow>(
-      `WITH aggregate_lock AS MATERIALIZED (
-         SELECT pg_advisory_xact_lock(
+    return await this.client.transaction(async (transaction) => {
+      await transaction.query(
+        `SELECT pg_advisory_xact_lock(
            hashtextextended($1::text || ':' || $2::text, 0)
-         ) AS acquired
-       ),
-       idempotency_lock AS MATERIALIZED (
-         SELECT pg_advisory_xact_lock(
-           hashtextextended($1::text || ':' || $3::text, 1)
-         ) AS acquired
-         FROM aggregate_lock
-       ),
-       existing_replay AS MATERIALIZED (
-         SELECT request_digest, result_kind, aggregate_id, revision_token, payload_json
-         FROM planning.today_idempotency_records, idempotency_lock
-         WHERE workspace_id = $1::uuid AND idempotency_key = $3::uuid
-       ),
-       current_aggregate AS MATERIALIZED (
-         SELECT aggregate_id, revision_token
-         FROM planning.today_aggregates, idempotency_lock
+         )`,
+        [command.workspaceId, command.draft.date],
+      );
+      await transaction.query(
+        `SELECT pg_advisory_xact_lock(
+           hashtextextended($1::text || ':' || $2::text, 1)
+         )`,
+        [command.workspaceId, command.idempotencyKey],
+      );
+
+      const replayResult = await transaction.query<TodayReplayRow>(
+        `SELECT request_digest, result_kind, aggregate_id, revision_token, payload_json
+         FROM planning.today_idempotency_records
+         WHERE workspace_id = $1::uuid AND idempotency_key = $2::uuid
+         LIMIT 2`,
+        [command.workspaceId, command.idempotencyKey],
+      );
+      const replay = oneOrUndefined(replayResult.rows);
+      if (replay) {
+        if (requireDigest(replay.request_digest) !== command.requestDigest) {
+          throw new TodayIdempotencyConflictError();
+        }
+        return {
+          kind: 'replayed',
+          aggregate: parseReplayAggregate(replay, command),
+        };
+      }
+
+      const currentResult = await transaction.query<TodayAggregateRow>(
+        `SELECT workspace_id, local_date, aggregate_id, revision_token, payload_json
+         FROM planning.today_aggregates
          WHERE workspace_id = $1::uuid AND local_date = $2::date
-       ),
-       updated AS (
-         UPDATE planning.today_aggregates
-         SET revision_number = revision_number + 1,
-             revision_token = $6::uuid,
-             payload_json = $7::jsonb,
-             updated_at = clock_timestamp()
-         WHERE workspace_id = $1::uuid
-           AND local_date = $2::date
-           AND $8::text = 'match'
-           AND revision_token = $9::uuid
-           AND NOT EXISTS (SELECT 1 FROM existing_replay)
-         RETURNING 'updated'::text AS result_kind,
-                   aggregate_id, revision_token, payload_json
-       ),
-       created AS (
-         INSERT INTO planning.today_aggregates
-           (workspace_id, local_date, aggregate_id, revision_number,
-            revision_token, payload_json, created_at, updated_at)
-         SELECT $1::uuid, $2::date, $5::uuid, 1, $6::uuid, $7::jsonb,
-                clock_timestamp(), clock_timestamp()
-         FROM idempotency_lock
-         WHERE $8::text = 'absent'
-           AND NOT EXISTS (SELECT 1 FROM existing_replay)
-           AND NOT EXISTS (SELECT 1 FROM current_aggregate)
-         ON CONFLICT (workspace_id, local_date) DO NOTHING
-         RETURNING 'created'::text AS result_kind,
-                   aggregate_id, revision_token, payload_json
-       ),
-       mutation AS MATERIALIZED (
-         SELECT * FROM updated
-         UNION ALL
-         SELECT * FROM created
-       ),
-       stored_replay AS (
-         INSERT INTO planning.today_idempotency_records
-           (workspace_id, idempotency_key, request_digest, result_kind,
-            aggregate_id, revision_token, payload_json, created_at)
-         SELECT $1::uuid, $3::uuid, $4, result_kind,
-                aggregate_id, revision_token, payload_json, clock_timestamp()
-         FROM mutation
-         ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
-         RETURNING request_digest, result_kind, aggregate_id, revision_token, payload_json
-       )
-       SELECT
-         CASE
-           WHEN replay.request_digest IS NOT NULL AND replay.request_digest <> $4
-             THEN 'idempotency_conflict'
-           WHEN replay.request_digest IS NOT NULL THEN 'replayed'
-           WHEN mutation.result_kind IS NOT NULL THEN mutation.result_kind
-           ELSE 'revision_conflict'
-         END AS outcome,
-         COALESCE(replay.request_digest, stored.request_digest, $4) AS request_digest,
-         COALESCE(replay.aggregate_id, mutation.aggregate_id, stored.aggregate_id) AS aggregate_id,
-         COALESCE(replay.revision_token, mutation.revision_token, stored.revision_token) AS revision_token,
-         COALESCE(replay.payload_json, mutation.payload_json, stored.payload_json) AS payload_json,
-         current_aggregate.revision_token AS current_revision
-       FROM idempotency_lock
-       LEFT JOIN existing_replay AS replay ON TRUE
-       LEFT JOIN mutation ON TRUE
-       LEFT JOIN stored_replay AS stored ON TRUE
-       LEFT JOIN current_aggregate ON TRUE
-       LIMIT 1`,
-      [
+         LIMIT 2`,
+        [command.workspaceId, command.draft.date],
+      );
+      const currentRow = oneOrUndefined(currentResult.rows);
+      const current = currentRow
+        ? parseAggregateRow(
+            currentRow,
+            command.workspaceId,
+            command.draft.date,
+          )
+        : undefined;
+
+      if (command.precondition.kind === 'absent') {
+        if (current) {
+          throw new TodayRevisionConflictError(current.revision);
+        }
+      } else if (!current || current.revision !== command.precondition.revision) {
+        throw new TodayRevisionConflictError(current?.revision ?? null);
+      }
+
+      let resultKind: 'created' | 'updated';
+      let mutationResult: PlanningSqlQueryResult<TodayAggregateRow>;
+      if (command.precondition.kind === 'absent') {
+        resultKind = 'created';
+        mutationResult = await transaction.query<TodayAggregateRow>(
+          `INSERT INTO planning.today_aggregates
+             (workspace_id, local_date, aggregate_id, revision_number,
+              revision_token, payload_json, created_at, updated_at)
+           VALUES ($1::uuid, $2::date, $3::uuid, 1, $4::uuid, $5::jsonb,
+                   clock_timestamp(), clock_timestamp())
+           RETURNING workspace_id, local_date, aggregate_id, revision_token, payload_json`,
+          [
+            command.workspaceId,
+            command.draft.date,
+            command.newAggregateId,
+            command.newRevision,
+            JSON.stringify(command.draft),
+          ],
+        );
+      } else {
+        resultKind = 'updated';
+        mutationResult = await transaction.query<TodayAggregateRow>(
+          `UPDATE planning.today_aggregates
+           SET revision_number = revision_number + 1,
+               revision_token = $4::uuid,
+               payload_json = $5::jsonb,
+               updated_at = clock_timestamp()
+           WHERE workspace_id = $1::uuid
+             AND local_date = $2::date
+             AND revision_token = $3::uuid
+           RETURNING workspace_id, local_date, aggregate_id, revision_token, payload_json`,
+          [
+            command.workspaceId,
+            command.draft.date,
+            command.precondition.revision,
+            command.newRevision,
+            JSON.stringify(command.draft),
+          ],
+        );
+      }
+
+      const mutationRow = oneOrUndefined(mutationResult.rows);
+      if (!mutationRow) {
+        throw new TodayRevisionConflictError(current?.revision ?? null);
+      }
+      const aggregate = parseAggregateRow(
+        mutationRow,
         command.workspaceId,
         command.draft.date,
-        command.idempotencyKey,
-        command.requestDigest,
-        command.newAggregateId,
-        command.newRevision,
-        JSON.stringify(command.draft),
-        command.precondition.kind,
-        command.precondition.kind === 'match'
-          ? command.precondition.revision
-          : null,
-      ],
-    );
-    const row = exactlyOne(result);
-    const requestDigest = requireDigest(row.request_digest);
-    if (
-      row.outcome === 'idempotency_conflict' ||
-      requestDigest !== command.requestDigest
-    ) {
-      throw new TodayIdempotencyConflictError();
-    }
-    if (row.outcome === 'revision_conflict') {
-      const currentRevision =
-        row.current_revision === null ? null : requireUuid(row.current_revision);
-      throw new TodayRevisionConflictError(currentRevision);
-    }
-    if (
-      row.outcome !== 'created' &&
-      row.outcome !== 'updated' &&
-      row.outcome !== 'replayed'
-    ) {
-      return invalidPersistence();
-    }
-    const aggregate = parseAggregateRow(
-      {
-        workspace_id: command.workspaceId,
-        local_date: command.draft.date,
-        aggregate_id: row.aggregate_id,
-        revision_token: row.revision_token,
-        payload_json: row.payload_json,
-      },
-      command.workspaceId,
-      command.draft.date,
-    );
-    return {
-      kind: row.outcome,
-      aggregate,
-    };
+      );
+
+      const replayInsert = await transaction.query<{ stored: unknown }>(
+        `INSERT INTO planning.today_idempotency_records
+           (workspace_id, idempotency_key, request_digest, result_kind,
+            aggregate_id, revision_token, payload_json, created_at)
+         VALUES ($1::uuid, $2::uuid, $3, $4,
+                 $5::uuid, $6::uuid, $7::jsonb, clock_timestamp())
+         RETURNING TRUE AS stored`,
+        [
+          command.workspaceId,
+          command.idempotencyKey,
+          command.requestDigest,
+          resultKind,
+          aggregate.aggregateId,
+          aggregate.revision,
+          JSON.stringify(command.draft),
+        ],
+      );
+      if (replayInsert.rows.length !== 1 || replayInsert.rows[0]?.stored !== true) {
+        return invalidPersistence();
+      }
+
+      return { kind: resultKind, aggregate };
+    });
   }
 }
