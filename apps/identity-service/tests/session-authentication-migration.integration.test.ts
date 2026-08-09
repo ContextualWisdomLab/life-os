@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const AUTHENTICATION_MIGRATION = '0004_session_authentication_age.sql';
+const AUTHENTICATION_FINALIZATION_MIGRATION =
+  '0005_finalize_session_authentication_age.sql';
 
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
@@ -42,27 +44,112 @@ async function migrationFilesBeforeAuthenticationAge(): Promise<string[]> {
     .sort();
 }
 
+async function readMigration(fileName: string): Promise<string> {
+  return readFile(resolve(process.cwd(), 'migrations', fileName), 'utf8');
+}
+
+async function prepareLegacyDatabase(pool: Pool): Promise<void> {
+  const migrationDirectory = resolve(process.cwd(), 'migrations');
+  for (const migrationFile of await migrationFilesBeforeAuthenticationAge()) {
+    const sql = await readFile(resolve(migrationDirectory, migrationFile), 'utf8');
+    await pool.query(sql);
+  }
+}
+
+async function applyAuthenticationAgeMigrations(pool: Pool): Promise<void> {
+  await pool.query(await readMigration(AUTHENTICATION_MIGRATION));
+  await pool.query(await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION));
+}
+
+async function withTemporaryDatabase(
+  execute: (pool: Pool) => Promise<void>,
+): Promise<void> {
+  const sourceUrl = requireDatabaseUrl();
+  const temporaryDatabase = databaseName();
+  const adminPool = new Pool({
+    connectionString: databaseUrl(sourceUrl, 'postgres'),
+  });
+  let migrationPool: Pool | undefined;
+
+  try {
+    await adminPool.query(
+      `CREATE DATABASE ${quotedIdentifier(temporaryDatabase)}`,
+    );
+    migrationPool = new Pool({
+      connectionString: databaseUrl(sourceUrl, temporaryDatabase),
+    });
+    await prepareLegacyDatabase(migrationPool);
+    await execute(migrationPool);
+  } finally {
+    await migrationPool?.end();
+    await adminPool.query(
+      `DROP DATABASE IF EXISTS ${quotedIdentifier(temporaryDatabase)} WITH (FORCE)`,
+    );
+    await adminPool.end();
+  }
+}
+
+async function insertUserAndWorkspace(
+  pool: Pool,
+  userId: string,
+  workspaceId: string,
+  suffix: string,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO identity.users (id, display_name)
+     VALUES ($1, $2)`,
+    [userId, `Legacy migration user ${suffix}`],
+  );
+  await pool.query(
+    `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
+     VALUES ($1, $2, $3, 'personal')`,
+    [workspaceId, userId, `Legacy migration workspace ${suffix}`],
+  );
+}
+
+async function insertSession(
+  pool: Pool,
+  {
+    id,
+    userId,
+    workspaceId,
+    tokenSeed,
+    createdAt,
+    expiresAt,
+    revokedAt = null,
+    rotatedFromId = null,
+  }: Readonly<{
+    id: string;
+    userId: string;
+    workspaceId: string;
+    tokenSeed: string;
+    createdAt: string;
+    expiresAt: string;
+    revokedAt?: string | null;
+    rotatedFromId?: string | null;
+  }>,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO identity.sessions (
+       id, user_id, workspace_id, token_hash, created_at, expires_at,
+       revoked_at, rotated_from_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      id,
+      userId,
+      workspaceId,
+      tokenSeed.repeat(64),
+      createdAt,
+      expiresAt,
+      revokedAt,
+      rotatedFromId,
+    ],
+  );
+}
+
 describeWithDatabase('session authentication-age migration', () => {
   it('backfills every legacy rotated session from its authenticated chain root', async () => {
-    const sourceUrl = requireDatabaseUrl();
-    const temporaryDatabase = databaseName();
-    const adminPool = new Pool({ connectionString: databaseUrl(sourceUrl, 'postgres') });
-    let migrationPool: Pool | undefined;
-
-    try {
-      await adminPool.query(`CREATE DATABASE ${quotedIdentifier(temporaryDatabase)}`);
-      migrationPool = new Pool({
-        connectionString: databaseUrl(sourceUrl, temporaryDatabase),
-      });
-      const migrationDirectory = resolve(process.cwd(), 'migrations');
-      for (const migrationFile of await migrationFilesBeforeAuthenticationAge()) {
-        const sql = await readFile(
-          resolve(migrationDirectory, migrationFile),
-          'utf8',
-        );
-        await migrationPool.query(sql);
-      }
-
+    await withTemporaryDatabase(async (migrationPool) => {
       const userId = randomUUID();
       const workspaceId = randomUUID();
       const rootSessionId = randomUUID();
@@ -72,49 +159,42 @@ describeWithDatabase('session authentication-age migration', () => {
       const childCreatedAt = '2026-08-03T01:15:00.000Z';
       const grandchildCreatedAt = '2026-08-03T01:30:00.000Z';
 
-      await migrationPool.query(
-        `INSERT INTO identity.users (id, display_name)
-         VALUES ($1, $2)`,
-        [userId, 'Legacy migration user'],
+      await insertUserAndWorkspace(
+        migrationPool,
+        userId,
+        workspaceId,
+        'valid',
       );
-      await migrationPool.query(
-        `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
-         VALUES ($1, $2, $3, 'personal')`,
-        [workspaceId, userId, 'Legacy migration workspace'],
-      );
-      await migrationPool.query(
-        `INSERT INTO identity.sessions (
-           id, user_id, workspace_id, token_hash, created_at, expires_at,
-           revoked_at, rotated_from_id
-         ) VALUES
-           ($1, $2, $3, $4, $5, $6, $7, NULL),
-           ($8, $2, $3, $9, $10, $11, $12, $1),
-           ($13, $2, $3, $14, $15, $16, NULL, $8)`,
-        [
-          rootSessionId,
-          userId,
-          workspaceId,
-          '1'.repeat(64),
-          rootAuthenticatedAt,
-          '2026-08-03T02:00:00.000Z',
-          childCreatedAt,
-          childSessionId,
-          '2'.repeat(64),
-          childCreatedAt,
-          '2026-08-03T02:15:00.000Z',
-          grandchildCreatedAt,
-          grandchildSessionId,
-          '3'.repeat(64),
-          grandchildCreatedAt,
-          '2026-08-03T02:30:00.000Z',
-        ],
-      );
+      await insertSession(migrationPool, {
+        id: rootSessionId,
+        userId,
+        workspaceId,
+        tokenSeed: '1',
+        createdAt: rootAuthenticatedAt,
+        expiresAt: '2026-08-03T02:00:00.000Z',
+        revokedAt: childCreatedAt,
+      });
+      await insertSession(migrationPool, {
+        id: childSessionId,
+        userId,
+        workspaceId,
+        tokenSeed: '2',
+        createdAt: childCreatedAt,
+        expiresAt: '2026-08-03T02:15:00.000Z',
+        revokedAt: grandchildCreatedAt,
+        rotatedFromId: rootSessionId,
+      });
+      await insertSession(migrationPool, {
+        id: grandchildSessionId,
+        userId,
+        workspaceId,
+        tokenSeed: '3',
+        createdAt: grandchildCreatedAt,
+        expiresAt: '2026-08-03T02:30:00.000Z',
+        rotatedFromId: childSessionId,
+      });
 
-      const authenticationMigration = await readFile(
-        resolve(migrationDirectory, AUTHENTICATION_MIGRATION),
-        'utf8',
-      );
-      await migrationPool.query(authenticationMigration);
+      await applyAuthenticationAgeMigrations(migrationPool);
 
       const migrated = await migrationPool.query<{
         id: string;
@@ -138,12 +218,100 @@ describeWithDatabase('session authentication-age migration', () => {
       expect(migrated.rows[2]?.created_at.toISOString()).toBe(
         grandchildCreatedAt,
       );
-    } finally {
-      await migrationPool?.end();
-      await adminPool.query(
-        `DROP DATABASE IF EXISTS ${quotedIdentifier(temporaryDatabase)} WITH (FORCE)`,
+    });
+  }, 30_000);
+
+  it('rejects a rotated session whose lineage crosses users', async () => {
+    await withTemporaryDatabase(async (migrationPool) => {
+      const rootUserId = randomUUID();
+      const childUserId = randomUUID();
+      const rootWorkspaceId = randomUUID();
+      const childWorkspaceId = randomUUID();
+      const rootSessionId = randomUUID();
+
+      await insertUserAndWorkspace(
+        migrationPool,
+        rootUserId,
+        rootWorkspaceId,
+        'root-user',
       );
-      await adminPool.end();
-    }
+      await insertUserAndWorkspace(
+        migrationPool,
+        childUserId,
+        childWorkspaceId,
+        'child-user',
+      );
+      await insertSession(migrationPool, {
+        id: rootSessionId,
+        userId: rootUserId,
+        workspaceId: rootWorkspaceId,
+        tokenSeed: '4',
+        createdAt: '2026-08-03T01:00:00.000Z',
+        expiresAt: '2026-08-03T02:00:00.000Z',
+      });
+      await insertSession(migrationPool, {
+        id: randomUUID(),
+        userId: childUserId,
+        workspaceId: rootWorkspaceId,
+        tokenSeed: '5',
+        createdAt: '2026-08-03T01:15:00.000Z',
+        expiresAt: '2026-08-03T02:15:00.000Z',
+        rotatedFromId: rootSessionId,
+      });
+
+      await migrationPool.query(await readMigration(AUTHENTICATION_MIGRATION));
+      await expect(
+        migrationPool.query(
+          await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION),
+        ),
+      ).rejects.toThrow(/sessions_authentication_present/u);
+    });
+  }, 30_000);
+
+  it('rejects a rotated session whose lineage crosses workspaces', async () => {
+    await withTemporaryDatabase(async (migrationPool) => {
+      const rootUserId = randomUUID();
+      const otherUserId = randomUUID();
+      const rootWorkspaceId = randomUUID();
+      const otherWorkspaceId = randomUUID();
+      const rootSessionId = randomUUID();
+
+      await insertUserAndWorkspace(
+        migrationPool,
+        rootUserId,
+        rootWorkspaceId,
+        'root-workspace',
+      );
+      await insertUserAndWorkspace(
+        migrationPool,
+        otherUserId,
+        otherWorkspaceId,
+        'other-workspace',
+      );
+      await insertSession(migrationPool, {
+        id: rootSessionId,
+        userId: rootUserId,
+        workspaceId: rootWorkspaceId,
+        tokenSeed: '6',
+        createdAt: '2026-08-03T01:00:00.000Z',
+        expiresAt: '2026-08-03T02:00:00.000Z',
+      });
+      await insertSession(migrationPool, {
+        id: randomUUID(),
+        userId: rootUserId,
+        workspaceId: otherWorkspaceId,
+        tokenSeed: '7',
+        createdAt: '2026-08-03T01:15:00.000Z',
+        expiresAt: '2026-08-03T02:15:00.000Z',
+        rotatedFromId: rootSessionId,
+      });
+
+      await migrationPool.query(await readMigration(AUTHENTICATION_MIGRATION));
+      await expect(
+        migrationPool.query(
+          await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION),
+        ),
+      ).rejects.toThrow(/sessions_authentication_present/u);
+    });
   }, 30_000);
 });
