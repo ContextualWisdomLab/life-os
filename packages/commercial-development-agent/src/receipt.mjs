@@ -26,6 +26,11 @@ const DIFF_KEYS = Object.freeze([
   'additions',
   'deletions',
 ]);
+const DIFF_DECISION_KEYS = Object.freeze([
+  'accepted',
+  'reason_code',
+  ...DIFF_KEYS,
+]);
 
 /** Stable composition failure that never retains rejected source or credentials. */
 export class CommercialDevelopmentReceiptError extends Error {
@@ -76,7 +81,11 @@ function normalizeDiff(value) {
   if (!isRecord(value)) {
     return invalid();
   }
-  requireExactKeys(value, DIFF_KEYS);
+  const expectedKeys =
+    Object.keys(value).length === DIFF_DECISION_KEYS.length
+      ? DIFF_DECISION_KEYS
+      : DIFF_KEYS;
+  requireExactKeys(value, expectedKeys);
   return {
     changed_files: requireCounter(value.changed_files),
     changed_bytes: requireCounter(value.changed_bytes),
