@@ -310,6 +310,7 @@ export function toSessionView(session: ActiveSession): {
   sessionId: string;
   userId: string;
   workspaceId: string;
+  authenticatedAt: string;
   createdAt: string;
   expiresAt: string;
 } {
@@ -317,6 +318,7 @@ export function toSessionView(session: ActiveSession): {
     sessionId: session.id,
     userId: session.userId,
     workspaceId: session.workspaceId,
+    authenticatedAt: session.authenticatedAt,
     createdAt: session.createdAt,
     expiresAt: session.expiresAt,
   };
