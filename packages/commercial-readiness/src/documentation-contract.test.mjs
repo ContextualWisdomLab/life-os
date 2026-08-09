@@ -51,6 +51,16 @@ test('canonical product and architecture documents remain discoverable', () => {
   }
 });
 
+test('README links every canonical document', () => {
+  const readme = readRepositoryText('README.md');
+  for (const relativePath of REQUIRED_DOCUMENTS) {
+    assert.ok(
+      readme.includes(`](${relativePath})`),
+      `README does not link canonical document: ${relativePath}`,
+    );
+  }
+});
+
 test('canonical Markdown documents keep balanced fenced blocks', () => {
   for (const relativePath of REQUIRED_DOCUMENTS) {
     const fenceCount = countCodeFences(readRepositoryText(relativePath));
