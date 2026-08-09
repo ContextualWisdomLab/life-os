@@ -13,6 +13,11 @@ import {
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
+  CalendarContextInvalidError,
+  CalendarContextUnavailableError,
+  requireTrustedCalendarWorkspaceContext,
+} from './calendar-service-context';
+import {
   CaldavCalendarProvider,
   CalendarConflictError,
   CalendarDependencyError,
@@ -57,15 +62,32 @@ export class CalendarSyncController {
   @Post('v1/calendar/sync')
   @HttpCode(200)
   async sync(
-    @Headers('x-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<CalendarSyncResult> {
     try {
-      if (!workspaceId) {
-        throw new CalendarValidationError();
-      }
-      return await this.calendarSyncService.sync(workspaceId, body);
+      const trustedWorkspaceId = requireTrustedCalendarWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.CALENDAR_GATEWAY_CONTEXT_SECRET,
+      );
+      return await this.calendarSyncService.sync(trustedWorkspaceId, body);
     } catch (error) {
+      if (error instanceof CalendarContextInvalidError) {
+        throw problem(
+          401,
+          'Calendar synchronization context is invalid',
+          'invalid_gateway_context',
+        );
+      }
+      if (error instanceof CalendarContextUnavailableError) {
+        throw problem(
+          503,
+          'Calendar synchronization context is unavailable',
+          'calendar_context_unavailable',
+        );
+      }
       if (error instanceof CalendarValidationError) {
         throw problem(
           400,
