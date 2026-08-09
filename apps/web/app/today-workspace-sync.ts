@@ -57,9 +57,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   ) {
     throw new Error('response too large');
   }
-  const contentType = response.headers
-    .get('content-type')
-    ?.split(';', 1)[0];
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0];
   if (
     contentType !== 'application/json' &&
     contentType !== 'application/problem+json'
@@ -91,7 +89,9 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 
 /** Requires one strong UUIDv4 ETag and returns the unquoted opaque revision. */
 function requireRevision(response: Response): string {
-  const match = /^"([0-9a-f-]+)"$/iu.exec(response.headers.get('etag') ?? '');
+  const match = /^\"([0-9a-f-]+)\"$/iu.exec(
+    response.headers.get('etag') ?? '',
+  );
   if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
     throw new Error('invalid revision');
   }
@@ -201,7 +201,7 @@ export async function saveWorkspaceToday(
       'idempotency-key': globalThis.crypto.randomUUID(),
     });
     if (revision === null) requestHeaders.set('if-none-match', '*');
-    else requestHeaders.set('if-match', `"${revision.toLowerCase()}"`);
+    else requestHeaders.set('if-match', `\"${revision.toLowerCase()}\"`);
     const response = await fetcher(
       `/api/planning/today/${encodeURIComponent(document.date)}`,
       {
