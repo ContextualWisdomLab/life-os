@@ -1,47 +1,61 @@
 # Claude operating contract for LifeOS
 
-`AGENTS.md` is the canonical repository-wide instruction file. This document maps that contract into a concise execution order for Claude-compatible agents and must not override `AGENTS.md`, `ARCHITECTURE.md`, branch protection, or security policy.
+`AGENTS.md` is the canonical repository-wide agent instruction file. `docs/PRD.md`, `docs/TRD.md`, `ARCHITECTURE.md`, `docs/adr/README.md`, `docs/DATA_MODEL.md`, `docs/UML.md`, `docs/THREAT_MODEL.md`, `docs/TEST_STRATEGY.md`, `docs/OPERABILITY.md`, and `docs/TRACEABILITY.md` are the canonical product/technical evidence graph. This document maps them into a concise execution order and must not override live branch protection, security policy, or protected-main behavior.
 
 ## Execution order
 
-1. Inspect every open pull request before starting unrelated implementation.
-2. Read all human, CodeRabbit, AppGuardrail, code-scanning, and security feedback.
-3. Determine the root cause of every failing or pending-required check.
-4. Make the smallest complete correction, including tests and documentation.
-5. Re-run the exact pull-request head and resolve only threads whose finding is actually addressed.
-6. Merge only when required checks pass, no actionable findings remain, and the repository's merge policy accepts the exact head.
-7. Continue with the highest-impact buyer-visible gap after the pull-request queue is empty.
+1. Refetch every open PR, exact current head and exact live base tip before relying on historical state.
+2. Read all human, CodeRabbit, AppGuardrail, code-scanning, security and configured automated feedback.
+3. Determine the first causal boundary of every failed/missing/stale/required check and verify a remedy is operationally real.
+4. Make the smallest complete test-first correction, including documentation/cleanup/migration evidence required by the root cause.
+5. Rerun/inspect exact-head verification and resolve only threads whose underlying finding is actually fixed.
+6. Merge only when repository protections accept the unchanged exact head and no actionable finding remains.
+7. Immediately continue with another safe PR/review/cleanup/documentation/product/operability/release-readiness task while finite run budget remains.
+8. When PR work is exhausted, implement the highest-impact bounded buyer-visible product gap rather than ending at gap identification.
 
-Routine progress narration is not a substitute for repository evidence. Record decisions in code, tests, ADRs, specifications, plans, runbooks, issues, and pull-request descriptions.
+A successful commit, PR creation, merge, documentation pack, review request, check dispatch, queued workflow, or RCA is an intermediate result while safe work remains. Routine status narration is not repository evidence.
 
-## Non-negotiable boundaries
+## Writer/concurrency discipline
 
-- Never use `COPILOT_GITHUB_TOKEN`.
-- Scheduled model-assisted work uses `NVIDIA_NIM_API_KEY` through the approved OpenCode or contextual-orchestrator boundary.
-- Do not alter or repurpose the credential scheme of existing review agents.
-- Never forward browser cookies, provider credentials, hidden reasoning, raw prompts, raw model responses, or stack traces into retained artifacts.
-- Internal identifiers are UUIDv4 strings; numeric external identifiers are mapped through an explicit provider-identity boundary.
-- Database objects use multiword `snake_case` names unless an external protocol mandates a different spelling.
+Before branch-affecting writes, refetch exact target head/base/ref/blob. If another source writer moves the same target, discard stale assumptions, freeze only that target for the run, and continue non-conflicting work. Never turn one branch conflict or unavailable tool path into a repository-wide stop.
+
+## Architecture boundaries
+
+- LifeOS is multi-user, server-backed, self-hostable and domain-oriented; early browser-only local-first/single-app primary designs are historical/superseded.
+- Internal identifiers are opaque UUIDv4 strings; old UUIDv7 design language is superseded.
+- Database objects use descriptive multiword `snake_case` unless an external protocol requires otherwise.
 - Services do not read or mutate another service's database tables.
-- AI proposals remain inert until a separately authorized user-confirmed execution capability exists.
-- Mathematical and psychometric numerical kernels require Rust, deterministic CPU/GPU execution boundaries, realistic parameter-recovery tests, multilevel or multiple-membership structure, and temporal modeling where applicable.
+- Browser-local drafts/caches do not become durable truth until an authorized owning service confirms persistence.
+- AI proposals remain inert until a separately authorized domain execution capability exists.
+- Sensitive access uses purpose/resource/actor/lifetime controls and auditable evidence; blanket masking is not an authorization model.
+
+## Documentation discipline
+
+Use exact statuses: `Implemented on protected main`, `Implemented on active PR`, `Partial`, `Accepted architecture`, `Planned`, `Research only`, `Superseded`, `Out of scope`.
+
+Do not present active-PR/roadmap behavior as shipped. When source/tests disagree with prose, correct the prose or behavior according to the approved product decision; do not use documentation to override protected-main runtime truth.
+
+The original `docs/superpowers/specs/2026-08-02-life-os-design.md` is historical input. Canonical docs/ADRs explicitly reconcile its local-first/single-app/UUIDv7/post-MVP assumptions with current architecture.
+
+When documentation exposes a missing product journey, stale runtime contract, migration/recovery gap, security/privacy flaw, accessibility issue or release blocker, continue into executable work when safe rather than stopping at the audit.
 
 ## LLM orchestration decisions
 
-Use a strong single-model route as the mandatory baseline. Allocate additional test-time compute only through explicit profiles that identify reasoning effort, workflow stages, role assignment, decomposition, recursive depth, and access topology. Use measured proposal validity, grounding, utility, and prompt-injection resistance to justify deeper orchestration. Do not optimize this decision for latency alone.
+Use a strong single-model route as the mandatory baseline. Allocate additional test-time compute only through explicit profiles identifying reasoning effort, workflow stages, roles, decomposition, recursive depth and access topology, justified by measured validity/grounding/utility/safety evidence rather than latency alone.
 
-Live model tests may use `NVIDIA_NIM_API_KEY`. Deterministic pull-request checks must remain meaningful when that secret or the provider is unavailable. Provider failures produce sanitized unavailable evidence, never fabricated scores.
+Model-assisted tests/development use `NVIDIA_NIM_API_KEY` through the approved OpenCode/contextual-orchestrator boundary where required. Do not casually alter independent review-agent credential schemes. Deterministic checks remain meaningful when the live provider is absent or unavailable; provider failures produce sanitized unavailable evidence, never fabricated scores.
 
 ## Verification standard
 
 - Production declarations have explanatory docstrings.
-- Changed production code maintains 100% statement, branch, function, and line coverage where the package enforces those gates.
-- Tests model realistic domain outcomes, not only mocked implementation calls.
-- Standards and research claims are documented with APA 7 references and publication status is distinguished from drafts or preprints.
+- Packages with exact gates maintain 100% statement, branch, function and line coverage using meaningful tests.
+- Persistence behavior uses realistic PostgreSQL tests for tenant, transaction, replay, concurrency and recovery semantics.
+- Core web journeys include accessibility/localization/mobile/PWA evidence where relevant.
+- Standards/research claims use appropriate primary/current sources with APA 7 traceability and publication-status distinctions.
 - `CHANGELOG.md` records buyer-visible behavior.
-- `ARCHITECTURE.md` and relevant feature ADR/specification files record boundary changes.
-- Release tags and versions are created only after the repository proves release readiness; unreleased work stays under `Unreleased`.
+- Canonical PRD/TRD/architecture/ADR/data/UML/threat/test/operability/traceability documents remain code-current.
+- Release versions/tags are created only after exact integrated release readiness; unreleased work stays under `Unreleased`.
 
 ## Safe escalation
 
-Escalate only for a decision or permission that cannot be resolved from repository policy, tests, standards, or available credentials. Waiting for checks or reviews is not itself an escalation condition; continue independent analysis, documentation, or the next non-conflicting planned task while preserving merge safety.
+Escalate only for a concrete external decision, permission, secret, governance action or safety boundary that cannot be derived/resolved from current repository evidence and realistically available tools after alternatives are tested. Waiting for checks/reviews/providers is not itself an escalation condition; continue independent work.
