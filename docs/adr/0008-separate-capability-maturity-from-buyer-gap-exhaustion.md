@@ -1,16 +1,16 @@
 # ADR-0008: Separate capability maturity from buyer-gap exhaustion
 
-**Status:** Accepted architecture
+**Status:** Implemented on protected main
 
 ## Context
 
 LifeOS commercial-readiness evidence historically summarized configured capability maturity and rendered unresolved gaps from the same configured capability set. That is useful for determining whether a registered capability has its required files, tests, controls, and evidence, but it is not equivalent to proving that the whole product has no remaining buyer-visible gaps.
 
-Protected-main evidence can therefore report every configured capability at target while accepted customer journeys remain incomplete. At the current baseline, end-to-end tenant export/deletion (#55), durable multi-device Today synchronization (#121), hosted per-user calendar credentials (#129), and generic plugin runtime delivery (#130) remain distinct product gaps even when their related core capability evidence is mature.
+Protected-main evidence can therefore report every configured capability at target while accepted customer journeys remain incomplete. End-to-end tenant export/deletion (#55), durable multi-device Today synchronization (#121), hosted per-user calendar credentials (#129), and generic plugin runtime delivery (#130) remain distinct product gaps even when their related core capability evidence is mature.
 
-Issue #128 records this defect. Active PR #131 implements a versioned repository-owned buyer-gap registry and explicit issue-state reconciliation. Until that PR is integrated, it is active-PR evidence rather than protected-main evidence.
+Issue #128 recorded this semantic defect. PR #131 implemented the repository-owned buyer-gap registry and explicit issue-state reconciliation and was squash-merged to protected main as `2ad45a935283e83d9bb0f3ea5c3d23b2669078b1` on 2026-08-09; issue #128 is closed as completed. The implementation therefore belongs to protected-main evidence, while the registered buyer gaps remain independently open until their own product outcomes are integrated.
 
-## Decision drivers
+## Drivers
 
 - Commercial-readiness reporting must not convert configured evidence completeness into a claim of whole-product completeness.
 - Buyer-gap identity must be deterministic and reviewable.
@@ -18,7 +18,7 @@ Issue #128 records this defect. Active PR #131 implements a versioned repository
 - Missing or ambiguous live issue evidence must fail closed rather than silently resolve a gap.
 - Release and autonomous-development decisions need separate views of capability maturity and remaining customer/operator outcomes.
 
-## Alternatives considered
+## Alternatives
 
 ### Keep one scalar capability score
 
@@ -55,18 +55,18 @@ Release readiness consumes both dimensions together with exact protected-head CI
 
 ### Positive
 
-- Commercial-readiness reports become more truthful about the difference between strong foundations and complete buyer journeys.
+- Commercial-readiness reports distinguish mature capability evidence from remaining buyer journeys.
 - Autonomous development can prioritize explicit product gaps without scraping arbitrary issue prose into policy.
 - Unknown evidence remains visible instead of being converted into optimistic success.
-- Capability evidence can remain stable and useful without being overloaded into a whole-product completeness metric.
+- Capability evidence remains stable and useful without being overloaded into a whole-product completeness metric.
 
 ### Trade-offs
 
 - Readiness output contains more than one headline dimension and therefore requires clearer operator/product interpretation.
-- The buyer-gap registry becomes another versioned governance artifact that must be reviewed when gaps are created, superseded, split, or resolved.
+- The buyer-gap registry is another versioned governance artifact that must be reviewed when gaps are created, superseded, split, or resolved.
 - Gap closure requires evidence reconciliation rather than simply closing an issue or raising a capability score.
 
-## Failure and recovery
+## Failure/recovery
 
 If the buyer-gap registry is malformed, duplicated, refers to unknown capabilities, exceeds bounded limits, or cannot be reconciled safely, readiness evaluation fails closed for the buyer-gap dimension.
 
@@ -74,7 +74,7 @@ If the GitHub issue-state dependency is temporarily unavailable, affected gap st
 
 If a gap is split or superseded, update the registry and traceability in a reviewed change. Do not rewrite historical readiness artifacts in place.
 
-## Security, privacy, and governance impact
+## Security/privacy impact
 
 - Issue bodies, comments, review text, and model output remain untrusted and non-executable.
 - The live collector requests only bounded state required for registered gaps and does not retain arbitrary issue bodies as policy.
@@ -82,26 +82,26 @@ If a gap is split or superseded, update the registry and traceability in a revie
 - Unknown/fetch-failure behavior is fail-closed and cannot manufacture a zero-gap result.
 - This ADR changes readiness interpretation, not branch protection, merge authority, reviewer identity, or product-data authorization.
 
-## Acceptance and test evidence
+## Acceptance evidence
 
-The implementing contract must prove at least:
+Protected main at `2ad45a935283e83d9bb0f3ea5c3d23b2669078b1` includes:
 
-- a repository-owned versioned gap registry;
-- rejection of malformed IDs, duplicate gap ownership, unknown capability references, duplicate capability links, and excessive collections;
+- versioned `product/buyer-gaps.json` policy data;
+- rejection of malformed IDs, duplicate gap ownership, unknown capability references, duplicate capability links, excessive collections, and malformed snapshots;
 - deterministic `open`, `resolved`, and `unknown` reconciliation;
 - fetch failure and ambiguous evidence becoming `unknown` rather than `resolved`;
-- no raw issue body/comment/review text retained as executable policy;
-- capability maturity remaining backward-compatible as its own dimension;
-- separate rendered/report fields for capability-evidence gaps and buyer-gap/unknown state;
-- canonical PRD/traceability documents identifying active-PR versus protected-main implementation accurately.
+- no raw issue body/comment/review text retained as executable gap policy;
+- backward-compatible capability maturity as its own dimension;
+- separate report fields for capability-evidence gaps and buyer-gap/unknown state;
+- exact-PR-head checkout binding in commercial-readiness CI.
 
-At the time of this ADR, PR #131 is the active implementation path. No protected-main implementation claim transfers until its exact reviewed head is merged.
+PR #131 passed its applicable CI, AppGuardrail, Semgrep, Security Scan, Commercial Readiness, current CodeRabbit status, and resolved-thread gates before the guarded squash merge used in this run. Exact protected-main source remains authoritative over this summary.
 
-## Migration and rollback
+## Migration/rollback
 
-The change is additive to the existing capability evidence model. Existing capability identifiers and maturity targets remain unchanged.
+The implementation is additive to the existing capability evidence model. Existing capability identifiers and maturity targets keep their previous meaning.
 
-If rollout must be reverted, remove the new buyer-gap reporting path while preserving the existing capability calculation and the repository gap registry/history for later repair. Do not reinterpret historical 100% capability reports as historical proof of zero buyer gaps.
+If the buyer-gap reporting path must be rolled back, retain the capability calculation and repository gap registry/history so no historical product-gap lineage is lost. Do not reinterpret historical 100% capability reports as historical proof of zero buyer gaps.
 
 ## Supersession
 
