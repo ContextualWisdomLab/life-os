@@ -77,16 +77,25 @@ async function withTemporaryDatabase(
     await prepareLegacyDatabase(migrationPool);
     await execute(migrationPool);
   } finally {
-    await migrationPool?.end();
-    if (lockHeld) {
-      await adminPool.query(
-        'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
-      );
-      await adminPool.query('SELECT pg_advisory_unlock($1::bigint)', [
-        TEMPORARY_DATABASE_LOCK_KEY,
-      ]);
+    try {
+      await migrationPool?.end();
+    } finally {
+      try {
+        if (lockHeld) {
+          try {
+            await adminPool.query(
+              'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
+            );
+          } finally {
+            await adminPool.query('SELECT pg_advisory_unlock($1::bigint)', [
+              TEMPORARY_DATABASE_LOCK_KEY,
+            ]);
+          }
+        }
+      } finally {
+        await adminPool.end();
+      }
     }
-    await adminPool.end();
   }
 }
 
