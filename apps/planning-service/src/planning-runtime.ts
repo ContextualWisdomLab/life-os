@@ -1,25 +1,55 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Pool, type PoolConfig } from 'pg';
+import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { PlanningService } from './planning-domain';
 import {
   type PlanningSqlClient,
   type PlanningSqlQueryResult,
   PostgresPlanningRepository,
 } from './postgres-planning-repository';
+import {
+  PostgresTodayRepository,
+  type TodayTransactionalSqlClient,
+} from './postgres-today-repository';
+import { TodaySyncService } from './today-sync';
 
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+
+export interface PlanningPoolConnection {
+  query<Row>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<PlanningSqlQueryResult<Row>>;
+  release(destroy?: boolean): void;
+}
 
 export interface PlanningPool {
   query<Row>(
     text: string,
     values?: readonly unknown[],
   ): Promise<PlanningSqlQueryResult<Row>>;
+  connect(): Promise<PlanningPoolConnection>;
   end(): Promise<void>;
 }
 
 export type PlanningPoolFactory = (configuration: PoolConfig) => PlanningPool;
+
+class NodePostgresPlanningPoolConnection implements PlanningPoolConnection {
+  constructor(private readonly client: PoolClient) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<PlanningSqlQueryResult<Row>> {
+    const result = await this.client.query(text, [...values]);
+    return { rows: result.rows as Row[] };
+  }
+
+  release(destroy = false): void {
+    this.client.release(destroy);
+  }
+}
 
 class NodePostgresPlanningPool implements PlanningPool {
   constructor(private readonly pool: Pool) {}
@@ -32,12 +62,27 @@ class NodePostgresPlanningPool implements PlanningPool {
     return { rows: result.rows as Row[] };
   }
 
+  async connect(): Promise<PlanningPoolConnection> {
+    return new NodePostgresPlanningPoolConnection(await this.pool.connect());
+  }
+
   async end(): Promise<void> {
     await this.pool.end();
   }
 }
 
-class NodePostgresPlanningSqlClient implements PlanningSqlClient {
+class ConnectionSqlClient implements PlanningSqlClient {
+  constructor(private readonly connection: PlanningPoolConnection) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[],
+  ): Promise<PlanningSqlQueryResult<Row>> {
+    return await this.connection.query<Row>(text, values);
+  }
+}
+
+class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
   constructor(private readonly pool: PlanningPool) {}
 
   async query<Row>(
@@ -45,6 +90,28 @@ class NodePostgresPlanningSqlClient implements PlanningSqlClient {
     values: readonly unknown[],
   ): Promise<PlanningSqlQueryResult<Row>> {
     return await this.pool.query<Row>(text, values);
+  }
+
+  async transaction<Result>(
+    operation: (client: PlanningSqlClient) => Promise<Result>,
+  ): Promise<Result> {
+    const connection = await this.pool.connect();
+    let destroyConnection = false;
+    try {
+      await connection.query('BEGIN');
+      const result = await operation(new ConnectionSqlClient(connection));
+      await connection.query('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        await connection.query('ROLLBACK');
+      } catch {
+        destroyConnection = true;
+      }
+      throw error;
+    } finally {
+      connection.release(destroyConnection);
+    }
   }
 }
 
@@ -131,6 +198,7 @@ export class PlanningRuntime implements OnApplicationShutdown {
   constructor(
     private readonly pool: PlanningPool,
     readonly service: PlanningService,
+    readonly todayService: TodaySyncService,
   ) {}
 
   async close(): Promise<void> {
@@ -151,8 +219,12 @@ export function createPlanningRuntime(
   poolFactory: PlanningPoolFactory = defaultPoolFactory,
 ): PlanningRuntime {
   const pool = poolFactory(createPlanningPoolConfiguration(environment));
-  const repository = new PostgresPlanningRepository(
-    new NodePostgresPlanningSqlClient(pool),
+  const client = new NodePostgresPlanningSqlClient(pool);
+  const repository = new PostgresPlanningRepository(client);
+  const todayRepository = new PostgresTodayRepository(client);
+  return new PlanningRuntime(
+    pool,
+    new PlanningService(repository),
+    new TodaySyncService(todayRepository),
   );
-  return new PlanningRuntime(pool, new PlanningService(repository));
 }

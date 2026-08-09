@@ -6,11 +6,14 @@ import {
   Get,
   Header,
   Headers,
+  HttpException,
   Inject,
   Module,
   Param,
   Post,
+  Put,
   Query,
+  Res,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
@@ -27,11 +30,28 @@ import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 import type { PlanningSearchResult } from './search';
+import {
+  parseTodayWritePrecondition,
+  requireTodayPathDate,
+  toTodayHttpException,
+} from './today-http';
+import {
+  TodaySyncService,
+  TodayValidationError,
+  type DurableTodayAggregate,
+} from './today-sync';
 
 /** Dependency-injection token for the production planning runtime. */
 export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
 /** Dependency-injection token for the planning domain service. */
 export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
+/** Dependency-injection token for durable Today synchronization. */
+export const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');
+
+interface PassthroughResponse {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+}
 
 /** Requires the tenant workspace boundary used by legacy planning operations. */
 function requireWorkspaceId(value: string | undefined): string {
@@ -42,12 +62,36 @@ function requireWorkspaceId(value: string | undefined): string {
   return workspaceId;
 }
 
+/** Returns a stable not-found problem without disclosing another tenant's state. */
+function todayNotFound(): HttpException {
+  return new HttpException(
+    {
+      type: 'about:blank',
+      title: 'Today aggregate was not found',
+      status: 404,
+      code: 'today_not_found',
+    },
+    404,
+  );
+}
+
+/** Applies no-store and the strong opaque revision ETag to a Today response. */
+function setTodayResponseHeaders(
+  response: PassthroughResponse,
+  aggregate: DurableTodayAggregate,
+): void {
+  response.setHeader('cache-control', 'no-store');
+  response.setHeader('etag', `"${aggregate.revision}"`);
+}
+
 /** Exposes tenant-scoped planning operations and operational endpoints. */
 @Controller()
 export class PlanningController {
   constructor(
     @Inject(PLANNING_SERVICE)
     private readonly planningService: PlanningService,
+    @Inject(TODAY_SYNC_SERVICE)
+    private readonly todayService: TodaySyncService,
   ) {}
 
   /** Returns a credential-free liveness response for the planning service. */
@@ -84,6 +128,72 @@ export class PlanningController {
       );
     } catch (error) {
       throw toHttpException(error);
+    }
+  }
+
+  /** Returns one durable Today aggregate for the authenticated workspace/date. */
+  @Get('today/:date')
+  async getToday(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Param('date') date: string,
+    @Res({ passthrough: true }) response: PassthroughResponse,
+  ): Promise<DurableTodayAggregate> {
+    try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+      );
+      const aggregate = await this.todayService.getToday(
+        trustedWorkspaceId,
+        date,
+      );
+      if (!aggregate) {
+        throw todayNotFound();
+      }
+      setTodayResponseHeaders(response, aggregate);
+      return aggregate;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw toTodayHttpException(error);
+    }
+  }
+
+  /** Creates or replaces one complete Today aggregate behind HTTP preconditions. */
+  @Put('today/:date')
+  async putToday(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Headers('if-match') ifMatch: string | undefined,
+    @Headers('if-none-match') ifNoneMatch: string | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Param('date') date: string,
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: PassthroughResponse,
+  ): Promise<DurableTodayAggregate> {
+    try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+      );
+      requireTodayPathDate(date, body);
+      if (typeof idempotencyKey !== 'string') {
+        throw new TodayValidationError();
+      }
+      const result = await this.todayService.putToday(
+        trustedWorkspaceId,
+        body,
+        parseTodayWritePrecondition(ifMatch, ifNoneMatch),
+        idempotencyKey,
+      );
+      response.statusCode = result.kind === 'created' ? 201 : 200;
+      setTodayResponseHeaders(response, result.aggregate);
+      return result.aggregate;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw toTodayHttpException(error);
     }
   }
 
@@ -205,6 +315,12 @@ export class PlanningController {
       inject: [PLANNING_RUNTIME],
       useFactory: (runtime: PlanningRuntime): PlanningService =>
         runtime.service,
+    },
+    {
+      provide: TODAY_SYNC_SERVICE,
+      inject: [PLANNING_RUNTIME],
+      useFactory: (runtime: PlanningRuntime): TodaySyncService =>
+        runtime.todayService,
     },
   ],
 })
