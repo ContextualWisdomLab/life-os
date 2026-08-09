@@ -1,7 +1,11 @@
 CREATE TABLE identity.data_rights_requests (
   request_id uuid PRIMARY KEY,
-  workspace_id uuid NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
-  requested_by_user_id uuid NOT NULL REFERENCES identity.users(id) ON DELETE RESTRICT,
+  -- Deliberately not a foreign key: completed request evidence must survive
+  -- source-workspace erasure for bounded audit and reconciliation retention.
+  workspace_id uuid NOT NULL,
+  -- Deliberately not a foreign key: erasing the identity source record must
+  -- neither delete this receipt nor make user erasure impossible.
+  requested_by_user_id uuid NOT NULL,
   request_kind text NOT NULL,
   idempotency_key uuid NOT NULL,
   request_digest character(64) NOT NULL,
