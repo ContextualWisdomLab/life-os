@@ -1,6 +1,7 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { readdir, readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -13,6 +14,8 @@ import {
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const TEST_DATABASE_NAME = 'life_os_data_rights_ledger_test';
+const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const MIGRATION_DIRECTORY = resolve(TEST_DIRECTORY, '../migrations');
 
 class NodePostgresDataRightsClient implements DataRightsRequestSqlClient {
   constructor(private readonly pool: Pool) {}
@@ -45,24 +48,29 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     const testUrl = new URL(DATABASE_URL);
     testUrl.pathname = `/${TEST_DATABASE_NAME}`;
     pool = new Pool({ connectionString: testUrl.toString() });
-    const migrationDirectory = resolve(process.cwd(), 'migrations');
-    const migrationFiles = (await readdir(migrationDirectory))
+    const migrationFiles = (await readdir(MIGRATION_DIRECTORY))
       .filter((file) => file.endsWith('.sql'))
       .sort();
     for (const migrationFile of migrationFiles) {
       await pool.query(
-        await readFile(resolve(migrationDirectory, migrationFile), 'utf8'),
+        await readFile(resolve(MIGRATION_DIRECTORY, migrationFile), 'utf8'),
       );
     }
   }, 30_000);
 
   afterAll(async () => {
-    if (pool) await pool.end();
-    if (adminPool) {
-      await adminPool.query(
-        'DROP DATABASE IF EXISTS life_os_data_rights_ledger_test WITH (FORCE)',
-      );
-      await adminPool.end();
+    try {
+      if (pool) await pool.end();
+    } finally {
+      if (adminPool) {
+        try {
+          await adminPool.query(
+            'DROP DATABASE IF EXISTS life_os_data_rights_ledger_test WITH (FORCE)',
+          );
+        } finally {
+          await adminPool.end();
+        }
+      }
     }
   });
 
