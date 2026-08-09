@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  collectBuyerGapSnapshot,
   evaluateBuyerGaps,
   validateBuyerGapRegistry,
 } from './buyer-gaps.mjs';
@@ -71,7 +72,9 @@ describe('validateBuyerGapRegistry', () => {
       registry([gap({ gap_id: '121' })]),
       registry([gap({ issue_number: '121' })]),
       registry([gap({ capability_ids: [] })]),
-      registry([gap({ capability_ids: ['today.action-loop', 'today.action-loop'] })]),
+      registry([
+        gap({ capability_ids: ['today.action-loop', 'today.action-loop'] }),
+      ]),
     ];
 
     for (const value of invalidRegistries) {
@@ -80,6 +83,62 @@ describe('validateBuyerGapRegistry', () => {
         /Invalid buyer gap registry/,
       );
     }
+  });
+});
+
+describe('collectBuyerGapSnapshot', () => {
+  it('retains only bounded registered issue state and makes fetch failure unknown', async () => {
+    const validated = validateBuyerGapRegistry(
+      registry([
+        gap(),
+        gap({
+          gap_id: 'calendar.per-user-credentials',
+          issue_number: 129,
+          capability_ids: ['calendar.time-blocking'],
+        }),
+      ]),
+      manifest,
+    );
+    const requested = [];
+    const client = {
+      async requestJson(path) {
+        requested.push(path);
+        if (path.endsWith('/121')) {
+          return {
+            number: 121,
+            title: 'untrusted title not retained',
+            body: 'untrusted body not retained',
+            state: 'open',
+            state_reason: null,
+            labels: [{ name: 'buyer-gap' }],
+          };
+        }
+        throw new Error('provider unavailable');
+      },
+    };
+
+    const result = await collectBuyerGapSnapshot(
+      client,
+      'ContextualWisdomLab/life-os',
+      validated,
+      '2026-08-09T11:00:00.000Z',
+    );
+
+    assert.deepEqual(requested, [
+      '/repos/ContextualWisdomLab/life-os/issues/121',
+      '/repos/ContextualWisdomLab/life-os/issues/129',
+    ]);
+    assert.deepEqual(result.issues, [
+      {
+        number: 121,
+        state: 'open',
+        state_reason: null,
+        labels: ['buyer-gap'],
+      },
+      { number: 129, state: 'unknown', state_reason: null, labels: [] },
+    ]);
+    assert.equal(JSON.stringify(result).includes('untrusted title'), false);
+    assert.equal(JSON.stringify(result).includes('untrusted body'), false);
   });
 });
 
@@ -155,9 +214,9 @@ describe('evaluateBuyerGaps', () => {
     assert.deepEqual(
       result.resolved.map((item) => [item.gap_id, item.resolution]),
       [
+        ['today.multi-device-sync', 'completed'],
         ['calendar.per-user-credentials', 'duplicate'],
         ['plugins.runtime-delivery', 'not_planned'],
-        ['today.multi-device-sync', 'completed'],
       ],
     );
   });
