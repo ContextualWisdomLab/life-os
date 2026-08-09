@@ -8,7 +8,7 @@ on:
       - .github/workflows/prepare-opencode-commercial-security-commit.yml
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: prepare-opencode-commercial-security-${{ github.event.pull_request.number }}
@@ -35,9 +35,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build and validate detached repair commit
+      - name: Build, validate, and identify hardened workflow blob
         env:
-          GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
           TARGET_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
@@ -85,10 +84,6 @@ jobs:
 
           remote_head="$(git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
           test "$remote_head" = "$EXPECTED_HEAD"
-
-          blob_sha="$(jq -Rs '{content: ., encoding: "utf-8"}' "$target" | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" --input - --jq '.sha')"
-          base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${EXPECTED_HEAD}" --jq '.tree.sha')"
-          tree_sha="$(jq -n --arg base_tree "$base_tree" --arg path "$target" --arg sha "$blob_sha" '{base_tree: $base_tree, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/trees" --input - --jq '.sha')"
-          commit_sha="$(jq -n --arg message 'fix(agent): harden trusted development workflow boundary' --arg tree "$tree_sha" --arg parent "$EXPECTED_HEAD" '{message: $message, tree: $tree, parents: [$parent]}' | gh api --method POST "repos/${GITHUB_REPOSITORY}/git/commits" --input - --jq '.sha')"
-          test -n "$commit_sha"
-          echo "::notice::PREPARED_COMMIT_SHA=$commit_sha"
+          blob_sha="$(git hash-object "$target")"
+          test -n "$blob_sha"
+          echo "::notice::TRANSFORMED_BLOB_SHA=$blob_sha"
