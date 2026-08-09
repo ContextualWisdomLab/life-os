@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -14,8 +13,7 @@ import {
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const TEST_DATABASE_NAME = 'life_os_data_rights_ledger_test';
-const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
-const MIGRATION_DIRECTORY = resolve(TEST_DIRECTORY, '../migrations');
+const MIGRATION_DIRECTORY = resolve(__dirname, '../migrations');
 
 class NodePostgresDataRightsClient implements DataRightsRequestSqlClient {
   constructor(private readonly pool: Pool) {}
