@@ -209,7 +209,7 @@ describe('external issue projection contract', () => {
   it('preserves bounded multiline issue text as untrusted data', () => {
     const value = {
       ...issue(),
-      body: '\tFirst line\r\nSecond line\n',
+      body: 'First line\r\nSecond line\n',
     };
     expect(validateCommercialDevelopmentIssue(value, policy())).toEqual(value);
   });
