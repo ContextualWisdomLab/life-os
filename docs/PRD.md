@@ -26,7 +26,7 @@ Every requirement uses one of these statuses:
 - **Superseded**
 - **Out of scope**
 
-Protected-main source and tests, not this document, are authoritative for an `Implemented` claim.
+Protected-main source and tests, not this document, are authoritative for an `Implemented on protected main` claim. Active-PR status must name the current PR in evidence and must be revalidated whenever its head, state, or ancestry changes.
 
 ## 3. Target users
 
@@ -58,7 +58,7 @@ Protected-main source and tests, not this document, are authoritative for an `Im
 7. **Auditable assistance.** AI output is stored as inert proposal/evidence with explicit accept/reject history where implemented.
 8. **Recoverability.** Idempotency, optimistic concurrency, backup/restore, bounded retries, and failure evidence are product features rather than operational afterthoughts.
 9. **Accessibility and localization.** Core journeys are keyboard operable and Korean/English capable; status is not conveyed by color alone.
-10. **Evidence over claims.** Product maturity comes from code-current tests and protected-main evidence, not roadmap labels.
+10. **Evidence over claims.** Product maturity comes from code-current tests and protected-main evidence, not roadmap labels or a single aggregate score.
 
 ## 5. Historical decisions
 
@@ -92,7 +92,7 @@ The target end-to-end customer journey is:
 12. Exercise privacy/data-rights controls and recover data through supported export/backup paths.
 13. Continue across phone/tablet/desktop through the responsive PWA and durable server state.
 
-A release should be judged by how many of these steps work end-to-end, not by the number of services or abstractions present.
+A release should be judged by how many of these steps work end-to-end, not by the number of services, configured capability rows, or abstractions present.
 
 ## 7. Functional requirements
 
@@ -114,7 +114,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-PLAN-002 | Provide tenant-safe search over durable planning objects with bounded Unicode-normalized behavior. | Implemented on protected main | `capture.search` |
 | PRD-PLAN-003 | Provide a fast capture experience without presenting local drafts as durable records. | Implemented on protected main | quick-capture component/e2e |
 | PRD-PLAN-004 | Provide a Today action loop with bounded priorities and completion workflow. | Implemented on protected main | `today.action-loop` |
-| PRD-PLAN-005 | Prevent stale concurrent updates from silently overwriting newer durable Today state across devices. | Partial | issue #121; durable planning exists but full optimistic multi-device Today synchronization remains incomplete |
+| PRD-PLAN-005 | Prevent stale concurrent updates from silently overwriting newer durable Today state across devices. | Implemented on active PR | issue #121; PR #127 implements the versioned durable Today aggregate, explicit local-to-durable migration, strong preconditions, idempotency, PostgreSQL persistence, conflict reconciliation, and browser acceptance; it is not protected-main evidence until merge |
 | PRD-PLAN-006 | Keep planning source-of-truth inside planning-service; review/search projections never become mutation authority. | Implemented on protected main | service ownership and repository tests |
 
 ### Habits and reviews
@@ -136,7 +136,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-NOT-001 | Deliver timezone-correct bounded reminders with fatigue controls. | Implemented on protected main | `notifications.reminders` |
 | PRD-NOT-002 | Recover expired claims/retries without duplicate inbox delivery. | Implemented on protected main | notification integration tests |
 
-### AI assistance
+### AI assistance and development automation
 
 | ID | Requirement | Status | Representative evidence |
 | --- | --- | --- | --- |
@@ -144,8 +144,8 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-AI-002 | Persist proposal evidence before return and retain replay-safe accept/reject decision history. | Implemented on protected main | AI audit persistence/tests |
 | PRD-AI-003 | Derive actor/workspace context from the authenticated web boundary and never forward browser credentials. | Implemented on protected main | same-origin AI BFF tests |
 | PRD-AI-004 | Keep deterministic proposal-quality/safety evaluation independent of live-provider availability. | Implemented on protected main | proposal evaluator + NIM conformance split |
-| PRD-AI-005 | Permit deeper orchestration only when measured quality/control evidence justifies it against a strong single-route baseline. | Accepted architecture / implemented evaluation support | `ARCHITECTURE.md`, NIM conformance harness |
-| PRD-AI-006 | Autonomous developer automation may create bounded reviewed work but may not become product data authority. | Implemented on protected main | PR #122 merged as `876850018a17323900844e79845ba395b7bf6a9a`; `.github/workflows/opencode-commercial-development.yml`; `packages/commercial-development-agent/` |
+| PRD-AI-005 | Permit deeper orchestration only when measured quality/control evidence justifies it against a strong single-route baseline. | Accepted architecture | `ARCHITECTURE.md` and the protected-main NIM conformance harness provide evaluation support; architecture status does not claim every orchestration profile is shipped |
+| PRD-AI-006 | Autonomous developer automation may create bounded reviewed work but may not become product data authority. | Implemented on protected main | PR #122 merged as `876850018a17323900844e79845ba395b7bf6a9a`; `.github/workflows/opencode-commercial-development.yml`; `packages/commercial-development-agent/`; PR #133 is an active hardening follow-up rather than protected-main evidence |
 
 ### Privacy, security and data rights
 
@@ -162,7 +162,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | --- | --- | --- | --- |
 | PRD-INT-001 | Expose a versioned plugin contract without granting plugins direct cross-service database authority. | Implemented on protected main | plugin SDK + integration service |
 | PRD-INT-002 | Validate untrusted plugin manifests/events and preserve tenant-scoped provenance. | Implemented on protected main | plugin contract tests |
-| PRD-INT-003 | Add installation, secret persistence and outbound plugin delivery only behind separately reviewed authorization/SSRF/audit boundaries. | Planned | explicitly deferred in README |
+| PRD-INT-003 | Add installation, secret persistence and outbound plugin delivery only behind separately reviewed authorization/SSRF/audit boundaries. | Planned | issue #130 tracks installation grants, encrypted secret lifecycle, SSRF-safe delivery, bounded retry/audit and revocation; the protected-main surface remains validation/preparation only |
 | PRD-INT-004 | Compose with optional CWL services through stable interfaces while preserving standalone LifeOS operation. | Accepted architecture | architecture/agent contracts |
 
 ### Web, PWA, accessibility and localization
@@ -170,18 +170,25 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | ID | Requirement | Status | Representative evidence |
 | --- | --- | --- | --- |
 | PRD-WEB-001 | Provide responsive installable PWA behavior on phone/tablet/desktop. | Implemented on protected main | `mobile.pwa` |
-| PRD-WEB-002 | Make core journeys keyboard operable with visible focus and non-color-only status. | Implemented on protected main | accessibility tests/e2e |
+| PRD-WEB-002 | Make core journeys keyboard operable with visible focus and non-color-only status. | Implemented on protected main | accessibility tests/e2e for current core flows |
 | PRD-WEB-003 | Provide structurally complete Korean and English message catalogs. | Implemented on protected main | `accessibility.localization` / changelog |
-| PRD-WEB-004 | Preserve/recover explicitly local offline drafts without silently uploading them. | Partial | local Today draft distinction exists; complete reconnect/conflict recovery overlaps issue #121 |
+| PRD-WEB-004 | Preserve/recover explicitly local offline drafts without silently uploading them. | Implemented on active PR | PR #127 covers the explicit durable Today migration/conflict/recheck flow for the current bounded Today slice; broader offline behavior must not be inferred beyond that reviewed scope |
+
+### Readiness and product governance
+
+| ID | Requirement | Status | Representative evidence |
+| --- | --- | --- | --- |
+| PRD-GOV-001 | Report configured capability-evidence maturity separately from canonical buyer-gap exhaustion so a 100% capability score cannot imply a complete product while accepted buyer journeys remain open or unknown. | Implemented on active PR | issue #128; PR #131 adds the repository-owned `product/buyer-gaps.json` registry, explicit `open`/`resolved`/`unknown` reconciliation, and separate report dimensions; ADR-0008 records the durable decision |
+| PRD-GOV-002 | Treat arbitrary issue/review/model prose as untrusted evidence rather than executable product policy. | Accepted architecture | readiness/security boundaries; PR #131 uses repository-owned gap identity and bounded issue-state evidence |
 
 ### Backup, deployment and operations
 
 | ID | Requirement | Status | Representative evidence |
 | --- | --- | --- | --- |
 | PRD-OPS-001 | Provide verified PostgreSQL logical backup/restore with corruption and unsafe-target refusal. | Implemented on protected main | backup scripts/tests/runbook |
-| PRD-OPS-002 | Provide provider-neutral production reference deployment with restricted runtime defaults and explicit operator-owned dependencies. | Implemented on protected main | Kustomize/deployment tests/runbook |
+| PRD-OPS-002 | Provide provider-neutral production reference deployment with restricted runtime defaults and explicit operator-owned dependencies. | Implemented on protected main | Kustomize/deployment tests/runbook; `reference` describes scope, not status |
 | PRD-OPS-003 | Expose bounded health/readiness/metrics and preserve monitoring data as an operator-only surface. | Implemented on protected main | service endpoints/runbooks |
-| PRD-OPS-004 | Do not claim point-in-time recovery, managed cluster provisioning, or a fixed public SLA without measured/operator-specific evidence. | Implemented documentation boundary | README/runbooks |
+| PRD-OPS-004 | Do not claim point-in-time recovery, managed cluster provisioning, or a fixed public SLA without measured/operator-specific evidence. | Accepted architecture | README/runbooks explicitly preserve these operator-owned/non-claimed boundaries |
 
 ## 8. Non-functional requirements
 
@@ -228,4 +235,4 @@ LifeOS does not claim or provide as a product contract:
 
 ## 10. Release outcome
 
-The first stable release requires more than individual capability maturity. It requires one protected integrated head where the primary customer journey, tenant/privacy boundaries, migrations, backup/restore, deployment, accessibility/localization, packaging/SBOM/provenance, security checks, and required review gates all pass together. Versioning and `CHANGELOG.md` release sections are updated only after that evidence exists.
+The first stable release requires more than individual capability maturity. It requires one protected integrated head where the primary customer journey, canonical buyer-gap state, tenant/privacy boundaries, migrations, backup/restore, deployment, accessibility/localization, packaging/SBOM/provenance, security checks, and required review gates all pass together. Versioning and `CHANGELOG.md` release sections are updated only after that evidence exists.
