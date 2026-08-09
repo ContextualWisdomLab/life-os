@@ -36,28 +36,45 @@ export function renderCommercialReadinessIssue(
   snapshot,
   { marker, maxGaps = 15 },
 ) {
+  const evidenceGaps = Array.isArray(report.gaps) ? report.gaps : [];
+  const productGaps = Array.isArray(report.product_gaps)
+    ? report.product_gaps
+    : [];
+  const configuredEvidenceGaps = Number.isSafeInteger(
+    report.summary.configured_evidence_gaps,
+  )
+    ? report.summary.configured_evidence_gaps
+    : evidenceGaps.length;
+  const openProductGaps = Number.isSafeInteger(
+    report.summary.open_product_gaps,
+  )
+    ? report.summary.open_product_gaps
+    : productGaps.length;
+
   const lines = [
     marker,
     '# LifeOS commercial readiness',
     '',
-    '> Generated from repository evidence. Documentation claims do not satisfy implementation or test probes.',
+    '> Generated from repository evidence and explicitly registered open product-gap issues. Documentation claims do not satisfy implementation or test probes, and static evidence maturity does not by itself prove whole-product completion.',
     '',
     `- Commit: \`${report.commit_sha}\``,
     `- Evidence timestamp: \`${report.generated_at}\``,
     `- Weighted maturity: **${report.summary.weighted_maturity_percent}%**`,
-    `- Capabilities at target: **${report.summary.at_target}/${report.summary.total_capabilities}**`,
-    `- Unresolved buyer gaps: **${report.summary.unresolved_gaps}**`,
+    `- Capabilities at configured evidence target: **${report.summary.at_target}/${report.summary.total_capabilities}**`,
+    `- Configured evidence gaps: **${configuredEvidenceGaps}**`,
+    `- Open registered product gaps: **${openProductGaps}**`,
+    `- Unresolved buyer outcomes: **${report.summary.unresolved_gaps}**`,
     '',
-    '## Highest-impact buyer gaps',
+    '## Configured capability evidence gaps',
     '',
   ];
 
-  if (report.gaps.length === 0) {
+  if (evidenceGaps.length === 0) {
     lines.push(
-      'No evidence-backed capability gaps remain at the current target levels.',
+      'No configured capability-evidence gaps remain at the current target levels.',
     );
   } else {
-    for (const gap of report.gaps.slice(0, maxGaps)) {
+    for (const gap of evidenceGaps.slice(0, maxGaps)) {
       lines.push(
         `### ${sanitizeUntrustedText(gap.capability_id)} · score ${gap.priority_score}`,
         '',
@@ -69,6 +86,24 @@ export function renderCommercialReadinessIssue(
             .map((path) => `\`${sanitizeUntrustedText(path)}\``)
             .join(', ') || 'none recorded'
         }`,
+        '',
+      );
+    }
+  }
+
+  lines.push('', '## Open registered product gaps', '');
+  if (productGaps.length === 0) {
+    lines.push(
+      'No explicitly registered capability gap is present in the bounded open-issue snapshot.',
+    );
+  } else {
+    for (const gap of productGaps.slice(0, maxGaps)) {
+      lines.push(
+        `### ${sanitizeUntrustedText(gap.capability_id)} · score ${gap.priority_score}`,
+        '',
+        `- Outcome: ${sanitizeUntrustedText(gap.outcome)}`,
+        `- Tracking: ${issueLink(gap.tracking_issue)}`,
+        `- Issue: ${sanitizeUntrustedText(gap.issue_title)}`,
         '',
       );
     }
