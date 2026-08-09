@@ -56,7 +56,7 @@ jobs:
             echo 'Branch moved; refusing repair push.' >&2
             exit 1
           fi
-          changed="$(git diff --name-only)"
+          changed="$(git diff HEAD --name-only)"
           allowed=$'apps/planning-service/src/postgres-today-repository.ts\n.github/workflows/pr127-input-red.yml'
           if [[ "$(printf '%s\n' "${changed}" | sort)" != "$(printf '%s\n' "${allowed}" | sort)" ]]; then
             printf 'Unexpected changed paths:\n%s\n' "${changed}" >&2
