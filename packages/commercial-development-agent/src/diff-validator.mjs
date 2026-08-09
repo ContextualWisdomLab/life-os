@@ -28,6 +28,9 @@ const DEPENDENCY_FILE_NAMES = new Set([
   'Gemfile',
   'Gemfile.lock',
 ]);
+const DEPENDENCY_FILE_NAMES_LOWERCASE = new Set(
+  [...DEPENDENCY_FILE_NAMES].map((name) => name.toLowerCase()),
+);
 const DOCUMENTATION_EXTENSIONS = new Set([
   '.md',
   '.mdx',
@@ -135,8 +138,8 @@ function isAllowedPath(path, policy) {
   ) {
     return false;
   }
-  const basename = pathPosix.basename(path);
-  if (DEPENDENCY_FILE_NAMES.has(basename)) {
+  const basename = pathPosix.basename(path).toLowerCase();
+  if (DEPENDENCY_FILE_NAMES_LOWERCASE.has(basename)) {
     return false;
   }
   return (
