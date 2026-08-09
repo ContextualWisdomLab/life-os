@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { MessageCatalog } from '../localization';
 import type { TodayDraft } from '../today-state';
 import {
@@ -60,6 +60,8 @@ export function TodayWorkspaceSyncPanel({
   const [state, setState] = useState<SyncState>('local');
   const [workspaceDraft, setWorkspaceDraft] = useState<TodayDraft | null>(null);
   const [workspaceRevision, setWorkspaceRevision] = useState<string | null>(null);
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
 
   async function checkWorkspace(): Promise<void> {
     setState('checking');
@@ -97,13 +99,16 @@ export function TodayWorkspaceSyncPanel({
     ) {
       return;
     }
+    const submittedDraft = draft;
     setState('checking');
-    const result = await saveWorkspaceToday(draft, workspaceRevision);
+    const result = await saveWorkspaceToday(submittedDraft, workspaceRevision);
     switch (result.kind) {
       case 'saved':
         setWorkspaceDraft(result.draft);
         setWorkspaceRevision(result.revision);
-        onUseDraft(result.draft);
+        if (currentDraft.current === submittedDraft) {
+          onUseDraft(result.draft);
+        }
         setState('saved');
         return;
       case 'conflict':
