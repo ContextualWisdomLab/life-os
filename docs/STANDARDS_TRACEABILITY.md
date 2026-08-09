@@ -1,7 +1,7 @@
 # LifeOS Standards and Research Traceability
 
 **Status:** Accepted architecture  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 ## 1. Evidence classes
 
