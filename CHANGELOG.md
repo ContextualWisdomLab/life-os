@@ -6,6 +6,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
+- Migration `0006_data_rights_request_ledger.sql` for the service-owned identity ledger, retaining only bounded opaque authority references and digest/status/timestamp evidence rather than exported personal payloads.
 - An hourly and manually dispatchable NVIDIA NIM live-conformance harness that pins contextual-orchestrator to an exact reviewed commit, compares strong single-route reasoning with bounded conducted workflows, and retains only validated credential-free quality, safety, orchestration, usage, and ablation evidence.
 - A versioned, immutable AI proposal quality evaluator that separates production validity, semantic operation conformance, evidence grounding, benign utility, forbidden-text leakage, and prompt-injection resistance across realistic English, Korean, temporal, empty-context, completed-item, and adversarial fixtures.
 - An explicit `contextual-orchestrator` proposal-model mode with bounded OpenAI-compatible transport, strict structured output, model provenance, and an independent local rule-based default.
@@ -23,6 +25,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
 - The OpenCode development loop now prevents project settings from overriding its pinned offline NVIDIA model, records catalog failures accurately, parses the accepted candidate's exact Compose file outside the model account, and requires digest-pinned PostgreSQL queries plus NATS JetStream probes in pull-request CI.
 - Live contextual-orchestrator responses now classify successful empty bodies as evaluation failures, emit exactly one terminal observation, canonicalize retained timestamps safely, and preserve null metric denominators instead of fabricating deltas.
 - Stale AI proposal revision conflicts now belong to the technology-independent audit domain while the PostgreSQL adapter preserves its compatibility export.
@@ -33,6 +36,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- The data-rights request ledger keeps personal export payloads out of durable audit rows and normalizes primary-key/idempotency collisions before dependency errors can escape the service boundary.
 - The commercial-development model account no longer performs Docker commands, never receives Docker-socket authority, and cannot trigger provider-wide model discovery through the credential bridge.
 - The scheduled live-model harness uses only `NVIDIA_NIM_API_KEY`, seeds it through the encrypted contextual-orchestrator credential registry, installs hash-locked dependencies from an exact commit, confines LifeOS traffic to loopback, allowlists NVIDIA NIM egress, and excludes provider credentials, prompts, responses, traces, and hidden reasoning from retained artifacts.
 - Proposal quality reports now discard nested model failures and response bodies, normalize labeled sentinel checks, expose no provider credential or mutation dependency, and measure prompt-injection resistance together with benign utility instead of rewarding blanket refusal.
