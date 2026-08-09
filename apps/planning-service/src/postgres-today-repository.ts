@@ -126,7 +126,12 @@ function requireAction(value: unknown): DurableTodayAction {
   if (row.status !== 'open' && row.status !== 'done') {
     return invalidPersistence();
   }
-  if (row.priority !== null && row.priority !== 1 && row.priority !== 2 && row.priority !== 3) {
+  if (
+    row.priority !== null &&
+    row.priority !== 1 &&
+    row.priority !== 2 &&
+    row.priority !== 3
+  ) {
     return invalidPersistence();
   }
   const startMinute = row.startMinute;
@@ -293,7 +298,7 @@ export class PostgresTodayRepository implements TodayRepository {
     const result = await this.client.query<TodayAggregateRow>(
       `SELECT workspace_id, local_date, aggregate_id, revision_token, payload_json
        FROM planning.today_aggregates
-       WHERE workspace_id = $1 AND local_date = $2
+       WHERE workspace_id = $1::uuid AND local_date = $2::date
        LIMIT 2`,
       [workspaceId, date],
     );
@@ -322,23 +327,23 @@ export class PostgresTodayRepository implements TodayRepository {
        existing_replay AS MATERIALIZED (
          SELECT request_digest, result_kind, aggregate_id, revision_token, payload_json
          FROM planning.today_idempotency_records, idempotency_lock
-         WHERE workspace_id = $1 AND idempotency_key = $3
+         WHERE workspace_id = $1::uuid AND idempotency_key = $3::uuid
        ),
        current_aggregate AS MATERIALIZED (
          SELECT aggregate_id, revision_token
          FROM planning.today_aggregates, idempotency_lock
-         WHERE workspace_id = $1 AND local_date = $2
+         WHERE workspace_id = $1::uuid AND local_date = $2::date
        ),
        updated AS (
          UPDATE planning.today_aggregates
          SET revision_number = revision_number + 1,
-             revision_token = $6,
+             revision_token = $6::uuid,
              payload_json = $7::jsonb,
              updated_at = clock_timestamp()
-         WHERE workspace_id = $1
-           AND local_date = $2
-           AND $8 = 'match'
-           AND revision_token = $9
+         WHERE workspace_id = $1::uuid
+           AND local_date = $2::date
+           AND $8::text = 'match'
+           AND revision_token = $9::uuid
            AND NOT EXISTS (SELECT 1 FROM existing_replay)
          RETURNING 'updated'::text AS result_kind,
                    aggregate_id, revision_token, payload_json
@@ -347,10 +352,10 @@ export class PostgresTodayRepository implements TodayRepository {
          INSERT INTO planning.today_aggregates
            (workspace_id, local_date, aggregate_id, revision_number,
             revision_token, payload_json, created_at, updated_at)
-         SELECT $1, $2, $5, 1, $6, $7::jsonb,
+         SELECT $1::uuid, $2::date, $5::uuid, 1, $6::uuid, $7::jsonb,
                 clock_timestamp(), clock_timestamp()
          FROM idempotency_lock
-         WHERE $8 = 'absent'
+         WHERE $8::text = 'absent'
            AND NOT EXISTS (SELECT 1 FROM existing_replay)
            AND NOT EXISTS (SELECT 1 FROM current_aggregate)
          ON CONFLICT (workspace_id, local_date) DO NOTHING
@@ -366,7 +371,7 @@ export class PostgresTodayRepository implements TodayRepository {
          INSERT INTO planning.today_idempotency_records
            (workspace_id, idempotency_key, request_digest, result_kind,
             aggregate_id, revision_token, payload_json, created_at)
-         SELECT $1, $3, $4, result_kind,
+         SELECT $1::uuid, $3::uuid, $4, result_kind,
                 aggregate_id, revision_token, payload_json, clock_timestamp()
          FROM mutation
          ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
@@ -407,7 +412,10 @@ export class PostgresTodayRepository implements TodayRepository {
     );
     const row = exactlyOne(result);
     const requestDigest = requireDigest(row.request_digest);
-    if (row.outcome === 'idempotency_conflict' || requestDigest !== command.requestDigest) {
+    if (
+      row.outcome === 'idempotency_conflict' ||
+      requestDigest !== command.requestDigest
+    ) {
       throw new TodayIdempotencyConflictError();
     }
     if (row.outcome === 'revision_conflict') {
