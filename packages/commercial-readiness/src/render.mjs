@@ -55,7 +55,10 @@ function renderCanonicalBuyerGaps(lines, report, maxGaps) {
     ? report.buyer_gap_unknown
     : [];
   if (unresolved.length === 0 && unknown.length === 0) {
-    lines.push('No registered canonical buyer gaps remain open or unknown.', '');
+    lines.push(
+      'No registered canonical buyer gaps remain open or unknown.',
+      '',
+    );
     return;
   }
   for (const gap of unresolved.slice(0, maxGaps)) {
