@@ -32,14 +32,19 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).toContain('timeout-minutes: 120');
   });
 
-  it('keeps runner-scoped expressions out of workflow-level environment', () => {
-    const jobsMarker = '\njobs:\n';
-    const jobsStart = workflow.indexOf(jobsMarker);
+  it('initializes runner temp only after the runner starts', () => {
+    const jobsStart = workflow.indexOf('\njobs:\n');
+    const stepsStart = workflow.indexOf('\n    steps:\n', jobsStart);
     expect(jobsStart).toBeGreaterThanOrEqual(0);
-    const workflowLevel = workflow.slice(0, jobsStart);
-    expect(workflowLevel).not.toContain('${{ runner.');
-    expect(workflow).toContain(
-      '      RECEIPT_DIR: ${{ runner.temp }}/commercial-development',
+    expect(stepsStart).toBeGreaterThan(jobsStart);
+    expect(workflow.slice(0, stepsStart)).not.toContain('${{ runner.');
+
+    const evidence = step('Prepare private evidence directory');
+    expect(evidence).toContain(
+      'receipt_dir="$RUNNER_TEMP/commercial-development"',
+    );
+    expect(evidence).toContain(
+      'echo "RECEIPT_DIR=$receipt_dir" >> "$GITHUB_ENV"',
     );
   });
 
