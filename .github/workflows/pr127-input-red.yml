@@ -45,12 +45,14 @@ jobs:
           git rm -- .github/workflows/pr127-input-red.yml
           git diff --check
       - name: Commit exact bounded repair if branch did not move
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin refs/heads/feat/durable-today-sync:refs/remotes/origin/feat/durable-today-sync
           remote_head="$(git rev-parse refs/remotes/origin/feat/durable-today-sync)"
-          if [[ "${remote_head}" != "${GITHUB_SHA}" ]]; then
+          if [[ "${remote_head}" != "${EXPECTED_HEAD}" ]]; then
             echo 'Branch moved; refusing repair push.' >&2
             exit 1
           fi
