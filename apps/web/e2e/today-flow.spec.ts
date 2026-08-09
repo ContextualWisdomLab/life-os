@@ -12,7 +12,9 @@ test.beforeEach(async ({ page }) => {
 test('captures, commits, schedules, persists, and completes an action', async ({
   page,
 }) => {
-  await page.getByLabel('What needs your attention?').fill('Review the release evidence');
+  await page
+    .getByLabel('Capture locally for Today')
+    .fill('Review the release evidence');
   await page.getByRole('button', { name: 'Capture' }).click();
 
   const backlog = page.getByRole('region', { name: 'Backlog' });
@@ -20,7 +22,9 @@ test('captures, commits, schedules, persists, and completes an action', async ({
   await backlog.getByRole('button', { name: 'Make priority' }).click();
 
   await page.getByLabel('Start time for Review the release evidence').fill('09:00');
-  await page.getByLabel('Duration for Review the release evidence').selectOption('60');
+  await page
+    .getByLabel('Duration for Review the release evidence')
+    .selectOption('60');
   await expect(page.getByText('09:00–10:00')).toBeVisible();
 
   await page.reload();
@@ -33,8 +37,13 @@ test('captures, commits, schedules, persists, and completes an action', async ({
 });
 
 test('enforces the visible three-priority capacity', async ({ page }) => {
-  for (const title of ['First priority', 'Second priority', 'Third priority', 'Fourth action']) {
-    await page.getByLabel('What needs your attention?').fill(title);
+  for (const title of [
+    'First priority',
+    'Second priority',
+    'Third priority',
+    'Fourth action',
+  ]) {
+    await page.getByLabel('Capture locally for Today').fill(title);
     await page.getByRole('button', { name: 'Capture' }).click();
   }
 
@@ -45,7 +54,9 @@ test('enforces the visible three-priority capacity', async ({ page }) => {
   await buttons.nth(0).click();
 
   await expect(page.getByText('3 / 3')).toBeVisible();
-  await expect(backlog.getByRole('button', { name: 'Make priority' })).toBeDisabled();
+  await expect(
+    backlog.getByRole('button', { name: 'Make priority' }),
+  ).toBeDisabled();
 });
 
 test('keeps a local Today private until the user explicitly migrates it', async ({
@@ -100,7 +111,9 @@ test('keeps a local Today private until the user explicitly migrates it', async 
   await expect(page.getByText('This Today is browser-local only.')).toBeVisible();
   expect(requestCount).toBe(0);
 
-  await page.getByLabel('What needs your attention?').fill('Keep this local first');
+  await page
+    .getByLabel('Capture locally for Today')
+    .fill('Keep this local first');
   await page.getByRole('button', { name: 'Capture' }).click();
   await expect(page.getByText('Keep this local first')).toBeVisible();
   expect(requestCount).toBe(0);
@@ -113,7 +126,9 @@ test('keeps a local Today private until the user explicitly migrates it', async 
   ).toBeVisible();
   expect(requestCount).toBe(1);
 
-  await page.getByRole('button', { name: 'Move local draft to workspace' }).click();
+  await page
+    .getByRole('button', { name: 'Move local draft to workspace' })
+    .click();
   await expect(
     page.getByText(
       'The current local Today is saved durably. Later local edits still require another explicit save.',
@@ -189,10 +204,14 @@ test('keeps the local draft after a failed save and retries only after another e
   });
 
   await page.reload();
-  await page.getByLabel('What needs your attention?').fill('Survive a workspace outage');
+  await page
+    .getByLabel('Capture locally for Today')
+    .fill('Survive a workspace outage');
   await page.getByRole('button', { name: 'Capture' }).click();
   await page.getByRole('button', { name: 'Check workspace Today' }).click();
-  await page.getByRole('button', { name: 'Move local draft to workspace' }).click();
+  await page
+    .getByRole('button', { name: 'Move local draft to workspace' })
+    .click();
 
   await expect(
     page.getByText(
@@ -207,7 +226,9 @@ test('keeps the local draft after a failed save and retries only after another e
   ).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Check workspace Today' }).click();
-  await page.getByRole('button', { name: 'Move local draft to workspace' }).click();
+  await page
+    .getByRole('button', { name: 'Move local draft to workspace' })
+    .click();
 
   await expect(
     page.getByText(
@@ -280,7 +301,9 @@ test('surfaces a stale-device conflict and requires an explicit recheck before u
   });
 
   await page.reload();
-  await page.getByLabel('What needs your attention?').fill('Local conflicting edit');
+  await page
+    .getByLabel('Capture locally for Today')
+    .fill('Local conflicting edit');
   await page.getByRole('button', { name: 'Capture' }).click();
   await expect(page.getByText('Local conflicting edit')).toBeVisible();
 
@@ -303,7 +326,9 @@ test('surfaces a stale-device conflict and requires an explicit recheck before u
   expect(putCount).toBe(1);
 
   await page.getByRole('button', { name: 'Check workspace Today' }).click();
-  await page.getByRole('button', { name: 'Use workspace Today in this browser' }).click();
+  await page
+    .getByRole('button', { name: 'Use workspace Today in this browser' })
+    .click();
   await expect(page.getByText('Newer device copy')).toBeVisible();
   await expect(page.getByText('Local conflicting edit')).toHaveCount(0);
   expect(getCount).toBe(2);
@@ -311,7 +336,9 @@ test('surfaces a stale-device conflict and requires an explicit recheck before u
 
 test('keeps core controls usable at a mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('heading', { name: 'Make today believable.' })).toBeVisible();
-  await expect(page.getByLabel('What needs your attention?')).toBeEditable();
+  await expect(
+    page.getByRole('heading', { name: 'Make today believable.' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Capture locally for Today')).toBeEditable();
   await expect(page.getByRole('button', { name: 'Capture' })).toBeVisible();
 });
