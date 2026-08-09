@@ -1,0 +1,55 @@
+name: PR127 One-Shot Formatter
+
+on:
+  push:
+    branches:
+      - feat/durable-today-sync
+    paths:
+      - .github/workflows/pr127-one-shot-format.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr127-one-shot-format
+  cancel-in-progress: false
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact formatter trigger
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/durable-today-sync
+          fetch-depth: 1
+          persist-credentials: true
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply canonical web formatting
+        run: >-
+          pnpm --filter @life-os/web exec prettier --single-quote --write
+          package.json "messages/*.json" "app/**/*.{ts,tsx,css,json}"
+          "e2e/**/*.{ts,tsx}"
+      - name: Remove one-shot formatter and verify
+        run: |
+          rm .github/workflows/pr127-one-shot-format.yml
+          pnpm --filter @life-os/web lint
+          git diff --check
+      - name: Commit bounded formatter result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web .github/workflows/pr127-one-shot-format.yml
+          if git diff --cached --quiet; then
+            exit 1
+          fi
+          git commit -m "style(web): apply canonical formatter output"
+          git push origin HEAD:feat/durable-today-sync
