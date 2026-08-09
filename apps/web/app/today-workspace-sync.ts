@@ -57,7 +57,9 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   ) {
     throw new Error('response too large');
   }
-  const contentType = response.headers.get('content-type')?.split(';', 1)[0];
+  const contentType = response.headers
+    .get('content-type')
+    ?.split(';', 1)[0];
   if (
     contentType !== 'application/json' &&
     contentType !== 'application/problem+json'
@@ -130,7 +132,9 @@ async function parseConflict(
   response: Response,
 ): Promise<string | null | undefined> {
   const value = await readBoundedJson(response);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
   const record = value as Record<string, unknown>;
   if (
     record.type !== 'about:blank' ||
