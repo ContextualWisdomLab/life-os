@@ -55,7 +55,7 @@ describe('OpenCode commercial development workflow contract', () => {
 
     expect(evidence).toContain('set -Eeuo pipefail');
     expect(evidence.match(/--paginate/gu)).toHaveLength(2);
-    expect(evidence.match(/\| jq -s '\\.'/gu)).toHaveLength(2);
+    expect(evidence.match(/\| jq -s '\.'/gu)).toHaveLength(2);
     expect(evidence).not.toContain("--jq '[.[]");
     expect(evidence).toContain('> "$RECEIPT_DIR/issues.json"');
     expect(evidence).toContain('> "$RECEIPT_DIR/pulls.json"');
