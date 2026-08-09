@@ -275,7 +275,7 @@ export class PostgresDataRightsRequestLedger {
          request_status,
          requested_at
        ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, 'pending', $7::timestamptz)
-       ON CONFLICT (workspace_id, idempotency_key) DO NOTHING
+       ON CONFLICT DO NOTHING
        RETURNING request_id, workspace_id, requested_by_user_id, request_kind,
                  idempotency_key, request_digest, request_status, receipt_digest,
                  requested_at, completed_at`,
@@ -301,10 +301,14 @@ export class PostgresDataRightsRequestLedger {
               idempotency_key, request_digest, request_status, receipt_digest,
               requested_at, completed_at
        FROM identity.data_rights_requests
-       WHERE workspace_id = $1::uuid AND idempotency_key = $2::uuid
+       WHERE (workspace_id = $1::uuid AND idempotency_key = $2::uuid)
+          OR request_id = $3::uuid
        LIMIT 2`,
-      [safe.workspaceId, safe.idempotencyKey],
+      [safe.workspaceId, safe.idempotencyKey, safe.requestId],
     );
+    if (existing.rows.length > 1) {
+      throw new DataRightsRequestConflictError();
+    }
     const existingRow = oneOrUndefined(existing.rows);
     if (!existingRow) {
       return invalidPersistence();
