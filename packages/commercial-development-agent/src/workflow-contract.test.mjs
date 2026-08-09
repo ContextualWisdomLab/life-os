@@ -1,22 +1,58 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const WORKFLOW_PATH = resolve(
   import.meta.dirname,
   '../../../.github/workflows/opencode-commercial-development.yml',
 );
+const CI_WORKFLOW_PATH = resolve(
+  import.meta.dirname,
+  '../../../.github/workflows/ci.yml',
+);
+const COMPOSE_PATH = resolve(import.meta.dirname, '../../../compose.yaml');
 const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
 const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
+const ciWorkflow = readFileSync(CI_WORKFLOW_PATH, 'utf8');
+const compose = readFileSync(COMPOSE_PATH, 'utf8');
 const packageJson = JSON.parse(readFileSync(PACKAGE_PATH, 'utf8'));
+const linuxX64Test =
+  process.platform === 'linux' && process.arch === 'x64' ? it : it.skip;
 
 /** Returns one named workflow step including its body but not the next step. */
-function step(name) {
+function namedStep(source, name) {
   const marker = `      - name: ${name}\n`;
-  const start = workflow.indexOf(marker);
+  const start = source.indexOf(marker);
   expect(start).toBeGreaterThanOrEqual(0);
-  const next = workflow.indexOf('\n      - name: ', start + marker.length);
-  return workflow.slice(start, next === -1 ? workflow.length : next);
+  const next = source.indexOf('\n      - name: ', start + marker.length);
+  return source.slice(start, next === -1 ? source.length : next);
+}
+
+/** Returns one named OpenCode workflow step. */
+function step(name) {
+  return namedStep(workflow, name);
+}
+
+/** Returns one top-level CI job including its body but not the next job. */
+function ciJob(name) {
+  const marker = `  ${name}:\n`;
+  const start = ciWorkflow.indexOf(marker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const remainder = ciWorkflow.slice(start + marker.length);
+  const next = remainder.search(/^  [a-z][a-z0-9_]*:\n/mu);
+  return ciWorkflow.slice(
+    start,
+    next === -1 ? ciWorkflow.length : start + marker.length + next,
+  );
 }
 
 describe('OpenCode commercial development workflow contract', () => {
@@ -139,6 +175,103 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(model).not.toContain('GH_TOKEN');
   });
 
+  it('uses one offline explicit NVIDIA model catalog instead of provider model discovery', () => {
+    const workspace = step('Prepare disposable model workspace');
+    expect(workspace).toContain("'enabled_providers': ['nvidia']");
+    expect(workspace).toContain("'model': model_label");
+    expect(workspace).toContain("'small_model': model_label");
+    expect(workspace).toContain("'whitelist': [model_id]");
+    expect(workspace).toContain("'models': {model_id: {'name': model_id}}");
+    expect(workspace).toContain("model_workspace_path / 'AGENTS.md'");
+    expect(workspace).toContain("model_workspace_path / 'CLAUDE.md'");
+    expect(workspace).toContain("'instructions': instruction_paths");
+    expect(workspace).toContain("model_label.partition('/')");
+    expect(workspace).toContain("provider_id != 'nvidia'");
+
+    const catalog = step('Validate the explicit OpenCode model catalog');
+    expect(catalog).toContain('sudo -u opencode_model env -i');
+    expect(catalog).toContain('OPENCODE_DISABLE_MODELS_FETCH=true');
+    expect(catalog).toContain('OPENCODE_DISABLE_PROJECT_CONFIG=true');
+    expect(catalog).toContain('opencode models nvidia');
+    expect(catalog).toContain('test "$catalog" = "$2"');
+    expect(catalog).not.toContain('NVIDIA_NIM_API_KEY');
+    expect(catalog).not.toContain('/v1/models');
+
+    const model = step('Run one bounded OpenCode implementation');
+    expect(model).toContain('OPENCODE_DISABLE_MODELS_FETCH=true');
+    expect(model).toContain('OPENCODE_DISABLE_PROJECT_CONFIG=true');
+  });
+
+  linuxX64Test(
+    'registers a NVIDIA model absent from the bundled OpenCode catalog without discovery',
+    () => {
+      const temporaryRoot = mkdtempSync(
+        join(tmpdir(), 'life-os-opencode-catalog-'),
+      );
+      try {
+        const modelId = 'cwl/contract-probe-model-v1';
+        const modelLabel = `nvidia/${modelId}`;
+        const loopbackProbeValue = modelLabel;
+        expect(loopbackProbeValue).not.toHaveLength(0);
+        const opencodePackage = realpathSync(
+          resolve(import.meta.dirname, '../node_modules/opencode-ai'),
+        );
+        const executable = resolve(
+          dirname(opencodePackage),
+          'opencode-linux-x64/bin/opencode',
+        );
+        const directories = Object.fromEntries(
+          ['home', 'cache', 'config', 'data', 'state'].map((name) => {
+            const path = resolve(temporaryRoot, name);
+            mkdirSync(path, { mode: 0o700 });
+            return [name, path];
+          }),
+        );
+        const config = JSON.stringify({
+          enabled_providers: ['nvidia'],
+          model: modelLabel,
+          small_model: modelLabel,
+          provider: {
+            nvidia: {
+              whitelist: [modelId],
+              models: { [modelId]: { name: modelId } },
+              options: {
+                baseURL: 'http://127.0.0.1:8765/v1',
+                apiKey: loopbackProbeValue,
+              },
+            },
+          },
+        });
+        const configPath = resolve(directories.home, 'opencode.json');
+        writeFileSync(configPath, config, { mode: 0o600 });
+
+        const result = spawnSync(executable, ['models', 'nvidia'], {
+          cwd: resolve(import.meta.dirname, '../../..'),
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: {
+            HOME: directories.home,
+            PATH: process.env.PATH ?? '/usr/bin:/bin',
+            XDG_CACHE_HOME: directories.cache,
+            XDG_CONFIG_HOME: directories.config,
+            XDG_DATA_HOME: directories.data,
+            XDG_STATE_HOME: directories.state,
+            OPENCODE_CONFIG: configPath,
+            OPENCODE_DISABLE_AUTOUPDATE: 'true',
+            OPENCODE_DISABLE_MODELS_FETCH: 'true',
+            OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
+            NVIDIA_API_KEY: loopbackProbeValue,
+          },
+        });
+
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout.trim()).toBe(modelLabel);
+      } finally {
+        rmSync(temporaryRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('isolates model writes from git, trusted policy, and trusted verifier authority', () => {
     const workspace = step('Prepare disposable model workspace');
     expect(workspace).toContain('MODEL_WORKSPACE');
@@ -229,6 +362,54 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(verification).not.toContain('NVIDIA_API_KEY');
     expect(verification).not.toContain('GH_TOKEN');
     expect(verification).not.toContain('GITHUB_TOKEN');
+    expect(verification).not.toContain('docker compose');
+
+    const compose = step(
+      'Validate Compose configuration through trusted boundary',
+    );
+    expect(compose).toContain('docker compose');
+    expect(compose).toContain('--file "$MODEL_WORKSPACE/compose.yaml"');
+    expect(compose).toContain('--project-directory "$MODEL_WORKSPACE"');
+    expect(compose).toContain('config --quiet');
+    expect(compose).not.toContain('sudo -u opencode_model');
+    expect(compose).not.toContain('${{ secrets.');
+  });
+
+  it('boots and probes Compose services in credential-free pull-request CI', () => {
+    const runtimeJob = ciJob('compose_runtime');
+    const validateJob = ciJob('validate');
+    expect(validateJob).toContain('needs: compose_runtime');
+    expect(runtimeJob).not.toContain('secrets.');
+    expect(runtimeJob).not.toContain('GH_TOKEN');
+    expect(runtimeJob).not.toContain('GITHUB_TOKEN');
+    expect(runtimeJob).not.toMatch(/permissions:\s*\n\s+[^\n]+:\s*write/u);
+
+    const runtime = namedStep(
+      runtimeJob,
+      'Start and probe Compose infrastructure',
+    );
+    expect(runtime).toContain(
+      'docker compose up --detach --wait --wait-timeout 90',
+    );
+    expect(runtime).toContain(
+      "docker compose exec --no-TTY postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1'",
+    );
+    expect(runtime).toContain('http://127.0.0.1:8222/jsz');
+    expect(runtime).toContain('jq -e \'(.streams | type) == "number"');
+    expect(runtime).toContain(
+      'docker compose logs --no-color --timestamps --tail 200 postgres nats',
+    );
+    expect(runtime).toContain('docker compose down --volumes --remove-orphans');
+    expect(compose).toMatch(
+      /image: postgres:17\.10-alpine@sha256:[a-f0-9]{64}/u,
+    );
+    expect(compose).toMatch(/image: nats:2\.11\.6-alpine@sha256:[a-f0-9]{64}/u);
+    expect(compose).toContain("'127.0.0.1:5432:5432'");
+    expect(compose).toContain("'127.0.0.1:4222:4222'");
+    expect(compose).toContain("'127.0.0.1:8222:8222'");
+    expect(compose).not.toContain("- '5432:5432'");
+    expect(compose).not.toContain("- '4222:4222'");
+    expect(compose).not.toContain("- '8222:8222'");
   });
 
   it('materializes and stages only the accepted evidence projection', () => {
@@ -321,10 +502,22 @@ describe('OpenCode commercial development workflow contract', () => {
     const receipt = step('Compose credential-free development receipt');
 
     expect(receipt).toContain(
-      `{'name': 'credential_bridge', 'status': 'skipped' if not selected else 'passed' if bridge_reason == 'completed' else 'failed'}`,
+      'MODEL_CATALOG_OUTCOME: ${{ steps.model_catalog.outcome }}',
     );
     expect(receipt).toContain(
-      `{'name': 'provider_run', 'status': 'skipped' if not selected or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'}`,
+      `{'name': 'model_catalog', 'status': 'skipped' if not selected or open_prs != '0' else 'passed' if model_catalog_outcome == 'success' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'credential_bridge', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if bridge_reason == 'completed' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      "status, reason = 'failed', 'invalid_configuration'",
     );
   });
 

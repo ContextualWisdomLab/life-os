@@ -113,6 +113,8 @@ Pull requests follow one loop: inspect every review and check, fix root causes, 
 
 Scheduled model-assisted automation uses `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited. Existing dedicated review-agent credentials are not repurposed. Deterministic audit and merge eligibility remain independently enforceable even when a model provider is unavailable.
 
+The pinned OpenCode configuration disables project-local overrides, explicitly reloads reviewed repository instructions, enables only NVIDIA, registers and whitelists one model label independently of the bundled catalog, pins primary and small-model work to it, and checks that effective catalog offline before its credential bridge starts; the bridge exposes no provider-wide discovery route. Model-generated source verification runs without Docker authority. A later trusted operation parses the accepted candidate's explicitly selected Compose file, while credential-free pull-request CI starts digest-pinned images, proves PostgreSQL query execution and NATS JetStream availability, binds published ports to loopback, and tears down unconditionally.
+
 ## 6. Documentation hierarchy
 
 1. `AGENTS.md` — repository-wide agent and merge rules.

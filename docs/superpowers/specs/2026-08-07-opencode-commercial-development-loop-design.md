@@ -135,7 +135,7 @@ Initial hard limits:
 
 ## OpenCode provider boundary
 
-The workflow installs one exact OpenCode package version recorded in `pnpm-lock.yaml` and verifies `opencode --version` before use. It does not use an unpinned installer script, mutable action tag, or floating package version.
+The workflow installs one exact OpenCode package version recorded in `pnpm-lock.yaml` and verifies `opencode --version` before use. It does not use an unpinned installer script, mutable action tag, or floating package version. Project-local configuration discovery is disabled, reviewed workspace instructions are loaded explicitly, and the private provider configuration enables only NVIDIA, registers the selected identifier in `provider.nvidia.models`, pins primary and small-model work to that label, whitelists exactly that model, disables catalog refresh, and requires `opencode models nvidia` to return the one fully qualified label before any provider credential bridge starts. Explicit registration removes dependence on the binary's bundled Models.dev snapshot. The bridge therefore needs no `/v1/models` route; the subsequent bounded completion request remains the live provider/model availability check. Catalog failure is classified as `invalid_configuration`, not provider failure.
 
 A loopback NVIDIA credential bridge runs as `opencode_bridge` and alone receives `secrets.NVIDIA_NIM_API_KEY`. It forwards bounded chat-completion requests to NVIDIA NIM.
 
@@ -150,6 +150,8 @@ The OpenCode process runs as `opencode_model` and receives:
 UID-based `iptables` rules deny other model-process egress during model execution, allowing only the configured IPv4 loopback bridge port and denying IPv6. The bridge is terminated before repository verification.
 
 The process does not receive `GITHUB_TOKEN`, `GH_TOKEN`, `COPILOT_GITHUB_TOKEN`, browser credentials, review-agent secrets, deployment credentials, or unrelated repository secrets. Provider absence or outage produces `provider_unavailable`; it does not make the deterministic audit or merge drain fail.
+
+Repository format, lint, typecheck, test, and build commands run as `opencode_model` without Docker-socket authority. After those commands pass, a separate trusted step selects the already diff-accepted candidate's exact Compose file with `--file`, sets its path-resolution base with `--project-directory`, and runs `docker compose config --quiet`. The model user is never added to the Docker group. Normal pull-request CI separately starts digest-pinned PostgreSQL and NATS Compose services with `docker compose up --wait`, proves PostgreSQL query execution with `SELECT 1`, validates the NATS JetStream `/jsz` response, emits bounded diagnostics on failure, and always removes containers and volumes. Published development ports bind only to loopback (Docker, Inc., 2026a, 2026b, 2026c).
 
 ## Test-time compute policy
 
@@ -246,7 +248,9 @@ Deterministic tests cover:
 - workflow, branch-protection, release, deployment, and destructive-operation attempts;
 - a realistic buyer-gap fixture that produces a bounded application/test/documentation diff;
 - provider missing/outage behavior;
+- exact offline NVIDIA catalog selection without provider-side model discovery;
 - exact package/action pins and workflow permission separation;
+- Compose parsing outside the isolated model account plus credential-free runtime health probes;
 - draft-only pull-request creation;
 - credential-free receipt serialization;
 - route-versus-orchestration ablation arithmetic without live-provider dependence.
@@ -275,6 +279,12 @@ Fugu reports dynamic selection between direct and coordinated expert solutions (
 ## References
 
 Anomaly. (2026). _OpenCode documentation_. https://opencode.ai/docs/
+
+Docker, Inc. (2026a). _docker compose_. https://docs.docker.com/reference/cli/docker/compose/
+
+Docker, Inc. (2026b). _docker compose config_. https://docs.docker.com/reference/cli/docker/compose/config/
+
+Docker, Inc. (2026c). _docker compose up_. https://docs.docker.com/reference/cli/docker/compose/up/
 
 GitHub. (2026a). _Security hardening for GitHub Actions_. https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
 
