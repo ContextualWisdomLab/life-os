@@ -1,13 +1,29 @@
 # ADR 0002: OAuth transactions and session tokens
 
-- **Status:** Accepted
-- **Date:** 2026-08-03
+**Status:** Implemented on protected main  
+**Date:** 2026-08-03  
+**Identity note:** This historical ADR already used number `0002` before the canonical documentation baseline introduced `0002-internal-identifiers-uuidv4.md`. The repository therefore treats the full ADR filename, not the four-digit prefix alone, as the stable index identity for pre-baseline collisions.
 
 ## Context
 
 LifeOS accepts Google and GitHub sign-in while maintaining provider-neutral internal identity records. Authorization callbacks must resist cross-site request forgery, authorization-code injection, authorization-server mix-up, replay, redirect substitution, and bearer-token disclosure. Internal identifiers must remain opaque, non-numeric, and non-sequential.
 
 The repository already contained provider authorization and token-exchange builders. This decision hardens the shared `auth-security` transaction and session layer rather than introducing a second implementation.
+
+## Drivers
+
+- prevent authorization response injection, replay, redirect substitution, and authorization-server mix-up;
+- keep bearer/session credentials out of durable plaintext storage and public diagnostics;
+- retain provider-neutral internal identity and workspace authority;
+- make browser sessions revocable and safely rotatable;
+- preserve exact callback and PKCE/OIDC transaction binding with bounded lifetime.
+
+## Alternatives
+
+1. Trust provider callbacks without a durable one-time transaction record.
+2. Persist raw `state`, session bearer tokens, PKCE verifiers, or provider tokens as ordinary application values.
+3. Share one ambiguous callback/issuer path for every provider without explicit provider binding.
+4. Keep the provider adapters but centralize the transaction/session primitives in the identity boundary, as selected here.
 
 ## Decision
 
@@ -48,3 +64,23 @@ The repository already contained provider authorization and token-exchange build
 - Existing callers must supply the initiating browser-session identifier and the exact redirect URI when creating and consuming transactions.
 - Existing sessions are backfilled to their owners' personal workspaces by migration `0003_oauth_binding_and_session_rotation.sql`.
 - Provider callback adapters remain responsible for network exchange, provider response validation, ID-token validation for Google, and profile retrieval; this ADR supplies the transaction and session primitives they must use.
+
+## Failure and recovery
+
+Malformed, expired, replayed, provider-mismatched, browser-session-mismatched, or redirect-mismatched authorization transactions fail closed before token exchange or identity mutation. A failed session rotation does not make a new bearer token authoritative until its replacement session has been persisted under the identity-service transaction boundary. Provider/network failures remain sanitized dependency failures rather than exposing token responses.
+
+## Security and privacy impact
+
+Only digests of one-time `state` and session bearer values are durable. Provider credentials, PKCE verifier material, OIDC nonces, and browser session tokens stay within their reviewed identity/provider boundary. Opaque identifiers do not replace workspace authorization, and a valid provider identity never grants access to an unrelated LifeOS workspace.
+
+## Acceptance evidence
+
+Protected main contains the identity-service transaction/session implementation, OAuth callback/provider integration tests, UUIDv4/session ownership migrations, replay/expiry/redirect/provider-binding regressions, and credential-safe browser-session handling. Exact source and migration evidence remains authoritative over this prose.
+
+## Migration / rollback
+
+Migration `0003_oauth_binding_and_session_rotation.sql` backfilled existing sessions to their owners' personal workspaces and established the rotation/ownership constraints used by the implemented boundary. Future changes to token storage, authentication-age semantics, provider binding, or credential encryption require forward-compatible migration evidence and must not silently reinterpret existing session provenance.
+
+## Supersession
+
+This decision remains implemented on protected main. It is superseded only by a later indexed ADR that preserves or explicitly migrates the transaction anti-replay, PKCE/OIDC, provider-binding, credential-storage, workspace-authority, and session-rotation security properties. The duplicated historical `0002` numeric prefix is not itself a reason to discard or rewrite this ADR's decision history; canonical indexing uses the full filename for identity.
