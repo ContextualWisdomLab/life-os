@@ -6,9 +6,9 @@ LifeOS connects everyday action to longer-term direction. It is designed as a mu
 
 ## Status
 
-LifeOS is in active foundation development. The current protected `main` contains the monorepo, gateway, bounded services, responsive web/PWA, PostgreSQL persistence, NATS JetStream configuration, Google/GitHub authentication, durable planning/habit/review/notification foundations, conflict-safe calendar adapters, auditable AI proposals, purpose-bound privacy access, data-rights recent-auth/request-ledger foundations, backup/restore and commercial-readiness evidence. Interfaces and migrations may still change before the first stable release.
+LifeOS is in active foundation development. The current protected `main` contains the monorepo, gateway, bounded services, responsive web/PWA, PostgreSQL persistence, NATS JetStream configuration, Google/GitHub authentication, durable planning/habit/review/notification foundations, durable Today multi-device synchronization with optimistic concurrency, conflict-safe calendar adapters, auditable AI proposals, purpose-bound privacy access, data-rights recent-auth/request-ledger foundations, backup/restore and commercial-readiness evidence. Interfaces and migrations may still change before the first stable release.
 
-Configured capability maturity is not whole-product completion. Canonical open buyer gaps are tracked independently in the commercial-readiness evidence and include complete data-rights orchestration, durable Today multi-device synchronization, hosted per-user calendar credentials and the plugin runtime last mile.
+Configured capability maturity is not whole-product completion. The current commercial-readiness evidence at `f4cae6d...` reports 22/22 configured capability maturity and three unresolved canonical buyer gaps: complete data-rights orchestration (#55), hosted per-user calendar credentials (#129), and the plugin runtime last mile (#130). The durable Today gap #121 closed completed when PR #127 merged.
 
 ## Architecture
 
@@ -72,6 +72,10 @@ Default endpoints and exact environment contracts are code/runbook controlled an
 Google and GitHub OAuth are the required login providers. Provider credentials are supplied through runtime secret configuration and must never be committed. Deployment operators are responsible for provider registration, redirect URI policy, secret rotation and production access controls.
 
 LifeOS preserves the authentication ceremony time separately from session issuance/rotation. Sensitive recent-authentication policy therefore cannot be satisfied merely by rotating a session token.
+
+## Durable Today synchronization
+
+Protected main includes a planning-owned versioned Today aggregate scoped to authenticated workspace and local date. Users explicitly move local Today state into durable workspace storage; there is no automatic background migration. Updates use strong preconditions, opaque revisions and idempotency semantics, with deterministic PostgreSQL locking and bounded stale-write conflict evidence. Browser acceptance covers cross-device reload, conflict/recheck and preservation of local edits made while a save is in flight.
 
 ## Calendar synchronization
 
