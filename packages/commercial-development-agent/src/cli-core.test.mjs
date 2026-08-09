@@ -216,7 +216,7 @@ describe('commercial development CLI core', () => {
       '--output',
       POLICY_PATH,
     ],
-  ])('rejects invalid CLI arguments %#', async (argv) => {
+  ])('rejects invalid CLI arguments %#', async (...argv) => {
     await expect(runCommercialDevelopmentCli(argv)).rejects.toBeInstanceOf(
       CommercialDevelopmentCliError,
     );
