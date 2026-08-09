@@ -55,11 +55,15 @@ jobs:
             --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --output "$EVIDENCE_DIR/github-snapshot.json"
 
-      - name: Audit product capabilities and buyer gaps
+      - name: Audit capability maturity and canonical buyer gaps
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          node packages/commercial-readiness/src/cli.mjs audit \
+          node packages/commercial-readiness/src/buyer-gap-cli.mjs \
+            --repository "$GITHUB_REPOSITORY" \
             --manifest product/capabilities.json \
+            --buyer-gaps product/buyer-gaps.json \
             --snapshot "$EVIDENCE_DIR/github-snapshot.json" \
             --policy product/commercial-readiness-policy.json \
             --root . \
