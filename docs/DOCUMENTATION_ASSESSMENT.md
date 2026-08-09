@@ -3,7 +3,7 @@
 **Assessment date:** 2026-08-09  
 **Current protected-main reference:** `876850018a17323900844e79845ba395b7bf6a9a`  
 **Documentation baseline:** active PR #126  
-**Verdict:** **The pre-existing repository documentation was insufficient as one canonical whole-product graph. PR #126 makes the documentation spine substantially sufficient for product/technical/architecture governance, while clearly preserving live implementation and release gaps.**
+**Verdict:** **The canonical documentation families are now substantially sufficient in scope, but documentation correctness remains an exact-head gate. PR #126 must pass its current tests/reviews and merge before this baseline becomes protected-main architecture evidence.**
 
 ## 1. Executive assessment
 
@@ -19,32 +19,36 @@ LifeOS already had substantial engineering evidence before this work: a root arc
 
 Before PR #126, protected main did not contain a canonical whole-product PRD, TRD, ADR index, discoverable logical ERD/data model, UML/interaction registry, architecture threat model, repository-wide test strategy, operability boundary, API/event contract registry, privacy/data lifecycle contract, release/migration contract, standards/research index, or requirement-to-evidence traceability matrix.
 
-PR #126 establishes that canonical spine and adds a deterministic documentation contract test. It also records historical supersession instead of silently deleting earlier choices.
+PR #126 establishes that canonical spine and adds deterministic documentation contract tests. It also records historical supersession instead of silently deleting earlier choices.
 
-The resulting documentation is now **substantially sufficient as a code-governance and acquisition-review baseline**, but it deliberately does not claim that the LifeOS product itself is feature-complete, release-ready, or commercially gap-free. Documentation sufficiency and product sufficiency are separate gates.
+A later exact-head audit of PR #126 found an important regression: canonical docs again contained composite status values such as `Accepted architecture / implemented evaluation support`, `Implemented documentation boundary`, and `Implemented on protected main as reference`, while the test had regressed to an ADR-only `Accepted/Proposed/Deprecated` vocabulary. The associated review threads had previously been resolved, proving that resolved review state is not sufficient current-source evidence. The branch is therefore being repaired with an exact canonical status vocabulary, active-PR traceability, real link/ADR-target checks, and source/configuration evidence checks.
+
+The resulting document **family coverage is substantially sufficient for product/technical/architecture governance**. The exact-current branch still requires machine/review verification and protected merge before the repository may treat this documentation baseline itself as `Implemented on protected main`.
+
+Documentation sufficiency and product sufficiency are separate gates.
 
 ## 2. Completeness matrix
 
 | Documentation family | Before PR #126 | PR #126 result | Current assessment |
 | --- | --- | --- | --- |
-| Product requirements | Initial combined design + capability manifest | `docs/PRD.md` with journey/status/evidence | **Substantially sufficient** |
+| Product requirements | Initial combined design + capability manifest | `docs/PRD.md` with journey/status/evidence | **Substantially sufficient; exact-head status/active-PR reconciliation required** |
 | Technical requirements | Feature specs + root architecture | `docs/TRD.md` | **Substantially sufficient** |
 | Architecture | Root `ARCHITECTURE.md` | updated bounded contexts/status/history | **Strong** |
-| ADRs | Decisions embedded in specs/plans/chat | indexed ADR set with supersession | **Sufficient baseline; expand with new material decisions** |
-| UML | Scattered Mermaid diagrams | `docs/UML.md` | **Sufficient baseline** |
+| ADRs | Decisions embedded in specs/plans/chat | indexed ADR set including readiness semantics | **Sufficient baseline; expand with new material decisions** |
+| UML | Scattered Mermaid diagrams | `docs/UML.md` | **Sufficient baseline with exact status discipline** |
 | ERD / data model | Domain prose + migrations | `docs/DATA_MODEL.md` logical service-owned ERD | **Sufficient logical baseline; physical schemas remain owning-service source** |
 | API/event contracts | Source/shared package/feature docs | `docs/API_CONTRACTS.md` ownership/version registry | **Sufficient registry; exact shapes remain source-generated/owned** |
 | Security policy | `SECURITY.md` | retained | **Good** |
 | Threat model | Feature/security notes | `docs/THREAT_MODEL.md` | **Sufficient upstream architecture baseline** |
 | Privacy/data lifecycle | legal docs + privacy/data-rights code | `docs/PRIVACY_DATA_LIFECYCLE.md` | **Sufficient architecture baseline; product lifecycle still Partial in places** |
 | Test strategy | strong tests + feature quality plans | `docs/TEST_STRATEGY.md` | **Strong canonical policy** |
-| Operability | multiple runbooks/SLO docs | `docs/OPERABILITY.md` | **Strong operator boundary/index** |
+| Operability | multiple runbooks/SLO docs | `docs/OPERABILITY.md` | **Strong operator boundary/index after status normalization** |
 | Release/migration/rollback | runbooks/CI scattered | `docs/RELEASE_AND_MIGRATION.md` | **Sufficient repository-wide contract** |
 | Research/standards | strong scoped evidence | `docs/STANDARDS_TRACEABILITY.md` | **Sufficient index; scoped APA references stay authoritative** |
-| Requirements-to-code/test traceability | capability manifest + changelog | `docs/TRACEABILITY.md` | **Strong baseline; intentionally exposes live gaps** |
-| Documentation consistency | manual review only | `documentation-contract.test.mjs` | **Executable regression baseline** |
+| Requirements-to-code/test traceability | capability manifest + changelog | `docs/TRACEABILITY.md` | **Strong baseline; now includes active PR #127/#131/#133 and issue #130** |
+| Documentation consistency | manual review only | `documentation-contract.test.mjs` | **Executable semantic regression baseline; current exact head still awaiting CI** |
 
-## 3. Historical design drift now reconciled
+## 3. Historical design drift reconciled
 
 ### 3.1 Local-first/private proposal → multi-user server-backed product
 
@@ -62,7 +66,7 @@ A single-Docker application was considered as a simple deployment option. Curren
 
 The original 2026-08-02 design proposed UUIDv7. Current protected-main agent/architecture contracts, migrations and tests use opaque UUIDv4 internal identifiers and forbid provider-native numeric IDs as internal primary keys.
 
-**Canonical status:** UUIDv7 is `Superseded`; UUIDv4 is the current invariant until a future reviewed ADR safely changes it.
+**Canonical reconciliation:** **UUIDv7 proposal → UUIDv4 protected-main invariant**. UUIDv7 is `Superseded`; UUIDv4 remains current until a future reviewed ADR safely changes it.
 
 ### 3.4 Old “post-MVP” labels → implemented bounded contexts
 
@@ -74,27 +78,29 @@ The original design treated calendar synchronization, notifications, review, AI 
 
 During PR #126, PR #122 completed its exact-head CI/security/CodeRabbit gates and was guarded-squash-merged as `876850018a17323900844e79845ba395b7bf6a9a`.
 
-**Canonical status:** the bounded hourly OpenCode commercial-development workflow is now `Implemented on protected main`; model output still has no product-data/merge/release authority and remains subject to deterministic policy and normal review/security/exact-head gates.
+**Canonical status:** the bounded hourly OpenCode commercial-development workflow is `Implemented on protected main`; model output still has no product-data/merge/release authority and remains subject to deterministic policy and normal review/security/exact-head gates. PR #133 is a separate `Implemented on active PR` hardening path and must not be promoted early.
 
-## 4. Documentation status vocabulary
+## 4. Exact canonical status vocabulary
 
-Canonical docs use the following exact status meanings:
+Canonical requirement/diagram/ADR status fields use only:
 
-- **Implemented on protected main** — current protected-main source/test/migration evidence exists.
-- **Implemented on active PR** — implementation exists only on a live PR/branch; it is not shipped/main evidence.
-- **Partial** — some important product/technical behavior exists, but the end-to-end customer/operator contract is incomplete.
-- **Accepted architecture** — a reviewed target boundary exists but may not yet be fully implemented.
-- **Planned** — accepted backlog/plan with no shipped implementation claim.
-- **Research only** — experimental or literature evidence outside the production contract.
-- **Superseded** — replaced by a later decision; retained for rationale/history.
-- **Out of scope** — intentionally excluded from the current product contract.
+- **Implemented on protected main**
+- **Implemented on active PR**
+- **Partial**
+- **Accepted architecture**
+- **Planned**
+- **Research only**
+- **Superseded**
+- **Out of scope**
+
+Scope qualifiers, PR numbers, `reference` wording, implementation notes, and evidence belong in separate prose/evidence columns. Composite status strings are a documentation defect.
 
 ## 5. Canonical documentation graph
 
 PR #126 establishes this repository-wide hierarchy:
 
 1. `docs/PRD.md` — product outcomes, users, requirements, journey, status.
-2. `docs/TRD.md` — shared technical/runtime/security/release requirements.
+2. `docs/TRD.md` — shared technical/runtime/security/readiness/release requirements.
 3. `ARCHITECTURE.md` — durable bounded contexts, authority and architecture invariants.
 4. `docs/adr/README.md` + ADRs — material decisions and supersession history.
 5. `docs/DATA_MODEL.md` — logical service-owned data model and ERD.
@@ -107,7 +113,7 @@ PR #126 establishes this repository-wide hierarchy:
 12. `docs/OPERABILITY.md` — deployment profiles, diagnostics, dependency degradation, backup/recovery and operator responsibility.
 13. `docs/RELEASE_AND_MIGRATION.md` — versions, schema/API migration, rollout, rollback and release gates.
 14. `docs/STANDARDS_TRACEABILITY.md` — normative/guidance/research evidence classes and implementation mapping.
-15. `docs/TRACEABILITY.md` — requirement/ADR/capability → code/test/runbook/live-gap evidence.
+15. `docs/TRACEABILITY.md` — requirement/ADR/capability → code/test/runbook/issue/active-PR evidence.
 16. `docs/DOCUMENTATION_ASSESSMENT.md` — this completeness/supersession assessment.
 17. `docs/operations/`, `docs/research/`, `docs/legal/`, `docs/superpowers/specs/`, `docs/superpowers/plans/` — scoped supporting evidence.
 18. `CHANGELOG.md` — buyer-visible unreleased/released changes.
@@ -116,25 +122,28 @@ The historical `docs/superpowers/specs/2026-08-02-life-os-design.md` remains ava
 
 ## 6. Machine-checkable fitness rules
 
-`packages/commercial-readiness/src/documentation-contract.test.mjs` in PR #126 protects representative documentation invariants:
+The documentation contract on PR #126 is intended to protect semantic rather than existence-only invariants:
 
 - canonical files exist;
-- README links the canonical graph;
+- README canonical local links resolve to real repository targets and cannot escape the repository;
 - Markdown fences remain balanced;
-- every material ADR is indexed and has an allowed status/required sections;
+- canonical PRD/traceability/diagram/ADR statuses use the exact vocabulary above;
+- the ADR index points to exact ADR files and the material ADR set includes ADR-0001 through ADR-0008;
 - current architecture retains UUIDv4/multi-user-MSA/supersession truth;
+- representative protected-main source/configuration paths still exist for planning, OpenCode automation, privacy, backup and Kubernetes claims;
+- OpenCode automation still uses the approved NVIDIA credential boundary rather than a Copilot development credential;
 - logical ERD does not imply cross-service database authority;
 - AI proposal authority remains inert;
-- API/privacy/release/standards contracts retain their explicit boundaries;
-- traceability reflects current protected-main OpenCode automation and live buyer gaps.
+- API/privacy/release/standards contracts retain explicit boundaries;
+- traceability includes active PR #127, #131 and #133 plus issue #130 instead of presenting them as protected-main work.
 
-This is a baseline rather than a complete parser for every diagram/schema. Future regressions should extend the deterministic contract rather than adding parallel prose-only governance.
+A previously resolved review comment does not waive these exact-current-head checks.
 
-## 7. Important product gaps that documentation must not hide
+## 7. Important product gaps and active implementation paths
 
-### Issue #121 — durable Today multi-device synchronization
+### Issue #121 / PR #127 — durable Today multi-device synchronization
 
-Durable planning and the Today action loop exist, but the complete multi-device aggregate, explicit local-draft migration, reconnect and optimistic-concurrency conflict journey is not one protected-main end-to-end product contract yet.
+Durable planning and the Today action loop exist on protected main. PR #127 is the active implementation path for the complete bounded versioned Today aggregate, explicit local-draft migration, strong optimistic concurrency, idempotency, PostgreSQL persistence and conflict/recheck browser journey. The canonical requirement is `Implemented on active PR`, not protected main.
 
 ### Issue #55 — complete tenant export and deletion orchestration
 
@@ -144,20 +153,27 @@ The identity-owned data-rights core already provides deterministic export/erasur
 
 Conflict-safe CalDAV/Google provider adapters exist. A deployment-wide `GOOGLE_CALENDAR_ACCESS_TOKEN` is not a multi-user product credential model. #129 tracks encrypted per-user credential persistence, OAuth callback/state/PKCE, refresh/revocation, calendar discovery/selection, cross-user isolation and safe migration from the development token.
 
-### Issue #128 — commercial-readiness false gap exhaustion
+### Issue #130 — plugin runtime last mile
 
-Issue #21 currently reports `22/22`, configured weighted maturity `100%`, and zero unresolved buyer gaps while #55/#121/#129 still represent real customer journeys. `packages/commercial-readiness/src/audit.mjs` currently derives gaps from configured capability-evidence maturity, so a registered core slice can reach target while broader accepted follow-up remains open.
+Versioned manifest/event validation exists, but installation grants, encrypted plugin secret lifecycle, SSRF-safe outbound delivery, bounded retries/audit, and revocation are `Planned` rather than implied by the current validation/preparation surface.
 
-#128 requires the report to distinguish **configured capability-evidence maturity** from **whole-product buyer-gap exhaustion** using deterministic explicit gap identity rather than arbitrary issue prose as executable policy.
+### Issue #128 / PR #131 — readiness false gap exhaustion
+
+Configured capability maturity can reach 100% while accepted buyer journeys remain open. ADR-0008 separates configured capability-evidence maturity from canonical buyer-gap exhaustion. PR #131 is the active implementation path for a versioned repository-owned buyer-gap registry and `open`/`resolved`/`unknown` reconciliation without turning arbitrary issue prose into executable policy.
+
+### PR #133 — autonomous development runtime hardening
+
+The #122 OpenCode loop is already protected-main behavior. PR #133 is active technical hardening for explicit NVIDIA model catalog resolution and real digest-pinned PostgreSQL/NATS Compose verification. It must remain active-PR evidence until exact integration.
 
 ## 8. Fitness rules for future documentation changes
 
 The canonical graph is fit only when all applicable conditions hold:
 
 - planned/active-PR behavior is not presented as protected-main behavior;
+- exact status fields use only the canonical vocabulary;
 - service names, identifiers, authority, external providers and failure states match current source;
-- every material PRD requirement has evidence or explicit gap/status;
-- every repository-wide material architecture decision has an ADR or explicit architecture invariant;
+- every material PRD requirement has evidence or explicit issue/PR/status;
+- every repository-wide material architecture/governance decision has an ADR or explicit architecture invariant;
 - ERD cross-service relationships remain logical, not hidden SQL coupling;
 - UML/API/event diagrams/contracts match owning-service authority and versions;
 - security policy and threat model remain separate but consistent;
@@ -165,12 +181,15 @@ The canonical graph is fit only when all applicable conditions hold:
 - release/rollback docs do not imply database/external side-effect reversibility that is not implemented;
 - standards/research references state source class/publication status and map to executable product evidence;
 - deployment docs do not invent infrastructure, credentials, certification or unmeasured SLA/RPO/RTO;
+- active PR closure/replacement/rebase triggers status revalidation;
 - documentation-discovered gaps enter the executable maintenance/product backlog rather than terminating the run.
 
 ## 9. Final assessment
 
 **Before this work:** ADR/PRD/TRD/Architecture/UML/ERD and related documentation were not sufficiently consolidated for whole-product governance despite extensive feature-level material.
 
-**With PR #126:** the documentation families are now sufficiently represented and cross-linked to function as a canonical architecture/product baseline once the PR itself passes exact-head checks/review and merges. The new baseline is materially stronger than merely adding “PRD/TRD/ADR” files because it reconciles history, marks implementation status, maps requirements to evidence/gaps, separates logical ERD from physical ownership, distinguishes security policy from threat model, and adds API/privacy/release/standards/test/operability layers plus executable consistency checks.
+**Current PR #126 family coverage:** PRD, TRD, Architecture, ADRs, UML, logical ERD/data model, API/event registry, security/threat model, privacy lifecycle, test strategy, operability, release/migration, standards traceability and requirement/evidence traceability are now represented at a level suitable for a canonical baseline.
 
-**Still not complete:** documentation sufficiency does not mean the product is complete. The live product gaps above, the commercial-readiness scoring defect, exact PR #126 merge evidence, and eventual integrated release acceptance remain active work. The autonomous maintenance loop must continue after the documentation PR rather than treating this assessment as an endpoint.
+**Current exact-head caveat:** a semantic regression was discovered after earlier review resolution, so file presence or resolved threads alone cannot establish sufficiency. The branch now includes stricter status/link/ADR/source/active-PR regression contracts, but their exact current head still requires CI/security/review verification and protected merge.
+
+**Product completion remains false:** #127/#121, #55, #129, #130, #131/#128, #133, and integrated stable-release acceptance remain work. The autonomous maintenance loop must continue after documentation work and must not treat this assessment as an endpoint.
