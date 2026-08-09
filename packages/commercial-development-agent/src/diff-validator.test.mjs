@@ -76,6 +76,25 @@ describe('commercial development diff policy', () => {
     });
   });
 
+  it('accepts one explicitly allowlisted root document', () => {
+    const content = '# Architecture evidence\n';
+    expect(
+      validateCommercialDevelopmentDiff(
+        evidence({
+          files: [
+            file({
+              path: 'ARCHITECTURE.md',
+              content,
+              bytes: Buffer.byteLength(content),
+              additions: 1,
+            }),
+          ],
+        }),
+        POLICY,
+      ),
+    ).toMatchObject({ accepted: true, reason_code: 'accepted' });
+  });
+
   it('returns no_change without creating remote work', () => {
     expect(
       validateCommercialDevelopmentDiff(evidence({ files: [] }), POLICY),
@@ -117,6 +136,7 @@ describe('commercial development diff policy', () => {
     '../outside.ts',
     '/absolute/path.ts',
     'apps\\windows\\path.ts',
+    'apps/planning-service/src/./durable-today.ts',
     'unallowlisted-root.txt',
   ])('rejects prohibited or unallowlisted path %s', (path) => {
     expect(
@@ -223,6 +243,10 @@ describe('commercial development diff policy', () => {
     { base_sha: BASE_SHA, current_base_sha: BASE_SHA, files: 'invalid' },
     { ...evidence(), unexpected: true },
     evidence({ base_sha: 'short' }),
+    evidence({ files: [file({ path: null })] }),
+    evidence({ files: [file({ path: '' })] }),
+    evidence({ files: [file({ path: 'x'.repeat(1_025) })] }),
+    evidence({ files: [file({ path: 'apps/example\u0000/file.ts' })] }),
     evidence({ files: [file({ bytes: -1 })] }),
     evidence({ files: [file({ additions: 1.5 })] }),
     evidence({ files: [file({ content: null })] }),
