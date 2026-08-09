@@ -233,7 +233,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
              $1::uuid, $2::uuid, $3::uuid, $4::uuid,
              $5, $6, $7, $8, $9::timestamptz, $10::timestamptz
            )`,
-          values,
+          [...values],
         ),
       ).rejects.toThrow();
     }
