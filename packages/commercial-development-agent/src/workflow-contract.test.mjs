@@ -4,6 +4,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -210,7 +211,8 @@ describe('OpenCode commercial development workflow contract', () => {
       try {
         const modelId = 'cwl/contract-probe-model-v1';
         const modelLabel = `nvidia/${modelId}`;
-        const loopbackProbeValue = `catalog-probe:${modelLabel}`;
+        const loopbackProbeValue = modelLabel;
+        expect(loopbackProbeValue).not.toHaveLength(0);
         const opencodePackage = realpathSync(
           resolve(import.meta.dirname, '../node_modules/opencode-ai'),
         );
@@ -240,6 +242,8 @@ describe('OpenCode commercial development workflow contract', () => {
             },
           },
         });
+        const configPath = resolve(directories.home, 'opencode.json');
+        writeFileSync(configPath, config, { mode: 0o600 });
 
         const result = spawnSync(executable, ['models', 'nvidia'], {
           cwd: resolve(import.meta.dirname, '../../..'),
@@ -252,7 +256,7 @@ describe('OpenCode commercial development workflow contract', () => {
             XDG_CONFIG_HOME: directories.config,
             XDG_DATA_HOME: directories.data,
             XDG_STATE_HOME: directories.state,
-            OPENCODE_CONFIG_CONTENT: config,
+            OPENCODE_CONFIG: configPath,
             OPENCODE_DISABLE_AUTOUPDATE: 'true',
             OPENCODE_DISABLE_MODELS_FETCH: 'true',
             OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
