@@ -5,7 +5,7 @@ import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
-const TEMPORARY_DATABASE_NAME = 'life_os_auth_migration_test';
+const TEMPORARY_DATABASE_NAME = 'life_os_identity_migration_test';
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const AUTHENTICATION_MIGRATION = '0004_session_authentication_age.sql';
 const AUTHENTICATION_FINALIZATION_MIGRATION =
@@ -62,9 +62,9 @@ async function withTemporaryDatabase(
 
   try {
     await adminPool.query(
-      'DROP DATABASE IF EXISTS life_os_auth_migration_test WITH (FORCE)',
+      'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
     );
-    await adminPool.query('CREATE DATABASE life_os_auth_migration_test');
+    await adminPool.query('CREATE DATABASE life_os_identity_migration_test');
     migrationPool = new Pool({
       connectionString: databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME),
     });
@@ -73,7 +73,7 @@ async function withTemporaryDatabase(
   } finally {
     await migrationPool?.end();
     await adminPool.query(
-      'DROP DATABASE IF EXISTS life_os_auth_migration_test WITH (FORCE)',
+      'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
     );
     await adminPool.end();
   }
