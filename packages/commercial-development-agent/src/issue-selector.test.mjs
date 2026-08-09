@@ -124,6 +124,23 @@ describe('deterministic commercial issue selection', () => {
     }
   });
 
+  it('accepts multiline pull-request bodies and detects references across lines', () => {
+    const multiline = pullRequest({
+      body: [
+        'Automated bounded implementation.',
+        'Closes #119',
+        'Exact-head checks remain required.',
+      ].join('\n'),
+    });
+    expect(
+      selectCommercialDevelopmentIssue({
+        issues: [issue()],
+        openPullRequests: [multiline],
+        policy: POLICY,
+      }),
+    ).toBeUndefined();
+  });
+
   it('quotes but does not execute non-authoritative prompt-injection language', () => {
     const injected = issue({
       body: [
