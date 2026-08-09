@@ -5,6 +5,7 @@ import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
+const TEMPORARY_DATABASE_NAME = 'life_os_auth_migration_test';
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const AUTHENTICATION_MIGRATION = '0004_session_authentication_age.sql';
 const AUTHENTICATION_FINALIZATION_MIGRATION =
@@ -17,21 +18,10 @@ function requireDatabaseUrl(): string {
   return DATABASE_URL;
 }
 
-function databaseName(): string {
-  return `life_os_auth_migration_${randomUUID().replaceAll('-', '')}`;
-}
-
 function databaseUrl(sourceUrl: string, name: string): string {
   const parsed = new URL(sourceUrl);
   parsed.pathname = `/${name}`;
   return parsed.toString();
-}
-
-function quotedIdentifier(value: string): string {
-  if (!/^life_os_auth_migration_[0-9a-f]{32}$/u.test(value)) {
-    throw new Error('Temporary database name is invalid');
-  }
-  return `"${value}"`;
 }
 
 async function migrationFilesBeforeAuthenticationAge(): Promise<string[]> {
@@ -65,7 +55,6 @@ async function withTemporaryDatabase(
   execute: (pool: Pool) => Promise<void>,
 ): Promise<void> {
   const sourceUrl = requireDatabaseUrl();
-  const temporaryDatabase = databaseName();
   const adminPool = new Pool({
     connectionString: databaseUrl(sourceUrl, 'postgres'),
   });
@@ -73,17 +62,18 @@ async function withTemporaryDatabase(
 
   try {
     await adminPool.query(
-      `CREATE DATABASE ${quotedIdentifier(temporaryDatabase)}`,
+      'DROP DATABASE IF EXISTS life_os_auth_migration_test WITH (FORCE)',
     );
+    await adminPool.query('CREATE DATABASE life_os_auth_migration_test');
     migrationPool = new Pool({
-      connectionString: databaseUrl(sourceUrl, temporaryDatabase),
+      connectionString: databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME),
     });
     await prepareLegacyDatabase(migrationPool);
     await execute(migrationPool);
   } finally {
     await migrationPool?.end();
     await adminPool.query(
-      `DROP DATABASE IF EXISTS ${quotedIdentifier(temporaryDatabase)} WITH (FORCE)`,
+      'DROP DATABASE IF EXISTS life_os_auth_migration_test WITH (FORCE)',
     );
     await adminPool.end();
   }
