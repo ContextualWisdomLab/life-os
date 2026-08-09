@@ -1,6 +1,6 @@
 # LifeOS UML and Interaction Views
 
-**Baseline:** protected `main` at `5c87a7ec3568a4ce47b25cad843f1bc5be91b294`
+**Baseline:** protected `main` at `876850018a17323900844e79845ba395b7bf6a9a`
 
 These diagrams are architecture documentation, not proof that every target path is fully implemented. Sections explicitly state current status. Service names and authority boundaries must remain synchronized with protected-main code.
 
@@ -35,17 +35,25 @@ flowchart TB
     Gateway --> Calendar
     Gateway --> Plugin
 
-    Planning -. domain events .-> NATS
-    Habit -. domain events .-> NATS
-    Review -. projection/events .-> NATS
-    Notification -. consumes reminder/event inputs .-> NATS
+    Planning -. publishes domain events .-> NATS
+    Habit -. publishes domain events .-> NATS
+    Review -. publishes projection/events .-> NATS
+    NATS -. delivers reminder/event inputs .-> Notification
+
+    Identity --> IdentityDB[(Identity-owned PostgreSQL schema / role)]
+    Planning --> PlanningDB[(Planning-owned PostgreSQL schema / role)]
+    Habit --> HabitDB[(Habit-owned PostgreSQL schema / role)]
+    Review --> ReviewDB[(Review-owned PostgreSQL schema / role)]
+    Notification --> NotificationDB[(Notification-owned PostgreSQL schema / role)]
+    AI --> AIDB[(AI-owned PostgreSQL schema / role)]
+    Privacy --> PrivacyDB[(Privacy-owned PostgreSQL schema / role)]
 
     Calendar --> ExternalCalendar[Google Calendar / CalDAV]
     Identity --> IdentityProvider[Google / GitHub Identity]
     AI --> ModelBoundary[Local rule model or approved contextual-orchestrator/model boundary]
 ```
 
-Every service owns its persistence. No arrow in this diagram authorizes direct cross-service SQL access.
+Each database edge above represents only the owning service's persistence port. Co-location on one PostgreSQL cluster does not imply shared credentials, cross-service table access, or foreign-key authority.
 
 ## 2. Login and workspace authorization sequence
 
@@ -81,7 +89,7 @@ Provider credentials and browser cookies do not become arbitrary downstream-serv
 
 ## 3. Goal → Project → Task and Habit lifecycle
 
-**Status:** Goal/project/task and recurring-habit persistence are implemented. This is a logical domain flow; physical relationships follow planning/habit service implementations.
+**Status:** Goal/project/task and recurring-habit persistence are implemented. This is a logical domain flow; physical relationships follow planning/habit service implementations. Milestones/task dependencies from historical planning are not shown as protected-main persisted states; see `docs/DATA_MODEL.md`.
 
 ```mermaid
 stateDiagram-v2
@@ -92,7 +100,6 @@ stateDiagram-v2
     Captured --> Habit: classify as recurring behavior
 
     Goal --> Project: create/support project
-    Goal --> Task: direct next action
     Project --> Task: project action
     Habit --> HabitScheduled: recurrence creates due behavior
 
@@ -107,7 +114,7 @@ Review evidence does not directly rewrite planning/habit source-of-truth records
 
 ## 4. Today planning and stale-state boundary
 
-**Status:** Today action loop and local-draft/durable-record distinction are implemented. Full multi-device optimistic-concurrency synchronization of a complete durable Today aggregate is partial.
+**Status:** Today action loop and local-draft/durable-record distinction are implemented. Full multi-device optimistic-concurrency synchronization of a complete durable Today aggregate is partial / issue #121.
 
 ```mermaid
 sequenceDiagram
@@ -144,7 +151,7 @@ The final full-aggregate concurrency contract is a product gap until current pro
 ```mermaid
 sequenceDiagram
     participant Scheduler
-    participant Store as Notification PostgreSQL Repository
+    participant Store as Notification-owned PostgreSQL Repository
     participant Gateway as In-app Delivery Gateway
 
     Scheduler->>Store: Claim due occurrence with bounded lease
@@ -165,7 +172,7 @@ sequenceDiagram
 
 ## 6. Calendar synchronization sequence
 
-**Status:** CalDAV/Google provider adapters implemented; hosted per-user Google token persistence/refresh/revocation is partial.
+**Status:** CalDAV/Google provider adapters implemented; hosted per-user Google credential persistence/refresh/revocation/provider selection is partial / issue #129.
 
 ```mermaid
 sequenceDiagram
@@ -201,7 +208,7 @@ sequenceDiagram
     participant Web as Authenticated Web/BFF
     participant Identity
     participant AI as AI Proposal Service
-    participant Audit as AI Proposal Store
+    participant Audit as AI-owned Proposal Store
 
     User->>Web: Request proposal
     Web->>Identity: Resolve session authority
@@ -223,13 +230,13 @@ The AI service is not a generic planning command bus.
 
 ## 8. Purpose-bound privacy access sequence
 
-**Status:** Implemented on protected main for privacy-service authorization/grant/evidence core; user-facing data-rights UX may remain partial.
+**Status:** Implemented on protected main for privacy-service authorization/grant/evidence core; user-facing data-rights UX remains partial / issue #55.
 
 ```mermaid
 sequenceDiagram
     participant Caller as Authorized Service/Operator Boundary
     participant Privacy as Privacy Access Service
-    participant Store as Privacy PostgreSQL Repository
+    participant Store as Privacy-owned PostgreSQL Repository
 
     Caller->>Privacy: Signed actor/resource/purpose request
     Privacy->>Privacy: Validate context, purpose, bounds and policy
@@ -246,6 +253,8 @@ sequenceDiagram
         Privacy-->>Caller: Authorized result boundary
     end
 ```
+
+No other bounded service is permitted to use this `Store`; other services interact with the privacy service through its reviewed API/context boundary.
 
 ## 9. Backup and restore state flow
 
@@ -278,8 +287,15 @@ flowchart TB
     Ingress[Operator-owned HTTPS ingress]
     Web[Web workload]
     Gateway[Gateway workload]
-    Services[Bounded domain service workloads]
-    PG[(Operator-owned PostgreSQL)]
+    Identity[Identity workload]
+    Planning[Planning workload]
+    Habit[Habit workload]
+    Review[Review workload]
+    Notification[Notification workload]
+    AI[AI workload]
+    Privacy[Privacy workload]
+    Integrations[Calendar / Plugin workloads]
+    PG[(Operator-owned PostgreSQL cluster)]
     NATS[(Operator-owned NATS JetStream)]
     Secrets[Operator-owned Secret Manager / protected environment]
     Providers[Identity / Calendar / Model Providers]
@@ -289,15 +305,53 @@ flowchart TB
     Ingress --> Web
     Ingress --> Gateway
     Web --> Gateway
-    Gateway --> Services
-    Services --> PG
-    Services --> NATS
+
+    Gateway --> Identity
+    Gateway --> Planning
+    Gateway --> Habit
+    Gateway --> Review
+    Gateway --> AI
+    Gateway --> Privacy
+    Gateway --> Integrations
+
+    Identity -->|identity-only DSN/role/schema| PG
+    Planning -->|planning-only DSN/role/schema| PG
+    Habit -->|habit-only DSN/role/schema| PG
+    Review -->|review-only DSN/role/schema| PG
+    Notification -->|notification-only DSN/role/schema| PG
+    AI -->|ai-only DSN/role/schema| PG
+    Privacy -->|privacy-only DSN/role/schema| PG
+
+    Planning -. publishes .-> NATS
+    Habit -. publishes .-> NATS
+    Review -. publishes .-> NATS
+    NATS -. delivers bounded inputs .-> Notification
+
     Secrets --> Gateway
-    Secrets --> Services
-    Services --> Providers
+    Secrets --> Identity
+    Secrets --> Planning
+    Secrets --> Habit
+    Secrets --> Review
+    Secrets --> Notification
+    Secrets --> AI
+    Secrets --> Privacy
+    Secrets --> Integrations
+    Identity --> Providers
+    AI --> Providers
+    Integrations --> Providers
+
     Gateway -. metrics .-> Metrics
-    Services -. metrics .-> Metrics
+    Identity -. metrics .-> Metrics
+    Planning -. metrics .-> Metrics
+    Habit -. metrics .-> Metrics
+    Review -. metrics .-> Metrics
+    Notification -. metrics .-> Metrics
+    AI -. metrics .-> Metrics
+    Privacy -. metrics .-> Metrics
+    Integrations -. metrics .-> Metrics
 ```
+
+A shared physical PostgreSQL cluster is only a deployment co-location choice: every service uses its own authorized DSN/role/schema boundary and may not traverse into another service's tables.
 
 ## 11. Failure and degraded-mode view
 
