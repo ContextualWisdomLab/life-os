@@ -153,9 +153,6 @@ async function writeAtomicJson(path, value, fileSystem, uuidFactory) {
   }
   const temporaryPath = `${path}.temporary-${token}`;
   const payload = `${JSON.stringify(value, null, 2)}\n`;
-  if (Buffer.byteLength(payload, 'utf8') > MAXIMUM_JSON_BYTES) {
-    return invalid();
-  }
   await fileSystem.mkdir(dirname(path), { recursive: true });
   try {
     await fileSystem.writeFile(temporaryPath, payload, {
@@ -204,12 +201,9 @@ async function executeCommand(command, options, fileSystem) {
       await readBoundedJson(options.policy, fileSystem),
     );
   }
-  if (command === 'receipt') {
-    return createCommercialDevelopmentReceipt(
-      await readBoundedJson(options.input, fileSystem),
-    );
-  }
-  return invalid();
+  return createCommercialDevelopmentReceipt(
+    await readBoundedJson(options.input, fileSystem),
+  );
 }
 
 /**
