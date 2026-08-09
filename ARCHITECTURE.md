@@ -63,7 +63,7 @@ Shared `workspace_id`/`actor_id` values are correlation and authorization inputs
 
 Concurrency-sensitive flows use explicit revision/digest/ETag/idempotency/fencing evidence appropriate to the domain. Current examples include habit completion replay protection, notification worker claims/outcomes, calendar preconditions, AI proposal revision/digest decisions, and privacy grant consumption.
 
-See `docs/DATA_MODEL.md` for the logical ERD.
+See `docs/DATA_MODEL.md` for the logical ERD and `docs/API_CONTRACTS.md` for owned protocol/version boundaries.
 
 ## 3. Identity, tenant, and private service context
 
@@ -102,13 +102,13 @@ Sensitive personal data cannot be governed by masking alone. The privacy bounded
 
 This keeps sensitive information useful for authorized product operations while minimizing standing privilege and retained audit payloads. Expired, reused, wrong-purpose, wrong-resource, or wrong-actor grants fail closed.
 
-See `docs/adr/0005-purpose-bound-sensitive-data-access.md` and `docs/THREAT_MODEL.md`.
+See `docs/adr/0005-purpose-bound-sensitive-data-access.md`, `docs/THREAT_MODEL.md`, and `docs/PRIVACY_DATA_LIFECYCLE.md`.
 
 ## 6. Notification and calendar boundaries
 
 The notification service owns reminder occurrence/claim/outcome/in-app delivery persistence and timezone/fatigue/retry rules. Worker claims are bounded and recoverable; outcomes are immutable evidence where the persistence contract requires it.
 
-The calendar integration service owns provider adaptation. CalDAV/Google writes use deterministic identifiers/preconditions where supported and return classified, credential-free conflict/unavailable evidence. Provider state is untrusted. Hosted per-user Google Calendar credential storage/refresh/revocation remains **Partial** until protected-main code proves the complete lifecycle; an operator-supplied runtime token is not equivalent to a multi-user credential product.
+The calendar integration service owns provider adaptation. CalDAV/Google writes use deterministic identifiers/preconditions where supported and return classified, credential-free conflict/unavailable evidence. Provider state is untrusted. Hosted per-user Google Calendar credential storage/refresh/revocation/provider selection remains **Partial** and is tracked by issue #129; an operator-supplied runtime token is not equivalent to a multi-user credential product.
 
 ## 7. Plugin and external integration boundary
 
@@ -162,7 +162,7 @@ Docker Compose composes local/self-hosted development behavior. `infra/kubernete
 
 Logical PostgreSQL backup/restore verifies archive checksum and requires a deliberately empty target. It is not point-in-time recovery. Deployment rollback claims cover only the workload state explicitly captured/verified by the deployment workflow; completed migrations and external infrastructure are not silently represented as reversible.
 
-See `docs/OPERABILITY.md`.
+See `docs/OPERABILITY.md` and `docs/RELEASE_AND_MIGRATION.md`.
 
 ## 11. Automation and merge safety
 
@@ -170,7 +170,7 @@ Pull requests follow one loop: inspect every review/check on the exact current h
 
 Automation is work-conserving: a blocked PR/check/provider/tool path blocks only that action. A repository writer lease prevents competing branch writes, while remaining safe read-only/non-conflicting work continues. One successful commit, documentation update, PR creation, merge or check dispatch is an intermediate result while executable work remains.
 
-Scheduled model-assisted development uses the approved NVIDIA/OpenCode/contextual-orchestrator boundary. Existing independent review-agent credentials are not repurposed.
+The bounded hourly OpenCode commercial-development workflow and deterministic policy package are **Implemented on protected main** from merged PR #122 (`876850018a17323900844e79845ba395b7bf6a9a`). The model does not receive generic GitHub/product-data authority; deterministic policy, exact-head/base/diff checks, and normal review/security/merge gates remain authoritative. Existing independent review-agent credentials are not repurposed.
 
 ## 12. Canonical documentation hierarchy
 
@@ -180,12 +180,17 @@ Scheduled model-assisted development uses the approved NVIDIA/OpenCode/contextua
 4. `docs/adr/README.md` — material decisions and supersession history.
 5. `docs/DATA_MODEL.md` — logical service-owned data model/ERD.
 6. `docs/UML.md` — component/sequence/state/deployment/failure views.
-7. `SECURITY.md` — vulnerability reporting/security policy.
-8. `docs/THREAT_MODEL.md` — trust boundaries, threats, mitigations and residual risk.
-9. `docs/TEST_STRATEGY.md` — deterministic/live quality evidence and release testing.
-10. `docs/OPERABILITY.md` — deployment/diagnostics/backup/recovery/operator ownership.
-11. `docs/TRACEABILITY.md` — requirement/decision/capability to code/test/runbook evidence.
-12. `docs/operations/`, `docs/research/`, `docs/legal/`, `docs/superpowers/specs/`, `docs/superpowers/plans/` — scoped supporting evidence.
-13. `CHANGELOG.md` — buyer-visible unreleased/released changes.
+7. `docs/API_CONTRACTS.md` — API/event/provider ownership and evolution registry.
+8. `SECURITY.md` — vulnerability reporting/security policy.
+9. `docs/THREAT_MODEL.md` — trust boundaries, threats, mitigations and residual risk.
+10. `docs/PRIVACY_DATA_LIFECYCLE.md` — sensitive-data lifecycle, retention/export/erasure authority and gaps.
+11. `docs/TEST_STRATEGY.md` — deterministic/live quality evidence and release testing.
+12. `docs/OPERABILITY.md` — deployment/diagnostics/backup/recovery/operator ownership.
+13. `docs/RELEASE_AND_MIGRATION.md` — versioning, migrations, compatibility and rollback contract.
+14. `docs/STANDARDS_TRACEABILITY.md` — standards/research source class and product-evidence mapping.
+15. `docs/TRACEABILITY.md` — requirement/decision/capability to code/test/runbook/gap evidence.
+16. `docs/DOCUMENTATION_ASSESSMENT.md` — documentation completeness and historical reconciliation.
+17. `docs/operations/`, `docs/research/`, `docs/legal/`, `docs/superpowers/specs/`, `docs/superpowers/plans/` — scoped supporting evidence.
+18. `CHANGELOG.md` — buyer-visible unreleased/released changes.
 
 The original `docs/superpowers/specs/2026-08-02-life-os-design.md` is retained as historical design input, not a parallel current PRD/TRD. A behavior or boundary change is incomplete until relevant canonical docs and executable tests match the implementation.
