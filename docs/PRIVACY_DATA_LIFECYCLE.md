@@ -1,6 +1,6 @@
 # LifeOS Privacy and Data Lifecycle Contract
 
-**Baseline:** protected `main` at `5c87a7ec3568a4ce47b25cad843f1bc5be91b294`
+**Baseline:** protected `main` at `876850018a17323900844e79845ba395b7bf6a9a`
 
 ## 1. Scope
 
@@ -15,7 +15,7 @@ LifeOS may contain sensitive goals, career, health, relationship, habit, calenda
 | Identity/authentication | internal user/workspace IDs, external identity mapping, sessions | identity-owned, minimum necessary, no provider credentials downstream |
 | Personal planning | goals, projects, tasks, Today drafts/state | planning-owned, tenant-scoped, user-authorized |
 | Behavioral history | habit completion, review evidence, notification outcomes | owning-service persistence; immutable/append-only where defined |
-| Integration credentials | calendar access/refresh tokens, provider account identity | secret/encrypted lifecycle; current hosted per-user calendar lifecycle is Partial / issue #129 |
+| Integration credentials | calendar access/refresh tokens, provider account identity | secret/encrypted lifecycle; current hosted per-user calendar lifecycle is Partial; tracking issue #129 |
 | AI proposal evidence | proposal content/digest, explicit decisions, provider/model provenance | inert/auditable, bounded; no raw hidden reasoning/credential retention |
 | Privileged privacy evidence | purpose decisions, grants, access events | privacy-owned, content-minimized, append-only where defined |
 | Operational metadata | correlation IDs, latency/counts/errors | bounded labels/content; avoid personal text/secrets |
@@ -69,7 +69,7 @@ Credentials are never ordinary domain JSON.
 - Browser session cookies are not forwarded to downstream model/domain providers.
 - Model providers do not receive GitHub/review-agent credentials.
 - Public logs/errors/artifacts do not contain tokens, cookies, authorization headers, private keys or raw provider error bodies.
-- Hosted per-user calendar credentials require encrypted durable storage, refresh/revocation and provider-selection evidence before LifeOS claims the capability complete (#129).
+- Hosted per-user calendar credentials require encrypted durable storage, refresh/revocation and provider-selection evidence before LifeOS claims the capability complete; tracking issue #129.
 - Signing/encryption key rotation follows explicit active/overlap/retirement rules where implemented.
 
 ## 7. Data retention
@@ -89,7 +89,8 @@ A fixed retention number must not be added to canonical docs unless code/operato
 
 ## 8. Export lifecycle
 
-**Status:** Partial / issue #55.
+**Status:** Partial
+**Tracking:** issue `#55`.
 
 The identity-owned data-rights core can deterministically coordinate contributor exports and produce digest evidence. Complete customer-facing export requires all required domain contributors and delivery/storage lifecycle.
 
@@ -117,7 +118,8 @@ No export is called complete if a required registered domain is missing or a sec
 
 ## 9. Erasure lifecycle
 
-**Status:** Partial / issue #55.
+**Status:** Partial
+**Tracking:** issue `#55`.
 
 Current data-rights core supports preflight, deterministic contributor order, fail-closed execution, verification and bounded receipt semantics with test contributors. Complete productization requires concrete domain adapters, durable request/receipt/reconciliation, authenticated recent-owner confirmation, retention/legal-hold/backup-expiry evidence and operator-visible stuck-request recovery.
 
