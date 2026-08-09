@@ -141,6 +141,42 @@ describe('deterministic commercial issue selection', () => {
     ).toBeUndefined();
   });
 
+  it('preserves TAB, CR, and LF in bounded issue and pull-request text', () => {
+    const eligible = issue({ body: 'First\tfield\r\nSecond line\n' });
+    expect(
+      selectCommercialDevelopmentIssue({
+        issues: [eligible],
+        openPullRequests: [],
+        policy: POLICY,
+      }),
+    ).toEqual(eligible);
+
+    expect(
+      selectCommercialDevelopmentIssue({
+        issues: [eligible],
+        openPullRequests: [
+          pullRequest({ body: 'Review\tcontext\r\nCloses #119\n' }),
+        ],
+        policy: POLICY,
+      }),
+    ).toBeUndefined();
+  });
+
+  it.each(['\u0000', '\u000b', '\u000c', '\u001f', '\u007f'])(
+    'rejects prohibited pull-request body control character %#',
+    (control) => {
+      expect(() =>
+        selectCommercialDevelopmentIssue({
+          issues: [issue()],
+          openPullRequests: [
+            pullRequest({ body: `before${control}after` }),
+          ],
+          policy: POLICY,
+        }),
+      ).toThrow(CommercialDevelopmentSelectionError);
+    },
+  );
+
   it('quotes but does not execute non-authoritative prompt-injection language', () => {
     const injected = issue({
       body: [
