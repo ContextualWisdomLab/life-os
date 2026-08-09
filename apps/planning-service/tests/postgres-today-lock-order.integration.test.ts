@@ -32,7 +32,7 @@ async function applyPlanningMigrations(pool: Pool): Promise<void> {
     '0003_durable_today_sync.sql',
   ]) {
     const sql = await readFile(
-      resolve(process.cwd(), 'migrations', migrationFile),
+      resolve(__dirname, '../migrations', migrationFile),
       'utf8',
     );
     await pool.query(sql);
@@ -55,6 +55,7 @@ describeWithDatabase('PostgreSQL Today lock ordering', () => {
     });
     let migrationPool: Pool | undefined;
     let runtime: PlanningRuntime | undefined;
+    let primaryFailure: unknown;
 
     try {
       await adminPool.query(
@@ -96,11 +97,41 @@ describeWithDatabase('PostgreSQL Today lock ordering', () => {
         expect(kinds).toEqual(['created', 'replayed']);
         expect(outcomes[0]?.aggregate).toEqual(outcomes[1]?.aggregate);
       }
+    } catch (error) {
+      primaryFailure = error;
+      throw error;
     } finally {
-      await runtime?.close();
-      await migrationPool?.end();
-      await adminPool.query('DROP DATABASE IF EXISTS life_os_today_lock_test');
-      await adminPool.end();
+      const cleanupFailures: unknown[] = [];
+      const cleanups: Array<() => Promise<unknown>> = [
+        async () => await runtime?.close(),
+        async () => await migrationPool?.end(),
+        async () =>
+          await adminPool.query('DROP DATABASE IF EXISTS life_os_today_lock_test'),
+        async () => await adminPool.end(),
+      ];
+      for (const cleanup of cleanups) {
+        try {
+          await cleanup();
+        } catch (error) {
+          cleanupFailures.push(error);
+        }
+      }
+      if (cleanupFailures.length > 0) {
+        const cleanupError = new AggregateError(
+          cleanupFailures,
+          'Today lock test cleanup failed',
+        );
+        if (primaryFailure instanceof Error) {
+          if (primaryFailure.cause === undefined) {
+            Object.defineProperty(primaryFailure, 'cause', {
+              configurable: true,
+              value: cleanupError,
+            });
+          }
+        } else if (primaryFailure === undefined) {
+          throw cleanupError;
+        }
+      }
     }
   }, 30_000);
 });
