@@ -127,6 +127,26 @@ describe('PostgresTodayRepository', () => {
     expect(client.calls[0]?.text).toContain('LIMIT 2');
   });
 
+  it('rejects malformed lookup identifiers before PostgreSQL sees them', async () => {
+    const malformedWorkspaceClient = new RecordingClient([]);
+    const malformedDateClient = new RecordingClient([]);
+
+    await expect(
+      new PostgresTodayRepository(malformedWorkspaceClient).getToday(
+        'not-a-uuid',
+        DATE,
+      ),
+    ).rejects.toBeInstanceOf(TodayPersistenceError);
+    await expect(
+      new PostgresTodayRepository(malformedDateClient).getToday(
+        WORKSPACE_ID,
+        '2026-02-30',
+      ),
+    ).rejects.toBeInstanceOf(TodayPersistenceError);
+    expect(malformedWorkspaceClient.calls).toHaveLength(0);
+    expect(malformedDateClient.calls).toHaveLength(0);
+  });
+
   it('locks aggregate then idempotency key before an optimistic update', async () => {
     const client = new RecordingClient([
       [],
