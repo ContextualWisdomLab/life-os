@@ -1,6 +1,6 @@
 # ADR-0001: Product hosting and data architecture evolution
 
-**Status:** Accepted  
+**Status:** Accepted architecture  
 **Date:** 2026-08-09
 
 ## Context
