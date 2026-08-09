@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-10  
 **Current protected-main baseline:** `f4cae6d83eadb00019d2962a650c55c59a3349ae`  
-**Successor branch:** `docs/canonical-product-architecture-baseline-v2`
+**Successor branch:** `docs/canonical-product-architecture-baseline-v2`  
+**Integration state:** canonical content is reconciled to `f4cae6d...`, but the branch ancestry must still absorb that protected-main commit before exact contributor-head CI can be authoritative.
 
 ## Goal
 
@@ -29,7 +30,8 @@ Replace the materially diverged PR #126 integration path with one reviewable can
 ## Remaining before this successor is merge-ready
 
 - [x] Open successor PR #140 against `main`.
-- [ ] Verify the exact successor head and independently resolve the current live base after this reconciliation series.
+- [ ] Create a guarded non-force merge commit that makes current protected main `f4cae6d...` an ancestor while preserving the reconciled canonical tree.
+- [ ] Verify the exact successor head and independently resolve the current live base after that merge.
 - [ ] Run/inspect formatting, documentation contract, package tests, CI, AppGuardrail, Semgrep, Security Scan, Commercial Readiness and current review evidence on one unchanged exact head.
 - [ ] Fix every valid current-head finding and rerun the exact head.
 - [ ] Compare successor canonical-family coverage with PR #126 and preserve any still-useful unique durable content not represented here.
