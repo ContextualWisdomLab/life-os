@@ -331,7 +331,9 @@ export async function handleTodaySyncRequest(
             : {}),
           'x-correlation-id': correlationId,
         }),
-        ...(request.method === 'PUT' ? { body: putBody } : {}),
+        ...(request.method === 'PUT' && putBody !== undefined
+          ? { body: putBody }
+          : {}),
         cache: 'no-store',
         redirect: 'error',
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
