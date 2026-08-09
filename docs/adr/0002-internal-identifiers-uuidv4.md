@@ -1,6 +1,6 @@
 # ADR-0002: Opaque UUIDv4 internal identifiers
 
-**Status:** Accepted  
+**Status:** Accepted architecture  
 **Date:** 2026-08-09
 
 ## Context
