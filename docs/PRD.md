@@ -154,7 +154,7 @@ A release should be judged by how many of these steps work end-to-end, not by th
 | PRD-PRIV-001 | Protect sensitive data through purpose-bound authorization, tenant scope, encryption/secret boundaries and auditable access rather than blanket masking. | Implemented on protected main | privacy-service work merged in #124 |
 | PRD-PRIV-002 | Make privacy access decisions/evidence append-only and grants bounded/single-use where designed. | Implemented on protected main | privacy PostgreSQL/security tests |
 | PRD-PRIV-003 | Keep credentials, raw prompts/responses, hidden reasoning and unbounded tenant content out of retained public artifacts. | Implemented on protected main | repository-wide contracts/security tests |
-| PRD-PRIV-004 | Provide user-facing export/deletion lifecycle with durable job/audit evidence before claiming complete data-rights UX. | Partial | issue #55; identity-owned core exists but concrete domain participation, durable orchestration/reconciliation, recent-auth and delivery/audit lifecycle remain incomplete |
+| PRD-PRIV-004 | Provide user-facing export/deletion lifecycle with durable job/audit evidence before claiming complete data-rights UX. | Partial | issue #55 remains open; PR #134 is the active bounded implementation for preserving real authentication age across session rotation, one prerequisite for recent-auth enforcement, while concrete domain participation, durable orchestration/reconciliation, retention, protected delivery, and audit lifecycle remain incomplete |
 
 ### Integration and extensibility
 
@@ -178,8 +178,8 @@ A release should be judged by how many of these steps work end-to-end, not by th
 
 | ID | Requirement | Status | Representative evidence |
 | --- | --- | --- | --- |
-| PRD-GOV-001 | Report configured capability-evidence maturity separately from canonical buyer-gap exhaustion so a 100% capability score cannot imply a complete product while accepted buyer journeys remain open or unknown. | Implemented on active PR | issue #128; PR #131 adds the repository-owned `product/buyer-gaps.json` registry, explicit `open`/`resolved`/`unknown` reconciliation, and separate report dimensions; ADR-0008 records the durable decision |
-| PRD-GOV-002 | Treat arbitrary issue/review/model prose as untrusted evidence rather than executable product policy. | Accepted architecture | readiness/security boundaries; PR #131 uses repository-owned gap identity and bounded issue-state evidence |
+| PRD-GOV-001 | Report configured capability-evidence maturity separately from canonical buyer-gap exhaustion so a 100% capability score cannot imply a complete product while accepted buyer journeys remain open or unknown. | Implemented on protected main | issue #128 is closed as completed; PR #131 merged as protected main `2ad45a935283e83d9bb0f3ea5c3d23b2669078b1` with repository-owned `product/buyer-gaps.json`, explicit `open`/`resolved`/`unknown` reconciliation, and separate report dimensions; ADR-0008 records the durable decision |
+| PRD-GOV-002 | Treat arbitrary issue/review/model prose as untrusted evidence rather than executable product policy. | Implemented on protected main | PR #131 consumes repository-owned gap identity and bounded issue-state evidence while keeping issue body/comment/review/model text non-executable |
 
 ### Backup, deployment and operations
 
