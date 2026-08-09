@@ -1,0 +1,140 @@
+name: Canonical docs final reconciliation
+
+on:
+  push:
+    branches:
+      - docs/canonical-product-architecture-baseline-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: canonical-doc-final-reconcile
+  cancel-in-progress: false
+
+env:
+  OLD_MAIN_SHA: f4cae6d83eadb00019d2962a650c55c59a3349ae
+  CURRENT_MAIN_SHA: dcc787f77b708cecda054b47d6f7d7b561575a67
+
+jobs:
+  reconcile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact scratch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Guard scratch branch and protected main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')" = "$GITHUB_SHA"
+          git fetch --no-tags origin main
+          test "$(git rev-parse origin/main)" = "$CURRENT_MAIN_SHA"
+
+      - name: Reconcile current protected-main evidence
+        shell: python
+        run: |
+          from pathlib import Path
+
+          old = '${{ env.OLD_MAIN_SHA }}'
+          current = '${{ env.CURRENT_MAIN_SHA }}'
+          paths = [
+              Path('README.md'), Path('ARCHITECTURE.md'), Path('AGENTS.md'),
+              Path('CLAUDE.md'), Path('CHANGELOG.md'),
+              *Path('docs').rglob('*.md'),
+          ]
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              text = text.replace(old, current)
+              path.write_text(text, encoding='utf-8')
+
+          replacements = {
+              Path('docs/PRD.md'): [
+                  (
+                      '| PRD-CAL-003 | Stop accepting client-selected workspace authority at the calendar boundary. | Implemented on active PR | PR #139 is the bounded trusted-context prerequisite for #129. |',
+                      '| PRD-CAL-003 | Stop accepting client-selected workspace authority at the calendar boundary. | Implemented on protected main | PR #139 merged as `eb4ff993a6c8f948377d68d186130c149f370154`; #129 remains open for the credential lifecycle. |',
+                  ),
+                  (
+                      '| PRD-PRIV-003 | Persist durable data-rights request state and immutable terminal receipt evidence. | Implemented on protected main | #138, migration `0006_data_rights_request_ledger.sql`, ledger tests. |',
+                      '| PRD-PRIV-003 | Persist durable data-rights request state, tenant-scoped status lookup, and immutable terminal receipt evidence. | Implemented on protected main | #138 plus PR #144 merged as `${CURRENT_MAIN_SHA}`; migration `0006_data_rights_request_ledger.sql` and ledger/status-lookup tests. |',
+                  ),
+              ],
+              Path('docs/TRD.md'): [
+                  (
+                      'The full hosted per-user credential lifecycle remains `Partial`; trusted workspace context is being advanced on active PR #139.',
+                      'The trusted workspace context is implemented on protected main through PR #139; the full hosted per-user credential lifecycle remains `Partial` under issue #129.',
+                  ),
+                  (
+                      'Client-selected workspace identity must not become tenant authority; PR #139 advances this boundary.',
+                      'Client-selected workspace identity is not tenant authority; PR #139 is protected-main evidence for the signed trusted workspace context.',
+                  ),
+              ],
+              Path('docs/UML.md'): [
+                  ('**Status:** Implemented on active PR\n\n**Evidence:** PR #139, issue #129.', '**Status:** Implemented on protected main\n\n**Evidence:** PR #139 merged as `eb4ff993a6c8f948377d68d186130c149f370154`; issue #129 remains Partial.'),
+              ],
+              Path('docs/API_CONTRACTS.md'): [
+                  ('| Calendar trusted workspace context | Calendar integration service | Implemented on active PR | PR #139; removes legacy client-selected workspace authority. |', '| Calendar trusted workspace context | Calendar integration service | Implemented on protected main | PR #139 merged as `eb4ff993a6c8f948377d68d186130c149f370154`; legacy client-selected workspace authority is rejected. |'),
+                  ('**Status:** Implemented on active PR\n\nPR #139 requires', '**Status:** Implemented on protected main\n\nPR #139 requires'),
+              ],
+              Path('docs/PRIVACY_DATA_LIFECYCLE.md'): [
+                  ('PR #139 is `Implemented on active PR` for the trusted workspace-context prerequisite only.', 'PR #139 is `Implemented on protected main` for the trusted workspace-context prerequisite only; the rest of #129 remains Partial.'),
+              ],
+              Path('docs/THREAT_MODEL.md'): [
+                  ('PR #139 is active evidence for replacing legacy client-selected workspace authority with a short-lived signed context.', 'PR #139 is protected-main evidence replacing legacy client-selected workspace authority with a short-lived signed context.'),
+                  ('- #129/#139 hosted calendar identity/credential boundary;', '- #129 hosted calendar credential lifecycle beyond the protected-main trusted-context prerequisite;'),
+              ],
+              Path('docs/OPERABILITY.md'): [
+                  ('- PR #139 is active trusted-workspace-context hardening;', '- PR #139 trusted-workspace-context hardening is protected-main behavior;'),
+              ],
+              Path('docs/TRACEABILITY.md'): [
+                  ('| Calendar trusted workspace context | Implemented on active PR | PR #139 | full connection/credential lifecycle #129 |', '| Calendar trusted workspace context | Implemented on protected main | PR #139 merged as `eb4ff993a6c8f948377d68d186130c149f370154` | full connection/credential lifecycle #129 |'),
+                  ('| Durable data-rights request/receipt ledger | Implemented on protected main | #138; `identity.data_rights_requests`; integration/immutability tests | contributor orchestration/delivery/retention #55 |', '| Durable data-rights request/receipt ledger + tenant-scoped status lookup | Implemented on protected main | #138 plus PR #144; `identity.data_rights_requests`; integration/immutability/status-lookup tests | authenticated HTTP status resource and broader orchestration/delivery/retention #55 |'),
+              ],
+              Path('docs/DOCUMENTATION_ASSESSMENT.md'): [
+                  ('### #129 / PR #139 — hosted calendar credentials and authority', '### #129 — hosted calendar credentials after trusted-context prerequisite'),
+                  ('Conflict-safe provider adapters are protected-main. PR #139 is active for the trusted workspace-context prerequisite. Full per-user encrypted credentials, OAuth state/PKCE, refresh/revocation, discovery/selection and migration from the development token remain incomplete.', 'Conflict-safe provider adapters and PR #139 trusted workspace context are protected-main. Full per-user encrypted credentials, OAuth state/PKCE, refresh/revocation, discovery/selection and migration from the development token remain incomplete.'),
+              ],
+              Path('docs/RELEASE_AND_MIGRATION.md'): [
+                  ('- PR #139 — calendar trusted workspace context — `Implemented on active PR`;', '- calendar trusted workspace context — `Implemented on protected main` through PR #139;'),
+              ],
+              Path('README.md'): [
+                  ('Active PR #139 advances the trusted workspace-context prerequisite; it does not by itself complete #129.', 'PR #139 merged the trusted workspace-context prerequisite; it does not by itself complete #129.'),
+              ],
+          }
+
+          for path, pairs in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for source, target in pairs:
+                  target = target.replace('${CURRENT_MAIN_SHA}', current)
+                  if source not in text:
+                      raise SystemExit(f'missing expected canonical text in {path}: {source}')
+                  text = text.replace(source, target)
+              path.write_text(text, encoding='utf-8')
+
+      - name: Format and validate canonical documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write README.md ARCHITECTURE.md AGENTS.md CLAUDE.md CHANGELOG.md docs/**/*.md packages/commercial-readiness/src/documentation-contract.test.mjs
+          node --test packages/commercial-readiness/src/documentation-contract.test.mjs
+          git diff --check
+
+      - name: Commit only the reconciled documentation and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm --quiet .github/workflows/canonical-doc-final-reconcile.yml
+          git add README.md ARCHITECTURE.md AGENTS.md CLAUDE.md CHANGELOG.md docs packages/commercial-readiness/src/documentation-contract.test.mjs
+          git diff --cached --check
+          git commit -m 'docs: reconcile canonical baseline with current protected main'
+          test "$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')" = "$GITHUB_SHA"
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
