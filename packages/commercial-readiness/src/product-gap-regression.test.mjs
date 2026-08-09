@@ -74,7 +74,7 @@ describe('registered product gap reconciliation', () => {
         outcome: 'Today remains durable and usable across devices.',
         tracking_issue: 121,
         issue_title: 'Durable Today synchronization remains incomplete',
-        priority_score: 155,
+        priority_score: 215,
       },
     ]);
   });
