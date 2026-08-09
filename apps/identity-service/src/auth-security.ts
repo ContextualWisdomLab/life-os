@@ -210,6 +210,7 @@ export interface SessionRecord {
   userId: string;
   workspaceId: string;
   tokenHash: string;
+  authenticatedAt: string;
   createdAt: string;
   expiresAt: string;
   revokedAt: string | null;
@@ -220,6 +221,7 @@ export interface ActiveSession {
   id: string;
   userId: string;
   workspaceId: string;
+  authenticatedAt: string;
   createdAt: string;
   expiresAt: string;
   rotatedFromId?: string;
@@ -259,6 +261,7 @@ function toActiveSession(session: SessionRecord): ActiveSession {
     id: session.id,
     userId: session.userId,
     workspaceId: session.workspaceId,
+    authenticatedAt: session.authenticatedAt,
     createdAt: session.createdAt,
     expiresAt: session.expiresAt,
     ...(session.rotatedFromId ? { rotatedFromId: session.rotatedFromId } : {}),
@@ -296,7 +299,12 @@ export class SessionService {
     if (!(await this.repository.revokeByTokenHash(current.tokenHash, this.now().toISOString()))) {
       throw new Error(INVALID_SESSION);
     }
-    return this.issue(current.userId, current.workspaceId, current.id);
+    return this.issue(
+      current.userId,
+      current.workspaceId,
+      current.id,
+      current.authenticatedAt,
+    );
   }
 
   async revoke(token: string): Promise<void> {
@@ -310,6 +318,7 @@ export class SessionService {
     userId: string,
     workspaceId: string,
     rotatedFromId: string | null,
+    authenticatedAt?: string,
   ): Promise<{ session: ActiveSession; token: string }> {
     if (!UUID_V4_PATTERN.test(userId)) {
       throw new Error('User ID must be an opaque UUIDv4');
@@ -325,6 +334,7 @@ export class SessionService {
       userId,
       workspaceId,
       tokenHash: sha256Hex(token),
+      authenticatedAt: authenticatedAt ?? now.toISOString(),
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + this.ttlMs).toISOString(),
       revokedAt: null,
