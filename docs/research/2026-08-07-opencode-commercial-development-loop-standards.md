@@ -25,9 +25,9 @@ The OWASP Top 10 for LLM Applications identifies prompt injection, sensitive-inf
 
 ## OpenCode and NVIDIA provider boundary
 
-OpenCode exposes a non-interactive `run` command and provider/model configuration. LifeOS uses one exact reviewed `opencode-ai` package version and verifies both the installed version and command contract. Auto-update and sharing are disabled. The model receives a private configuration and a source archive without `.git`; tool permissions deny shell, web-fetch, task delegation, and external-directory access in the initial slice. The prompt is attached from a private file instead of carrying issue text in process arguments (Anomaly, 2026).
+OpenCode exposes a non-interactive `run` command and provider/model configuration. LifeOS uses one exact reviewed `opencode-ai` package version and verifies both the installed version and command contract. Auto-update and sharing are disabled. The model receives a private configuration and a source archive without `.git`; Bash is denied by default except for reviewed `pnpm`, `node`, `python3`, `grep`, `rg`, `find`, `ls`, and `cat` command patterns, while web-fetch, web-search, and external-directory access are denied. The prompt is attached from a private file instead of carrying issue text in process arguments (Anomaly, 2026).
 
-NVIDIA NIM exposes hosted OpenAI-compatible inference authenticated with an API key. `NVIDIA_NIM_API_KEY` is mapped only to the OpenCode process under the provider-specific alias expected by the pinned client. The process is launched with an allowlisted minimal environment; GitHub, review-agent, deployment, and unrelated repository credentials are absent. Provider availability is evidence, not a deterministic merge prerequisite (NVIDIA Corporation, 2026).
+NVIDIA NIM exposes hosted OpenAI-compatible inference authenticated with an API key. `NVIDIA_NIM_API_KEY` is mapped only to a loopback bridge running as `opencode_bridge`. OpenCode runs separately as `opencode_model` with a placeholder API-key value and an allowlisted minimal environment; UID-based `iptables` rules restrict its model-phase egress to the bridge. GitHub, review-agent, deployment, and unrelated repository credentials are absent. Provider availability is evidence, not a deterministic merge prerequisite (NVIDIA Corporation, 2026).
 
 ## Test-time compute allocation
 
@@ -65,31 +65,31 @@ Latency and token use are recorded for cost and capacity review but are not the 
 
 - Vendor documentation describes interfaces, not independent security assurance.
 - The initial dry-run fixtures cannot establish general autonomous-development reliability.
-- The workflow does not provide an operating-system-level network sandbox; the initial OpenCode profile therefore denies shell and web tools and receives a source archive without `.git` or GitHub credentials.
+- The workflow applies UID-based `iptables` restrictions to `opencode_model`—allowing only the loopback bridge during model execution and denying IPv6—but does not provide a general-purpose operating-system sandbox; the model also receives a source archive without `.git` or GitHub credentials.
 - Provider-side retention and processing remain subject to the deployment operator's NVIDIA agreement and data-governance assessment.
 - The model cannot discover or authorize new backlog work in this slice; issue eligibility is an explicit reviewed policy.
 - A draft pull request is evidence for review, not proof of correctness or permission to merge.
 
 ## References
 
-Anomaly. (2026). *OpenCode documentation*. https://opencode.ai/docs/
+Anomaly. (2026). _OpenCode documentation_. https://opencode.ai/docs/
 
-GitHub. (2026a). *Security hardening for GitHub Actions*. https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
+GitHub. (2026a). _Security hardening for GitHub Actions_. https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
 
-GitHub. (2026b). *Reusing workflows*. https://docs.github.com/en/actions/using-workflows/reusing-workflows
+GitHub. (2026b). _Reusing workflows_. https://docs.github.com/en/actions/using-workflows/reusing-workflows
 
-National Institute of Standards and Technology. (2023). *Artificial intelligence risk management framework (AI RMF 1.0)* (NIST AI 100-1). https://doi.org/10.6028/NIST.AI.100-1
+National Institute of Standards and Technology. (2023). _Artificial intelligence risk management framework (AI RMF 1.0)_ (NIST AI 100-1). https://doi.org/10.6028/NIST.AI.100-1
 
-National Institute of Standards and Technology. (2024). *Artificial intelligence risk management framework: Generative artificial intelligence profile* (NIST AI 600-1). https://doi.org/10.6028/NIST.AI.600-1
+National Institute of Standards and Technology. (2024). _Artificial intelligence risk management framework: Generative artificial intelligence profile_ (NIST AI 600-1). https://doi.org/10.6028/NIST.AI.600-1
 
-Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2026). *Learning to orchestrate agents in natural language with the Conductor* [Conference paper]. International Conference on Learning Representations. https://openreview.net/pdf?id=4a133f1e2ca67ceaedb45c3a123cc8125c694ff5
+Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2026). _Learning to orchestrate agents in natural language with the Conductor_ [Conference paper]. International Conference on Learning Representations. https://openreview.net/forum?id=U23A2BUKYt
 
-NVIDIA Corporation. (2026). *API reference—NVIDIA NIM for large language models*. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
+NVIDIA Corporation. (2026). _API reference—NVIDIA NIM for large language models_. https://docs.nvidia.com/nim/large-language-models/latest/api-reference.html
 
-OWASP Foundation. (2025). *OWASP Top 10 for large language model applications 2025*. https://genai.owasp.org/llm-top-10/
+OWASP Foundation. (2025). _OWASP Top 10 for large language model applications 2025_. https://genai.owasp.org/llm-top-10/
 
-Sakana AI. (2026, June 22). *Sakana Fugu: One model to command them all* [Final research release]. https://sakana.ai/fugu-release/
+Sakana AI. (2026, June 22). _Sakana Fugu: One model to command them all_ [Final research release]. https://sakana.ai/fugu-release/
 
-Xu, J., Sun, Q., Schwendeman, P., Nielsen, S., Cetin, E., & Tang, Y. (2026a). *TRINITY: An evolved LLM coordinator* [Conference paper]. International Conference on Learning Representations. https://doi.org/10.48550/arXiv.2512.04695
+Xu, J., Sun, Q., Schwendeman, P., Nielsen, S., Cetin, E., & Tang, Y. (2026a). _TRINITY: An evolved LLM coordinator_ [Conference paper]. International Conference on Learning Representations. https://doi.org/10.48550/arXiv.2512.04695
 
-Xu, J., Koesdwiady, A., Bei, S., Han, Y., Huang, B., Wang, D., Chen, Y., Wang, Z., Wang, P., Li, P., & Ding, Y. (2026b). *Rethinking the value of multi-agent workflow: A strong single agent baseline* [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2601.12307
+Xu, J., Koesdwiady, A., Bei, S., Han, Y., Huang, B., Wang, D., Chen, Y., Wang, Z., Wang, P., Li, P., & Ding, Y. (2026b). _Rethinking the value of multi-agent workflow: A strong single agent baseline_ [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2601.12307
