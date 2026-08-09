@@ -1,5 +1,9 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import {
+  CalendarContextInvalidError,
+  CalendarContextUnavailableError,
+} from './calendar-service-context';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_CONTEXT_KEY = randomBytes(32).toString('base64url');
@@ -50,7 +54,7 @@ describe('trusted calendar workspace context', () => {
     ).toBe(WORKSPACE_ID);
   });
 
-  it('rejects unsigned, forged, stale, future, malformed, and unavailable contexts', async () => {
+  it('classifies untrusted contexts as invalid and unusable server configuration as unavailable', async () => {
     const { requireTrustedCalendarWorkspaceContext } = await contextModule();
     const issuedAt = String(NOW_SECONDS);
     const valid = {
@@ -60,7 +64,13 @@ describe('trusted calendar workspace context', () => {
     };
     const invalid = [
       { ...valid, signature: undefined },
-      { ...valid, signature: signature('22222222-2222-4222-8222-222222222222', issuedAt) },
+      {
+        ...valid,
+        signature: signature(
+          '22222222-2222-4222-8222-222222222222',
+          issuedAt,
+        ),
+      },
       {
         ...valid,
         issuedAt: String(NOW_SECONDS - 61),
@@ -76,11 +86,19 @@ describe('trusted calendar workspace context', () => {
 
     for (const candidate of invalid) {
       expect(() =>
-        requireTrustedCalendarWorkspaceContext(candidate, TEST_CONTEXT_KEY, NOW_SECONDS),
-      ).toThrow();
+        requireTrustedCalendarWorkspaceContext(
+          candidate,
+          TEST_CONTEXT_KEY,
+          NOW_SECONDS,
+        ),
+      ).toThrow(CalendarContextInvalidError);
     }
     expect(() =>
-      requireTrustedCalendarWorkspaceContext(valid, 'short-secret', NOW_SECONDS),
-    ).toThrow();
+      requireTrustedCalendarWorkspaceContext(
+        valid,
+        'short-secret',
+        NOW_SECONDS,
+      ),
+    ).toThrow(CalendarContextUnavailableError);
   });
 });
