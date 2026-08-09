@@ -37,7 +37,7 @@ describe('browser Today workspace synchronization', () => {
   });
 
   it('checks durable state only when explicitly called and converts it back to local state', async () => {
-    const calls: Array<{ input: string; init?: RequestInit }> = [];
+    const calls: Array<{ input: string; init: RequestInit | undefined }> = [];
     const result = await fetchWorkspaceToday(DATE, async (input, init) => {
       calls.push({ input: String(input), init });
       return Response.json(aggregate(), {
