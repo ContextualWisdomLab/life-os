@@ -9,8 +9,8 @@ Add production-oriented application boundaries for workspace data portability an
 - Protected main now derives data-rights ownership from an authenticated session and preserves the actual authentication instant across session rotation; recent-auth enforcement no longer mistakes a rotated session for fresh authentication.
 - `apps/identity-service/src/data-rights.ts` defines the trusted workspace context, contributor contract, deterministic export manifest, fail-closed erasure preflight, idempotent execution context, and post-erasure verification receipt.
 - `apps/identity-service/src/data-rights.integration.test.ts` provides boundary evidence for deterministic exports, tenant isolation, secret-field rejection, no mutation during export, no partial deletion after a failed preflight, deterministic erasure order, bounded recovery evidence, and complete absence verification.
-- **Implemented on active PR #138:** `data-rights-request-ledger.ts` and migration `0006_data_rights_request_ledger.sql` persist tenant-bound request identity, exact idempotency replay, request/receipt SHA-256 digests, lifecycle state, and one immutable terminal receipt without retaining a foreign-key dependency that would either erase the receipt or block source identity/workspace erasure.
-- PR #138 includes a real PostgreSQL regression proving that a completed erasure receipt remains available after the source workspace and user rows are deleted.
+- **Implemented on active PR:** `data-rights-request-ledger.ts` and migration `0006_data_rights_request_ledger.sql` persist tenant-bound request identity, exact idempotency replay, request/receipt SHA-256 digests, lifecycle state, and one immutable terminal receipt without retaining a foreign-key dependency that would either erase the receipt or block source identity/workspace erasure.
+- The active implementation includes a real PostgreSQL regression proving that a completed erasure receipt remains available after the source workspace and user rows are deleted.
 
 This remains a partial product journey. The durable ledger is intentionally a bounded persistence primitive; it does not by itself claim complete public export/deletion UX, concrete participation by every data-owning service, encrypted export delivery, legal-hold policy, backup-expiry behavior, or operator-visible recovery.
 
@@ -25,7 +25,7 @@ This remains a partial product journey. The durable ledger is intentionally a bo
 
 ## Durable request and receipt contract
 
-A data-rights request uses one workspace-scoped UUIDv4 idempotency key. The first accepted request persists its opaque request identity, trusted workspace/user identifiers, operation kind, request digest, and request time. An exact replay returns the original durable request. Reusing the same idempotency key with a different actor, operation, or request digest fails closed.
+A data-rights request uses one workspace-scoped UUIDv4 idempotency key. The first accepted request persists its opaque request identity, trusted workspace/user identifiers, operation kind, request digest, and request time. An exact replay returns the original durable request. Reusing the same idempotency key with a different actor, operation, or request digest fails closed. Reusing a durable `request_id` for a different request is likewise mapped to the same stable credential-free domain conflict rather than exposing a raw PostgreSQL unique-violation error.
 
 Completion is one-way. A pending request may record one SHA-256 receipt digest and completion instant. Replaying that same receipt is safe; a different terminal digest cannot rewrite prior audit evidence. The ledger intentionally retains opaque workspace/user UUID references after the source rows are erased so completion evidence can survive the operation it proves. Retention duration and subsequent disposal of those audit references remain a separately governed privacy/operability decision.
 
