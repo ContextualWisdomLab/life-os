@@ -162,11 +162,7 @@ export function TodayWorkspaceSyncPanel({
           {messages.checkWorkspaceToday}
         </button>
         {canSave ? (
-          <button
-            type="button"
-            disabled={state === 'checking'}
-            onClick={() => void saveLocal()}
-          >
+          <button type="button" onClick={() => void saveLocal()}>
             {saveLabel}
           </button>
         ) : null}
