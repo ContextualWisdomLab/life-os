@@ -123,6 +123,95 @@ test('keeps a local Today private until the user explicitly migrates it', async 
   expect(putCount).toBe(1);
 });
 
+test('surfaces a stale-device conflict and requires an explicit recheck before using newer workspace state', async ({
+  page,
+}) => {
+  const oldRevision = '22222222-2222-4222-8222-222222222222';
+  const newRevision = '55555555-5555-4555-8555-555555555555';
+  let getCount = 0;
+  let putCount = 0;
+
+  await page.route('**/api/planning/today/**', async (route) => {
+    const request = route.request();
+    const date = new URL(request.url()).pathname.split('/').at(-1) ?? '';
+    if (request.method() === 'GET') {
+      getCount += 1;
+      const revision = getCount === 1 ? oldRevision : newRevision;
+      const title = getCount === 1 ? 'Older workspace copy' : 'Newer device copy';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { etag: `"${revision}"` },
+        body: JSON.stringify({
+          version: 'life-os.today.v1',
+          aggregateId: '44444444-4444-4444-8444-444444444444',
+          revision,
+          date,
+          actions: [
+            {
+              id: '66666666-6666-4666-8666-666666666666',
+              title,
+              status: 'open',
+              priority: 1,
+              startMinute: null,
+              durationMinutes: null,
+              createdAt: `${date}T00:00:00.000Z`,
+              completedAt: null,
+            },
+          ],
+        }),
+      });
+      return;
+    }
+
+    expect(request.method()).toBe('PUT');
+    putCount += 1;
+    const requestHeaders = request.headers();
+    expect(requestHeaders['if-match']).toBe(`"${oldRevision}"`);
+    expect(requestHeaders['if-none-match']).toBeUndefined();
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/problem+json',
+      body: JSON.stringify({
+        type: 'about:blank',
+        title: 'Today changed on another device',
+        status: 409,
+        code: 'today_revision_conflict',
+        currentRevision: newRevision,
+      }),
+    });
+  });
+
+  await page.reload();
+  await page.getByLabel('What needs your attention?').fill('Local conflicting edit');
+  await page.getByRole('button', { name: 'Capture' }).click();
+  await expect(page.getByText('Local conflicting edit')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Check workspace Today' }).click();
+  await expect(
+    page.getByText(
+      'A durable Today exists. Review your choice before replacing either copy.',
+    ),
+  ).toBeVisible();
+
+  await page
+    .getByRole('button', { name: 'Replace workspace with this local draft' })
+    .click();
+  await expect(
+    page.getByText(
+      'Another device changed Today. Check the workspace again before deciding which copy to keep.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByText('Local conflicting edit')).toBeVisible();
+  expect(putCount).toBe(1);
+
+  await page.getByRole('button', { name: 'Check workspace Today' }).click();
+  await page.getByRole('button', { name: 'Use workspace Today in this browser' }).click();
+  await expect(page.getByText('Newer device copy')).toBeVisible();
+  await expect(page.getByText('Local conflicting edit')).toHaveCount(0);
+  expect(getCount).toBe(2);
+});
+
 test('keeps core controls usable at a mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('heading', { name: 'Make today believable.' })).toBeVisible();
