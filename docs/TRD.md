@@ -1,7 +1,7 @@
 # LifeOS Technical Requirements Document
 
 **Version:** 1.0-draft  
-**Baseline:** protected `main` at `2cd8c766d2c8358936eac1f92e44c8e9f99f1fea`
+**Baseline:** protected `main` at `f4cae6d83eadb00019d2962a650c55c59a3349ae`
 
 ## 1. Purpose
 
@@ -134,7 +134,9 @@ When a domain event is used:
 
 ### Today planning
 
-The durable Today aggregate uses explicit revision/precondition and idempotency semantics. PR #127 is active implementation evidence and cannot be represented as protected-main behavior before merge.
+**Status:** Implemented on protected main
+
+The durable Today aggregate uses explicit revision/precondition and idempotency semantics, deterministic transaction-scoped advisory locking, fresh post-lock replay/conflict checks and an explicit local-draft-to-workspace user action. PR #127 merged as `f4cae6d83eadb00019d2962a650c55c59a3349ae`; issue #121 is closed completed.
 
 ### Habit completion
 
@@ -187,6 +189,7 @@ The OpenCode/NVIDIA loop may create bounded reviewed changes through its designe
 - Korean/English catalogs remain structurally aligned.
 - PWA/local drafts never imply durable synchronization until server acceptance is proven.
 - Stale asynchronous UI responses cannot replace newer owned state after navigation/query/unmount changes.
+- Durable Today browser flows preserve edits made while a save is in flight and separate retry/conflict states from local draft ownership.
 
 ## 13. Observability
 
