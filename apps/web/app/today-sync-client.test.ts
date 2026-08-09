@@ -46,6 +46,24 @@ function jsonResponse(
   });
 }
 
+function validPutRequest(
+  headers: HeadersInit,
+  body: unknown = {
+    version: 'life-os.today.v1',
+    date: DATE,
+    actions: aggregate().actions,
+  },
+): Request {
+  return new Request(`https://life.example.test/api/planning/today/${DATE}`, {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      ...Object.fromEntries(new Headers(headers)),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 describe('Today synchronization BFF', () => {
   it('authenticates the browser, derives workspace server-side, and returns bounded GET state with ETag', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
@@ -266,7 +284,7 @@ describe('Today synchronization BFF', () => {
     });
   });
 
-  it('fails closed on invalid dates, browser bodies, conditional headers, or oversized upstream payloads', async () => {
+  it('fails closed on invalid dates and invalid browser media types before dependencies run', async () => {
     const neverFetch = async () => {
       throw new Error('fetch must not run');
     };
@@ -293,5 +311,135 @@ describe('Today synchronization BFF', () => {
       neverFetch,
     );
     assert.equal(invalidPut.status, 400);
+  });
+
+  it('rejects every malformed browser write-authority header combination before authentication', async () => {
+    const neverFetch = async () => {
+      throw new Error('fetch must not run');
+    };
+    const cases: HeadersInit[] = [
+      {
+        'if-match': `\"${REVISION}\"`,
+        'if-none-match': '*',
+        'idempotency-key': randomUUID(),
+      },
+      { 'idempotency-key': randomUUID() },
+      { 'if-none-match': '*', 'idempotency-key': 'not-a-uuid' },
+      { 'if-none-match': 'anything-else', 'idempotency-key': randomUUID() },
+    ];
+
+    for (const headerCase of cases) {
+      const response = await handleTodaySyncRequest(
+        validPutRequest(headerCase),
+        DATE,
+        ENVIRONMENT,
+        neverFetch,
+      );
+      assert.equal(response.status, 400);
+    }
+  });
+
+  it('rejects mismatched Today body version or route date before authentication', async () => {
+    const neverFetch = async () => {
+      throw new Error('fetch must not run');
+    };
+    for (const body of [
+      { version: 'life-os.today.v2', date: DATE, actions: [] },
+      { version: 'life-os.today.v1', date: '2026-08-10', actions: [] },
+    ]) {
+      const response = await handleTodaySyncRequest(
+        validPutRequest(
+          {
+            'if-none-match': '*',
+            'idempotency-key': randomUUID(),
+          },
+          body,
+        ),
+        DATE,
+        ENVIRONMENT,
+        neverFetch,
+      );
+      assert.equal(response.status, 400);
+    }
+  });
+
+  it('maps a missing durable Today to the bounded not-found problem', async () => {
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) {
+        return jsonResponse({ workspaceId: WORKSPACE_ID });
+      }
+      return jsonResponse({ code: 'today_not_found' }, 404);
+    };
+    const response = await handleTodaySyncRequest(
+      new Request(`https://life.example.test/api/planning/today/${DATE}`),
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), {
+      type: 'about:blank',
+      title: 'Today aggregate was not found',
+      status: 404,
+      code: 'today_not_found',
+    });
+  });
+
+  it('fails closed when the upstream ETag disagrees with the aggregate revision', async () => {
+    const differentRevision = '55555555-5555-4555-8555-555555555555';
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) {
+        return jsonResponse({ workspaceId: WORKSPACE_ID });
+      }
+      return jsonResponse(
+        { ...aggregate(), revision: differentRevision },
+        200,
+        { etag: `\"${REVISION}\"` },
+      );
+    };
+    const response = await handleTodaySyncRequest(
+      new Request(`https://life.example.test/api/planning/today/${DATE}`),
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 503);
+  });
+
+  it('fails closed when an upstream payload exceeds the bounded response budget', async () => {
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) {
+        return jsonResponse({ workspaceId: WORKSPACE_ID });
+      }
+      return jsonResponse({ oversized: 'x'.repeat(65 * 1024) }, 200, {
+        etag: `\"${REVISION}\"`,
+      });
+    };
+    const response = await handleTodaySyncRequest(
+      new Request(`https://life.example.test/api/planning/today/${DATE}`),
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 503);
+  });
+
+  it('rejects unsupported browser methods before authentication', async () => {
+    const neverFetch = async () => {
+      throw new Error('fetch must not run');
+    };
+    const response = await handleTodaySyncRequest(
+      new Request(`https://life.example.test/api/planning/today/${DATE}`, {
+        method: 'DELETE',
+      }),
+      DATE,
+      ENVIRONMENT,
+      neverFetch,
+    );
+
+    assert.equal(response.status, 400);
   });
 });
