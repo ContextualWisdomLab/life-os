@@ -31,10 +31,12 @@ describe('validateBuyerGapSnapshot', () => {
     assert.equal(Object.isFrozen(value.issues[0].labels), true);
   });
 
-  it('rejects raw bodies, duplicate evidence, malformed repositories, and oversized collections', () => {
+  it('rejects raw bodies, duplicate evidence, malformed repositories, timestamps, and oversized collections', () => {
     const issue = snapshot().issues[0];
     const invalid = [
       snapshot({ repository: 'https://example.test/repo' }),
+      snapshot({ generated_at: 2026 }),
+      snapshot({ generated_at: 'not-a-date' }),
       snapshot({ issues: [{ ...issue, body: 'untrusted' }] }),
       snapshot({ issues: [issue, issue] }),
       snapshot({ issues: Array.from({ length: 101 }, (_, index) => ({
