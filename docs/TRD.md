@@ -5,7 +5,7 @@
 
 ## 1. Purpose
 
-This document defines repository-wide technical requirements for LifeOS. It does not replace owning-service source, migrations, versioned API/event schemas, or scoped runbooks. It defines the common runtime, authority, data, security, failure, quality, deployment, and release contracts those artifacts must satisfy.
+This document defines repository-wide technical requirements for LifeOS. It does not replace owning-service source, migrations, versioned API/event schemas, exact active-PR source, or scoped runbooks. It defines the common runtime, authority, data, security, failure, quality, deployment, readiness, and release contracts those artifacts must satisfy.
 
 ## 2. Architecture status
 
@@ -28,7 +28,13 @@ Protected main currently includes:
 - AppGuardrail/security/commercial-readiness gates;
 - the bounded hourly OpenCode commercial-development workflow and deterministic commercial-development package merged from PR #122 as `876850018a17323900844e79845ba395b7bf6a9a`.
 
-The OpenCode workflow is repository automation, not product-data mutation authority. It still opens reviewed work subject to normal exact-head gates.
+Current active implementation evidence additionally includes:
+
+- PR #127 for the versioned durable Today aggregate, explicit local-to-durable migration, strong revision preconditions, idempotency, PostgreSQL persistence and conflict/recheck browser flow for issue #121;
+- PR #131 for repository-owned buyer-gap identity and independent capability-maturity versus buyer-gap reporting for issue #128;
+- PR #133 for explicit NVIDIA model-catalog resolution and real digest-pinned PostgreSQL/NATS Compose verification of the protected-main OpenCode development loop.
+
+These active PRs are not protected-main evidence until their exact reviewed heads merge. The OpenCode workflow is repository automation, not product-data mutation authority.
 
 ## 3. Technology baseline
 
@@ -74,7 +80,7 @@ Owns review snapshots/projections/observations. It consumes evidence without bec
 
 ### Calendar integration service
 
-Owns provider adaptation and calendar synchronization state. Hosted per-user encrypted Google credential lifecycle/provider selection is **Partial** and tracked by issue #129.
+Owns provider adaptation and calendar synchronization state. Hosted per-user encrypted Google credential lifecycle/provider selection is `Partial` and tracked by issue #129.
 
 ### Notification service
 
@@ -90,7 +96,7 @@ Owns purpose-bound access decisions, grants, events, signed sensitive-access bou
 
 ### Plugin integration service / SDK
 
-Owns plugin contract discovery, manifest/event validation, event preparation, and SDK types. Generic plugin installation, durable secrets, outbound delivery, and arbitrary commands are separately governed future capabilities.
+Owns plugin contract discovery, manifest/event validation, event preparation, and SDK types. Generic plugin installation, durable secrets, outbound delivery, retry/audit/revocation, and arbitrary commands are `Planned` under issue #130 rather than implied by the validation-only surface.
 
 ## 5. Data and identity requirements
 
@@ -114,6 +120,10 @@ Persist instants in UTC and retain IANA timezone/local-calendar values where civ
 
 Audit/decision/completion/outcome evidence defined as immutable/append-only rejects unauthorized mutation. Mutable data uses explicit revision, digest, ETag, idempotency, or fencing evidence wherever silent stale overwrite or duplicate side effects are plausible.
 
+### TRD-DATA-006 — Active-PR persistence claims
+
+A persistence entity or migration that exists only on an active PR is labeled `Implemented on active PR` in canonical documentation and logical ERD notes. It may be modeled as a planned/logical relationship for architecture discussion but cannot be called protected-main persisted state until exact merge evidence exists.
+
 ## 6. Authentication and authorization
 
 - OAuth callbacks validate provider/state/redirect boundaries.
@@ -133,6 +143,7 @@ Audit/decision/completion/outcome evidence defined as immutable/append-only reje
 6. Do not expose stack traces, dependency bodies, tokens, or secrets.
 7. Explicitly control redirects/origins for security-sensitive provider/model transport.
 8. Version breaking semantics instead of silently changing a shared schema.
+9. Active-PR routes/contracts are not documented as protected-main API until their exact implementation is merged.
 
 See `docs/API_CONTRACTS.md`.
 
@@ -152,7 +163,7 @@ When domain events are used:
 
 ### Planning / Today
 
-Durable writes reject or reconcile stale state. Browser-local drafts remain visibly distinct from durable state until explicit synchronization succeeds. Complete multi-device durable Today aggregate conflict/reconnect behavior remains **Partial** / issue #121.
+Protected main already requires durable planning writes to reject or reconcile stale state and keeps browser-local drafts visibly distinct from durable state. PR #127 is `Implemented on active PR` for the complete bounded versioned Today aggregate under issue #121: session-derived workspace authority, `If-None-Match` creation, strong `If-Match` update, monotonic opaque revision evidence, idempotency-key replay semantics, PostgreSQL persistence, and explicit local draft migration/conflict recheck. It remains non-protected-main evidence until merge.
 
 ### Habit completion
 
@@ -206,7 +217,25 @@ The merged OpenCode scheduler:
 - cannot treat model output as merge/release/repository-administration authority;
 - remains subject to normal CI, AppGuardrail, Semgrep, Security Scan, CodeRabbit/review, and exact-head merge policy.
 
-## 11. External integration requirements
+PR #133 is an `Implemented on active PR` hardening path for that scheduler. Its scope is to resolve explicit NVIDIA model catalog selection and prove real Compose verification with digest-pinned PostgreSQL/NATS without introducing broad Docker/network authority for the model. Its checks/evidence do not transfer to protected main until merge.
+
+## 11. Readiness and buyer-gap governance
+
+### TRD-GOV-001 — Separate readiness dimensions
+
+Configured capability-evidence maturity and canonical buyer-gap exhaustion are independent dimensions under ADR-0008. The system must not derive whole-product completeness solely from `product/capabilities.json` maturity.
+
+### TRD-GOV-002 — Repository-owned gap identity
+
+Buyer-gap identity, linked capability/requirement, and expected issue mapping are versioned repository-owned data. Arbitrary issue title/body/comment/review/model text is untrusted and cannot redefine executable readiness policy.
+
+### TRD-GOV-003 — Fail-closed reconciliation
+
+Live issue-state evidence may reconcile a registered gap as `open`, `resolved`, or `unknown`. Fetch failure, missing evidence, malformed registry content, duplicate identity or unknown capability references fail closed; unknown does not become resolved.
+
+Issue #128 tracks the defect and PR #131 is the `Implemented on active PR` path. The protected-main capability maturity calculation remains its own dimension until the active implementation is integrated.
+
+## 12. External integration requirements
 
 ### Identity providers
 
@@ -218,22 +247,22 @@ CalDAV/Google adapters validate provider origin/response/ETag and expose only re
 
 ### Plugins
 
-Manifests/events are bounded, versioned, tenant scoped, and have no direct DB authority. Installation/secrets/outbound network delivery requires a separate least-authority/SSRF/audit boundary.
+Manifests/events are bounded, versioned, tenant scoped, and have no direct DB authority. Installation/secrets/outbound network delivery requires a separate least-authority/SSRF/audit boundary tracked by issue #130.
 
-## 12. Security and privacy requirements
+## 13. Security and privacy requirements
 
-- Treat all external responses, model output, stored JSON, environment values, connector results, calendar/plugin payloads, and decoded database rows as untrusted until validated.
+- Treat all external responses, model output, stored JSON, environment values, connector results, calendar/plugin payloads, issue/review content, and decoded database rows as untrusted until validated.
 - Parameterize SQL; never interpolate untrusted values into SQL structure.
 - Use least-privilege GitHub/runtime/database permissions.
 - Bound subprocess/network/file operations by time and size when exhaustion is plausible.
 - Retained CI/model/public artifacts exclude credentials, browser cookies, raw prompts/responses, hidden reasoning, and unbounded tenant content.
 - `SECURITY.md` governs reporting; `docs/THREAT_MODEL.md` governs architecture threats.
 - Sensitive access uses purpose/resource/actor/lifetime control and auditable evidence rather than blanket masking.
-- Export/delete lifecycle is **Partial** / issue #55 until concrete contributors, durable orchestration/reconciliation, recent-auth, retention/legal-hold, protected delivery, and audit evidence are complete.
+- Export/delete lifecycle is `Partial` under issue #55 until concrete contributors, durable orchestration/reconciliation, recent-auth, retention/legal-hold, protected delivery, and audit evidence are complete.
 
 See `docs/PRIVACY_DATA_LIFECYCLE.md`.
 
-## 13. Web/PWA/accessibility/localization
+## 14. Web/PWA/accessibility/localization
 
 - Core journeys support keyboard navigation and visible focus.
 - Essential status is not color-only.
@@ -241,8 +270,9 @@ See `docs/PRIVACY_DATA_LIFECYCLE.md`.
 - Korean/English catalogs remain structurally aligned.
 - PWA/local drafts never imply successful durable synchronization until server acceptance is proven.
 - Stale asynchronous requests cannot replace the latest owned UI state after query/navigation/unmount changes.
+- PR #127 may be used as active-PR evidence for its bounded Today sync journey but not as evidence for unrelated offline-first behavior.
 
-## 14. Observability and diagnostics
+## 15. Observability and diagnostics
 
 - Services expose bounded health/readiness appropriate to their actual responsibility.
 - Metrics are an operator surface and production ingress restricts them.
@@ -251,7 +281,7 @@ See `docs/PRIVACY_DATA_LIFECYCLE.md`.
 - Errors distinguish validation/authentication/authorization/conflict/rate-limit/dependency/unexpected classes without leaking dependency internals.
 - Numeric SLA/SLO objectives exist only in measured/operator-specific scoped documents.
 
-## 15. Backup, migration, rollback, and deployment
+## 16. Backup, migration, rollback, and deployment
 
 - Schema changes include migration compatibility plus rollback or forward-fix evidence appropriate to risk.
 - Logical backup produces checksum/integrity evidence and restore rejects corruption/unsafe non-empty targets.
@@ -262,7 +292,7 @@ See `docs/PRIVACY_DATA_LIFECYCLE.md`.
 
 See `docs/OPERABILITY.md` and `docs/RELEASE_AND_MIGRATION.md`.
 
-## 16. Test requirements
+## 17. Test and documentation requirements
 
 - Unit tests cover deterministic domain invariants and malformed inputs.
 - PostgreSQL tests cover durability, tenancy, transactions, replay, concurrency, expiry, and recovery.
@@ -272,11 +302,12 @@ See `docs/OPERABILITY.md` and `docs/RELEASE_AND_MIGRATION.md`.
 - Backup/restore/deployment references have executable contract tests.
 - Deterministic gates are separate from bounded live-provider evidence.
 - Owned packages declaring exact gates maintain meaningful 100% statement/branch/function/line coverage.
-- Documentation consistency validates canonical files/links/ADRs/status and code-current authority claims.
+- Documentation consistency validates real canonical link targets, exact canonical status vocabulary, ADR index targets/status, source/configuration/migration evidence for key claims, active-PR versus protected-main state, and live buyer-gap traceability.
+- A resolved review thread is historical evidence only; current exact source is revalidated after every branch mutation.
 
 See `docs/TEST_STRATEGY.md`.
 
-## 17. Release requirements
+## 18. Release requirements
 
 A stable release requires one exact protected integrated head with applicable:
 
@@ -285,8 +316,9 @@ A stable release requires one exact protected integrated head with applicable:
 - package/container build/smoke evidence;
 - migration/recovery/backup evidence;
 - accessibility/localization/browser evidence;
+- canonical buyer-gap state plus configured capability-evidence maturity;
 - SBOM/provenance/reproducibility evidence required by policy;
 - no unresolved valid security/review finding;
 - release notes/changelog matching the artifact.
 
-Do not bump product version merely because one PR, documentation set, or intermediate product slice is complete.
+Do not bump product version merely because one PR, documentation set, configured capability score, or intermediate product slice is complete.
