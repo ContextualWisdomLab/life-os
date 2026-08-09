@@ -12,10 +12,14 @@ const REQUIRED_DOCUMENTS = Object.freeze([
   'docs/adr/README.md',
   'docs/DATA_MODEL.md',
   'docs/UML.md',
+  'docs/API_CONTRACTS.md',
   'SECURITY.md',
   'docs/THREAT_MODEL.md',
+  'docs/PRIVACY_DATA_LIFECYCLE.md',
   'docs/TEST_STRATEGY.md',
   'docs/OPERABILITY.md',
+  'docs/RELEASE_AND_MIGRATION.md',
+  'docs/STANDARDS_TRACEABILITY.md',
   'docs/TRACEABILITY.md',
   'docs/DOCUMENTATION_ASSESSMENT.md',
 ]);
@@ -109,10 +113,28 @@ test('canonical architecture preserves service-owned persistence and inert AI au
   assert.match(threatModel, /AI proposals remain inert and auditable/u);
 });
 
-test('traceability distinguishes active-PR evidence from protected-main evidence', () => {
+test('canonical contracts keep data lifecycle and release gaps explicit', () => {
+  const apiContracts = readRepositoryText('docs/API_CONTRACTS.md');
+  const privacyLifecycle = readRepositoryText('docs/PRIVACY_DATA_LIFECYCLE.md');
+  const releaseContract = readRepositoryText('docs/RELEASE_AND_MIGRATION.md');
+  const standards = readRepositoryText('docs/STANDARDS_TRACEABILITY.md');
+
+  assert.match(apiContracts, /planning\.task\.completed\.v1/u);
+  assert.match(apiContracts, /issue #129/u);
+  assert.match(privacyLifecycle, /Partial \/ issue #55/u);
+  assert.match(privacyLifecycle, /issue #129/u);
+  assert.match(releaseContract, /A merged feature is not automatically a release/u);
+  assert.match(releaseContract, /application rollback/u);
+  assert.match(standards, /Normative standard\/specification/u);
+  assert.match(standards, /Peer-reviewed research/u);
+});
+
+test('traceability distinguishes active-PR evidence and live buyer gaps from protected-main evidence', () => {
   const traceability = readRepositoryText('docs/TRACEABILITY.md');
 
   assert.match(traceability, /Implemented on active PR/u);
   assert.match(traceability, /PR #122/u);
   assert.match(traceability, /not protected-main evidence until merge/u);
+  assert.match(traceability, /Issue #128 now tracks this audit defect/u);
+  assert.match(traceability, /Issue #129/u);
 });
