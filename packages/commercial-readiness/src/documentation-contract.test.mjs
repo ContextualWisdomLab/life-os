@@ -117,6 +117,21 @@ function assertTraceabilityStatuses(text, sourcePath) {
   }
 }
 
+/** Asserts the API boundary registry's Status column uses canonical values only. */
+function assertApiRegistryStatuses(text, sourcePath) {
+  const section = text.split('## 3. HTTP bounded-context registry')[1]?.split('## 4.')[0];
+  assert.ok(section, `${sourcePath} is missing the HTTP boundary registry`);
+  for (const line of section.split('\n')) {
+    if (!line.startsWith('|') || /^\|\s*[-:]+/u.test(line)) continue;
+    const cells = markdownCells(line);
+    if (cells[0] === 'Boundary') continue;
+    assert.ok(
+      CANONICAL_STATUSES.includes(cells[3]),
+      `${sourcePath} has non-canonical API status for ${cells[0]}: ${cells[3]}`,
+    );
+  }
+}
+
 /** Asserts every explicit Markdown status field uses one exact canonical value. */
 function assertStatusFields(text, sourcePath) {
   for (const match of text.matchAll(/^\*\*Status:\*\* ([^\r\n]+)$/gmu)) {
@@ -160,15 +175,20 @@ test('canonical Markdown documents keep balanced fenced blocks', () => {
   }
 });
 
-test('canonical requirement and diagram status fields use one exact vocabulary', () => {
+test('canonical requirement, API, and status fields use one exact vocabulary', () => {
   assertPrdStatuses(readRepositoryText('docs/PRD.md'), 'docs/PRD.md');
   assertTraceabilityStatuses(
     readRepositoryText('docs/TRACEABILITY.md'),
     'docs/TRACEABILITY.md',
   );
+  assertApiRegistryStatuses(
+    readRepositoryText('docs/API_CONTRACTS.md'),
+    'docs/API_CONTRACTS.md',
+  );
   for (const relativePath of [
     'docs/UML.md',
     'docs/OPERABILITY.md',
+    'docs/PRIVACY_DATA_LIFECYCLE.md',
     'docs/adr/README.md',
   ]) {
     assertStatusFields(readRepositoryText(relativePath), relativePath);
@@ -275,7 +295,9 @@ test('canonical contracts keep data lifecycle and release gaps explicit', () => 
 
   assert.match(apiContracts, /planning\.task\.completed\.v1/u);
   assert.match(apiContracts, /issue #129/u);
-  assert.match(privacyLifecycle, /Partial \/ issue #55/u);
+  assert.match(apiContracts, /Durable Today workspace synchronization/u);
+  assert.match(privacyLifecycle, /\*\*Status:\*\* Partial/u);
+  assert.match(privacyLifecycle, /\*\*Tracking:\*\* issue `#55`/u);
   assert.match(privacyLifecycle, /issue #129/u);
   assert.match(releaseContract, /A merged feature is not automatically a release/u);
   assert.match(releaseContract, /Application rollback/u);
