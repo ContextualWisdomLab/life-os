@@ -1,6 +1,6 @@
 # LifeOS API and Event Contract Registry
 
-**Baseline:** protected `main` at `5c87a7ec3568a4ce47b25cad843f1bc5be91b294`
+**Baseline:** protected `main` at `876850018a17323900844e79845ba395b7bf6a9a`
 
 ## 1. Purpose
 
@@ -36,15 +36,18 @@ The shared event envelope carries an opaque event ID, explicit type/version, occ
 | Planning goals/projects/tasks/search | Planning service | durable planning source of truth and search | Implemented on protected main |
 | Habit definition/completion | Habit service | recurring habits and immutable/replay-safe completion lifecycle | Implemented on protected main |
 | Daily/weekly review | Review service | review snapshots/projections/observations | Implemented on protected main |
-| Today composition / browser APIs | Gateway/Web BFF | authenticated composition; no durable cross-domain database authority | Implemented on protected main; full durable Today aggregate concurrency is Partial |
+| Today composition / browser APIs | Gateway/Web BFF | authenticated composition; no durable cross-domain database authority | Implemented on protected main |
+| Durable Today workspace synchronization | Planning service + Web BFF | explicit local-to-durable migration, strong revision preconditions, multi-device conflict reconciliation | Implemented on active PR |
 | Calendar synchronization | Calendar integration service | CalDAV/Google provider adaptation with duplicate/conflict protection | Implemented on protected main |
-| Calendar connection/credential lifecycle | Calendar integration service target boundary | encrypted per-user credential lifecycle/provider selection | Planned / issue #129 |
+| Calendar connection/credential lifecycle | Calendar integration service target boundary | encrypted per-user credential lifecycle/provider selection | Planned |
 | Reminder scheduling/delivery | Notification service | durable occurrences, claims, outcomes, inbox delivery | Implemented on protected main |
 | AI proposal/evidence/decision | AI proposal service | inert proposal generation/persistence/decision audit | Implemented on protected main |
 | Purpose-bound sensitive access | Privacy access service | access decisions/grants/events | Implemented on protected main |
 | Plugin contract discovery/validation/event preparation | Integration service + plugin SDK | versioned plugin boundary without direct DB access | Implemented on protected main |
 | Generic plugin install/secrets/outbound delivery | Future integration boundary | least-privilege install/network/secret/runtime authority | Planned |
-| Tenant export/erasure orchestration | Identity-owned data-rights core + future contributors | deterministic export and fail-closed erasure coordination | Partial / issue #55 |
+| Tenant export/erasure orchestration | Identity-owned data-rights core + future contributors | deterministic export and fail-closed erasure coordination with incomplete end-to-end lifecycle | Partial |
+
+Tracking evidence is kept outside the status cells so status remains machine-checkable. Durable Today synchronization is implemented on active PR #127 and is not protected-main evidence until that PR integrates. Hosted per-user calendar credential lifecycle remains tracked by issue #129. Generic plugin runtime delivery remains tracked by issue #130. Complete tenant export/erasure productization remains tracked by issue #55.
 
 ## 4. Authentication and private context
 
