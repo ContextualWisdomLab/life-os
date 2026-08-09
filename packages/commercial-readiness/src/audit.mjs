@@ -4,6 +4,8 @@ import { MATURITY_LEVELS, MATURITY_RANK } from './schema.mjs';
 
 const REPORT_SCHEMA = 'life-os.commercial-readiness-report.v1';
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const MAXIMUM_OPEN_ISSUES = 1000;
+const MAXIMUM_ISSUE_TITLE_LENGTH = 300;
 
 function ensureInsideRoot(rootDir, relativePath) {
   const root = resolve(rootDir);
@@ -117,9 +119,34 @@ function missingEvidenceForTarget(capability, evidenceResults) {
   ].sort();
 }
 
+function indexOpenIssues(openIssues) {
+  if (!Array.isArray(openIssues) || openIssues.length > MAXIMUM_OPEN_ISSUES) {
+    throw new Error('Open issue snapshot is invalid');
+  }
+  const indexed = new Map();
+  for (const issue of openIssues) {
+    if (
+      !issue ||
+      typeof issue !== 'object' ||
+      !Number.isSafeInteger(issue.number) ||
+      issue.number <= 0 ||
+      issue.state !== 'open' ||
+      typeof issue.title !== 'string' ||
+      !issue.title.trim() ||
+      issue.title.length > MAXIMUM_ISSUE_TITLE_LENGTH ||
+      /[\u0000-\u001f\u007f]/.test(issue.title) ||
+      indexed.has(issue.number)
+    ) {
+      throw new Error('Open issue snapshot is invalid');
+    }
+    indexed.set(issue.number, issue.title.trim());
+  }
+  return indexed;
+}
+
 export async function evaluateCapabilities(
   manifest,
-  { rootDir, generatedAt, commitSha },
+  { rootDir, generatedAt, commitSha, openIssues = [] },
 ) {
   if (typeof rootDir !== 'string' || !rootDir)
     throw new Error('Repository root is required');
@@ -128,6 +155,7 @@ export async function evaluateCapabilities(
   }
   if (!COMMIT_SHA_PATTERN.test(commitSha))
     throw new Error('Commit SHA is invalid');
+  const openIssueIndex = indexOpenIssues(openIssues);
 
   const capabilities = [];
   for (const capability of manifest.capabilities) {
@@ -186,6 +214,38 @@ export async function evaluateCapabilities(
         left.capability_id.localeCompare(right.capability_id),
     );
 
+  const productGaps = capabilities
+    .filter(
+      (capability) =>
+        capability.tracking_issue !== null &&
+        openIssueIndex.has(capability.tracking_issue),
+    )
+    .map((capability) => {
+      const source = manifest.capabilities.find(
+        (item) => item.id === capability.id,
+      );
+      const dependents = transitiveDependents(
+        manifest.capabilities,
+        capability.id,
+      );
+      return {
+        capability_id: capability.id,
+        outcome: capability.outcome,
+        tracking_issue: capability.tracking_issue,
+        issue_title: openIssueIndex.get(capability.tracking_issue),
+        priority_score: gapPriority(
+          source,
+          capability.observed_maturity,
+          dependents,
+        ),
+      };
+    })
+    .sort(
+      (left, right) =>
+        right.priority_score - left.priority_score ||
+        left.capability_id.localeCompare(right.capability_id),
+    );
+
   let weightedObserved = 0;
   let weightedTarget = 0;
   for (const capability of capabilities) {
@@ -196,6 +256,11 @@ export async function evaluateCapabilities(
     weightedTarget += targetRank * capability.customer_impact;
   }
 
+  const unresolvedCapabilityIds = new Set([
+    ...gaps.map((gap) => gap.capability_id),
+    ...productGaps.map((gap) => gap.capability_id),
+  ]);
+
   return {
     schema: REPORT_SCHEMA,
     generated_at: new Date(generatedAt).toISOString(),
@@ -203,7 +268,9 @@ export async function evaluateCapabilities(
     summary: {
       total_capabilities: capabilities.length,
       at_target: capabilities.length - gaps.length,
-      unresolved_gaps: gaps.length,
+      configured_evidence_gaps: gaps.length,
+      open_product_gaps: productGaps.length,
+      unresolved_gaps: unresolvedCapabilityIds.size,
       weighted_maturity_percent:
         weightedTarget === 0
           ? 100
@@ -211,5 +278,6 @@ export async function evaluateCapabilities(
     },
     capabilities,
     gaps,
+    product_gaps: productGaps,
   };
 }
