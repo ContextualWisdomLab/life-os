@@ -321,15 +321,19 @@ export class PostgresTodayRepository implements TodayRepository {
     workspaceId: string,
     date: string,
   ): Promise<DurableTodayAggregate | undefined> {
+    const normalizedWorkspaceId = requireUuid(workspaceId);
+    const normalizedDate = requireDate(date);
     const result = await this.client.query<TodayAggregateRow>(
       `SELECT workspace_id, local_date, aggregate_id, revision_token, payload_json
        FROM planning.today_aggregates
        WHERE workspace_id = $1::uuid AND local_date = $2::date
        LIMIT 2`,
-      [workspaceId, date],
+      [normalizedWorkspaceId, normalizedDate],
     );
     const row = oneOrUndefined(result.rows);
-    return row ? parseAggregateRow(row, workspaceId, date) : undefined;
+    return row
+      ? parseAggregateRow(row, normalizedWorkspaceId, normalizedDate)
+      : undefined;
   }
 
   /**
