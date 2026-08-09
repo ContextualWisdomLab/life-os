@@ -6,6 +6,7 @@ const REPORT_SCHEMA = 'life-os.commercial-readiness-report.v1';
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const MAXIMUM_OPEN_ISSUES = 1000;
 const MAXIMUM_ISSUE_TITLE_LENGTH = 300;
+const MAXIMUM_REGISTERED_PRODUCT_GAPS = 100;
 
 function ensureInsideRoot(rootDir, relativePath) {
   const root = resolve(rootDir);
@@ -144,9 +145,47 @@ function indexOpenIssues(openIssues) {
   return indexed;
 }
 
+function normalizeRegisteredProductGaps(registeredProductGaps, capabilities) {
+  if (
+    !Array.isArray(registeredProductGaps) ||
+    registeredProductGaps.length > MAXIMUM_REGISTERED_PRODUCT_GAPS
+  ) {
+    throw new Error('Registered product gaps are invalid');
+  }
+  const capabilityIds = new Set(capabilities.map((capability) => capability.id));
+  const seenCapabilities = new Set();
+  const seenIssues = new Set();
+  return registeredProductGaps.map((gap) => {
+    if (
+      !gap ||
+      typeof gap !== 'object' ||
+      typeof gap.capability_id !== 'string' ||
+      !capabilityIds.has(gap.capability_id) ||
+      !Number.isSafeInteger(gap.tracking_issue) ||
+      gap.tracking_issue <= 0 ||
+      seenCapabilities.has(gap.capability_id) ||
+      seenIssues.has(gap.tracking_issue)
+    ) {
+      throw new Error('Registered product gaps are invalid');
+    }
+    seenCapabilities.add(gap.capability_id);
+    seenIssues.add(gap.tracking_issue);
+    return {
+      capability_id: gap.capability_id,
+      tracking_issue: gap.tracking_issue,
+    };
+  });
+}
+
 export async function evaluateCapabilities(
   manifest,
-  { rootDir, generatedAt, commitSha, openIssues = [] },
+  {
+    rootDir,
+    generatedAt,
+    commitSha,
+    openIssues = [],
+    registeredProductGaps = [],
+  },
 ) {
   if (typeof rootDir !== 'string' || !rootDir)
     throw new Error('Repository root is required');
@@ -214,25 +253,28 @@ export async function evaluateCapabilities(
         left.capability_id.localeCompare(right.capability_id),
     );
 
-  const productGaps = capabilities
-    .filter(
-      (capability) =>
-        capability.tracking_issue !== null &&
-        openIssueIndex.has(capability.tracking_issue),
-    )
-    .map((capability) => {
+  const registeredGaps = normalizeRegisteredProductGaps(
+    registeredProductGaps,
+    capabilities,
+  );
+  const productGaps = registeredGaps
+    .filter((gap) => openIssueIndex.has(gap.tracking_issue))
+    .map((gap) => {
+      const capability = capabilities.find(
+        (item) => item.id === gap.capability_id,
+      );
       const source = manifest.capabilities.find(
-        (item) => item.id === capability.id,
+        (item) => item.id === gap.capability_id,
       );
       const dependents = transitiveDependents(
         manifest.capabilities,
-        capability.id,
+        gap.capability_id,
       );
       return {
         capability_id: capability.id,
         outcome: capability.outcome,
-        tracking_issue: capability.tracking_issue,
-        issue_title: openIssueIndex.get(capability.tracking_issue),
+        tracking_issue: gap.tracking_issue,
+        issue_title: openIssueIndex.get(gap.tracking_issue),
         priority_score: gapPriority(
           source,
           capability.observed_maturity,
