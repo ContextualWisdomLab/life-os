@@ -1,6 +1,6 @@
 # LifeOS Requirements and Evidence Traceability
 
-**Baseline:** protected `main` at `5c87a7ec3568a4ce47b25cad843f1bc5be91b294`
+**Baseline:** protected `main` at `876850018a17323900844e79845ba395b7bf6a9a`
 
 ## 1. Purpose
 
@@ -31,7 +31,7 @@ An entry marked `Implemented on active PR` is not protected-main evidence.
 | PRD-AI-002 proposal evidence + explicit decisions | Implemented on protected main | AI audit capability | AI PostgreSQL proposal audit repository/application | proposal audit HTTP/PostgreSQL tests |
 | PRD-AI-003 authenticated same-origin AI boundary | Implemented on protected main | AI gateway trust boundary | web AI proposal BFF/routes + signed context | scope/identity-stream/routes integration tests |
 | PRD-AI-004 deterministic quality independent of live provider | Implemented on protected main | quality/live-conformance split | proposal quality evaluator + optional live model adapter | quality fixture tests + scheduled bounded live evidence |
-| PRD-AI-006 autonomous OpenCode development loop | Implemented on active PR | PR #122 / issue #120 | `feat/opencode-commercial-development-loop` | not protected-main evidence until merge |
+| PRD-AI-006 autonomous OpenCode development loop | Implemented on protected main | PR #122 merged as `876850018a17323900844e79845ba395b7bf6a9a` / issue #120 | `.github/workflows/opencode-commercial-development.yml`, `packages/commercial-development-agent/` | exact-head CI, AppGuardrail, Semgrep, Security Scan and CodeRabbit passed before guarded merge |
 | PRD-PRIV-001 purpose-bound sensitive access | Implemented on protected main | ADR-0005 | `apps/privacy-service/` | privacy service PostgreSQL/security tests |
 | PRD-PRIV-002 bounded grants + append-only evidence | Implemented on protected main | privacy access domain | privacy decision/grant/event persistence | exact expiry/concurrency/immutability tests |
 | PRD-PRIV-004 end-user export/deletion UX | Partial | issue #55 | identity-owned data-rights core exists | concrete domain adapters, durable orchestration/reconciliation, recent-auth enforcement and delivery/audit follow-ups remain open |
@@ -54,7 +54,7 @@ An entry marked `Implemented on active PR` is not protected-main evidence.
 | ADR-0003 service-owned persistence | root architecture, independent service repositories/migrations | no cross-service table access; contract/event integration only |
 | ADR-0004 inert AI proposal | AI architecture, proposal persistence/decision domain | no planning mutation dependency; stale/replay/prompt-injection tests |
 | ADR-0005 purpose-bound sensitive access | privacy-service | actor/resource/purpose/grant expiry/replay/audit tests |
-| ADR-0006 work-conserving maintenance | AGENTS waiting/PR loop + commercial-readiness automation | exact-head evidence, blocker-local routing, no fabricated approval |
+| ADR-0006 work-conserving maintenance | AGENTS waiting/PR loop + commercial-readiness/OpenCode automation | exact-head evidence, blocker-local routing, no fabricated approval |
 | ADR-0007 canonical documentation graph | PR #126 until merged | documentation consistency tests and protected-main status review |
 
 ## 4. Canonical evidence hierarchy
@@ -84,7 +84,7 @@ The maintenance loop must refetch issues/PRs and protected main before selecting
 
 ### Documentation engineering status
 
-**Implemented on active PR #126:** `packages/commercial-readiness/src/documentation-contract.test.mjs` validates the canonical file set, ADR index/status, balanced fenced blocks, UUIDv4/MSA authority reconciliation, service-owned data boundaries, inert AI authority, and active-PR-versus-protected-main traceability. This does not become protected-main evidence until PR #126 merges.
+**Implemented on active PR #126:** `packages/commercial-readiness/src/documentation-contract.test.mjs` validates the canonical file set, ADR index/status, balanced fenced blocks, UUIDv4/MSA authority reconciliation, service-owned data boundaries, inert AI authority, current protected-main OpenCode-loop evidence, and live buyer-gap traceability. This does not become protected-main evidence until PR #126 merges.
 
 ## 6. Commercial-readiness scoring caveat
 
