@@ -92,6 +92,43 @@ function requirePositiveInteger(value: number, message: string): number {
 }
 
 /**
+ * Requires authentication provenance to fall within one bounded recent-authentication window.
+ */
+export function requireRecentAuthentication(input: {
+  readonly authenticatedAt: string;
+  readonly now: Date;
+  readonly maximumAgeMs: number;
+}): string {
+  if (
+    !(input.now instanceof Date) ||
+    !Number.isFinite(input.now.getTime()) ||
+    !Number.isSafeInteger(input.maximumAgeMs) ||
+    input.maximumAgeMs <= 0
+  ) {
+    throw new Error('Recent authentication policy is invalid');
+  }
+
+  if (typeof input.authenticatedAt !== 'string') {
+    throw new Error('Authentication provenance is invalid');
+  }
+  const authenticatedAtMs = Date.parse(input.authenticatedAt);
+  if (!Number.isFinite(authenticatedAtMs)) {
+    throw new Error('Authentication provenance is invalid');
+  }
+  const canonicalAuthenticatedAt = new Date(authenticatedAtMs).toISOString();
+  if (
+    canonicalAuthenticatedAt !== input.authenticatedAt ||
+    authenticatedAtMs > input.now.getTime()
+  ) {
+    throw new Error('Authentication provenance is invalid');
+  }
+  if (input.now.getTime() - authenticatedAtMs > input.maximumAgeMs) {
+    throw new Error('Recent authentication is required');
+  }
+  return canonicalAuthenticatedAt;
+}
+
+/**
  * Parses a bounded Cookie header without decoding or accepting duplicate names.
  */
 export function parseCookieHeader(
