@@ -1,6 +1,6 @@
 # LifeOS agent contract
 
-This file is the canonical repository-wide operating contract for coding agents. `ARCHITECTURE.md` defines durable system boundaries; `docs/PRD.md` and `docs/TRD.md` define canonical product/technical requirements; ADRs, data/UML/threat/test/operability/traceability docs and scoped feature specifications/runbooks provide detail without weakening those boundaries.
+This file is the canonical repository-wide operating contract for coding agents. `ARCHITECTURE.md` defines durable system boundaries; `docs/PRD.md` and `docs/TRD.md` define canonical product/technical requirements; ADRs, data/API/UML/privacy/threat/test/operability/release/standards/traceability docs and scoped feature specifications/runbooks provide detail without weakening those boundaries.
 
 ## Work-conserving pull-request loop
 
@@ -51,12 +51,17 @@ Canonical documentation graph:
 4. `docs/adr/README.md` — material decisions/supersession history.
 5. `docs/DATA_MODEL.md` — logical service-owned ERD/data model.
 6. `docs/UML.md` — component/sequence/state/deployment/failure views.
-7. `SECURITY.md` and `docs/THREAT_MODEL.md` — reporting policy versus architecture threats.
-8. `docs/TEST_STRATEGY.md` — deterministic/live quality evidence.
-9. `docs/OPERABILITY.md` — deployment/diagnostics/backup/recovery ownership.
-10. `docs/TRACEABILITY.md` — requirement/decision/capability → source/test/runbook evidence.
-11. `docs/operations/`, `docs/research/`, `docs/legal/`, `docs/superpowers/specs/`, `docs/superpowers/plans/` — scoped supporting evidence.
-12. `CHANGELOG.md` — buyer-visible unreleased/released changes.
+7. `docs/API_CONTRACTS.md` — API/event/provider ownership and evolution.
+8. `SECURITY.md` and `docs/THREAT_MODEL.md` — reporting policy versus architecture threats.
+9. `docs/PRIVACY_DATA_LIFECYCLE.md` — sensitive-data lifecycle, retention, export and erasure boundaries.
+10. `docs/TEST_STRATEGY.md` — deterministic/live quality evidence.
+11. `docs/OPERABILITY.md` — deployment/diagnostics/backup/recovery ownership.
+12. `docs/RELEASE_AND_MIGRATION.md` — versioning/migration/compatibility/rollback contract.
+13. `docs/STANDARDS_TRACEABILITY.md` — standards/research source class and product-evidence mapping.
+14. `docs/TRACEABILITY.md` — requirement/decision/capability → source/test/runbook/gap evidence.
+15. `docs/DOCUMENTATION_ASSESSMENT.md` — completeness and historical reconciliation.
+16. `docs/operations/`, `docs/research/`, `docs/legal/`, `docs/superpowers/specs/`, `docs/superpowers/plans/` — scoped supporting evidence.
+17. `CHANGELOG.md` — buyer-visible unreleased/released changes.
 
 Use exact statuses: `Implemented on protected main`, `Implemented on active PR`, `Partial`, `Accepted architecture`, `Planned`, `Research only`, `Superseded`, `Out of scope`.
 
@@ -71,7 +76,7 @@ When a documentation audit finds a real implementation gap, continue into the sm
 - Tests prove realistic domain accuracy, tenant isolation, concurrency/replay, failure/recovery and customer journeys rather than mocked call counts only.
 - Use real PostgreSQL integration evidence for material persistence semantics.
 - Deterministic merge gates remain separate from bounded live-provider conformance.
-- Standards/papers/research claims are recorded in `docs/research/` or approved feature specs with APA 7 references and publication status.
+- Standards/papers/research claims are recorded in `docs/research/` or approved feature specs with APA 7 references and publication status and indexed from `docs/STANDARDS_TRACEABILITY.md` when repository-wide decisions depend on them.
 - Update relevant canonical docs, scoped specs/plans/runbooks and `CHANGELOG.md` when a behavior/authority boundary changes.
 - A release version/tag is created only when exact integrated release readiness is proven; otherwise changes remain under `CHANGELOG.md` → `Unreleased`.
 
@@ -82,6 +87,7 @@ When a documentation audit finds a real implementation gap, continue into the sm
 - Do not alter/reuse the credential scheme of existing independent review agents merely to make a development agent work.
 - Provider credentials, browser cookies, bearer material, raw prompts/responses, hidden reasoning and stack traces do not enter retained public artifacts.
 - Live-provider availability is not a deterministic PR merge requirement unless a separately reviewed gate explicitly requires it; missing/unavailable providers produce sanitized evidence.
+- The bounded hourly OpenCode commercial-development workflow is protected-main product-development automation after PR #122; it remains subject to deterministic policy and normal review/security/exact-head merge gates and does not gain product-data authority.
 
 ### Test-time compute allocation
 
