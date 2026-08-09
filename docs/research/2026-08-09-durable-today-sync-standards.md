@@ -1,7 +1,8 @@
 # Durable Today synchronization standards
 
 **Date:** 2026-08-09  
-**Status:** Implemented on active PR #127  
+**Status:** Implemented on active PR  
+**Tracking:** PR #127  
 **Scope:** HTTP concurrency, local-to-durable migration, bounded errors, browser accessibility
 
 ## Decision summary
@@ -61,10 +62,12 @@ The active implementation must retain tests for:
 
 ## References
 
-Fielding, R., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9110
+All references below are final published RFCs or final W3C Recommendations; this evidence set contains no draft standard or preprint.
 
-Nottingham, M., & Fielding, R. (2012). *Additional HTTP status codes* (RFC 6585). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc6585
+Fielding, R., Nottingham, M., & Reschke, J. (2022). *HTTP semantics* (RFC 9110). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9110 — **Final RFC**
 
-Nottingham, M., Wilde, E., & Dalal, S. (2023). *Problem details for HTTP APIs* (RFC 9457). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9457
+Nottingham, M., & Fielding, R. (2012). *Additional HTTP status codes* (RFC 6585). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc6585 — **Final RFC**
 
-World Wide Web Consortium. (2023). *Web Content Accessibility Guidelines (WCAG) 2.2*. https://www.w3.org/TR/WCAG22/
+Nottingham, M., Wilde, E., & Dalal, S. (2023). *Problem details for HTTP APIs* (RFC 9457). Internet Engineering Task Force. https://www.rfc-editor.org/rfc/rfc9457 — **Final RFC**
+
+World Wide Web Consortium. (2023). *Web Content Accessibility Guidelines (WCAG) 2.2*. https://www.w3.org/TR/WCAG22/ — **Final W3C Recommendation**
