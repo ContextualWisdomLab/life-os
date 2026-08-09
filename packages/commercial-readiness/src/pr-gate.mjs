@@ -57,10 +57,11 @@ export function evaluatePullRequestForMerge(pr, policy) {
   }
   if (pr.state !== 'open') blockers.push('not-open');
   if (pr.draft === true) blockers.push('draft');
+  // Branch provenance, not the PR opener's mutable public association label,
+  // defines source trust. Forks remain categorically ineligible, while an
+  // exact branch already inside the governed repository must still satisfy
+  // every current-head workflow, review, base-freshness, and thread gate below.
   if (pr.repository !== pr.head_repo) blockers.push('fork');
-  if (!policy.trusted_author_associations.includes(pr.author_association)) {
-    blockers.push('untrusted-author');
-  }
   if (pr.base_ref !== policy.default_branch) blockers.push('wrong-base');
   if (!SHA_PATTERN.test(pr.head_sha ?? '')) blockers.push('invalid-head');
   if (
