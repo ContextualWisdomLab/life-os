@@ -169,9 +169,7 @@ describe('deterministic commercial issue selection', () => {
       expect(() =>
         selectCommercialDevelopmentIssue({
           issues: [issue()],
-          openPullRequests: [
-            pullRequest({ body: `before${control}after` }),
-          ],
+          openPullRequests: [pullRequest({ body: `before${control}after` })],
           policy: POLICY,
         }),
       ).toThrow(CommercialDevelopmentSelectionError);
