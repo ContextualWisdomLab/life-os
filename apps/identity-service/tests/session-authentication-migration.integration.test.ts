@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const TEMPORARY_DATABASE_NAME = 'life_os_identity_migration_test';
+const TEMPORARY_DATABASE_LOCK_KEY = 74_211_340;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const AUTHENTICATION_MIGRATION = '0004_session_authentication_age.sql';
 const AUTHENTICATION_FINALIZATION_MIGRATION =
@@ -59,8 +60,13 @@ async function withTemporaryDatabase(
     connectionString: databaseUrl(sourceUrl, 'postgres'),
   });
   let migrationPool: Pool | undefined;
+  let lockHeld = false;
 
   try {
+    await adminPool.query('SELECT pg_advisory_lock($1::bigint)', [
+      TEMPORARY_DATABASE_LOCK_KEY,
+    ]);
+    lockHeld = true;
     await adminPool.query(
       'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
     );
@@ -72,9 +78,14 @@ async function withTemporaryDatabase(
     await execute(migrationPool);
   } finally {
     await migrationPool?.end();
-    await adminPool.query(
-      'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
-    );
+    if (lockHeld) {
+      await adminPool.query(
+        'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
+      );
+      await adminPool.query('SELECT pg_advisory_unlock($1::bigint)', [
+        TEMPORARY_DATABASE_LOCK_KEY,
+      ]);
+    }
     await adminPool.end();
   }
 }
@@ -138,6 +149,24 @@ async function insertSession(
 }
 
 describeWithDatabase('session authentication-age migration', () => {
+  it('serializes concurrent migration fixtures that share the disposable database', async () => {
+    const completed: string[] = [];
+
+    await Promise.all([
+      withTemporaryDatabase(async (migrationPool) => {
+        await migrationPool.query('SELECT pg_sleep(0.05)');
+        completed.push('first');
+      }),
+      withTemporaryDatabase(async (migrationPool) => {
+        await migrationPool.query('SELECT 1');
+        completed.push('second');
+      }),
+    ]);
+
+    expect(completed).toHaveLength(2);
+    expect(new Set(completed)).toEqual(new Set(['first', 'second']));
+  }, 30_000);
+
   it('backfills every legacy rotated session from its authenticated chain root', async () => {
     await withTemporaryDatabase(async (migrationPool) => {
       const userId = randomUUID();
