@@ -73,7 +73,10 @@ function unavailable(): Response {
 function requireDate(value: string): string {
   if (!DATE_PATTERN.test(value)) throw new Error('invalid date');
   const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
     throw new Error('invalid date');
   }
   return value;
@@ -133,7 +136,9 @@ async function readBoundedJson(
   response: Response,
   maximumBytes: number,
 ): Promise<unknown> {
-  const contentType = response.headers.get('content-type')?.split(';', 1)[0];
+  const contentType = response.headers
+    .get('content-type')
+    ?.split(';', 1)[0];
   if (
     contentType !== 'application/json' &&
     contentType !== 'application/problem+json'
@@ -144,8 +149,13 @@ async function readBoundedJson(
 }
 
 /** Reads and validates the complete browser PUT body before contacting identity. */
-async function readBrowserPutBody(request: Request, date: string): Promise<string> {
-  if (request.headers.get('content-type')?.split(';', 1)[0] !== 'application/json') {
+async function readBrowserPutBody(
+  request: Request,
+  date: string,
+): Promise<string> {
+  if (
+    request.headers.get('content-type')?.split(';', 1)[0] !== 'application/json'
+  ) {
     throw new Error('invalid media type');
   }
   if (request.body === null) throw new Error('missing body');
@@ -175,7 +185,9 @@ function requireEtag(value: string | null): string {
 }
 
 /** Restricts browser write authority to one strong match or explicit create. */
-function requireWriteHeaders(request: Request): Readonly<Record<string, string>> {
+function requireWriteHeaders(
+  request: Request,
+): Readonly<Record<string, string>> {
   const ifMatch = request.headers.get('if-match');
   const ifNoneMatch = request.headers.get('if-none-match');
   const idempotencyKey = request.headers.get('idempotency-key');
@@ -202,7 +214,9 @@ function requireWriteHeaders(request: Request): Readonly<Record<string, string>>
 }
 
 /** Creates headers without copying arbitrary browser-selected authority. */
-function headers(entries: Readonly<Record<string, string | undefined>>): Headers {
+function headers(
+  entries: Readonly<Record<string, string | undefined>>,
+): Headers {
   const result = new Headers({ accept: 'application/json' });
   for (const [name, value] of Object.entries(entries)) {
     if (value !== undefined) result.set(name, value);
@@ -233,7 +247,10 @@ function parseRevisionConflict(value: unknown): string | null | undefined {
 }
 
 /** Validates the upstream Today aggregate before returning it to the browser. */
-function parseAggregate(value: unknown, expectedDate: string): Record<string, unknown> {
+function parseAggregate(
+  value: unknown,
+  expectedDate: string,
+): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('invalid aggregate');
   }
@@ -272,7 +289,9 @@ export async function handleTodaySyncRequest(
   let writeHeaders: Readonly<Record<string, string>> = {};
   try {
     safeDate = requireDate(date);
-    if (request.method !== 'GET' && request.method !== 'PUT') return invalidRequest();
+    if (request.method !== 'GET' && request.method !== 'PUT') {
+      return invalidRequest();
+    }
     if (request.method === 'PUT') {
       writeHeaders = requireWriteHeaders(request);
       putBody = await readBrowserPutBody(request, safeDate);
