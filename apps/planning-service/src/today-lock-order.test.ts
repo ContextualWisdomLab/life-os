@@ -28,7 +28,6 @@ class RecordingClient implements PlanningSqlClient {
           current_revision: null,
         } as Row,
       ],
-      rowCount: 1,
     };
   }
 }
