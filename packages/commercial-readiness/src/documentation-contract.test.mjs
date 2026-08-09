@@ -124,7 +124,7 @@ test('canonical contracts keep data lifecycle and release gaps explicit', () => 
   assert.match(privacyLifecycle, /Partial \/ issue #55/u);
   assert.match(privacyLifecycle, /issue #129/u);
   assert.match(releaseContract, /A merged feature is not automatically a release/u);
-  assert.match(releaseContract, /application rollback/u);
+  assert.match(releaseContract, /Application rollback/u);
   assert.match(standards, /Normative standard\/specification/u);
   assert.match(standards, /Peer-reviewed research/u);
 });
