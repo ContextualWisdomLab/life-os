@@ -13,8 +13,8 @@ export default function OfflinePage() {
         <h1 id="offline-heading">LifeOS is offline.</h1>
         <p>
           Your browser-local Today draft remains on this device. Reconnect and
-          retry to load the application; this offline page does not read or cache
-          your planning data.
+          retry to load the application; this offline page does not read or
+          cache your planning data.
         </p>
         <a className={styles.retry} href="/">
           Try again
