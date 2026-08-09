@@ -1,0 +1,25 @@
+{
+  "schema": "life-os.commercial-buyer-gaps.v1",
+  "gaps": [
+    {
+      "gap_id": "data.portability-completion",
+      "issue_number": 55,
+      "capability_ids": ["data.portability-rights"]
+    },
+    {
+      "gap_id": "today.multi-device-sync",
+      "issue_number": 121,
+      "capability_ids": ["planning.durable-data", "today.action-loop"]
+    },
+    {
+      "gap_id": "calendar.per-user-credentials",
+      "issue_number": 129,
+      "capability_ids": ["calendar.time-blocking"]
+    },
+    {
+      "gap_id": "plugins.runtime-delivery",
+      "issue_number": 130,
+      "capability_ids": ["integrations.plugin-surface"]
+    }
+  ]
+}
