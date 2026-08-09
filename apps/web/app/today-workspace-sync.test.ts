@@ -78,7 +78,10 @@ describe('browser Today workspace synchronization', () => {
       headers.get('idempotency-key') ?? '',
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
-    assert.equal(captured?.body, JSON.stringify(toDurableTodayDocument(draft())));
+    assert.equal(
+      captured?.body,
+      JSON.stringify(toDurableTodayDocument(draft())),
+    );
   });
 
   it('updates only against the last explicitly observed strong revision', async () => {
