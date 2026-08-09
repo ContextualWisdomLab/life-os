@@ -315,10 +315,19 @@ test('traceability distinguishes protected main, active implementation, and buye
   const traceability = readRepositoryText('docs/TRACEABILITY.md');
 
   assert.match(traceability, /PRD-AI-006 autonomous OpenCode development loop \| Implemented on protected main/u);
-  assert.match(traceability, /PR #122 merged as `876850018a17323900844e79845ba395b7bf6a9a`/u);
   assert.match(traceability, /PR #127/u);
   assert.match(traceability, /PR #131/u);
   assert.match(traceability, /PR #133/u);
+  assert.match(traceability, /PR #134/u);
+  assert.match(traceability, /PR #138/u);
   assert.match(traceability, /Issue #129/u);
   assert.match(traceability, /Issue #130/u);
+});
+
+test('canonical PRD does not keep merged hardening PRs classified as active', () => {
+  const prd = readRepositoryText('docs/PRD.md');
+
+  assert.doesNotMatch(prd, /PR #133 is an active hardening follow-up/u);
+  assert.doesNotMatch(prd, /PR #134 is the active bounded implementation/u);
+  assert.match(prd, /PR #138/u);
 });
