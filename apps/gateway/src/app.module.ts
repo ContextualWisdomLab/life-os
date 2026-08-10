@@ -1,32 +1,53 @@
-import { Controller, Get, Header, Module } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  HttpException,
+  Module,
+} from '@nestjs/common';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import { gatewayMetrics } from './observability';
 
-/** Response contract for the gateway's initial Today composition endpoint. */
-interface TodayResponse {
-  readonly tasks: unknown[];
-  readonly habits: unknown[];
-  readonly message: string;
+/** Bounded problem details returned while the real Today composition is unavailable. */
+interface GatewayProblemDetails {
+  readonly type: 'about:blank';
+  readonly title: string;
+  readonly status: number;
+  readonly code: string;
 }
 
-/** Exposes operational health, initial composition, and bounded metrics routes. */
+/** Builds one credential-free gateway problem response. */
+function problem(
+  status: number,
+  title: string,
+  code: string,
+): HttpException {
+  const details: GatewayProblemDetails = {
+    type: 'about:blank',
+    title,
+    status,
+    code,
+  };
+  return new HttpException(details, status);
+}
+
+/** Exposes operational health and bounded metrics while product composition stays fail-closed. */
 @Controller()
-class HealthController {
+export class HealthController {
   /** Returns a credential-free liveness response for the gateway process. */
   @Get('health')
   health(): { status: 'ok'; service: 'gateway' } {
     return { status: 'ok', service: 'gateway' };
   }
 
-  /** Returns the current placeholder Today composition contract. */
+  /** Refuses to fabricate Today data until authenticated service composition is configured. */
   @Get('today')
-  today(): TodayResponse {
-    return {
-      tasks: [],
-      habits: [],
-      message:
-        'Today composition endpoint is ready for domain-service integration.',
-    };
+  today(): never {
+    throw problem(
+      503,
+      'Today composition is unavailable',
+      'today_composition_unavailable',
+    );
   }
 
   /** Renders the bounded in-memory metrics registry for Prometheus scrapes. */
