@@ -201,11 +201,15 @@ describe.sequential('PlanningController workspace authority contract', () => {
     const fresh = signedHeaders(nowSeconds);
     const expired = signedHeaders(nowSeconds - 120);
     const future = signedHeaders(nowSeconds + 120);
+    const tamperedDigest = Buffer.from(fresh.signature ?? '', 'base64url');
+    const firstTamperedByte = tamperedDigest.at(0);
+    if (firstTamperedByte === undefined) {
+      throw new Error('Expected a SHA-256 gateway signature');
+    }
+    tamperedDigest[0] = firstTamperedByte ^ 0xff;
     const tampered = {
       ...fresh,
-      signature: `${fresh.signature?.slice(0, -1)}${
-        fresh.signature?.endsWith('A') ? 'B' : 'A'
-      }`,
+      signature: tamperedDigest.toString('base64url'),
     };
     const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
     const invalidContexts = [
