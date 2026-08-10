@@ -108,7 +108,15 @@ test('merge compatibility reconstructs a fresh integration tree from current API
     'the integration job must have both current commits available locally',
   );
   assert.ok(block.includes('git checkout --detach "$current_base"'));
-  assert.ok(block.includes('git merge --no-commit --no-ff "$current_source"'));
+  assert.ok(
+    block.includes("git -c user.name='LifeOS integration verifier'"),
+    'the non-committing merge must provide a bounded command-local identity',
+  );
+  assert.ok(
+    block.includes("-c user.email='integration-verifier@life-os.invalid'"),
+    'the verifier identity must remain local to the merge command',
+  );
+  assert.ok(block.includes('merge --no-commit --no-ff "$current_source"'));
   assert.ok(
     block.includes('latest_source'),
     'the job must re-resolve source identity after constructing the integration tree',
@@ -121,6 +129,11 @@ test('merge compatibility reconstructs a fresh integration tree from current API
     block.includes(ADVERTISED_MERGE_REF),
     false,
     'rerun-safe integration evidence must not depend on a stale advertised pull merge ref',
+  );
+  assert.equal(
+    block.includes('git config --global'),
+    false,
+    'verification must not persist a global author identity on the runner',
   );
   assert.equal(
     block.includes('git ls-remote'),
