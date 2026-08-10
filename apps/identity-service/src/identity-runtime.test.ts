@@ -40,12 +40,13 @@ function environment(
 }
 
 describe('createIdentityRuntime', () => {
-  it('builds PostgreSQL-backed OAuth services from bounded secure configuration', async () => {
+  it('builds PostgreSQL-backed OAuth and data-rights services from bounded secure configuration', async () => {
     const runtime = createIdentityRuntime(environment());
     expect(runtime.application.postLoginRedirect()).toBe(
       'https://app.example.test/auth/complete',
     );
     expect(runtime.callbackApplication).toBeDefined();
+    expect('dataRightsStatusApplication' in runtime).toBe(true);
     await runtime.close();
     await runtime.close();
   });
@@ -126,8 +127,8 @@ describe('JsonLineOAuthCallbackAuditSink', () => {
     expect(JSON.parse(line)).toEqual({
       eventType: 'identity.oauth_callback',
       occurredAt: now.toISOString(),
-      provider: 'github',
-      outcome: 'success',
+      provider: event.provider,
+      outcome: event.outcome,
       correlationId: event.correlationId,
       userId: event.userId,
       workspaceId: event.workspaceId,
