@@ -33,7 +33,9 @@ function cancellableJson(
   return { response, wasCancelled: () => cancelled };
 }
 
-function planningToday(actions: readonly unknown[] = []): Readonly<Record<string, unknown>> {
+function planningToday(
+  actions: readonly unknown[] = [],
+): Readonly<Record<string, unknown>> {
   return {
     version: 'life-os.today.v1',
     aggregateId: '22222222-2222-4222-8222-222222222222',
@@ -49,7 +51,9 @@ const ENVIRONMENT = {
   PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
 } as const;
 
-async function expectPlanningUnavailable(planningResponse: Response): Promise<void> {
+async function expectPlanningUnavailable(
+  planningResponse: Response,
+): Promise<void> {
   const fetcher = async (input: RequestInfo | URL) =>
     String(input).endsWith('/v1/session')
       ? json({ workspaceId: WORKSPACE_ID })
@@ -66,6 +70,28 @@ async function expectPlanningUnavailable(planningResponse: Response): Promise<vo
     status: 503,
     code: 'today_composition_unavailable',
   });
+}
+
+async function expectConfigurationUnavailable(
+  environment: Parameters<typeof composePlanningToday>[2],
+): Promise<void> {
+  let called = false;
+  await expect(
+    composePlanningToday(
+      'session=opaque',
+      '2026-08-10',
+      environment,
+      async () => {
+        called = true;
+        return json({ workspaceId: WORKSPACE_ID });
+      },
+      NOW_SECONDS,
+    ),
+  ).rejects.toMatchObject({
+    status: 503,
+    code: 'today_composition_unavailable',
+  });
+  expect(called).toBe(false);
 }
 
 describe('Gateway planning Today composition', () => {
@@ -196,6 +222,50 @@ describe('Gateway planning Today composition', () => {
     expect(identityFailure.wasCancelled()).toBe(true);
   });
 
+  it('maps Planning not-found without fabricating an aggregate', async () => {
+    const fetcher = async (input: RequestInfo | URL) =>
+      String(input).endsWith('/v1/session')
+        ? json({ workspaceId: WORKSPACE_ID })
+        : json({ code: 'today_not_found' }, 404);
+
+    await expect(
+      composePlanningToday(
+        'session=opaque',
+        '2026-08-10',
+        ENVIRONMENT,
+        fetcher,
+        NOW_SECONDS,
+      ),
+    ).rejects.toMatchObject({ status: 404, code: 'today_not_found' });
+  });
+
+  it.each([
+    ['identity fetch exception', 0],
+    ['planning fetch exception', 1],
+  ])('fails closed on %s', async (_name, throwOnCall) => {
+    let call = 0;
+    const fetcher = async () => {
+      if (call === throwOnCall) {
+        throw new DOMException('upstream timed out', 'TimeoutError');
+      }
+      call += 1;
+      return json({ workspaceId: WORKSPACE_ID });
+    };
+
+    await expect(
+      composePlanningToday(
+        'session=opaque',
+        '2026-08-10',
+        ENVIRONMENT,
+        fetcher,
+        NOW_SECONDS,
+      ),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'today_composition_unavailable',
+    });
+  });
+
   it('does not fabricate success when Planning is unavailable', async () => {
     await expectPlanningUnavailable(json({ error: 'down' }, 503));
   });
@@ -220,6 +290,93 @@ describe('Gateway planning Today composition', () => {
       code: 'today_composition_unavailable',
     });
     expect(planningFailure.wasCancelled()).toBe(true);
+  });
+
+  it.each([
+    [
+      'wrong successful media type',
+      new Response(JSON.stringify(planningToday()), {
+        status: 200,
+        headers: { 'content-type': 'text/plain' },
+      }),
+    ],
+    [
+      'malformed content length',
+      new Response(JSON.stringify(planningToday()), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': 'unknown',
+        },
+      }),
+    ],
+    [
+      'declared oversized body',
+      new Response(JSON.stringify(planningToday()), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': '65537',
+        },
+      }),
+    ],
+    [
+      'streamed oversized body',
+      new Response(new Uint8Array(65_537), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ],
+    [
+      'invalid UTF-8 body',
+      new Response(Uint8Array.from([0xc3, 0x28]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ],
+  ])('fails closed on %s', async (_name, response) => {
+    await expectPlanningUnavailable(response);
+  });
+
+  it('fails closed on malformed Identity workspace authority', async () => {
+    const fetcher = async () => json({ workspaceId: 'not-a-uuid' });
+    await expect(
+      composePlanningToday(
+        'session=opaque',
+        '2026-08-10',
+        ENVIRONMENT,
+        fetcher,
+        NOW_SECONDS,
+      ),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'today_composition_unavailable',
+    });
+  });
+
+  it('fails closed when Planning exceeds the bounded action count', async () => {
+    const action = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' };
+    await expectPlanningUnavailable(json(planningToday(Array(51).fill(action))));
+  });
+
+  it.each([
+    [
+      'short signing secret',
+      { ...ENVIRONMENT, PLANNING_GATEWAY_CONTEXT_SECRET: 'too-short' },
+    ],
+    [
+      'credential-bearing Identity origin',
+      {
+        ...ENVIRONMENT,
+        IDENTITY_SERVICE_ORIGIN: 'https://user:pass@identity.example.test',
+      },
+    ],
+    [
+      'non-http Planning origin',
+      { ...ENVIRONMENT, PLANNING_SERVICE_ORIGIN: 'file:///tmp/planning' },
+    ],
+  ])('rejects %s before dependency calls', async (_name, environment) => {
+    await expectConfigurationUnavailable(environment);
   });
 
   it('fails closed on malformed Planning evidence', async () => {
