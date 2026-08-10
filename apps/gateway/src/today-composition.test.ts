@@ -1,12 +1,9 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import {
-  GatewayTodayError,
-  composePlanningToday,
-} from './today-composition';
+import { composePlanningToday } from './today-composition';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const SECRET = '0123456789abcdef0123456789abcdef';
+const TEST_SIGNING_KEY = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_374_000;
 
 function json(body: unknown, status = 200): Response {
@@ -39,7 +36,7 @@ describe('Gateway planning Today composition', () => {
       {
         IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
         PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-        PLANNING_GATEWAY_CONTEXT_SECRET: SECRET,
+        PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
       },
       fetcher,
       NOW_SECONDS,
@@ -63,7 +60,7 @@ describe('Gateway planning Today composition', () => {
       String(NOW_SECONDS),
     );
     expect(calls[1]?.headers.get('x-life-os-context-signature')).toBe(
-      createHmac('sha256', SECRET)
+      createHmac('sha256', TEST_SIGNING_KEY)
         .update(
           `life-os.workspace.v1\n${WORKSPACE_ID}\n${NOW_SECONDS}`,
           'utf8',
@@ -86,12 +83,12 @@ describe('Gateway planning Today composition', () => {
         {
           IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
           PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: SECRET,
+          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
         },
         fetcher,
         NOW_SECONDS,
       ),
-    ).rejects.toMatchObject<Partial<GatewayTodayError>>({
+    ).rejects.toMatchObject({
       status: 401,
       code: 'authentication_required',
     });
@@ -111,12 +108,12 @@ describe('Gateway planning Today composition', () => {
         {
           IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
           PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: SECRET,
+          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
         },
         fetcher,
         NOW_SECONDS,
       ),
-    ).rejects.toMatchObject<Partial<GatewayTodayError>>({
+    ).rejects.toMatchObject({
       status: 503,
       code: 'today_composition_unavailable',
     });
@@ -135,12 +132,12 @@ describe('Gateway planning Today composition', () => {
         {
           IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
           PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: SECRET,
+          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
         },
         fetcher,
         NOW_SECONDS,
       ),
-    ).rejects.toMatchObject<Partial<GatewayTodayError>>({
+    ).rejects.toMatchObject({
       status: 503,
       code: 'today_composition_unavailable',
     });
