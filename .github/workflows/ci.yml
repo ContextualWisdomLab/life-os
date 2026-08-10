@@ -289,7 +289,9 @@ jobs:
           fi
 
           git checkout --detach "$current_base"
-          git merge --no-commit --no-ff "$current_source"
+          git -c user.name='LifeOS integration verifier' \
+            -c user.email='integration-verifier@life-os.invalid' \
+            merge --no-commit --no-ff "$current_source"
 
           latest_source="$(curl --fail --silent --show-error --max-time 15 \
             -H "$auth_header" -H "$api_version" \
