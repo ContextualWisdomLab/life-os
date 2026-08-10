@@ -98,6 +98,9 @@ describe('plugin installation migration contract', () => {
     ]) {
       expect(MIGRATION_SQL).toContain(column);
     }
+    expect(MIGRATION_SQL).toContain(
+      'plugin_integration.capability_array_is_valid',
+    );
     expect(MIGRATION_SQL).not.toMatch(
       /\b(secret|token|credential|password)_/iu,
     );
@@ -110,7 +113,7 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
     requireSqlSuccess(MIGRATION_SQL);
   });
 
-  it('rejects impossible lifecycle, digest, and capability-count evidence', () => {
+  it('rejects impossible lifecycle, digest, capability-count, and capability-element evidence', () => {
     const commonColumns = `
       installation_id, workspace_id, installed_by_user_id, plugin_id,
       plugin_contract_version, manifest_sha256, granted_capabilities,
@@ -119,6 +122,7 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
       { length: 33 },
       (_, index) => `'capability.${index}'`,
     ).join(', ');
+    const oversizedCapability = 'x'.repeat(257);
 
     expectSqlFailure(`
       INSERT INTO plugin_integration.plugin_installation_record (${commonColumns})
@@ -152,6 +156,26 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
         'active', '2026-08-10T02:00:00.000Z', NULL
       );
     `);
+
+    for (const [installationId, capabilities] of [
+      ['11111111-1111-4111-8111-111111111114', "ARRAY['']"],
+      ['11111111-1111-4111-8111-111111111115', 'ARRAY[NULL::text]'],
+      [
+        '11111111-1111-4111-8111-111111111116',
+        `ARRAY['${oversizedCapability}']`,
+      ],
+    ] as const) {
+      expectSqlFailure(`
+        INSERT INTO plugin_integration.plugin_installation_record (${commonColumns})
+        VALUES (
+          '${installationId}',
+          '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333',
+          'example.plugin', '1.0.0', '${'a'.repeat(64)}', ${capabilities},
+          'active', '2026-08-10T02:00:00.000Z', NULL
+        );
+      `);
+    }
   });
 
   it('preserves one durable authority row across independent PostgreSQL client processes', () => {
