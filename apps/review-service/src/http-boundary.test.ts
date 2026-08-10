@@ -28,23 +28,26 @@ function signature(issuedAt: string, workspaceId = WORKSPACE_ID): string {
 }
 
 describe('Review HTTP boundary', () => {
-  it('accepts fresh signed workspace context and bounded ritual/history values', () => {
-    const issuedAt = String(NOW_SECONDS - 30);
-    expect(
-      requireTrustedWorkspaceContext(
-        {
-          workspaceId: WORKSPACE_ID.toUpperCase(),
-          issuedAt,
-          signature: signature(issuedAt),
-        },
-        SECRET,
-        NOW_SECONDS,
-      ),
-    ).toBe(WORKSPACE_ID);
-    expect(requireRitualPath('weekly-review')).toBe('weekly-review');
-    expect(requireHistoryLimit(undefined)).toBe(50);
-    expect(requireHistoryLimit('100')).toBe(100);
-  });
+  it(
+    'accepts fresh signed workspace context and bounded ritual/history values',
+    () => {
+      const issuedAt = String(NOW_SECONDS - 30);
+      expect(
+        requireTrustedWorkspaceContext(
+          {
+            workspaceId: WORKSPACE_ID.toUpperCase(),
+            issuedAt,
+            signature: signature(issuedAt),
+          },
+          SECRET,
+          NOW_SECONDS,
+        ),
+      ).toBe(WORKSPACE_ID);
+      expect(requireRitualPath('weekly-review')).toBe('weekly-review');
+      expect(requireHistoryLimit(undefined)).toBe(50);
+      expect(requireHistoryLimit('100')).toBe(100);
+    },
+  );
 
   it('accepts the exact maximum context age', () => {
     const issuedAt = String(NOW_SECONDS - 60);
@@ -117,20 +120,18 @@ describe('Review HTTP boundary', () => {
       status: 503,
       code: 'gateway_context_unavailable',
     },
-  ])('fails closed for stale, future, forged, or unverifiable context', ({
-    headers,
-    secret,
-    status,
-    code,
-  }) => {
-    try {
-      requireTrustedWorkspaceContext(headers, secret, NOW_SECONDS);
-      throw new Error('expected trusted context rejection');
-    } catch (error) {
-      expect(error).toBeInstanceOf(HttpException);
-      expect(response(error as HttpException)).toMatchObject({ status, code });
-    }
-  });
+  ])(
+    'fails closed for stale, future, forged, or unverifiable context',
+    ({ headers, secret, status, code }) => {
+      try {
+        requireTrustedWorkspaceContext(headers, secret, NOW_SECONDS);
+        throw new Error('expected trusted context rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(HttpException);
+        expect(response(error as HttpException)).toMatchObject({ status, code });
+      }
+    },
+  );
 
   it.each([
     () => requireRitualPath('execute'),
