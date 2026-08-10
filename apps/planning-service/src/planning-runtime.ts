@@ -1,5 +1,6 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
+import { PlanningDataRightsContributor } from './planning-data-rights';
 import { PlanningService } from './planning-domain';
 import {
   type PlanningSqlClient,
@@ -199,6 +200,7 @@ export class PlanningRuntime implements OnApplicationShutdown {
     private readonly pool: PlanningPool,
     readonly service: PlanningService,
     readonly todayService: TodaySyncService,
+    readonly dataRightsContributor: PlanningDataRightsContributor,
   ) {}
 
   async close(): Promise<void> {
@@ -226,5 +228,6 @@ export function createPlanningRuntime(
     pool,
     new PlanningService(repository),
     new TodaySyncService(todayRepository),
+    new PlanningDataRightsContributor(client),
   );
 }
