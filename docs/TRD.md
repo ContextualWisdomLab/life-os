@@ -18,11 +18,11 @@ LifeOS is a TypeScript-first monorepo with a Next.js PWA/BFF, independently boun
 - **Planning:** Goals, Projects, Tasks, durable Today aggregate and search.
 - **Habit:** recurrence definitions and completion evidence.
 - **Review:** review snapshots/projections; no direct planning mutation.
-- **Calendar integration:** provider adapters, sync state and trusted workspace context. PR #150 is active for the first workspace+user scoped connection persistence foundation; complete hosted credential lifecycle remains partial under #129.
+- **Calendar integration:** provider adapters, sync state, trusted workspace context and protected-main workspace+user scoped connection persistence. Complete hosted credential lifecycle remains partial under #129.
 - **Notification:** reminder occurrences, claims, outcomes and delivery recovery.
 - **AI proposal:** proposals, evidence, explicit decisions and deterministic evaluation; no generic planning mutation authority.
 - **Privacy:** purpose-bound sensitive-access decisions/grants/events.
-- **Plugin integration:** versioned plugin contracts and validation. PR #151 is active for explicit installation-grant authority; complete durable secret/delivery runtime remains under #130.
+- **Plugin integration:** versioned plugin contracts, validation and protected-main explicit installation-grant authority. Complete durable secret/delivery runtime remains partial under #130.
 
 ## Data requirements
 
@@ -73,13 +73,13 @@ PR #149 requires each contributor export section to provide a versioned schema a
 
 ### Calendar connection registry
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-PR #150 defines a service-owned migration/repository for a connection scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes, opaque external credential references, fixed parameterized SQL and fail-closed duplicate persisted evidence. It does not complete issue #129.
+PR #150 defines the protected service-owned migration/repository for a connection scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes, opaque external credential references, fixed parameterized SQL and fail-closed duplicate persisted evidence. It does not complete issue #129.
 
 ### Plugin installation authority
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
 PR #151 separates validated manifest intent from host authority. LifeOS grants only an explicit bounded capability subset, accepts exact replay, rejects conflicting installation-ID reuse, hides cross-tenant/user existence and preserves revocation evidence. It does not imply complete persistent secret or outbound-delivery runtime under #130.
 
@@ -92,10 +92,10 @@ Versioned events carry opaque event ID, explicit type/version, validated actor/w
 - **Today:** protected-main aggregate uses explicit strong create/update preconditions, idempotency and stale-conflict handling with durable PostgreSQL concurrency evidence.
 - **Habit completion:** tenant-scoped replay-safe persistence.
 - **Notification:** expiring/fenced claims and duplicate-delivery refusal.
-- **Calendar:** deterministic provider identity/preconditions and trusted context; active #150 adds tenant+user+connection scoped repository invariants.
+- **Calendar:** deterministic provider identity/preconditions, trusted context and protected tenant+user+connection scoped repository invariants from #150.
 - **AI decisions:** bind decision to exact proposal digest/revision, actor/workspace and idempotency identity.
 - **Data rights:** durable request identity and immutable terminal receipts; status lookup is scoped simultaneously by request, workspace and requesting user and fails closed on corruption.
-- **Plugin installation:** active #151 requires exact replay/conflict/revocation semantics for host-granted authority.
+- **Plugin installation:** protected #151 requires exact replay/conflict/revocation semantics for host-granted authority.
 
 ## AI / automation requirements
 
@@ -132,7 +132,7 @@ Required evidence classes retain explicit identities:
 - `protected_main_sha`: integrated protected-main evidence identity;
 - `release_source_sha`: exact protected source bound to release artifacts.
 
-A green result for one class cannot be promoted to another. SARIF/security evidence must be attributed to the commit/ref actually analyzed. PR #147 is `Implemented on active PR` for the current source-head/merge-tree correction; issue #132 remains open until protected-main integration and residual attribution are reconciled.
+A green result for one class cannot be promoted to another. SARIF/security evidence must be attributed to the commit/ref actually analyzed. Clean successor PR #154 is `Implemented on active PR` for the current source-head/merge-tree correction after #147 was superseded; issue #132 remains open until protected-main integration and residual attribution are reconciled.
 
 ## Release requirements
 
