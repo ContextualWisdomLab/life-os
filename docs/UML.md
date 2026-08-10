@@ -2,9 +2,11 @@
 
 **Status:** Implemented on active PR
 
-These diagrams describe current protected-main behavior unless a node is explicitly marked `Partial` or `Planned`.
+These diagrams describe current protected-main behavior unless a section is explicitly labeled `Implemented on active PR`, `Partial`, `Planned`, or another canonical status.
 
 ## Bounded-context topology
+
+**Status:** Implemented on protected main
 
 ```mermaid
 flowchart LR
@@ -26,12 +28,17 @@ flowchart LR
     I --> IDB[(identity-owned PostgreSQL)]
     P --> PDB[(planning-owned PostgreSQL)]
     H --> HDB[(habit-owned PostgreSQL)]
+    R --> RDB[(review-owned PostgreSQL)]
     N --> NDB[(notification-owned PostgreSQL)]
     A --> ADB[(AI-owned PostgreSQL)]
     V --> VDB[(privacy-owned PostgreSQL)]
 ```
 
+Physical co-location does not grant cross-service table authority.
+
 ## Login and workspace sequence
+
+**Status:** Implemented on protected main
 
 ```mermaid
 sequenceDiagram
@@ -44,12 +51,16 @@ sequenceDiagram
     Identity->>Provider: authorization request
     Provider-->>Identity: callback code/state
     Identity->>Identity: validate provider/state/redirect and map external identity
-    Identity->>Identity: provision/authorize personal workspace
+    Identity->>Identity: provision/authorize personal workspace + authentication instant
     Identity-->>Web: revocable session + opaque account/workspace UUIDv4
     Web-->>Browser: secure session cookie
 ```
 
+Session rotation does not manufacture a new authentication ceremony.
+
 ## Goal / Project / Task / Today lifecycle
+
+**Status:** Implemented on protected main
 
 ```mermaid
 stateDiagram-v2
@@ -66,6 +77,8 @@ The durable Today aggregate, local-to-workspace migration, replay protection and
 
 ## Review flow
 
+**Status:** Implemented on protected main
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -81,6 +94,8 @@ sequenceDiagram
 ```
 
 ## Calendar synchronization
+
+**Status:** Implemented on protected main
 
 ```mermaid
 sequenceDiagram
@@ -101,6 +116,8 @@ Per-user encrypted credential persistence/refresh/revocation and calendar select
 
 ## AI proposal / evidence / decision
 
+**Status:** Implemented on protected main
+
 ```mermaid
 sequenceDiagram
     participant Browser
@@ -120,26 +137,79 @@ sequenceDiagram
     AI->>Audit: append decision evidence
 ```
 
-## Data-rights sequence
+## Data-rights durable foundation
+
+**Status:** Implemented on protected main
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Web
     participant Identity
-    participant Domains as Registered domain participants
+    participant Ledger as identity.data_rights_requests
     User->>Web: export/delete request
     Web->>Identity: validate session + recent-auth provenance
-    Identity->>Identity: bind request to workspace/requesting user
-    Identity->>Identity: persist durable request receipt
-    Identity->>Domains: bounded export / prepare-delete orchestration
-    Domains-->>Identity: domain evidence
-    Identity-->>User: bounded status / result
+    Identity->>Ledger: persist workspace/user-bound request
+    Ledger-->>Identity: durable request / replay / conflict
+    Identity->>Ledger: tenant-and-requesting-actor scoped lookup
+    Ledger-->>Identity: request state or indistinguishable absence
 ```
 
-Recent-auth provenance, ownership binding, durable request/terminal receipt and tenant-scoped status lookup are protected-main behavior. Complete domain participation, durable reconciliation, retention/legal-hold and protected archive delivery remain **Partial** under issue #55.
+Recent-auth provenance, ownership binding, durable request/terminal receipt and tenant-scoped status lookup are protected-main behavior through #134/#136/#137/#138/#144.
+
+## Authenticated data-rights status resource
+
+**Status:** Implemented on active PR
+
+**Evidence:** PR #146.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Web
+    participant Identity as Identity HTTP boundary
+    participant Session as Session introspection
+    participant Ledger as Request ledger
+
+    User->>Identity: GET /v1/data-rights/requests/:requestId + opaque session cookie
+    Identity->>Session: introspect cookie
+    Session-->>Identity: userId + workspaceId
+    Identity->>Ledger: getRequest(requestId, workspaceId, userId)
+    alt owned request
+        Ledger-->>Identity: durable request
+        Identity-->>User: 200 bounded public lifecycle + no-store
+    else absent or other tenant
+        Ledger-->>Identity: undefined
+        Identity-->>User: indistinguishable 404 + no-store
+    else malformed request ID
+        Identity-->>User: bounded 400 + no-store
+    else invalid/expired session
+        Identity-->>User: bounded 401 + no-store
+    else dependency/persistence failure
+        Identity-->>User: sanitized 503 + no-store
+    end
+```
+
+The public projection excludes workspace/user IDs, idempotency keys and request/receipt digests. Complete contributor orchestration, reconciliation, retention/legal-hold and protected export delivery remain **Partial** under issue #55.
+
+## Purpose-bound sensitive-data access
+
+**Status:** Implemented on protected main
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Privacy
+    participant Audit
+    Caller->>Privacy: actor + workspace + resource + purpose + lifetime
+    Privacy->>Privacy: validate policy/scope
+    Privacy->>Audit: append decision/grant evidence
+    Privacy-->>Caller: bounded grant/decision or denial
+```
 
 ## Backup / restore
+
+**Status:** Implemented on protected main
 
 ```mermaid
 sequenceDiagram
@@ -157,6 +227,8 @@ sequenceDiagram
 
 ## Deployment topology
 
+**Status:** Implemented on protected main
+
 ```mermaid
 flowchart TB
     Ingress[Ingress / TLS] --> Web[Web/BFF]
@@ -164,6 +236,7 @@ flowchart TB
     Services --> IStore[(identity role/schema)]
     Services --> PStore[(planning role/schema)]
     Services --> HStore[(habit role/schema)]
+    Services --> RStore[(review role/schema)]
     Services --> NStore[(notification role/schema)]
     Services --> AStore[(AI role/schema)]
     Services --> VStore[(privacy role/schema)]
@@ -173,7 +246,48 @@ flowchart TB
 
 The nodes represent separate service-owned database authority even when an operator co-locates them on one PostgreSQL cluster.
 
+## Verification evidence identity
+
+**Status:** Implemented on active PR
+
+**Evidence:** ADR 0010 and PR #147.
+
+The exact **source head** and a GitHub **synthetic merge** tree are different evidence subjects. The PR base snapshot is also distinct from the current live base tip.
+
+```mermaid
+flowchart LR
+    Source[source_head_sha] --> SourceCheck[Exact source verification]
+    BaseSnapshot[pr_base_snapshot_sha] --> PRMetadata[Historical PR-base evidence]
+    LiveBase[live_base_tip_sha] --> MergeDecision[Current base-sensitive decision]
+    Source --> MergeTree[merge_tree_sha]
+    LiveBase --> MergeTree
+    MergeTree --> MergeCheck[Integration compatibility]
+    SourceCheck --> Gate[Merge/release evidence decision]
+    MergeCheck --> Gate
+    MergeDecision --> Gate
+    Gate --> Main[protected_main_sha]
+    Main --> Release[release_source_sha]
+```
+
+```mermaid
+sequenceDiagram
+    participant GitHub
+    participant SourceJob as source-head job
+    participant MergeJob as merge-compatibility job
+    participant Policy as merge policy
+
+    GitHub->>SourceJob: checkout exact contributor source head
+    SourceJob-->>Policy: source-head evidence
+    GitHub->>MergeJob: checkout/construct synthetic merge against current base
+    MergeJob-->>Policy: separately classified compatibility evidence
+    Policy->>GitHub: re-resolve live base before base-sensitive decision
+```
+
+No green status is silently transferred across these identities. Issue #132 remains open until the active implementation is integrated and residual required-workflow attribution is reconciled.
+
 ## Degraded modes
+
+**Status:** Accepted architecture
 
 ```mermaid
 flowchart LR
@@ -182,4 +296,5 @@ flowchart LR
     StaleWrite[Stale revision/precondition] --> Conflict[Explicit conflict]
     BadContext[Malformed/forged context] --> Deny[Fail closed]
     ModelDown[Model unavailable] --> Deterministic[Deterministic product gates remain available]
+    UnknownEvidence[Unknown workflow checkout/evidence identity] --> EvidenceUnavailable[Fail closed / unavailable evidence]
 ```
