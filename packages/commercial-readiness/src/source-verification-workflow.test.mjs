@@ -68,3 +68,24 @@ test('CI retains an explicit pull-request merge-tree compatibility signal', () =
   assert.ok(mergeCompatibility.includes('git rev-parse HEAD'));
   assert.ok(mergeCompatibility.includes('${{ github.sha }}'));
 });
+
+test('merge-tree compatibility provisions the PostgreSQL contract required by the full suite', () => {
+  const mergeCompatibility = jobBlock(readWorkflow('ci.yml'), 'merge_compatibility');
+  assert.ok(mergeCompatibility.includes('services:'));
+  assert.ok(mergeCompatibility.includes('postgres:'));
+  assert.ok(mergeCompatibility.includes('POSTGRES_DB: life_os_test'));
+  for (const variableName of [
+    'AI_DATABASE_URL',
+    'AI_TEST_DATABASE_URL',
+    'IDENTITY_DATABASE_URL',
+    'PLANNING_DATABASE_URL',
+    'HABIT_DATABASE_URL',
+    'NOTIFICATION_DATABASE_URL',
+    'PRIVACY_DATABASE_URL',
+  ]) {
+    assert.ok(
+      mergeCompatibility.includes(`${variableName}: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test`),
+      `merge_compatibility is missing ${variableName}`,
+    );
+  }
+});
