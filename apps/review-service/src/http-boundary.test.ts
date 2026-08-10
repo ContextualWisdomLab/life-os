@@ -28,26 +28,23 @@ function signature(issuedAt: string, workspaceId = WORKSPACE_ID): string {
 }
 
 describe('Review HTTP boundary', () => {
-  it(
-    'accepts fresh signed workspace context and bounded ritual/history values',
-    () => {
-      const issuedAt = String(NOW_SECONDS - 30);
-      expect(
-        requireTrustedWorkspaceContext(
-          {
-            workspaceId: WORKSPACE_ID.toUpperCase(),
-            issuedAt,
-            signature: signature(issuedAt),
-          },
-          SECRET,
-          NOW_SECONDS,
-        ),
-      ).toBe(WORKSPACE_ID);
-      expect(requireRitualPath('weekly-review')).toBe('weekly-review');
-      expect(requireHistoryLimit(undefined)).toBe(50);
-      expect(requireHistoryLimit('100')).toBe(100);
-    },
-  );
+  it('accepts fresh signed workspace context and bounded ritual/history values', () => {
+    const issuedAt = String(NOW_SECONDS - 30);
+    expect(
+      requireTrustedWorkspaceContext(
+        {
+          workspaceId: WORKSPACE_ID.toUpperCase(),
+          issuedAt,
+          signature: signature(issuedAt),
+        },
+        SECRET,
+        NOW_SECONDS,
+      ),
+    ).toBe(WORKSPACE_ID);
+    expect(requireRitualPath('weekly-review')).toBe('weekly-review');
+    expect(requireHistoryLimit(undefined)).toBe(50);
+    expect(requireHistoryLimit('100')).toBe(100);
+  });
 
   it('accepts the exact maximum context age', () => {
     const issuedAt = String(NOW_SECONDS - 60);
