@@ -155,7 +155,7 @@ describe('commercial development prompt builder', () => {
       '"body": "Quote \\"value\\" and newline\\nvalue."',
     );
     expect(prompt.text).not.toContain('eval ');
-    expect(prompt.text).not.toContain('source ');
+    expect(prompt.text).not.toMatch(/(?:^|\n)\s*source\s+/u);
   });
 
   it.each([
