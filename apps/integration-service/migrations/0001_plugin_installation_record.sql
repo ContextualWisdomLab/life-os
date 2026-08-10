@@ -1,5 +1,19 @@
 CREATE SCHEMA IF NOT EXISTS plugin_integration;
 
+CREATE FUNCTION plugin_integration.capability_array_is_valid(capability_values text[])
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+STRICT
+PARALLEL SAFE
+AS $$
+    SELECT COALESCE(
+        bool_and(char_length(capability_name) BETWEEN 1 AND 256),
+        true
+    )
+    FROM unnest(capability_values) AS capability_name;
+$$;
+
 CREATE TABLE plugin_integration.plugin_installation_record (
     installation_id uuid PRIMARY KEY,
     workspace_id uuid NOT NULL,
@@ -16,6 +30,8 @@ CREATE TABLE plugin_integration.plugin_installation_record (
     CHECK (char_length(manifest_sha256) = 64),
     CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
     CHECK (cardinality(granted_capabilities) BETWEEN 0 AND 32),
+    CHECK (array_position(granted_capabilities, NULL) IS NULL),
+    CHECK (plugin_integration.capability_array_is_valid(granted_capabilities)),
     CHECK (installation_status IN ('active', 'revoked')),
     CHECK (revoked_at IS NULL OR revoked_at >= installed_at),
     CHECK (
