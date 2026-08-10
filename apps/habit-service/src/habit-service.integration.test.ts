@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
@@ -19,6 +19,7 @@ import { AppModule, HABIT_RUNTIME } from './main';
 
 const DATABASE_URL = process.env.HABIT_DATABASE_URL;
 const describeWithPostgres = DATABASE_URL ? describe.sequential : describe.skip;
+const TEST_CONTEXT_SECRET = randomBytes(32).toString('base64url');
 let administrativePool: Pool;
 const activeApplications: INestApplication[] = [];
 
@@ -50,6 +51,7 @@ async function applyMigration(pool: Pool): Promise<void> {
 
 async function createHarness(): Promise<TestHarness> {
   process.env.HABIT_DATABASE_URL = requireDatabaseUrl();
+  process.env.HABIT_GATEWAY_CONTEXT_SECRET = TEST_CONTEXT_SECRET;
   const app = await NestFactory.create(AppModule, { logger: false });
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
@@ -67,15 +69,26 @@ async function closeHarness(harness: TestHarness): Promise<void> {
   await harness.app.close();
 }
 
+function signedWorkspaceHeaders(workspaceId: string): Headers {
+  const issuedAt = String(Math.floor(Date.now() / 1000));
+  const signature = createHmac('sha256', TEST_CONTEXT_SECRET)
+    .update(`life-os.workspace.v1\n${workspaceId.toLowerCase()}\n${issuedAt}`, 'utf8')
+    .digest('base64url');
+  return new Headers({
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  });
+}
+
 async function request(
   baseUrl: string,
   path: string,
   options: RequestOptions = {},
 ): Promise<Response> {
-  const headers = new Headers();
-  if (options.workspaceId) {
-    headers.set('x-workspace-id', options.workspaceId);
-  }
+  const headers = options.workspaceId
+    ? signedWorkspaceHeaders(options.workspaceId)
+    : new Headers();
   if (options.body !== undefined) {
     headers.set('content-type', 'application/json');
   }
@@ -224,15 +237,15 @@ describeWithPostgres('Habit service HTTP integration', () => {
     ]);
   });
 
-  it('rejects invalid ownership and returns credential-free failures', async () => {
+  it('rejects missing authenticated context and returns credential-free failures', async () => {
     const workspaceId = randomUUID();
     const harness = await createHarness();
 
     const missingWorkspace = await request(harness.baseUrl, '/v1/habits');
-    expect(missingWorkspace.status).toBe(400);
+    expect(missingWorkspace.status).toBe(401);
     expect(await missingWorkspace.json()).toMatchObject({
-      status: 400,
-      code: 'invalid_workspace',
+      status: 401,
+      code: 'invalid_gateway_context',
     });
 
     const invalidBody = await request(harness.baseUrl, '/v1/habits', {
