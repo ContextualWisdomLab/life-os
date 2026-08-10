@@ -123,83 +123,92 @@ afterEach(() => {
 });
 
 describe.sequential('Review controller tenant authority contract', () => {
-  it('rejects browser-selectable workspace authority on every review route', () => {
-    expect(controllerSource).not.toContain("@Headers('x-workspace-id')");
-    expect(controllerSource).not.toContain('requireWorkspaceHeader(');
-    expect(
-      controllerSource.match(/@Headers\('x-life-os-workspace-id'\)/gu),
-    ).toHaveLength(4);
-    expect(
-      controllerSource.match(/@Headers\('x-life-os-context-issued-at'\)/gu),
-    ).toHaveLength(4);
-    expect(
-      controllerSource.match(/@Headers\('x-life-os-context-signature'\)/gu),
-    ).toHaveLength(4);
-    expect(
-      controllerSource.match(/requireTrustedWorkspaceContext\(/gu),
-    ).toHaveLength(4);
-    expect(controllerSource).toContain(
-      'process.env.REVIEW_GATEWAY_CONTEXT_SECRET',
-    );
-  });
-
-  it('passes only the verified workspace to every Review domain route', async () => {
-    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
-    const headers = signedHeaders(Math.floor(Date.now() / 1000));
-    const service = serviceSpies();
-    const controller = controllerWith(service);
-
-    for (const route of ROUTES) {
-      vi.clearAllMocks();
-      await route.invoke(controller, headers);
-      expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
+  it(
+    'rejects browser-selectable workspace authority on every review route',
+    () => {
+      expect(controllerSource).not.toContain("@Headers('x-workspace-id')");
+      expect(controllerSource).not.toContain('requireWorkspaceHeader(');
       expect(
-        service[route.serviceMethod].mock.calls[0]?.[0],
-        route.name,
-      ).toBe(WORKSPACE_ID);
-    }
-  });
+        controllerSource.match(/@Headers\('x-life-os-workspace-id'\)/gu),
+      ).toHaveLength(4);
+      expect(
+        controllerSource.match(/@Headers\('x-life-os-context-issued-at'\)/gu),
+      ).toHaveLength(4);
+      expect(
+        controllerSource.match(/@Headers\('x-life-os-context-signature'\)/gu),
+      ).toHaveLength(4);
+      expect(
+        controllerSource.match(/requireTrustedWorkspaceContext\(/gu),
+      ).toHaveLength(4);
+      expect(controllerSource).toContain(
+        'process.env.REVIEW_GATEWAY_CONTEXT_SECRET',
+      );
+    },
+  );
 
-  it('rejects untrusted contexts before every Review domain call', async () => {
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const fresh = signedHeaders(nowSeconds);
-    const expired = signedHeaders(nowSeconds - 120);
-    const future = signedHeaders(nowSeconds + 120);
-    const tampered = {
-      ...fresh,
-      signature: `${fresh.signature?.slice(0, -1)}${
-        fresh.signature?.endsWith('A') ? 'B' : 'A'
-      }`,
-    };
-    const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
-    const invalidContexts: readonly InvalidContextCase[] = [
-      ['missing', { ...fresh, workspaceId: undefined }, 401, true],
-      ['expired', expired, 401, true],
-      ['future', future, 401, true],
-      ['tampered', tampered, 401, true],
-      ['malformed', malformed, 401, true],
-      ['secret-unconfigured', fresh, 503, false],
-    ];
-    const service = serviceSpies();
-    const controller = controllerWith(service);
+  it(
+    'passes only the verified workspace to every Review domain route',
+    async () => {
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+      const headers = signedHeaders(Math.floor(Date.now() / 1000));
+      const service = serviceSpies();
+      const controller = controllerWith(service);
 
-    for (const [name, headers, status, secretConfigured] of invalidContexts) {
       for (const route of ROUTES) {
         vi.clearAllMocks();
-        if (secretConfigured) {
-          process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
-        } else {
-          delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
-        }
+        await route.invoke(controller, headers);
+        expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
         expect(
-          await rejectedStatus(route.invoke(controller, headers)),
-          `${route.name}:${name}`,
-        ).toBe(status);
-        expect(
-          service[route.serviceMethod],
-          `${route.name}:${name}`,
-        ).not.toHaveBeenCalled();
+          service[route.serviceMethod].mock.calls[0]?.[0],
+          route.name,
+        ).toBe(WORKSPACE_ID);
       }
-    }
-  });
+    },
+  );
+
+  it(
+    'rejects untrusted contexts before every Review domain call',
+    async () => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const fresh = signedHeaders(nowSeconds);
+      const expired = signedHeaders(nowSeconds - 120);
+      const future = signedHeaders(nowSeconds + 120);
+      const tampered = {
+        ...fresh,
+        signature: `${fresh.signature?.slice(0, -1)}${
+          fresh.signature?.endsWith('A') ? 'B' : 'A'
+        }`,
+      };
+      const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
+      const invalidContexts: readonly InvalidContextCase[] = [
+        ['missing', { ...fresh, workspaceId: undefined }, 401, true],
+        ['expired', expired, 401, true],
+        ['future', future, 401, true],
+        ['tampered', tampered, 401, true],
+        ['malformed', malformed, 401, true],
+        ['secret-unconfigured', fresh, 503, false],
+      ];
+      const service = serviceSpies();
+      const controller = controllerWith(service);
+
+      for (const [name, headers, status, secretConfigured] of invalidContexts) {
+        for (const route of ROUTES) {
+          vi.clearAllMocks();
+          if (secretConfigured) {
+            process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+          } else {
+            delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
+          }
+          expect(
+            await rejectedStatus(route.invoke(controller, headers)),
+            `${route.name}:${name}`,
+          ).toBe(status);
+          expect(
+            service[route.serviceMethod],
+            `${route.name}:${name}`,
+          ).not.toHaveBeenCalled();
+        }
+      }
+    },
+  );
 });
