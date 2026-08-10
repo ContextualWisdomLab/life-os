@@ -111,9 +111,9 @@ Connection metadata carries opaque secret references. Local revocation does not 
 
 ### User-aware hosted authority
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-**Evidence:** PR #155.
+**Evidence:** PR #155 merged as `7b34a5a584b037653d091ea661ae4627bb5dd2ea`.
 
 ```mermaid
 sequenceDiagram
@@ -151,6 +151,30 @@ sequenceDiagram
     User->>AI: explicit accept/reject bound to exact proposal evidence
     AI->>Audit: append decision
 ```
+
+## Model-assisted evaluation and development authority
+
+**Status:** Accepted architecture
+
+**Evidence:** ADR 0012, protected-main `AGENTS.md`, and the reviewed live-conformance design.
+
+```mermaid
+flowchart LR
+    Secret[GitHub Secret NVIDIA_NIM_API_KEY] --> Seed[Approved contextual-orchestrator / credential seeding]
+    Seed --> Route[Strong single-route baseline]
+    Seed --> Conduct[Bounded conduct cells]
+    Route --> Eval[Deterministic LifeOS proposal evaluator]
+    Conduct --> Eval
+    Eval --> Evidence[Credential-free retained evidence]
+    Evidence --> Governance[Governance decision]
+
+    Review[Independent review authority] --> Merge[Merge authority]
+    Merge --> Release[Release authority]
+    Governance -. evidence only .-> Review
+    Seed -. no review/merge/release authority .-> Review
+```
+
+Model execution can vary reasoning effort, workflow stages, decomposition, recursion depth, role-specific reasoning effort and access topology only when the exact reviewed dependency exposes those controls. Unsupported cells remain explicit. A conducted result does not self-approve or replace deterministic CI/security/review/merge/release authority.
 
 ## Data-rights lifecycle
 
@@ -223,7 +247,7 @@ stateDiagram-v2
     Conflict --> [*]
 ```
 
-PR #151 protects this authority. Durable plugin-secret persistence/outbound delivery remain **Partial** under #130.
+PR #151 protects this authority. Durable plugin installation persistence is active on PR #156; plugin-secret persistence/outbound delivery remain **Partial** under #130.
 
 ## Backup / deployment
 
@@ -243,18 +267,18 @@ Logical backup/restore verifies integrity and safe targets; it does not claim PI
 
 ## Verification evidence state
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-**Evidence:** ADR 0010 and clean successor PR #154; #147 is Superseded.
+**Evidence:** ADR 0010 and PR #154 merged as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`; #147 is Superseded.
 
 ```mermaid
 flowchart LR
     Source[source_head_sha] --> SourceCheck[Exact source verification]
     BaseSnapshot[pr_base_snapshot_sha] --> Metadata[Historical PR snapshot]
     LiveBase[live_base_tip_sha] --> MergeDecision[Current base-sensitive decision]
-    Source --> MergeTree[merge_tree_sha]
-    LiveBase --> MergeTree
-    MergeTree --> MergeCheck[Compatibility evidence]
+    Source --> Integration[integration_tree_sha]
+    LiveBase --> Integration
+    Integration --> MergeCheck[Compatibility evidence]
     SourceCheck --> Gate
     MergeCheck --> Gate
     MergeDecision --> Gate
@@ -262,7 +286,7 @@ flowchart LR
     Main --> Release[release_source_sha]
 ```
 
-No green result transfers authority across identities. PR #154 additionally requires the checked synthetic merge parents to match fresh current source and current live base evidence.
+No green result transfers authority across identities. Protected PR #154 reconstructs compatibility from the independently resolved current source and live base. Issue #132 remains open only for residual central SAST/Security scanner checkout and attribution classification; current central Semgrep synthetic-merge evidence must not be relabeled exact-source evidence.
 
 ## Degraded modes
 
