@@ -22,13 +22,19 @@ export type GatewayTodayFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+/** Validated Planning action evidence with an opaque product identifier. */
+export interface GatewayPlanningTodayAction {
+  readonly id: string;
+  readonly [key: string]: unknown;
+}
+
 /** Validated Planning-owned Today aggregate carried without cross-service persistence reads. */
 export interface GatewayPlanningToday {
   readonly version: 'life-os.today.v1';
   readonly aggregateId: string;
   readonly revision: string;
   readonly date: string;
-  readonly actions: readonly unknown[];
+  readonly actions: readonly GatewayPlanningTodayAction[];
 }
 
 /** Buyer-visible Gateway response while Habit composition remains explicitly degraded. */
@@ -215,18 +221,25 @@ async function readBoundedJson(response: Response): Promise<unknown> {
     ?.split(';', 1)[0]
     ?.trim()
     .toLowerCase();
-  if (
-    contentType !== 'application/json' &&
-    contentType !== 'application/problem+json'
-  ) {
-    throw unavailable();
-  }
+  if (contentType !== 'application/json') throw unavailable();
   try {
     return JSON.parse(await readBoundedText(response)) as unknown;
   } catch (error) {
     if (error instanceof GatewayTodayError) throw error;
     throw unavailable();
   }
+}
+
+/** Validates the minimum action identity contract before forwarding Planning evidence. */
+function requirePlanningAction(value: unknown): GatewayPlanningTodayAction {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw unavailable();
+  }
+  const action = value as Record<string, unknown>;
+  if (typeof action.id !== 'string' || !UUID_V4_PATTERN.test(action.id)) {
+    throw unavailable();
+  }
+  return Object.freeze({ ...action, id: action.id.toLowerCase() });
 }
 
 function requirePlanningToday(
@@ -252,12 +265,13 @@ function requirePlanningToday(
   ) {
     throw unavailable();
   }
+  const actions = record.actions.map(requirePlanningAction);
   return Object.freeze({
     version: 'life-os.today.v1',
     aggregateId: record.aggregateId.toLowerCase(),
     revision: record.revision.toLowerCase(),
     date: expectedDate,
-    actions: Object.freeze([...record.actions]),
+    actions: Object.freeze(actions),
   });
 }
 
