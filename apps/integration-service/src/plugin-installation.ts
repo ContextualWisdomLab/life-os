@@ -1,4 +1,13 @@
-import type { PluginManifest } from '@life-os/plugin-sdk';
+import { createHash } from 'node:crypto';
+import {
+  serializeCanonicalJson,
+  validatePluginManifest,
+  type PluginManifest,
+} from '@life-os/plugin-sdk';
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAXIMUM_GRANTED_CAPABILITIES = 32;
 
 /** Generic fail-closed installation authority failure without untrusted reflection. */
 export class PluginInstallationError extends Error {
@@ -42,36 +51,164 @@ export interface InstallPluginInput {
   readonly grantedCapabilities: readonly string[];
 }
 
+function invalid(): never {
+  throw new PluginInstallationError();
+}
+
+function requireUuidV4(value: unknown): string {
+  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+    return invalid();
+  }
+  return value.toLowerCase();
+}
+
+function requireContext(input: PluginInstallationContext): PluginInstallationContext {
+  return Object.freeze({
+    workspaceId: requireUuidV4(input.workspaceId),
+    actorUserId: requireUuidV4(input.actorUserId),
+  });
+}
+
+function requireManifest(input: PluginManifest): PluginManifest {
+  try {
+    return validatePluginManifest(input);
+  } catch {
+    return invalid();
+  }
+}
+
+function requireGrantedCapabilities(
+  manifest: PluginManifest,
+  input: readonly string[],
+): readonly string[] {
+  if (
+    !Array.isArray(input) ||
+    input.length > MAXIMUM_GRANTED_CAPABILITIES ||
+    input.some(
+      (capability) =>
+        typeof capability !== 'string' ||
+        !manifest.subscriptions.includes(capability),
+    )
+  ) {
+    return invalid();
+  }
+  const unique = new Set(input);
+  if (unique.size !== input.length) {
+    return invalid();
+  }
+  return Object.freeze([...unique].sort());
+}
+
+function manifestDigest(manifest: PluginManifest): string {
+  return createHash('sha256')
+    .update(serializeCanonicalJson(manifest))
+    .digest('hex');
+}
+
+function freezeRecord(record: PluginInstallationRecord): PluginInstallationRecord {
+  return Object.freeze({
+    ...record,
+    grantedCapabilities: Object.freeze([...record.grantedCapabilities]),
+  });
+}
+
+function sameInstallation(
+  existing: PluginInstallationRecord,
+  candidate: PluginInstallationRecord,
+): boolean {
+  return (
+    existing.workspaceId === candidate.workspaceId &&
+    existing.installedByUserId === candidate.installedByUserId &&
+    existing.pluginId === candidate.pluginId &&
+    existing.pluginContractVersion === candidate.pluginContractVersion &&
+    existing.manifestSha256 === candidate.manifestSha256 &&
+    existing.status === 'active' &&
+    existing.grantedCapabilities.length === candidate.grantedCapabilities.length &&
+    existing.grantedCapabilities.every(
+      (value, index) => value === candidate.grantedCapabilities[index],
+    )
+  );
+}
+
 /**
  * Owns plugin installation and revocation authority independently of plugin code.
  *
- * The first test-first slice intentionally exposes the stable host/store contract
- * before the implementation is filled in; callers must treat failures as closed.
+ * The application treats a validated manifest as requested capability intent only.
+ * LifeOS persists the smaller host-approved grant set and never lets plugin input
+ * widen its own tenant authority.
  */
 export class PluginInstallationApplication {
   constructor(
     private readonly store: PluginInstallationStore,
     private readonly now: () => Date = () => new Date(),
-  ) {
-    void this.store;
-    void this.now;
+  ) {}
+
+  /** Installs an explicitly granted manifest or returns its exact idempotent replay. */
+  async install(input: InstallPluginInput): Promise<PluginInstallationRecord> {
+    const context = requireContext(input.trustedContext);
+    const installationId = requireUuidV4(input.installationId);
+    const manifest = requireManifest(input.manifest);
+    const grantedCapabilities = requireGrantedCapabilities(
+      manifest,
+      input.grantedCapabilities,
+    );
+    const candidate = freezeRecord({
+      installationId,
+      workspaceId: context.workspaceId,
+      installedByUserId: context.actorUserId,
+      pluginId: manifest.pluginId,
+      pluginContractVersion: manifest.contractVersion,
+      manifestSha256: manifestDigest(manifest),
+      grantedCapabilities,
+      status: 'active',
+      installedAt: this.now().toISOString(),
+      revokedAt: null,
+    });
+    const existing = await this.store.findById(installationId);
+    if (existing) {
+      if (!sameInstallation(existing, candidate)) {
+        return invalid();
+      }
+      return freezeRecord(existing);
+    }
+    await this.store.save(candidate);
+    return candidate;
   }
 
-  async install(_input: InstallPluginInput): Promise<PluginInstallationRecord> {
-    throw new PluginInstallationError();
-  }
-
+  /** Returns an installation only inside the authenticated workspace boundary. */
   async getInstallation(
-    _trustedContext: PluginInstallationContext,
-    _installationId: string,
+    trustedContext: PluginInstallationContext,
+    installationIdInput: string,
   ): Promise<PluginInstallationRecord | undefined> {
-    throw new PluginInstallationError();
+    const context = requireContext(trustedContext);
+    const installationId = requireUuidV4(installationIdInput);
+    const existing = await this.store.findById(installationId);
+    if (!existing || existing.workspaceId !== context.workspaceId) {
+      return undefined;
+    }
+    return freezeRecord(existing);
   }
 
+  /** Revokes future use while retaining immutable host-owned installation evidence. */
   async revoke(
-    _trustedContext: PluginInstallationContext,
-    _installationId: string,
+    trustedContext: PluginInstallationContext,
+    installationIdInput: string,
   ): Promise<PluginInstallationRecord> {
-    throw new PluginInstallationError();
+    const context = requireContext(trustedContext);
+    const installationId = requireUuidV4(installationIdInput);
+    const existing = await this.store.findById(installationId);
+    if (!existing || existing.workspaceId !== context.workspaceId) {
+      return invalid();
+    }
+    if (existing.status === 'revoked') {
+      return freezeRecord(existing);
+    }
+    const revoked = freezeRecord({
+      ...existing,
+      status: 'revoked',
+      revokedAt: this.now().toISOString(),
+    });
+    await this.store.save(revoked);
+    return revoked;
   }
 }
