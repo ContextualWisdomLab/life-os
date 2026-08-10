@@ -1,3 +1,5 @@
+export * from './data-rights.js';
+
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 
 export interface RequestContext {
