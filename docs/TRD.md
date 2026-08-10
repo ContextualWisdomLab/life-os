@@ -18,11 +18,11 @@ LifeOS is a TypeScript-first monorepo with a Next.js PWA/BFF, independently boun
 - **Planning:** Goals, Projects, Tasks, durable Today aggregate and search.
 - **Habit:** recurrence definitions and completion evidence.
 - **Review:** review snapshots/projections; no direct planning mutation.
-- **Calendar integration:** provider adapters, sync state, trusted workspace context and protected-main workspace+user scoped connection persistence. Complete hosted credential lifecycle remains partial under #129.
+- **Calendar integration:** provider adapters, sync state, trusted workspace and workspace+user signed context, and protected-main workspace+user scoped connection persistence/revocation. Complete hosted credential lifecycle remains partial under #129.
 - **Notification:** reminder occurrences, claims, outcomes and delivery recovery.
 - **AI proposal:** proposals, evidence, explicit decisions and deterministic evaluation; no generic planning mutation authority.
 - **Privacy:** purpose-bound sensitive-access decisions/grants/events.
-- **Plugin integration:** versioned plugin contracts, validation and protected-main explicit installation-grant authority. Complete durable secret/delivery runtime remains partial under #130.
+- **Plugin integration:** versioned plugin contracts, validation and protected-main explicit installation-grant authority; PR #156 is active for restart-safe installation persistence. Complete secret/delivery runtime remains partial under #130.
 
 ## Data requirements
 
@@ -43,6 +43,7 @@ LifeOS is a TypeScript-first monorepo with a Next.js PWA/BFF, independently boun
 - Client-selected workspace/actor identifiers are never trusted as authority.
 - Signed private context binds exact actor/workspace/method/path and bounded issuance time where service separation requires it.
 - Calendar synchronization uses the trusted signed workspace context implemented on protected main; legacy workspace headers cannot override it.
+- User-sensitive hosted calendar operations use the protected `life-os.calendar-user.v1` context from PR #155, binding workspace and requesting user under a version distinct from workspace-only sync authority.
 - Sensitive operations add purpose/resource/tenant authorization and, for data rights, recent-authentication policy derived from authentication provenance rather than session rotation.
 - Plugin capabilities are host-granted authority; a manifest expresses requested intent only.
 
@@ -71,17 +72,23 @@ This endpoint is one lifecycle surface and does not imply complete cross-domain 
 
 PR #149 requires each contributor export section to provide a versioned schema and safe non-negative business record count. LifeOS normalizes bounded JSON, uses locale-independent UTF-16 property ordering for deterministic hashing, computes a SHA-256 section digest over contributor/schema/count/data, and retains a whole-export digest. Digest evidence is not authorization, confidentiality, provenance or a digital signature.
 
-### Calendar connection registry
+### Calendar connection registry and local revocation
 
 **Status:** Implemented on protected main
 
-PR #150 defines the protected service-owned migration/repository for a connection scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes, opaque external credential references, fixed parameterized SQL and fail-closed duplicate persisted evidence. It does not complete issue #129.
+PR #150 defines the protected service-owned migration/repository for a connection scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes, opaque external credential references, fixed parameterized SQL and fail-closed duplicate persisted evidence. PR #153 adds an atomic tenant+user-scoped active-to-revoked transition. These foundations do not complete issue #129 or imply provider-side OAuth revocation.
 
 ### Plugin installation authority
 
 **Status:** Implemented on protected main
 
 PR #151 separates validated manifest intent from host authority. LifeOS grants only an explicit bounded capability subset, accepts exact replay, rejects conflicting installation-ID reuse, hides cross-tenant/user existence and preserves revocation evidence. It does not imply complete persistent secret or outbound-delivery runtime under #130.
+
+### Plugin installation persistence
+
+**Status:** Implemented on active PR
+
+PR #156 adds a service-owned `plugin_integration.plugin_installation_record` persistence foundation. Application and PostgreSQL read/revocation paths bind installation, workspace and installing-user authority; malformed or corrupt evidence fails closed. It stores installation authority/evidence only and does not add plugin credential plaintext, KMS lifecycle or outbound-delivery authority.
 
 ## Event requirements
 
@@ -92,14 +99,16 @@ Versioned events carry opaque event ID, explicit type/version, validated actor/w
 - **Today:** protected-main aggregate uses explicit strong create/update preconditions, idempotency and stale-conflict handling with durable PostgreSQL concurrency evidence.
 - **Habit completion:** tenant-scoped replay-safe persistence.
 - **Notification:** expiring/fenced claims and duplicate-delivery refusal.
-- **Calendar:** deterministic provider identity/preconditions, trusted context and protected tenant+user+connection scoped repository invariants from #150.
+- **Calendar:** deterministic provider identity/preconditions, trusted context, protected tenant+user+connection repository invariants from #150 and atomic local revocation from #153.
 - **AI decisions:** bind decision to exact proposal digest/revision, actor/workspace and idempotency identity.
 - **Data rights:** durable request identity and immutable terminal receipts; status lookup is scoped simultaneously by request, workspace and requesting user and fails closed on corruption.
-- **Plugin installation:** protected #151 requires exact replay/conflict/revocation semantics for host-granted authority.
+- **Plugin installation:** protected #151 requires exact replay/conflict/revocation semantics for host-granted authority; active #156 carries the same scope into restart-safe persistence.
 
 ## AI / automation requirements
 
-Model output is untrusted structured data. Deterministic validators and user/product authorization remain authoritative. Live provider availability is separated from deterministic merge gates. Scheduled autonomous development uses reviewed OpenCode with `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited as a development-model credential. A strong single-route baseline precedes deeper orchestration and evaluation records role, stage, reasoning effort, decomposition, recursion and access topology.
+ADR 0012 is the durable test-time-compute/development authority. Model output is untrusted structured data. Deterministic validators and user/product authorization remain authoritative. Live provider availability is separated from deterministic merge gates. Scheduled autonomous development uses reviewed OpenCode or contextual-orchestrator with `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited as a development-model credential and independent review-agent credentials are not reused.
+
+A strong single-route baseline precedes deeper orchestration. Evaluation records supported dimensions such as workflow stage, reasoning effort, role-specific reasoning effort, decomposition, recursion depth, worker/model selection, verifier topology and access-list/communication topology. Unsupported controls remain explicit rather than fabricated. Deeper orchestration is selected only from retained LifeOS quality/evidence under a documented reasonably comparable budget; latency/tokens/cost are measured but are not the sole or primary optimization objective. Model execution never becomes review, merge or release authority.
 
 ## Security/privacy requirements
 
@@ -127,12 +136,12 @@ Required evidence classes retain explicit identities:
 - `source_head_sha`: exact contributor/source branch head for direct source verification;
 - `pr_base_snapshot_sha`: GitHub PR/event base snapshot, historical once the live base moves;
 - `live_base_tip_sha`: independently resolved current base-ref tip for base-sensitive decisions;
-- `merge_tree_sha`: synthetic integration tree used only for separately classified compatibility evidence;
+- `integration_tree_sha` or explicitly synthetic merge identity: separately classified compatibility evidence;
 - `workflow_checkout_sha`: exact tree inspected by one evidence-producing job;
 - `protected_main_sha`: integrated protected-main evidence identity;
 - `release_source_sha`: exact protected source bound to release artifacts.
 
-A green result for one class cannot be promoted to another. SARIF/security evidence must be attributed to the commit/ref actually analyzed. Clean successor PR #154 is `Implemented on active PR` for the current source-head/merge-tree correction after #147 was superseded; issue #132 remains open until protected-main integration and residual attribution are reconciled.
+A green result for one class cannot be promoted to another. SARIF/security evidence must be attributed to the commit/ref actually analyzed. PR #154 is implemented on protected main as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`: LifeOS source jobs and AppGuardrail attribution bind exact source, while the distinct compatibility path reconstructs the integration tree from fresh current source and live base. Issue #132 remains open only for residual central reusable SAST/Security checkout/evidence classification; a synthetic merge scan cannot be relabeled exact-source success.
 
 ## Release requirements
 
