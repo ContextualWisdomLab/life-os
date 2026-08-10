@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
-const TEMPORARY_DATABASE_PREFIX = 'life_os_id_migration_';
-const TEMPORARY_DATABASE_PATTERN = /^life_os_id_migration_[0-9a-f]{32}$/u;
+const TEMPORARY_DATABASE_NAME = 'life_os_identity_migration_test';
+const TEMPORARY_DATABASE_LOCK_KEY = 74_211_340;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const AUTHENTICATION_MIGRATION = '0004_session_authentication_age.sql';
 const AUTHENTICATION_FINALIZATION_MIGRATION =
@@ -23,14 +23,6 @@ function databaseUrl(sourceUrl: string, name: string): string {
   const parsed = new URL(sourceUrl);
   parsed.pathname = `/${name}`;
   return parsed.toString();
-}
-
-function temporaryDatabaseName(): string {
-  const name = `${TEMPORARY_DATABASE_PREFIX}${randomUUID().replaceAll('-', '')}`;
-  if (!TEMPORARY_DATABASE_PATTERN.test(name)) {
-    throw new Error('Generated temporary database name is invalid');
-  }
-  return name;
 }
 
 async function migrationFilesBeforeAuthenticationAge(): Promise<string[]> {
@@ -64,18 +56,27 @@ async function withTemporaryDatabase(
   execute: (pool: Pool) => Promise<void>,
 ): Promise<void> {
   const sourceUrl = requireDatabaseUrl();
-  const databaseName = temporaryDatabaseName();
   const adminPool = new Pool({
     connectionString: databaseUrl(sourceUrl, 'postgres'),
   });
+  let adminClient: PoolClient | undefined;
   let migrationPool: Pool | undefined;
+  let lockHeld = false;
   let databaseCreated = false;
 
   try {
-    await adminPool.query(`CREATE DATABASE ${databaseName}`);
+    adminClient = await adminPool.connect();
+    await adminClient.query('SELECT pg_advisory_lock($1::bigint)', [
+      TEMPORARY_DATABASE_LOCK_KEY,
+    ]);
+    lockHeld = true;
+    await adminClient.query(
+      'DROP DATABASE IF EXISTS life_os_identity_migration_test',
+    );
+    await adminClient.query('CREATE DATABASE life_os_identity_migration_test');
     databaseCreated = true;
     migrationPool = new Pool({
-      connectionString: databaseUrl(sourceUrl, databaseName),
+      connectionString: databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME),
     });
     await prepareLegacyDatabase(migrationPool);
     await execute(migrationPool);
@@ -84,10 +85,21 @@ async function withTemporaryDatabase(
       await migrationPool?.end();
     } finally {
       try {
-        if (databaseCreated) {
-          await adminPool.query(`DROP DATABASE IF EXISTS ${databaseName}`);
+        if (lockHeld && adminClient) {
+          try {
+            if (databaseCreated) {
+              await adminClient.query(
+                'DROP DATABASE IF EXISTS life_os_identity_migration_test',
+              );
+            }
+          } finally {
+            await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
+              TEMPORARY_DATABASE_LOCK_KEY,
+            ]);
+          }
         }
       } finally {
+        adminClient?.release();
         await adminPool.end();
       }
     }
@@ -153,24 +165,15 @@ async function insertSession(
 }
 
 describeWithDatabase('session authentication-age migration', () => {
-  it('isolates concurrent migration fixtures in independently disposable databases', async () => {
+  it('serializes concurrent migration fixtures without force-terminating database clients', async () => {
     const completed: string[] = [];
-    const databaseNames: string[] = [];
 
     await Promise.all([
       withTemporaryDatabase(async (migrationPool) => {
-        const database = await migrationPool.query<{ database_name: string }>(
-          'SELECT current_database() AS database_name',
-        );
-        databaseNames.push(database.rows[0]?.database_name ?? '');
         await migrationPool.query('SELECT pg_sleep(0.05)');
         completed.push('first');
       }),
       withTemporaryDatabase(async (migrationPool) => {
-        const database = await migrationPool.query<{ database_name: string }>(
-          'SELECT current_database() AS database_name',
-        );
-        databaseNames.push(database.rows[0]?.database_name ?? '');
         await migrationPool.query('SELECT 1');
         completed.push('second');
       }),
@@ -178,10 +181,18 @@ describeWithDatabase('session authentication-age migration', () => {
 
     expect(completed).toHaveLength(2);
     expect(new Set(completed)).toEqual(new Set(['first', 'second']));
-    expect(databaseNames).toHaveLength(2);
-    expect(new Set(databaseNames)).toHaveLength(2);
-    for (const databaseName of databaseNames) {
-      expect(databaseName).toMatch(TEMPORARY_DATABASE_PATTERN);
+
+    const adminPool = new Pool({
+      connectionString: databaseUrl(requireDatabaseUrl(), 'postgres'),
+    });
+    try {
+      const remaining = await adminPool.query<{ database_name: string }>(
+        'SELECT datname AS database_name FROM pg_database WHERE datname = $1',
+        [TEMPORARY_DATABASE_NAME],
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      await adminPool.end();
     }
   }, 30_000);
 
