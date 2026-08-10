@@ -1,8 +1,21 @@
-import { Controller, Get, Header, HttpException, Module } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  Headers,
+  HttpException,
+  Module,
+  Query,
+} from '@nestjs/common';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import { gatewayMetrics } from './observability';
+import {
+  composePlanningToday,
+  GatewayTodayError,
+  type GatewayTodayView,
+} from './today-composition';
 
-/** Bounded problem details returned while the real Today composition is unavailable. */
+/** Bounded problem details returned without dependency or credential details. */
 interface GatewayProblemDetails {
   readonly type: 'about:blank';
   readonly title: string;
@@ -21,7 +34,7 @@ function problem(status: number, title: string, code: string): HttpException {
   return new HttpException(details, status);
 }
 
-/** Exposes operational health and bounded metrics while product composition stays fail-closed. */
+/** Exposes operational health, authenticated Today composition, and bounded metrics. */
 @Controller()
 export class HealthController {
   /** Returns a credential-free liveness response for the gateway process. */
@@ -30,15 +43,28 @@ export class HealthController {
     return { status: 'ok', service: 'gateway' };
   }
 
-  /** Refuses to fabricate Today data until authenticated service composition is configured. */
+  /**
+   * Authenticates through Identity and returns validated Planning-owned Today
+   * state. Habit state remains an explicit degraded capability, never fake data.
+   */
   @Get('today')
   @Header('Cache-Control', 'no-store')
-  today(): never {
-    throw problem(
-      503,
-      'Today composition is unavailable',
-      'today_composition_unavailable',
-    );
+  async today(
+    @Headers('cookie') cookie: string | undefined,
+    @Query('date') date: string | undefined,
+  ): Promise<GatewayTodayView> {
+    try {
+      return await composePlanningToday(cookie, date ?? '', process.env);
+    } catch (error) {
+      if (error instanceof GatewayTodayError) {
+        throw problem(error.status, error.message, error.code);
+      }
+      throw problem(
+        503,
+        'Today composition is unavailable',
+        'today_composition_unavailable',
+      );
+    }
   }
 
   /** Renders the bounded in-memory metrics registry for Prometheus scrapes. */

@@ -1,10 +1,18 @@
 import type { AddressInfo } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppModule } from './app.module';
 
 const applications: INestApplication[] = [];
+const TODAY_DEPENDENCY_KEYS = [
+  'IDENTITY_SERVICE_ORIGIN',
+  'PLANNING_SERVICE_ORIGIN',
+  'PLANNING_GATEWAY_CONTEXT_SECRET',
+] as const;
+let previousTodayDependencies: ReadonlyArray<
+  readonly [(typeof TODAY_DEPENDENCY_KEYS)[number], string | undefined]
+> = [];
 
 async function createHarness(): Promise<{
   app: INestApplication;
@@ -18,15 +26,44 @@ async function createHarness(): Promise<{
   return { app, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
+beforeEach(() => {
+  previousTodayDependencies = TODAY_DEPENDENCY_KEYS.map(
+    (key) => [key, process.env[key]] as const,
+  );
+  for (const key of TODAY_DEPENDENCY_KEYS) delete process.env[key];
+});
+
 afterEach(async () => {
-  await Promise.all(applications.splice(0).map((app) => app.close()));
+  try {
+    await Promise.all(applications.splice(0).map((app) => app.close()));
+  } finally {
+    for (const [key, value] of previousTodayDependencies) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    previousTodayDependencies = [];
+  }
 });
 
 describe('Gateway Today HTTP boundary', () => {
-  it('returns explicit non-cacheable unavailable evidence instead of fake Today data', async () => {
+  it('returns a bounded invalid-request problem when the required date is absent', async () => {
     const { baseUrl } = await createHarness();
 
     const response = await fetch(`${baseUrl}/v1/today`);
+    expect(response.status).toBe(400);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      type: 'about:blank',
+      title: 'Today composition request is invalid',
+      status: 400,
+      code: 'invalid_today_request',
+    });
+  });
+
+  it('returns explicit non-cacheable unavailable evidence when trusted dependencies are not configured', async () => {
+    const { baseUrl } = await createHarness();
+
+    const response = await fetch(`${baseUrl}/v1/today?date=2026-08-10`);
     expect(response.status).toBe(503);
     expect(response.headers.get('cache-control')).toBe('no-store');
     const body = await response.json();
