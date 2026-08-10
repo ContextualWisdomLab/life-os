@@ -1,10 +1,18 @@
 import type { AddressInfo } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppModule } from './app.module';
 
 const applications: INestApplication[] = [];
+const TODAY_DEPENDENCY_KEYS = [
+  'IDENTITY_SERVICE_ORIGIN',
+  'PLANNING_SERVICE_ORIGIN',
+  'PLANNING_GATEWAY_CONTEXT_SECRET',
+] as const;
+let previousTodayDependencies: ReadonlyArray<
+  readonly [(typeof TODAY_DEPENDENCY_KEYS)[number], string | undefined]
+> = [];
 
 async function createHarness(): Promise<{
   app: INestApplication;
@@ -18,8 +26,23 @@ async function createHarness(): Promise<{
   return { app, baseUrl: `http://127.0.0.1:${address.port}` };
 }
 
+beforeEach(() => {
+  previousTodayDependencies = TODAY_DEPENDENCY_KEYS.map(
+    (key) => [key, process.env[key]] as const,
+  );
+  for (const key of TODAY_DEPENDENCY_KEYS) delete process.env[key];
+});
+
 afterEach(async () => {
-  await Promise.all(applications.splice(0).map((app) => app.close()));
+  try {
+    await Promise.all(applications.splice(0).map((app) => app.close()));
+  } finally {
+    for (const [key, value] of previousTodayDependencies) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    previousTodayDependencies = [];
+  }
 });
 
 describe('Gateway Today HTTP boundary', () => {
