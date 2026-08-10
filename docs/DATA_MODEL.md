@@ -57,7 +57,7 @@ erDiagram
 - `workspace_membership`
 - `data_rights_request` and immutable terminal receipt state as defined by current migrations/repositories
 
-Authentication provenance is retained independently from session rotation so recent-auth policy can be enforced correctly.
+Authentication provenance is retained independently from session rotation so recent-auth policy can be enforced correctly. Protected-main export logic now binds each contributor section to an explicit business record count and deterministic SHA-256 integrity evidence before the whole-export digest is calculated.
 
 ### Planning service — persisted on protected main
 
@@ -95,15 +95,21 @@ Review snapshots/projections are service-owned. They consume planning/habit evid
 
 ### Calendar integration
 
-Current protected main includes sync/provider state and trusted signed workspace-context verification. `calendar_connection` as a complete hosted per-user encrypted credential lifecycle remains **conceptual/planned** under issue #129.
+Protected main includes sync/provider behavior and trusted signed workspace-context verification.
+
+PR #150 is **Implemented on active PR** for the first persisted `calendar_connection` foundation. Its migration/repository scope binds one connection to workspace and user, stores bounded provider/account/calendar metadata and normalized scopes, and references external credential material through opaque handles. This active persistence must not be labeled protected-main until merge.
+
+The complete hosted lifecycle remains **Partial** under issue #129: authorization callback lifecycle, concrete managed secret storage, refresh/revocation, discovery/selection and migration from development provider configuration remain separate work.
 
 ### Plugin integration
 
-Manifest/contract validation exists on protected main. `plugin_installation` and `plugin_delivery` are **conceptual/planned** under issue #130; they are not persisted merely because they appear in this logical model.
+Manifest/contract validation exists on protected main. PR #151 is **Implemented on active PR** for an application-level `plugin_installation` authority model that grants an explicit capability subset and preserves replay/conflict/revocation evidence. It does not add durable persistence.
+
+Therefore persisted `plugin_installation`, plugin secret records and `plugin_delivery` attempts remain **Planned** under issue #130 until migrations/repositories and delivery runtime are merged. The logical ERD shows the intended ownership relationship, not physical protected-main tables.
 
 ## Data-rights lifecycle
 
-Protected main currently proves recent-authentication provenance, authenticated ownership binding, durable request/terminal receipt persistence and tenant-scoped request lookup. The whole-product export/deletion participant/reconciliation/delivery model remains partial under issue #55.
+Protected main proves recent-authentication provenance, authenticated ownership binding, durable request/terminal receipt persistence, tenant-scoped request lookup, an authenticated non-cacheable public status projection through PR #146, and per-section export integrity metadata through PR #149. The whole-product export/deletion participant/reconciliation/protected-delivery model remains partial under issue #55.
 
 ## Temporal/provenance fields
 
