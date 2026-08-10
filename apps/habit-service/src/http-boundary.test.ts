@@ -5,7 +5,6 @@ import {
   parseCreateHabitRequest,
   requireHabitId,
   requireLocalDateQuery,
-  requireWorkspaceId,
   toHabitHttpException,
 } from './http-boundary';
 import {
@@ -46,7 +45,6 @@ describe('Habit HTTP boundary', () => {
     ).toMatchObject({
       recurrence: { kind: 'weekly', interval: 1, weekdays: [1, 5] },
     });
-    expect(requireWorkspaceId(WORKSPACE_ID)).toBe(WORKSPACE_ID);
     expect(requireHabitId(HABIT_ID)).toBe(HABIT_ID);
     expect(requireLocalDateQuery('2026-08-04', 'from')).toBe('2026-08-04');
     expect(
@@ -92,7 +90,6 @@ describe('Habit HTTP boundary', () => {
     ]) {
       expect(() => parseCreateHabitRequest(value)).toThrowError(HttpException);
     }
-    expect(() => requireWorkspaceId('not-a-uuid')).toThrowError(HttpException);
     expect(() => requireHabitId('not-a-uuid')).toThrowError(HttpException);
     expect(() => requireLocalDateQuery('2026-13-01', 'to')).toThrowError(
       HttpException,

@@ -23,7 +23,7 @@ import {
   parseCreateHabitRequest,
   requireHabitId,
   requireLocalDateQuery,
-  requireWorkspaceId,
+  requireTrustedWorkspaceContext,
   toHabitHttpException,
 } from './http-boundary';
 
@@ -44,12 +44,17 @@ export class HabitController {
 
   @Post('habits')
   async createHabit(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<Habit> {
     try {
       return await this.habitService.createHabit(
-        requireWorkspaceId(workspaceHeader),
+        requireTrustedWorkspaceContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+        ),
         parseCreateHabitRequest(body),
       );
     } catch (error) {
@@ -59,11 +64,16 @@ export class HabitController {
 
   @Get('habits')
   async listHabits(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
   ): Promise<Habit[]> {
     try {
       return await this.habitService.listHabits(
-        requireWorkspaceId(workspaceHeader),
+        requireTrustedWorkspaceContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+        ),
       );
     } catch (error) {
       throw toHabitHttpException(error);
@@ -72,14 +82,19 @@ export class HabitController {
 
   @Get('habits/:habitId/occurrences')
   async listOccurrences(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('habitId') habitId: string,
     @Query('from') fromLocalDate: string | undefined,
     @Query('to') toLocalDate: string | undefined,
   ): Promise<HabitOccurrence[]> {
     try {
       return await this.habitService.listOccurrences(
-        requireWorkspaceId(workspaceHeader),
+        requireTrustedWorkspaceContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+        ),
         requireHabitId(habitId),
         requireLocalDateQuery(fromLocalDate, 'from'),
         requireLocalDateQuery(toLocalDate, 'to'),
@@ -91,13 +106,18 @@ export class HabitController {
 
   @Post('habits/:habitId/completions')
   async completeHabit(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('habitId') habitId: string,
     @Body() body: unknown,
   ): Promise<HabitCompletionEvent> {
     try {
       return await this.habitService.completeHabit(
-        requireWorkspaceId(workspaceHeader),
+        requireTrustedWorkspaceContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+        ),
         requireHabitId(habitId),
         parseCompleteHabitRequest(body),
       );
@@ -108,12 +128,17 @@ export class HabitController {
 
   @Get('habits/:habitId/completions')
   async listCompletionHistory(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('habitId') habitId: string,
   ): Promise<HabitCompletionEvent[]> {
     try {
       return await this.habitService.listCompletionHistory(
-        requireWorkspaceId(workspaceHeader),
+        requireTrustedWorkspaceContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+        ),
         requireHabitId(habitId),
       );
     } catch (error) {
