@@ -59,14 +59,41 @@ function metadataStatuses(body) {
   );
 }
 
-/** Extracts status values from canonical ID-keyed requirement tables. */
+/** Splits a Markdown table row into normalized cells. */
+function tableCells(line) {
+  return line
+    .trim()
+    .replace(/^\|/u, '')
+    .replace(/\|$/u, '')
+    .split('|')
+    .map((value) => value.trim());
+}
+
+/** Returns whether cells form a Markdown table separator row. */
+function isSeparatorRow(cells) {
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+}
+
+/** Extracts values only from table columns whose exact header is Status. */
 function tableStatuses(body) {
-  return body
-    .split('\n')
-    .filter((line) => /^\| [A-Z][A-Z0-9.-]+ /u.test(line))
-    .map((line) => line.split('|').map((value) => value.trim()))
-    .filter((cells) => cells.length >= 6 && cells[1] !== 'ID')
-    .map((cells) => cells[3]);
+  const lines = body.split('\n');
+  const statuses = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (!lines[index].trimStart().startsWith('|')) continue;
+    const headers = tableCells(lines[index]);
+    const statusIndex = headers.indexOf('Status');
+    if (statusIndex < 0) continue;
+    const separators = tableCells(lines[index + 1]);
+    if (separators.length !== headers.length || !isSeparatorRow(separators)) continue;
+
+    for (let rowIndex = index + 2; rowIndex < lines.length; rowIndex += 1) {
+      if (!lines[rowIndex].trimStart().startsWith('|')) break;
+      const cells = tableCells(lines[rowIndex]);
+      if (cells.length !== headers.length || isSeparatorRow(cells)) continue;
+      statuses.push(cells[statusIndex]);
+    }
+  }
+  return statuses;
 }
 
 test('canonical documentation files exist and are linked from README', () => {
