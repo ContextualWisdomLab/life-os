@@ -1,200 +1,128 @@
 # LifeOS architecture decisions
 
-This document is the architectural source of truth for repository-wide product and service authority. Protected-main source, migrations, tests and live repository policy are the executable evidence for shipped behavior. Canonical PRD/TRD/data/UML/security/operability documents add code-current views; feature specifications and runbooks may add detail but must not weaken these decisions.
+This document is the architectural source of truth for repository-wide product and service authority. Protected-main source, migrations, tests and live repository policy are executable evidence for shipped behavior. Canonical PRD/TRD/Data Model/UML/Security/Privacy/Operability views add code-current detail without weakening these decisions.
 
 ## 1. Product and deployment boundary
 
-LifeOS is a privacy-first, multi-user, server-backed and self-hostable personal operating system. It remains usable as an independent product while composing with other ContextualWisdomLab bounded contexts through explicit versioned interfaces.
+LifeOS is a privacy-first, multi-user, server-backed and self-hostable personal operating system. It remains independently usable while composing with other ContextualWisdomLab bounded contexts only through explicit versioned interfaces.
 
-Earlier login-free/browser-only local-first, private-personal-only, UUIDv7 and single-application primary designs are **superseded**. Browser-local state remains valid for explicit draft/cache/offline interaction and Docker Compose remains a deployment profile, but neither becomes durable data authority or permission to collapse service ownership.
+Earlier login-free/browser-only local-first, private-personal-only, UUIDv7 and single-application primary designs are **Superseded**. Browser-local state remains valid as explicit draft/cache/offline state and Docker Compose remains a deployment profile, but neither becomes durable data authority or permission to collapse service ownership.
 
 ```mermaid
 flowchart LR
-    U[Web / PWA user] --> W[Next.js web boundary]
-    W --> G[Gateway / BFF]
-    G --> I[Identity service]
-    G --> P[Planning service]
-    G --> H[Habit service]
-    G --> R[Review service]
-    G --> C[Calendar integration service]
-    G --> Q[Notification service]
-    G --> A[AI proposal service]
-    G --> X[Plugin integration service]
-    G --> V[Privacy service]
-
-    P -. domain events .-> N[(NATS JetStream)]
-    H -. domain events .-> N
-    R -. projection events .-> N
-    N -. reminder/event inputs .-> Q
-
-    I --> IDB[(Identity-owned PostgreSQL)]
-    P --> PDB[(Planning-owned PostgreSQL)]
-    H --> HDB[(Habit-owned PostgreSQL)]
-    R --> RDB[(Review-owned PostgreSQL)]
-    Q --> NDB[(Notification-owned PostgreSQL)]
-    A --> ADB[(AI-owned PostgreSQL)]
-    V --> VDB[(Privacy-owned PostgreSQL)]
+    U[Web / PWA] --> G[Gateway / BFF]
+    G --> I[Identity]
+    G --> P[Planning]
+    G --> H[Habit]
+    G --> R[Review]
+    G --> C[Calendar]
+    G --> N[Notification]
+    G --> A[AI Proposal]
+    G --> X[Plugin Integration]
+    G --> V[Privacy]
+    P -. events .-> J[(NATS JetStream)]
+    H -. events .-> J
+    R -. projections/events .-> J
+    J -. reminder/event inputs .-> N
 ```
-
-Physical co-location on one PostgreSQL cluster does not create cross-service table authority.
 
 ### Required invariants
 
-- Internal object identifiers are opaque UUIDv4 strings. Numeric or provider-native identifiers are explicit external mappings and never internal primary keys.
-- Product-owned database object names use descriptive multiword `snake_case` unless an external standard mandates another spelling.
-- Each service owns its persistence schema/role, migrations, credentials, runtime configuration, persistence adapters, tests, observability and shutdown behavior.
-- Services never read or mutate another service's database tables directly. Cross-service relationships use a versioned HTTP, event, saga, plugin or MCP contract.
-- Browser-local state is draft/cache/offline state until an authorized owning service confirms persistence.
-- Public errors, metrics, logs, retained artifacts and review evidence exclude credentials, hidden reasoning and unnecessary unbounded tenant content.
+- Internal IDs are opaque UUIDv4; provider/native IDs remain explicit external mappings.
+- Product-owned DB objects use descriptive multiword `snake_case` unless an external standard mandates otherwise.
+- Each service owns persistence, migrations, DB credentials, runtime configuration, tests, observability and shutdown behavior.
+- Services never read or mutate another service's tables directly; cross-service relationships use versioned HTTP/event/saga/plugin/MCP contracts.
+- Browser-local state is not durable until the owning service confirms persistence.
+- Public errors, logs, metrics, retained artifacts and review evidence exclude credentials, hidden reasoning and unnecessary unbounded tenant content.
 
-## 2. Identity, workspace and authentication provenance
+## 2. Identity, workspace and data-rights authority
 
-Identity service owns LifeOS user identity, external-provider mappings, workspace membership/authorization, browser sessions and authentication provenance.
+Identity owns LifeOS user identity, provider mappings, workspace membership/authorization, sessions, authentication provenance and the durable data-rights request/receipt boundary.
 
-Google/GitHub OAuth transactions are server-owned and replay-resistant. Session issuance/rotation time and the underlying authentication ceremony time are different facts. Compatible session rotation preserves the original authentication instant so recent-authentication policy cannot be bypassed by refreshing a session.
+Google/GitHub OAuth transactions are server-owned and replay-resistant. Authentication-ceremony time is distinct from session issuance/rotation; compatible session rotation preserves authentication age so sensitive recent-auth policy cannot be bypassed by refreshing a session.
 
-The identity service also owns durable data-rights request identity and immutable terminal receipt evidence. Protected main includes tenant-and-requesting-actor scoped request lookup plus the authenticated public status resource merged through PR #146. That resource derives authority from the validated session, exposes only bounded lifecycle fields, is non-cacheable and does not reveal cross-tenant request existence.
+Protected main includes tenant+requesting-actor scoped request lookup, the authenticated non-cacheable public status resource from PR #146, and export-manifest integrity evidence from PR #149. Export section/whole SHA-256 digests are integrity evidence only, not authorization, confidentiality, provenance or signatures.
 
-Protected main also includes export-manifest integrity evidence from PR #149. Each contributor provides a safe business record count and LifeOS computes a deterministic SHA-256 over contributor/schema/count/bounded data plus a whole-export digest. This is integrity evidence only; it is not authorization, confidentiality, provenance or a digital signature.
+Complete cross-domain export/erasure remains **Partial** under #55 because contributor completion, durable reconciliation, protected delivery, retention/legal-hold/backup-expiry and terminal whole-product completion are separate requirements.
 
-Complete cross-domain export/erasure orchestration remains **Partial** under issue #55 because contributor completion, durable reconciliation, protected delivery, retention/legal-hold/backup-expiry and terminal whole-product completion are separate requirements.
+## 3. Planning, habits, review and reminders
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant Web
-    participant Identity
-    participant Provider as Google/GitHub
-    participant Domain as Owning domain service
+Planning owns Goals, Projects, Tasks, search and durable Today state. Habit owns recurring definitions/completions. Review owns snapshots/projections without Planning/Habit mutation authority. Notification owns reminder occurrences, claims/fencing, delivery attempts and bounded outcomes.
 
-    User->>Web: Start login
-    Web->>Identity: Create bounded OAuth transaction
-    Identity->>Provider: Authorization request
-    Provider-->>Identity: Callback
-    Identity->>Identity: Validate provider/state/redirect and map identity
-    Identity->>Identity: Resolve authorized workspace and authentication instant
-    Identity-->>Web: Revocable session
-    User->>Web: Domain action
-    Web->>Identity: Validate session
-    Identity-->>Web: Actor/workspace/authentication provenance
-    Web->>Domain: Server-derived trusted context
-```
-
-## 3. Planning, Today, habits, reviews and reminders
-
-Planning service owns Goals, Projects, Tasks, planning search and durable Today state. Habit service owns recurring habit definitions and completion evidence. Review service owns guided-review snapshots/projections without becoming planning or habit mutation authority. Notification service owns reminder occurrences, claims/fencing, delivery attempts and bounded outcomes.
-
-Durable Today synchronization is protected-main behavior. The browser requires an explicit local-to-workspace save, uses strong preconditions plus idempotency, and receives explicit conflict/revision evidence rather than silent stale overwrite.
-
-```mermaid
-flowchart TB
-    Goal[Goal] --> Project[Project]
-    Project --> Task[Task]
-    Goal -. motivates .-> Habit[Habit]
-    Project -. motivates .-> Habit
-    Task --> TaskEvidence[Task completion evidence]
-    Habit --> HabitEvidence[Habit completion evidence]
-    TaskEvidence --> Review[Daily / weekly review]
-    HabitEvidence --> Review
-    Review -. projection only .-> PlanningView[Planning view / recommendation]
-```
+Durable Today synchronization is protected-main behavior: explicit local-to-workspace save, strong create/update preconditions, idempotency and explicit stale-conflict/reconciliation evidence prevent silent overwrite.
 
 ## 4. Calendar integration boundary
 
-Conflict-safe CalDAV/Google synchronization, signed trusted workspace context and the first service-owned `calendar_connection` persistence foundation are protected-main behavior after PR #150. The calendar service rejects the legacy model in which an arbitrary client-selected workspace header could become tenant authority.
+Conflict-safe CalDAV/Google sync and signed trusted workspace context are protected main. PR #150 added the service-owned `calendar_integration.calendar_connection_record` persistence foundation scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes and opaque external credential references. PR #153 added atomic tenant+user-scoped local connection revocation and replay semantics.
 
-A connection is scoped simultaneously to workspace and user, carries bounded provider/account/calendar metadata and normalized scopes, and refers to protected provider credential material through opaque handles. The durable table is owned by the `calendar_integration` service namespace rather than a generic shared schema.
+PR #155 is **Implemented on active PR** for a distinct short-lived signed `life-os.calendar-user.v1` context binding both workspace and requesting-user UUIDv4 identities for user-sensitive hosted operations. It adds authority evidence only, not the public disconnect/runtime composition.
 
-The complete hosted per-user lifecycle remains **Partial** under issue #129: authorization callback state/PKCE, concrete managed secret storage, refresh/revocation, discovery/selection and migration from the development provider configuration are still separate work.
+The complete hosted lifecycle remains **Partial** under #129: OAuth state/PKCE, concrete managed secret storage, refresh/provider-side revocation, discovery/selection and migration from development provider configuration are separate gates. Provider IDs/credentials never become LifeOS primary IDs or general login credentials.
 
-Provider identities/credentials never become LifeOS internal primary keys or general identity credentials.
+## 5. Plugin integration boundary
 
-## 5. AI proposal safety boundary
+Protected main owns versioned plugin manifest/event validation and, through PR #151, explicit host-owned installation authority. A validated manifest expresses requested intent; the host grants a bounded tenant-scoped capability subset. Exact replay is permitted only for matching authority evidence, conflicting installation-ID reuse fails, cross-tenant/user existence is not disclosed, and revocation ends active authority while preserving bounded audit evidence.
 
-AI output is untrusted inert proposal data, not an execution command. The AI service can generate, persist, retrieve and record explicit decisions about proposals, but it has no generic planning mutation repository or command bus.
+Issue #130 remains **Partial** because durable installation/secret persistence, protected secret handles, authorized-origin SSRF-safe delivery, retry/dead-letter/audit and delivery-time revocation enforcement are not yet the complete protected runtime. Installation authority does not imply those capabilities exist.
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant Web as Authenticated web BFF
-    participant Identity
-    participant AI as AI proposal service
-    participant Audit as AI-owned audit store
+## 6. AI proposal boundary
 
-    Browser->>Web: Proposal request
-    Web->>Identity: Validate session
-    Identity-->>Web: Actor + workspace UUIDv4
-    Web->>AI: Signed bounded actor/workspace/method/path context
-    AI->>AI: Validate bounded request and model output
-    AI->>Audit: Persist proposal evidence
-    AI-->>Web: Inert proposal requiring explicit decision
-    Browser->>Web: Accept / reject
-    Web->>AI: Exact proposal digest/revision + authorized decision
-    AI->>Audit: Append decision evidence
-```
+AI output is untrusted inert proposal data, never an execution command. The AI service may generate/persist/retrieve proposal evidence and append explicit accept/reject decisions, but it has no generic Planning mutation repository or command bus. Deterministic schema, authorization and quality gates remain authoritative when model providers are unavailable.
 
-Deterministic authorization, schema and proposal-quality gates remain authoritative when model providers are unavailable. Live provider execution is bounded conformance evidence, not permission to weaken deterministic correctness.
+## 7. Privacy authority
 
-## 6. Privacy and data-rights authority
+Privacy owns purpose-bound sensitive-access decisions, bounded grants and audit events. Sensitive access binds actor, workspace, resource/resource class, purpose and lifetime. Blanket masking is not the authorization model. Identity owns whole-right request orchestration identity; each bounded service remains authoritative for its own export/erasure contribution.
 
-Privacy service owns purpose-bound sensitive-access decisions, bounded grants and audit events. Sensitive access binds actor, workspace, resource/resource class, purpose and lifetime. Blanket masking is not the authorization model.
+## 8. External integration identity, secret references and grants
 
-Identity owns the cross-domain data-rights request/receipt lifecycle and export-manifest integrity boundary; each participating bounded context remains authoritative for its own export/erasure contribution. Whole-product completion requires durable contributor registration, reconciliation, protected delivery/erasure semantics, bounded retry/recovery, retention/legal-hold/backup-expiry handling and an immutable final receipt only after all required contributors confirm completion.
+ADR 0011 is authoritative: LifeOS integration records use internal UUIDv4 identity; external provider/plugin identifiers remain bounded metadata; credential material is referenced through opaque secret handles or equivalent least-authority secret-store references; manifests cannot self-authorize capabilities; revocation/replay/conflict semantics fail closed; owning services retain migrations/repositories/API authority.
 
-## 7. Plugin integration boundary
+Protected #150/#151/#153 and active #155 are evidence of this boundary. Their existence does not close parent #129/#130 runtime lifecycles.
 
-Protected main owns versioned plugin manifest/event validation and preparation. It does not imply generic installation, durable secret persistence, unrestricted outbound delivery, inbound arbitrary commands or direct cross-service database access.
+## 9. Test-time compute and repository automation
 
-PR #151 is **Implemented on active PR** for the first host-owned installation authority. A validated manifest remains intent rather than authority: LifeOS explicitly grants a bounded tenant-scoped capability subset, binds exact manifest/plugin evidence, permits exact replay, rejects conflicting reuse, hides cross-tenant/user installation existence and preserves revocation evidence while ending active authority.
+A strong single-model route is measured before deeper orchestration. Reasoning effort, stage, decomposition, recursion, role and access topology are explicit experimental variables. Scheduled model-assisted development uses reviewed OpenCode with `NVIDIA_NIM_API_KEY` where model access is required; development models receive no product-data, independent-review, branch-protection, merge or release authority. Deterministic reverification remains independent.
 
-Issue #130 still owns the incomplete runtime trust boundary: durable installation/secret persistence, protected secret handles, authorized-origin SSRF-safe outbound delivery, bounded retries/dead-letter/audit and complete delivery-time revocation enforcement. An active installation object does not imply those capabilities exist.
+## 10. Verification evidence identity and merge safety
 
-## 8. Test-time compute and model-assisted repository development
+Repository evidence identities are distinct:
 
-A strong single-model route is measured before deeper orchestration. Reasoning effort, workflow stage, decomposition, recursion depth, role and access topology are explicit experimental dimensions; deeper orchestration is justified by measured quality or heterogeneous capability coverage rather than agent count.
+- `source_head_sha` — exact contributor/source head;
+- `pr_base_snapshot_sha` — PR/event base snapshot, historical once base moves;
+- `live_base_tip_sha` — independently resolved current base-ref tip;
+- `merge_tree_sha` — synthetic integration tree;
+- `workflow_checkout_sha` — exact tree inspected by a job;
+- `protected_main_sha` — integrated protected-main evidence;
+- `release_source_sha` — protected source bound to released artifacts.
 
-Scheduled model-assisted repository development uses the reviewed OpenCode/NVIDIA boundary with `NVIDIA_NIM_API_KEY` where model access is required. Development models do not receive product-data authority, review-agent credentials, branch-protection authority, merge authority or release authority. Deterministic reverification remains independent of the model.
+ADR 0010 is authoritative. Exact-source verification and merge-tree compatibility answer different questions. Old PR #147 is **Superseded**. Clean successor PR #154 is **Implemented on active PR** and binds source-verification jobs to contributor head, AppGuardrail SARIF to the analyzed source identity, and a distinct merge-compatibility job to current-source/current-live-base parent evidence. Issue #132 remains open until that line integrates and residual required-workflow attribution is reconciled.
 
-## 9. Verification evidence identity and merge safety
+Pull requests are processed work-conservingly: inspect current evidence, RCA non-passing gates, make the smallest test-first correction, rerun exact evidence, resolve only addressed findings, and merge only an unchanged head accepted by live repository policy. Waiting on one lane never authorizes stale evidence or repository-wide idle time.
 
-Repository evidence has distinct identities and must not be conflated:
+## 11. Mathematical / psychometric future constraint
 
-- contributor source head;
-- PR base snapshot recorded by GitHub;
-- independently resolved current live base-ref tip;
-- synthetic merge tree;
-- workflow/job checkout revision;
-- protected-main integrated head;
-- release artifact/source identity.
+LifeOS currently contains no psychometric computation service. If future scope introduces mathematical/psychometric computation, production numerical kernels are Rust-first; realistic parameter recovery, uncertainty/coverage, convergence, reproducibility, CPU/GPU parity where applicable, multilevel/multiple-membership structure and temporal/repeated-measurement semantics must be established before product claims. This is a future constraint, not a current capability claim.
 
-Exact-source verification and merge-tree compatibility answer different questions. Active PR #147 advances issue #132 by making that distinction explicit in required workflows. Until it merges, its implementation is **Implemented on active PR**, not protected-main behavior.
+## 12. Canonical documentation graph
 
-Pull requests follow a work-conserving loop: inspect current evidence, RCA failures, make the smallest test-first correction, rerun exact evidence, resolve only addressed threads, and merge only the unchanged exact head when live repository policy accepts it. A waiting check/reviewer/provider blocks only that lane. Administrative bypass, fabricated approval/checks and stale/predecessor evidence promotion are invalid.
+GitHub must reconstruct LifeOS without chat/old-PR archaeology:
 
-## 10. Mathematical and psychometric modules
+1. `AGENTS.md`
+2. `ARCHITECTURE.md`
+3. `docs/PRD.md`
+4. `docs/TRD.md`
+5. `docs/adr/README.md` + ADRs
+6. `docs/DATA_MODEL.md`
+7. `docs/UML.md`
+8. `docs/API_CONTRACTS.md`
+9. `SECURITY.md` + `docs/THREAT_MODEL.md`
+10. `docs/PRIVACY_DATA_LIFECYCLE.md`
+11. `docs/TEST_STRATEGY.md`
+12. `docs/OPERABILITY.md`
+13. `docs/RELEASE_AND_MIGRATION.md`
+14. `docs/STANDARDS_TRACEABILITY.md`
+15. `docs/TRACEABILITY.md`
+16. `docs/DOCUMENTATION_ASSESSMENT.md`
+17. `CLAUDE.md`, `README.md`, `CHANGELOG.md`, scoped specs/plans/runbooks.
 
-LifeOS currently contains no psychometric computation service. If future product scope introduces mathematical or psychometric computation, production numerical kernels are Rust-first; CPU/GPU parity, realistic true-parameter recovery, uncertainty/coverage, multilevel/multiple-membership structure, temporal/repeated-measurement semantics, convergence and reproducibility must be established before product claims. This is a future architecture constraint, not a claim that LifeOS currently implements those models.
-
-## 11. Documentation hierarchy
-
-GitHub must reconstruct current LifeOS without chat history or old PR archaeology. The canonical graph is:
-
-1. `AGENTS.md` — repository-wide agent/merge rules.
-2. `ARCHITECTURE.md` — durable product/service authority and boundaries.
-3. `docs/PRD.md` — buyer/user outcomes, requirements and maturity.
-4. `docs/TRD.md` — shared technical/security/data/release requirements.
-5. `docs/adr/README.md` plus ADRs — durable decisions, alternatives and supersession.
-6. `docs/DATA_MODEL.md` — logical service-owned ERD; migrations remain physical truth.
-7. `docs/UML.md` — product, authority, state, failure and deployment views.
-8. `docs/API_CONTRACTS.md` — repository-level API/event ownership/evolution registry.
-9. `SECURITY.md` and `docs/THREAT_MODEL.md` — reporting policy and architectural threats.
-10. `docs/PRIVACY_DATA_LIFECYCLE.md` — sensitive-data, credential and rights lifecycle.
-11. `docs/TEST_STRATEGY.md` — deterministic/live validation evidence.
-12. `docs/OPERABILITY.md` — deployment, diagnostics, backup and recovery boundaries.
-13. `docs/RELEASE_AND_MIGRATION.md` — versioning, migration and rollback contract.
-14. `docs/STANDARDS_TRACEABILITY.md` — standards/research evidence classes.
-15. `docs/TRACEABILITY.md` — requirement/decision -> source/test/issue/PR evidence.
-16. `docs/DOCUMENTATION_ASSESSMENT.md` — documentation fitness and historical reconciliation.
-17. `CLAUDE.md`, `README.md`, `CHANGELOG.md` and scoped specs/plans/runbooks — discoverability and supporting evidence.
-
-Canonical status fields use only `Implemented on protected main`, `Implemented on active PR`, `Partial`, `Accepted architecture`, `Planned`, `Research only`, `Superseded`, or `Out of scope`. File age, file presence and historically resolved review comments do not prove semantic currentness. A material behavior/authority change is documentation-incomplete until the corresponding canonical views and executable documentation contracts reconcile the claim.
+Canonical status fields use only `Implemented on protected main`, `Implemented on active PR`, `Partial`, `Accepted architecture`, `Planned`, `Research only`, `Superseded`, or `Out of scope`. File age, presence and historically resolved reviews do not prove semantic currentness. A material authority change is documentation-incomplete until relevant canonical views and executable documentation contracts reconcile it.
