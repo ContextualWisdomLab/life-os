@@ -24,8 +24,8 @@ class RecordingSqlClient {
   }
 }
 
-async function repositoryModule(): Promise<Readonly<Record<string, unknown>>> {
-  return import('./calendar-connection-repository');
+async function revocationModule(): Promise<Readonly<Record<string, unknown>>> {
+  return import('./calendar-connection-revocation').catch(() => ({}));
 }
 
 function revokedRow(overrides: Readonly<Record<string, unknown>> = {}) {
@@ -33,25 +33,16 @@ function revokedRow(overrides: Readonly<Record<string, unknown>> = {}) {
     connection_id: CONNECTION_ID,
     workspace_id: WORKSPACE_ID,
     user_id: USER_ID,
-    provider_code: 'google',
-    provider_account_subject: 'provider-user-42',
-    scope_values: ['calendar.events', 'calendar.readonly'],
-    access_secret_handle: 'kms://calendar/access/connection-1111',
-    refresh_secret_handle: 'kms://calendar/refresh/connection-1111',
-    token_expires_at: new Date('2026-08-10T12:00:00.000Z'),
-    selected_calendar_identifier: 'primary',
     connection_status: 'revoked',
-    created_at: new Date('2026-08-10T01:00:00.000Z'),
-    updated_at: new Date(REVOKED_AT),
     revoked_at: new Date(REVOKED_AT),
     ...overrides,
   };
 }
 
-describe('calendar connection revocation', () => {
+describe('PostgresCalendarConnectionRevocationRepository', () => {
   it('atomically revokes only the exact active tenant-and-user-owned connection', async () => {
-    const module = await repositoryModule();
-    const Repository = module.PostgresCalendarConnectionRepository as new (
+    const module = await revocationModule();
+    const Repository = module.PostgresCalendarConnectionRevocationRepository as new (
       client: RecordingSqlClient,
     ) => { revokeConnection(input: unknown): Promise<unknown> };
     expect(typeof Repository).toBe('function');
@@ -65,7 +56,7 @@ describe('calendar connection revocation', () => {
         userId: USER_ID,
         revokedAt: REVOKED_AT,
       }),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       connectionId: CONNECTION_ID,
       workspaceId: WORKSPACE_ID,
       userId: USER_ID,
@@ -91,8 +82,8 @@ describe('calendar connection revocation', () => {
   });
 
   it('returns undefined for absent, already-revoked, or cross-tenant targets without widening authority', async () => {
-    const module = await repositoryModule();
-    const Repository = module.PostgresCalendarConnectionRepository as new (
+    const module = await revocationModule();
+    const Repository = module.PostgresCalendarConnectionRevocationRepository as new (
       client: RecordingSqlClient,
     ) => { revokeConnection(input: unknown): Promise<unknown> };
     const client = new RecordingSqlClient([]);
@@ -110,11 +101,12 @@ describe('calendar connection revocation', () => {
   });
 
   it('fails closed before SQL for malformed ownership or revocation time', async () => {
-    const module = await repositoryModule();
-    const Repository = module.PostgresCalendarConnectionRepository as new (
+    const module = await revocationModule();
+    const Repository = module.PostgresCalendarConnectionRevocationRepository as new (
       client: RecordingSqlClient,
     ) => { revokeConnection(input: unknown): Promise<unknown> };
-    const ValidationError = module.CalendarConnectionValidationError as new () => Error;
+    const ValidationError = module.CalendarConnectionRevocationValidationError as new () => Error;
+    expect(typeof ValidationError).toBe('function');
 
     for (const input of [
       {
@@ -136,6 +128,32 @@ describe('calendar connection revocation', () => {
         ValidationError,
       );
       expect(client.calls).toHaveLength(0);
+    }
+  });
+
+  it('fails closed when the database returns duplicate or malformed revocation evidence', async () => {
+    const module = await revocationModule();
+    const Repository = module.PostgresCalendarConnectionRevocationRepository as new (
+      client: RecordingSqlClient,
+    ) => { revokeConnection(input: unknown): Promise<unknown> };
+    const PersistenceError = module.CalendarConnectionRevocationPersistenceError as new () => Error;
+    expect(typeof PersistenceError).toBe('function');
+
+    for (const rows of [
+      [revokedRow(), revokedRow()],
+      [revokedRow({ workspace_id: WORKSPACE_BETA })],
+      [revokedRow({ connection_status: 'active' })],
+    ]) {
+      const client = new RecordingSqlClient(rows);
+      const repository = new Repository(client);
+      await expect(
+        repository.revokeConnection({
+          connectionId: CONNECTION_ID,
+          workspaceId: WORKSPACE_ID,
+          userId: USER_ID,
+          revokedAt: REVOKED_AT,
+        }),
+      ).rejects.toBeInstanceOf(PersistenceError);
     }
   });
 });
