@@ -15,6 +15,7 @@ import {
   requireReviewGatewayContextSecret,
   requireTrustedWorkspaceContext,
   toReviewHttpException,
+  type ReviewTrustedRequestBinding,
 } from './http-boundary';
 import {
   type ReviewCompletionRecord,
@@ -59,9 +60,12 @@ export class ReviewController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<ReviewCompletionRecord> {
-    const trustedWorkspaceId = requireTrustedWorkspaceContext(
+    const trustedWorkspaceId = this.trustedWorkspaceId(
       { workspaceId, issuedAt, signature },
-      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+      {
+        method: 'POST',
+        path: '/v1/reviews/daily-planning/completions',
+      },
     );
     return await this.complete(trustedWorkspaceId, 'daily-planning', body);
   }
@@ -74,9 +78,12 @@ export class ReviewController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<ReviewCompletionRecord> {
-    const trustedWorkspaceId = requireTrustedWorkspaceContext(
+    const trustedWorkspaceId = this.trustedWorkspaceId(
       { workspaceId, issuedAt, signature },
-      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+      {
+        method: 'POST',
+        path: '/v1/reviews/daily-shutdown/completions',
+      },
     );
     return await this.complete(trustedWorkspaceId, 'daily-shutdown', body);
   }
@@ -89,9 +96,12 @@ export class ReviewController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<ReviewCompletionRecord> {
-    const trustedWorkspaceId = requireTrustedWorkspaceContext(
+    const trustedWorkspaceId = this.trustedWorkspaceId(
       { workspaceId, issuedAt, signature },
-      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+      {
+        method: 'POST',
+        path: '/v1/reviews/weekly-review/completions',
+      },
     );
     return await this.complete(trustedWorkspaceId, 'weekly-review', body);
   }
@@ -105,9 +115,9 @@ export class ReviewController {
     @Query('limit') limit: string | undefined,
   ): Promise<ReviewCompletionRecord[]> {
     try {
-      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+      const trustedWorkspaceId = this.trustedWorkspaceId(
         { workspaceId, issuedAt, signature },
-        process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+        { method: 'GET', path: '/v1/reviews/completions' },
       );
       return await this.reviewService.list(
         trustedWorkspaceId,
@@ -116,6 +126,22 @@ export class ReviewController {
     } catch (error) {
       throw toReviewHttpException(error);
     }
+  }
+
+  /** Returns workspace authority only when the signed context matches the exact Review route. */
+  private trustedWorkspaceId(
+    headers: {
+      workspaceId: string | undefined;
+      issuedAt: string | undefined;
+      signature: string | undefined;
+    },
+    requestBinding: ReviewTrustedRequestBinding,
+  ): string {
+    return requireTrustedWorkspaceContext(
+      headers,
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+      requestBinding,
+    );
   }
 
   /** Records one ritual only for a workspace ID already accepted by the trusted-context verifier. */
