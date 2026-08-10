@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const controllerSource = readFileSync(resolve(import.meta.dirname, 'main.ts'), 'utf8');
+const controllerSource = readFileSync(resolve(__dirname, 'main.ts'), 'utf8');
 
 describe('Integration event tenant authority contract', () => {
   it('never accepts the legacy browser-selectable workspace header', () => {
