@@ -10,7 +10,13 @@ const EVENT_ID = '59b7f370-b733-435d-a72a-40878d6cffd1';
 const SUBJECT_ID = 'e021b411-f75e-4490-97a4-f1f6ee811849';
 const SYNTHETIC_CSRF_TOKEN = ['unit', 'csrf', 'value'].join(':');
 const TEST_EMBEDDED_VALUE = ['must', 'not', 'be', 'embedded'].join(':');
-const GATEWAY_SECRET = 'integration-gateway-context-secret-32-byte-minimum';
+const GATEWAY_SECRET = [
+  'integration',
+  'gateway',
+  'context',
+  'fixture',
+  'material',
+].join('-');
 
 function signedWorkspaceHeaders(
   workspaceId: string,
