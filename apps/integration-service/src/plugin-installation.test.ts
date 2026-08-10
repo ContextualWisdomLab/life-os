@@ -224,6 +224,30 @@ describe('PluginInstallationApplication', () => {
     expect(store.records.get(INSTALLATION_ID)).toEqual(revoked);
   });
 
+  it('replays concurrent revocation as one durable lifecycle transition', async () => {
+    const { service, store } = application();
+    const trustedContext = {
+      workspaceId: WORKSPACE_ALPHA,
+      actorUserId: USER_ALPHA,
+    } as const;
+    await service.install({
+      trustedContext,
+      installationId: INSTALLATION_ID,
+      manifest: MANIFEST,
+      grantedCapabilities: [TASK_COMPLETED],
+    });
+
+    const [first, second] = await Promise.all([
+      service.revoke(trustedContext, INSTALLATION_ID),
+      service.revoke(trustedContext, INSTALLATION_ID),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(first.status).toBe('revoked');
+    expect(store.saveCalls).toBe(2);
+    expect(store.records.get(INSTALLATION_ID)).toEqual(first);
+  });
+
   it('fails closed on malformed UUIDv4 authority inputs', async () => {
     const { service } = application();
 
