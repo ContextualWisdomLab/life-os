@@ -4,76 +4,69 @@
 
 ## Control model
 
-LifeOS preserves business utility while limiting sensitive-data access through tenant-derived authority, explicit purpose/resource/lifetime controls, least privilege, encryption/secret boundaries, retention and auditable privileged access. Blanket PII masking is not the product's primary control.
+LifeOS preserves legitimate product utility while limiting sensitive-data access through tenant-derived authority, explicit purpose/resource/lifetime controls, least privilege, encryption/secret boundaries, bounded retention and auditable privileged access. Blanket masking is not the primary authorization model.
 
 ## Data classes
 
-- identity/account and external-provider mapping;
+- identity/account and external-provider mappings;
 - session/authentication provenance;
 - planning, habit and review content;
-- calendar connection/synchronization metadata;
+- calendar connection/synchronization metadata and credential references;
 - reminder/delivery evidence;
 - AI proposal/evidence/decision records;
 - privacy access decisions/grants/events;
 - data-rights request/receipt/export-integrity evidence;
+- plugin installation/capability evidence;
 - operator logs/metrics and release/CI evidence.
 
 Provider credentials, browser cookies, raw model prompts/responses and hidden reasoning are protected secret/transient material and do not belong in public artifacts.
 
 ## Lifecycle rules
 
-1. **Collect:** accept only bounded fields required by the owning service contract.
-2. **Authorize:** derive workspace/actor from trusted authenticated/signed context.
-3. **Use:** constrain sensitive access to explicit resource/purpose/lifetime.
-4. **Persist:** store only in the owning service with service-owned credentials/migrations.
-5. **Observe:** logs/metrics expose bounded credential-free operational evidence.
+1. **Collect:** accept only bounded fields required by the owning-service contract.
+2. **Authorize:** derive tenant/actor from trusted authenticated or signed context.
+3. **Use:** constrain sensitive access to explicit purpose/resource/lifetime.
+4. **Persist:** store only in the owning service under service-owned credentials/migrations.
+5. **Observe:** logs/metrics use bounded credential-free evidence.
 6. **Retain:** retention is explicit by data class; immutable evidence is retained only as required by product/legal/operator policy.
-7. **Export/Delete:** recent-authenticated workspace owner requests are tracked through durable request evidence; complete domain orchestration remains partial.
-8. **Backup:** backups follow the same sensitivity/tenant/operator controls and erasure claims must account for documented backup expiry rather than imply instantaneous physical disappearance.
+7. **Export/Delete:** recent-authenticated requests use durable rights evidence; complete cross-domain orchestration remains partial.
+8. **Backup:** erasure claims account for documented backup expiry rather than imply instantaneous physical disappearance.
 
-## Current protected-main data-rights evidence
-
-**Status:** Partial
-
-Protected main includes:
-
-- authentication-age provenance that survives session rotation;
-- fail-closed recent-auth policy;
-- authenticated workspace/requesting-user binding;
-- durable data-rights request and immutable terminal receipt persistence;
-- tenant-scoped request lookup bound simultaneously to request ID, workspace ID and requesting user ID;
-- an authenticated public status resource from PR #146 that derives scope from the server session, returns a bounded non-cacheable lifecycle projection, and makes absent/cross-tenant requests indistinguishable;
-- per-contributor export integrity evidence from PR #149 using safe business record counts, deterministic section SHA-256 and a whole-export digest.
-
-The PR #149 digest contract is integrity evidence only. It does not prove authorization, confidentiality, provenance or signature identity and does not complete protected export delivery.
-
-Tracking: issue #55 remains open for complete domain participation, durable async reconciliation/operator alerts, retention/legal-hold semantics, backup-expiry evidence, protected streamed archive delivery/encryption/expiry and download audit.
-
-## Calendar credentials
+## Data-rights lifecycle
 
 **Status:** Partial
 
-Protected main verifies signed trusted workspace context for calendar synchronization and now includes the PR #150 durable calendar-connection registry scoped simultaneously to workspace and user. The protected repository stores bounded provider/account/calendar metadata, normalized scopes and opaque credential references rather than making provider credential plaintext part of the row contract.
+Protected main includes authentication-age provenance, fail-closed recent-auth policy, durable requests and immutable terminal receipts, tenant+actor scoped lookup, the authenticated non-cacheable public status resource from PR #146, and per-contributor export integrity evidence from PR #149.
 
-That persistence foundation does not complete the hosted credential lifecycle. Authorization callback state/PKCE, a concrete managed secret backend, refresh/revocation, calendar discovery/selection and migration from the development provider configuration remain issue #129.
+The section/whole SHA-256 evidence is integrity metadata only; it does not prove authorization, confidentiality, provenance or signature identity. Issue #55 remains open for complete contributor participation, durable reconciliation/operator recovery, retention/legal-hold/backup-expiry evidence, protected streamed delivery/encryption/expiry and download audit.
 
-## Plugin credentials and installation authority
+## Calendar credentials and connections
 
 **Status:** Partial
 
-Protected main validates plugin manifests/contracts but grants no generic runtime authority. PR #151 is `Implemented on active PR` for the first host-owned installation authority: the manifest is intent, the host grants an explicit capability subset, replay/conflict is deterministic, cross-tenant/user lookup does not disclose existence, and revocation preserves evidence while ending active authority.
+Protected main includes signed workspace context (#139), the workspace+user scoped connection registry (#150), and atomic local connection revocation (#153). Connection rows carry bounded provider/account/calendar metadata and opaque credential references rather than provider-token plaintext. Local revocation ends LifeOS connection authority but does not itself prove provider-side OAuth revocation or managed-secret deletion.
 
-Durable installation persistence, protected plugin secret storage, SSRF-safe outbound delivery, retry/dead-letter evidence and complete revocation enforcement remain issue #130. An active installation-grant object is therefore not evidence that the complete plugin runtime exists.
+PR #155 is `Implemented on active PR` for a distinct short-lived signed workspace+user context needed by hosted user-sensitive calendar operations. The complete #129 lifecycle still requires OAuth state/PKCE, a concrete managed secret backend, refresh/provider revocation, discovery/selection and public hosted disconnect/runtime composition.
+
+## Plugin installation and secrets
+
+**Status:** Partial
+
+Protected main validates plugin manifests and, through PR #151, separates manifest intent from host-granted installation authority. Explicit capability subsets, exact replay/conflict handling, tenant/user isolation and revocation are protected behavior.
+
+Durable installation/secret persistence, protected secret handles at rest, SSRF-safe outbound delivery, retry/dead-letter evidence and delivery-time revocation enforcement remain issue #130. A granted installation is not evidence that the complete plugin runtime exists.
 
 ## Deletion semantics
 
-No service may claim whole-workspace deletion merely because its own tables were erased. A complete deletion outcome requires every registered owning domain to participate in the exact request, deterministic reconciliation of partial outcomes, retention/legal-hold handling and immutable final evidence. Unknown/missing participants fail closed.
+No service may claim whole-workspace deletion merely because its own tables were erased. Complete deletion requires every registered owning domain to participate in the exact request, deterministic reconciliation of partial/unknown outcomes, retention/legal-hold handling and immutable final evidence. Unknown or missing contributors fail closed.
 
 ## Security/privacy invariants
 
 - no browser-selected tenant authority;
 - no cross-service direct database access;
-- no provider credential content in logs, metrics, public errors, model prompts, CI artifacts or audit rows;
+- no external credential content in logs, metrics, public errors, model prompts, CI artifacts or generic metadata rows;
 - no raw user content in release/provenance artifacts unless explicitly authorized and bounded;
-- no data-rights success claim from a partial or unknown participant state;
-- no integrity digest is treated as an authorization or confidentiality control.
+- no whole-right success claim from partial/unknown contributor state;
+- no integrity digest is treated as access control or confidentiality;
+- no plugin manifest self-authorizes host capabilities;
+- no LifeOS connection-record revocation is silently promoted to provider credential revocation.
