@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- An authenticated calendar-connection disconnect application and optional hosted HTTP composition boundary that derives workspace and requesting-user authority only from the signed `life-os.calendar-user.v1` context and returns credential-free local revocation evidence.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
 - Migration `0006_data_rights_request_ledger.sql` for the service-owned identity ledger, retaining only bounded opaque authority references and digest/status/timestamp evidence rather than exported personal payloads.
 - An hourly and manually dispatchable NVIDIA NIM live-conformance harness that pins contextual-orchestrator to an exact reviewed commit, compares strong single-route reasoning with bounded conducted workflows, and retains only validated credential-free quality, safety, orchestration, usage, and ablation evidence.
@@ -25,6 +26,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- The public Gateway Today endpoint now fails explicitly with bounded `today_composition_unavailable` problem details instead of returning fabricated successful composition data while authenticated Planning/Habit integration is absent; issue #163 remains open for the real composition path.
 - Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
 - The OpenCode development loop now prevents project settings from overriding its pinned offline NVIDIA model, records catalog failures accurately, parses the accepted candidate's exact Compose file outside the model account, and requires digest-pinned PostgreSQL queries plus NATS JetStream probes in pull-request CI.
 - Live contextual-orchestrator responses now classify successful empty bodies as evaluation failures, emit exactly one terminal observation, canonicalize retained timestamps safely, and preserve null metric denominators instead of fabricating deltas.
@@ -36,6 +38,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.
 - Goal, project, and task create/list routes now reject bare client-selected `x-workspace-id` authority and require the same short-lived signed `life-os.workspace.v1` context used by planning search and durable Today.
 - The data-rights request ledger keeps personal export payloads out of durable audit rows and normalizes primary-key/idempotency collisions before dependency errors can escape the service boundary.
 - The commercial-development model account no longer performs Docker commands, never receives Docker-socket authority, and cannot trigger provider-wide model discovery through the credential bridge.
