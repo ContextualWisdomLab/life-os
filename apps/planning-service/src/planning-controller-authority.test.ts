@@ -222,7 +222,7 @@ describe.sequential('PlanningController workspace authority contract', () => {
     for (const invalid of invalidContexts) {
       for (const route of ROUTES) {
         vi.clearAllMocks();
-        if (invalid.secret === false) {
+        if ('secret' in invalid && invalid.secret === false) {
           delete process.env.PLANNING_GATEWAY_CONTEXT_SECRET;
         } else {
           process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
