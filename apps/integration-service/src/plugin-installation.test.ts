@@ -27,6 +27,18 @@ class MemoryInstallationStore implements PluginInstallationStore {
   readonly records = new Map<string, PluginInstallationRecord>();
   saveCalls = 0;
 
+  async createIfAbsent(
+    record: PluginInstallationRecord,
+  ): Promise<PluginInstallationRecord> {
+    const existing = this.records.get(record.installationId);
+    if (existing) {
+      return existing;
+    }
+    this.saveCalls += 1;
+    this.records.set(record.installationId, record);
+    return record;
+  }
+
   async findById(
     installationId: string,
   ): Promise<PluginInstallationRecord | undefined> {
@@ -36,29 +48,6 @@ class MemoryInstallationStore implements PluginInstallationStore {
   async save(record: PluginInstallationRecord): Promise<void> {
     this.saveCalls += 1;
     this.records.set(record.installationId, record);
-  }
-}
-
-class CoordinatedInstallationStore extends MemoryInstallationStore {
-  private absentReads = 0;
-  private releaseAbsentReads: (() => void) | undefined;
-  private readonly absentReadBarrier = new Promise<void>((resolve) => {
-    this.releaseAbsentReads = resolve;
-  });
-
-  override async findById(
-    installationId: string,
-  ): Promise<PluginInstallationRecord | undefined> {
-    const existing = this.records.get(installationId);
-    if (existing) {
-      return existing;
-    }
-    this.absentReads += 1;
-    if (this.absentReads === 2) {
-      this.releaseAbsentReads?.();
-    }
-    await this.absentReadBarrier;
-    return existing;
   }
 }
 
@@ -163,8 +152,7 @@ describe('PluginInstallationApplication', () => {
   });
 
   it('rejects a conflicting concurrent installation identity instead of last-write-wins', async () => {
-    const store = new CoordinatedInstallationStore();
-    const service = new PluginInstallationApplication(store, () => FIXED_TIME);
+    const { service, store } = application();
     const trustedContext = {
       workspaceId: WORKSPACE_ALPHA,
       actorUserId: USER_ALPHA,
@@ -191,7 +179,7 @@ describe('PluginInstallationApplication', () => {
     expect(store.records.get(INSTALLATION_ID)?.grantedCapabilities).toHaveLength(1);
   });
 
-  it('hides an installation from a different workspace and user authority', async () => {
+  it('hides an installation from a different workspace authority', async () => {
     const { service } = application();
     await service.install({
       trustedContext: {
