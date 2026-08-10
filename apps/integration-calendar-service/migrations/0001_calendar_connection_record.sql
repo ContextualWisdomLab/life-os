@@ -1,6 +1,6 @@
-CREATE SCHEMA IF NOT EXISTS calendar;
+CREATE SCHEMA IF NOT EXISTS calendar_integration;
 
-CREATE TABLE calendar.calendar_connection_record (
+CREATE TABLE calendar_integration.calendar_connection_record (
     connection_id uuid PRIMARY KEY,
     workspace_id uuid NOT NULL,
     user_id uuid NOT NULL,
