@@ -67,6 +67,47 @@ async function requireNoTemporaryDatabaseConnections(
   }
 }
 
+function combineTemporaryDatabaseFailures(
+  primaryFailure: unknown,
+  cleanupFailures: readonly unknown[],
+): unknown {
+  if (primaryFailure === undefined) {
+    if (cleanupFailures.length === 1) {
+      return cleanupFailures[0];
+    }
+    if (cleanupFailures.length > 1) {
+      return new AggregateError(
+        cleanupFailures,
+        'Temporary migration database cleanup failed in multiple steps',
+      );
+    }
+    return undefined;
+  }
+
+  if (cleanupFailures.length === 0) {
+    return primaryFailure;
+  }
+
+  return new AggregateError(
+    [primaryFailure, ...cleanupFailures],
+    'Temporary migration database operation failed and cleanup also failed',
+    { cause: primaryFailure },
+  );
+}
+
+async function captureCleanupFailure(
+  cleanupFailures: unknown[],
+  cleanup: () => Promise<void>,
+): Promise<boolean> {
+  try {
+    await cleanup();
+    return true;
+  } catch (error) {
+    cleanupFailures.push(error);
+    return false;
+  }
+}
+
 async function withTemporaryDatabase(
   execute: (pool: Pool) => Promise<void>,
 ): Promise<void> {
@@ -77,6 +118,7 @@ async function withTemporaryDatabase(
   let adminClient: PoolClient | undefined;
   let migrationPool: Pool | undefined;
   let lockHeld = false;
+  let primaryFailure: unknown;
 
   try {
     adminClient = await adminPool.connect();
@@ -94,28 +136,46 @@ async function withTemporaryDatabase(
     });
     await prepareLegacyDatabase(migrationPool);
     await execute(migrationPool);
-  } finally {
-    try {
-      await migrationPool?.end();
-    } finally {
-      try {
-        if (lockHeld && adminClient) {
-          try {
-            await requireNoTemporaryDatabaseConnections(adminClient);
-            await adminClient.query(
-              'DROP DATABASE IF EXISTS life_os_identity_migration_test',
-            );
-          } finally {
-            await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
-              TEMPORARY_DATABASE_LOCK_KEY,
-            ]);
-          }
-        }
-      } finally {
-        adminClient?.release();
-        await adminPool.end();
-      }
+  } catch (error) {
+    primaryFailure = error;
+  }
+
+  const cleanupFailures: unknown[] = [];
+  if (migrationPool) {
+    await captureCleanupFailure(cleanupFailures, async () => {
+      await migrationPool.end();
+    });
+  }
+
+  if (lockHeld && adminClient) {
+    const noConnections = await captureCleanupFailure(cleanupFailures, async () => {
+      await requireNoTemporaryDatabaseConnections(adminClient);
+    });
+    if (noConnections) {
+      await captureCleanupFailure(cleanupFailures, async () => {
+        await adminClient.query(
+          'DROP DATABASE IF EXISTS life_os_identity_migration_test',
+        );
+      });
     }
+    await captureCleanupFailure(cleanupFailures, async () => {
+      await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
+        TEMPORARY_DATABASE_LOCK_KEY,
+      ]);
+    });
+  }
+
+  adminClient?.release();
+  await captureCleanupFailure(cleanupFailures, async () => {
+    await adminPool.end();
+  });
+
+  const failure = combineTemporaryDatabaseFailures(
+    primaryFailure,
+    cleanupFailures,
+  );
+  if (failure !== undefined) {
+    throw failure;
   }
 }
 
@@ -176,6 +236,51 @@ async function insertSession(
     ],
   );
 }
+
+describe('temporary migration database failure reporting', () => {
+  it('preserves a prepare or migration failure when cleanup also fails', () => {
+    const primaryFailure = new Error('prepare migration failed');
+    const cleanupFailure = new Error('cleanup failed');
+
+    const combined = combineTemporaryDatabaseFailures(primaryFailure, [
+      cleanupFailure,
+    ]);
+
+    expect(combined).toBeInstanceOf(AggregateError);
+    expect((combined as AggregateError).errors).toEqual([
+      primaryFailure,
+      cleanupFailure,
+    ]);
+    expect((combined as Error).cause).toBe(primaryFailure);
+  });
+
+  it('preserves an execute failure when multiple cleanup steps fail', () => {
+    const primaryFailure = new Error('execute failed');
+    const closeFailure = new Error('pool close failed');
+    const dropFailure = new Error('database drop failed');
+
+    const combined = combineTemporaryDatabaseFailures(primaryFailure, [
+      closeFailure,
+      dropFailure,
+    ]);
+
+    expect(combined).toBeInstanceOf(AggregateError);
+    expect((combined as AggregateError).errors).toEqual([
+      primaryFailure,
+      closeFailure,
+      dropFailure,
+    ]);
+    expect((combined as Error).cause).toBe(primaryFailure);
+  });
+
+  it('keeps cleanup failure authoritative when no primary operation failed', () => {
+    const cleanupFailure = new Error('cleanup failed');
+
+    expect(
+      combineTemporaryDatabaseFailures(undefined, [cleanupFailure]),
+    ).toBe(cleanupFailure);
+  });
+});
 
 describeWithDatabase('session authentication-age migration', () => {
   it('serializes concurrent migration fixtures that share the disposable database', async () => {
