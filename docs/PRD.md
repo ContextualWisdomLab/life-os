@@ -27,7 +27,7 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 5. Daily/weekly review based on durable evidence.
 6. Calendar synchronization and bounded reminders.
 7. Optional AI proposal generation with evidence and explicit accept/reject.
-8. Privacy/data-rights export/deletion lifecycle.
+8. Privacy/data-rights request, status, export and deletion lifecycle.
 9. Backup/recovery and accessible Korean/English PWA operation.
 10. Operator deployment, readiness, observability, migration and release evidence.
 
@@ -50,13 +50,14 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 | PRD-PRIV-001 | Sensitive data access is tenant/purpose/lifetime/audit bound rather than blanket-masked. | Implemented on protected main | privacy-service tests |
 | PRD-PRIV-002 | Data-rights requests preserve recent-auth provenance and durable immutable request/terminal receipts. | Implemented on protected main | PRs #134, #136, #137, #138 and #144 integrated on main |
 | PRD-PRIV-003 | Complete export/deletion orchestration across every owned domain, delivery lifecycle and reconciliation. | Partial | issue #55 |
+| PRD-PRIV-004 | An authenticated user can query one owned data-rights request through a tenant-and-actor scoped, bounded, non-cacheable public status resource without exposing workspace/user IDs, idempotency material or receipt digests. | Implemented on active PR | PR #146; follows protected-main #144 ledger lookup |
 | PRD-INT-001 | Versioned plugin SDK/validation without direct database authority. | Implemented on protected main | plugin SDK/integration-service tests |
 | PRD-INT-002 | Plugin installation grants, encrypted secrets, SSRF-safe outbound delivery, retries and revocation. | Planned | issue #130 |
 | PRD-WEB-001 | Responsive installable PWA with keyboard-operable core flows and Korean/English catalogs. | Implemented on protected main | browser/accessibility/localization tests |
 | PRD-OPS-001 | Logical PostgreSQL backup/restore with integrity and unsafe-target refusal. | Implemented on protected main | backup scripts/tests/runbook |
 | PRD-OPS-002 | Provider-neutral production reference deployment and bounded health/readiness/metrics. | Implemented on protected main | infra and observability tests |
 | PRD-GOV-001 | Capability maturity and buyer-gap exhaustion are reported independently. | Implemented on protected main | buyer-gap registry and issue #21 report |
-| PRD-GOV-002 | Required PR verification identifies the commit tree actually checked and does not conflate synthetic merge evidence with exact source-head evidence. | Planned | issue #132 |
+| PRD-GOV-002 | Required PR verification identifies the commit tree actually checked and does not conflate exact source-head verification, stale PR-base snapshots, independently resolved live-base state or synthetic-merge compatibility evidence. | Implemented on active PR | PR #147 advances issue #132; ADR 0010 defines the evidence identities |
 
 ## Non-functional requirements
 
@@ -66,6 +67,7 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 - Public errors/logs/metrics/artifacts exclude credentials, hidden reasoning and unbounded tenant content.
 - Core customer journeys require realistic PostgreSQL and browser evidence, not mock-only success.
 - Product-owned production packages maintain exact coverage gates where configured and beginner-readable public documentation.
+- Verification evidence remains bound to the exact commit tree it inspected rather than being promoted across source, merge, base or release identities.
 
 ## Non-goals
 
