@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const CONTROLLER_SOURCE = readFileSync(
-  fileURLToPath(new URL('./main.ts', import.meta.url)),
-  'utf8',
-);
+const CONTROLLER_SOURCE = readFileSync(join(__dirname, 'main.ts'), 'utf8');
 
 const LEGACY_WORKSPACE_HEADER = /@Headers\(['"]x-workspace-id['"]\)/gu;
 const TRUSTED_WORKSPACE_HEADER =
