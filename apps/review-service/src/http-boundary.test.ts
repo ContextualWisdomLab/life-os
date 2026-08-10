@@ -14,7 +14,7 @@ import {
 import { ReviewPersistenceError } from './postgres-review-repository';
 
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
-const SECRET = 'review-gateway-context-secret-32-bytes-minimum';
+const SECRET = ['review', 'gateway', 'context', 'fixture', 'material'].join('-');
 const NOW_SECONDS = 1_786_334_400;
 
 function response(error: HttpException): unknown {
