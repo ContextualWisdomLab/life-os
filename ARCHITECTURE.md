@@ -55,7 +55,7 @@ Durable Today synchronization is protected-main behavior: explicit local-to-work
 
 Conflict-safe CalDAV/Google sync and signed trusted workspace context are protected main. PR #150 added the service-owned `calendar_integration.calendar_connection_record` persistence foundation scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes and opaque external credential references. PR #153 added atomic tenant+user-scoped local connection revocation and replay semantics.
 
-PR #155 is **Implemented on active PR** for a distinct short-lived signed `life-os.calendar-user.v1` context binding both workspace and requesting-user UUIDv4 identities for user-sensitive hosted operations. It adds authority evidence only, not the public disconnect/runtime composition.
+PR #155 is **Implemented on protected main** and adds a distinct short-lived signed `life-os.calendar-user.v1` context binding both workspace and requesting-user UUIDv4 identities for user-sensitive hosted operations. It adds authority evidence only, not the public disconnect/runtime composition.
 
 The complete hosted lifecycle remains **Partial** under #129: OAuth state/PKCE, concrete managed secret storage, refresh/provider-side revocation, discovery/selection and migration from development provider configuration are separate gates. Provider IDs/credentials never become LifeOS primary IDs or general login credentials.
 
@@ -63,7 +63,9 @@ The complete hosted lifecycle remains **Partial** under #129: OAuth state/PKCE, 
 
 Protected main owns versioned plugin manifest/event validation and, through PR #151, explicit host-owned installation authority. A validated manifest expresses requested intent; the host grants a bounded tenant-scoped capability subset. Exact replay is permitted only for matching authority evidence, conflicting installation-ID reuse fails, cross-tenant/user existence is not disclosed, and revocation ends active authority while preserving bounded audit evidence.
 
-Issue #130 remains **Partial** because durable installation/secret persistence, protected secret handles, authorized-origin SSRF-safe delivery, retry/dead-letter/audit and delivery-time revocation enforcement are not yet the complete protected runtime. Installation authority does not imply those capabilities exist.
+PR #156 is **Implemented on active PR** for restart-safe plugin installation persistence with application and SQL lookup/revocation authority scoped by installation, workspace and installing user. It does not add secret storage or outbound delivery authority.
+
+Issue #130 remains **Partial** because protected secret handling, authorized-origin SSRF-safe delivery, retry/dead-letter/audit and delivery-time revocation enforcement are not yet the complete protected runtime. Installation authority or persistence does not imply those capabilities exist.
 
 ## 6. AI proposal boundary
 
@@ -77,11 +79,15 @@ Privacy owns purpose-bound sensitive-access decisions, bounded grants and audit 
 
 ADR 0011 is authoritative: LifeOS integration records use internal UUIDv4 identity; external provider/plugin identifiers remain bounded metadata; credential material is referenced through opaque secret handles or equivalent least-authority secret-store references; manifests cannot self-authorize capabilities; revocation/replay/conflict semantics fail closed; owning services retain migrations/repositories/API authority.
 
-Protected #150/#151/#153 and active #155 are evidence of this boundary. Their existence does not close parent #129/#130 runtime lifecycles.
+Protected #150/#151/#153/#155 and active #156 are evidence of this boundary. Their existence does not close parent #129/#130 runtime lifecycles.
 
 ## 9. Test-time compute and repository automation
 
-A strong single-model route is measured before deeper orchestration. Reasoning effort, stage, decomposition, recursion, role and access topology are explicit experimental variables. Scheduled model-assisted development uses reviewed OpenCode with `NVIDIA_NIM_API_KEY` where model access is required; development models receive no product-data, independent-review, branch-protection, merge or release authority. Deterministic reverification remains independent.
+ADR 0012 is authoritative. A strong single-model route is the mandatory comparison baseline before deeper orchestration. Reasoning effort, workflow stage, decomposition, recursion depth, role-specific reasoning effort, model/worker selection, verifier topology and access-list/communication topology are explicit experimental dimensions when the exact reviewed dependency supports them. Unsupported controls remain explicit rather than simulated.
+
+Deeper orchestration is selected only when retained LifeOS evidence demonstrates a material correctness/evidence/capability gain under a documented reasonably comparable budget without unacceptable safety/reliability regression. Latency, provider calls, tokens and cost are measured for capacity/commercial review but are not the sole or primary objective.
+
+Model-backed tests and model-assisted development use reviewed OpenCode or contextual-orchestrator boundaries with GitHub Secret `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited. Development-model identity receives no product-data authority beyond its bounded input, independent-review authority, branch-protection authority, merge authority or release authority. Retained evidence is credential-free and excludes raw prompts/responses/hidden reasoning. Deterministic authorization, evaluation, CI/security, formal review, merge and release gates remain authoritative when model providers are unavailable or disagree.
 
 ## 10. Verification evidence identity and merge safety
 
@@ -90,12 +96,14 @@ Repository evidence identities are distinct:
 - `source_head_sha` — exact contributor/source head;
 - `pr_base_snapshot_sha` — PR/event base snapshot, historical once base moves;
 - `live_base_tip_sha` — independently resolved current base-ref tip;
-- `merge_tree_sha` — synthetic integration tree;
+- `integration_tree_sha` / synthetic merge identity — separately classified integration evidence;
 - `workflow_checkout_sha` — exact tree inspected by a job;
 - `protected_main_sha` — integrated protected-main evidence;
 - `release_source_sha` — protected source bound to released artifacts.
 
-ADR 0010 is authoritative. Exact-source verification and merge-tree compatibility answer different questions. Old PR #147 is **Superseded**. Clean successor PR #154 is **Implemented on active PR** and binds source-verification jobs to contributor head, AppGuardrail SARIF to the analyzed source identity, and a distinct merge-compatibility job to current-source/current-live-base parent evidence. Issue #132 remains open until that line integrates and residual required-workflow attribution is reconciled.
+ADR 0010 is authoritative. Exact-source verification and integration compatibility answer different questions. Old PR #147 is **Superseded**. PR #154 is **Implemented on protected main** as merge commit `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`: LifeOS source-verification jobs bind to contributor head, AppGuardrail SARIF binds to the analyzed source identity, and the distinct merge-compatibility job reconstructs and verifies an integration tree from the current independently resolved source and live-base identities.
+
+Issue #132 remains open only for residual central reusable scanner classification: central SAST/Security jobs must make the actual checkout/evidence identity auditable and must not relabel synthetic/integration-tree evidence as exact-source evidence. Check names/ruleset strictness are preserved while that taxonomy is made explicit.
 
 Pull requests are processed work-conservingly: inspect current evidence, RCA non-passing gates, make the smallest test-first correction, rerun exact evidence, resolve only addressed findings, and merge only an unchanged head accepted by live repository policy. Waiting on one lane never authorizes stale evidence or repository-wide idle time.
 
