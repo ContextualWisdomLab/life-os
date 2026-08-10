@@ -438,7 +438,7 @@ export class PlanningDataRightsContributor {
     workspaceId: string,
     requestId: string,
   ): Promise<DataRightsContributorResponse> {
-    await this.client.query(
+    const result = await this.client.query<{ erasure_receipts_ready: unknown }>(
       `SELECT
          EXISTS (SELECT 1 FROM planning.goals WHERE workspace_id = $1),
          EXISTS (SELECT 1 FROM planning.projects WHERE workspace_id = $1),
@@ -446,16 +446,22 @@ export class PlanningDataRightsContributor {
          EXISTS (SELECT 1 FROM planning.today_aggregates WHERE workspace_id = $1),
          EXISTS (
            SELECT 1 FROM planning.today_idempotency_records WHERE workspace_id = $1
-         )`,
+         ),
+         to_regclass('planning.data_rights_erasure_receipts') IS NOT NULL
+           AS erasure_receipts_ready`,
       [workspaceId],
     );
+    const erasureReceiptsReady =
+      result.rows[0]?.erasure_receipts_ready === true;
     return Object.freeze({
       contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
       operation: 'erase_preflight',
       contributor: CONTRIBUTOR_NAME,
       requestId,
-      ready: true,
-      blockers: Object.freeze([]),
+      ready: erasureReceiptsReady,
+      blockers: erasureReceiptsReady
+        ? Object.freeze([])
+        : Object.freeze(['planning.data_rights_erasure_receipts unavailable']),
     });
   }
 
