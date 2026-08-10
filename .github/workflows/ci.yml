@@ -18,10 +18,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Start and probe Compose infrastructure
         shell: bash
@@ -116,10 +117,11 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - name: Checkout
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -175,10 +177,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -196,3 +199,41 @@ jobs:
 
       - name: Run browser journey acceptance
         run: pnpm --filter @life-os/web test:e2e
+
+  merge_compatibility:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout GitHub pull-request merge tree
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Verify synthetic merge identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          actual_commit="$(git rev-parse HEAD)"
+          if [ "$actual_commit" != "${{ github.sha }}" ]; then
+            echo "::error::Merge-compatibility checkout did not match the pull-request merge SHA."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify merge-tree compatibility
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
