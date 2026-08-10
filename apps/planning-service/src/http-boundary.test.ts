@@ -10,6 +10,8 @@ import {
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const GATEWAY_SECRET = 'trusted-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_785_806_400;
+const BASE64URL_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 function responseOf(exception: HttpException): unknown {
   return exception.getResponse();
@@ -73,6 +75,38 @@ describe('planning HTTP boundary', () => {
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
+  });
+
+  it('rejects a non-canonical base64url alias for the same signature bytes', () => {
+    const issuedAt = String(NOW_SECONDS);
+    const canonical = signContext(WORKSPACE_ID, issuedAt);
+    const finalIndex = BASE64URL_ALPHABET.indexOf(canonical.at(-1) ?? '');
+    expect(finalIndex).toBeGreaterThanOrEqual(0);
+    expect(finalIndex % 4).toBe(0);
+    const nonCanonical = `${canonical.slice(0, -1)}${
+      BASE64URL_ALPHABET[finalIndex + 1]
+    }`;
+    expect(Buffer.from(nonCanonical, 'base64url')).toEqual(
+      Buffer.from(canonical, 'base64url'),
+    );
+
+    expectProblem(
+      () =>
+        requireTrustedWorkspaceContext(
+          {
+            workspaceId: WORKSPACE_ID,
+            issuedAt,
+            signature: nonCanonical,
+          },
+          GATEWAY_SECRET,
+          NOW_SECONDS,
+        ),
+      {
+        title: 'Trusted gateway context is invalid',
+        status: 401,
+        code: 'invalid_gateway_context',
+      },
+    );
   });
 
   it.each([undefined, null, '', 'too-short'])(
