@@ -111,7 +111,10 @@ describe('PostgresPluginInstallationStore', () => {
     const Store = module.PostgresPluginInstallationStore as new (
       client: RecordingSqlClient,
     ) => {
-      findById(installationId: string): Promise<PluginInstallationRecord | undefined>;
+      findById(
+        installationId: string,
+        workspaceId: string,
+      ): Promise<PluginInstallationRecord | undefined>;
       revokeActive(input: {
         installationId: string;
         workspaceId: string;
@@ -129,7 +132,11 @@ describe('PostgresPluginInstallationStore', () => {
     ]);
     const store = new Store(client);
 
-    await expect(store.findById(INSTALLATION_ID)).resolves.toEqual(candidate());
+    await expect(store.findById(INSTALLATION_ID, WORKSPACE_ID)).resolves.toEqual(candidate());
+    expect(client.calls[0]?.text).toContain('WHERE installation_id = $1::uuid');
+    expect(client.calls[0]?.text).toContain('workspace_id = $2::uuid');
+    expect(client.calls[0]?.values).toEqual([INSTALLATION_ID, WORKSPACE_ID]);
+
     await expect(
       store.revokeActive({
         installationId: INSTALLATION_ID,
