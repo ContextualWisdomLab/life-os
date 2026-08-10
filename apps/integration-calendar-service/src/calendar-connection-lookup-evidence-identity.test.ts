@@ -29,7 +29,7 @@ class MismatchedLookupClient implements CalendarConnectionSqlClient {
       updated_at: new Date('2026-08-10T09:00:00.000Z'),
       revoked_at: null,
     };
-    return { rows: [row as Row], rowCount: 1 };
+    return { rows: [row as unknown as Row], rowCount: 1 };
   }
 }
 
