@@ -93,11 +93,9 @@ Review snapshots/projections are service-owned. They consume planning/habit evid
 - bounded grants
 - append-only privacy/audit events
 
-### Calendar integration
+### Calendar integration — connection registry persisted on protected main
 
-Protected main includes sync/provider behavior and trusted signed workspace-context verification.
-
-PR #150 is **Implemented on active PR** for the first persisted `calendar_connection` foundation. Its migration/repository scope binds one connection to workspace and user, stores bounded provider/account/calendar metadata and normalized scopes, and references external credential material through opaque handles. This active persistence must not be labeled protected-main until merge.
+Protected main includes sync/provider behavior, trusted signed workspace-context verification, and after PR #150 the first persisted `calendar_connection` foundation. Migration/repository scope binds one connection to workspace and user, stores bounded provider/account/calendar metadata and normalized scopes, and references external credential material through opaque handles. The durable table uses the service-owned `calendar_integration.calendar_connection_record` namespace rather than a generic one-word schema.
 
 The complete hosted lifecycle remains **Partial** under issue #129: authorization callback lifecycle, concrete managed secret storage, refresh/revocation, discovery/selection and migration from development provider configuration remain separate work.
 
