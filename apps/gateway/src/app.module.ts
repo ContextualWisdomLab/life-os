@@ -32,6 +32,7 @@ export class HealthController {
 
   /** Refuses to fabricate Today data until authenticated service composition is configured. */
   @Get('today')
+  @Header('Cache-Control', 'no-store')
   today(): never {
     throw problem(
       503,
