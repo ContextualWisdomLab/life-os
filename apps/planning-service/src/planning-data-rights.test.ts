@@ -16,6 +16,7 @@ const TEST_DATABASE_URL = ['postgresql:', '', '127.0.0.1', 'planning_test'].join
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
+const LARGE_EXPORT_GOAL_COUNT = 10_001;
 
 /** Minimal credential-free pool used only to inspect runtime composition. */
 function inertPool(): PlanningPool {
@@ -56,6 +57,42 @@ function preflightClient(erasureReceiptsReady: boolean): TodayTransactionalSqlCl
   return client;
 }
 
+/** SQL double that exposes a workspace larger than one JSON safety page. */
+function largeExportClient(): {
+  readonly client: TodayTransactionalSqlClient;
+  readonly goalQueryCount: () => number;
+} {
+  const goals = Array.from({ length: LARGE_EXPORT_GOAL_COUNT }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+    title: `Goal ${index}`,
+    created_at: new Date('2026-08-10T00:00:00.000Z'),
+  }));
+  let goalQueries = 0;
+  const client: TodayTransactionalSqlClient = {
+    async query<Row>(
+      text: string,
+      values: readonly unknown[] = [],
+    ): Promise<{ rows: Row[] }> {
+      if (!text.includes('FROM planning.goals')) {
+        return { rows: [] };
+      }
+      goalQueries += 1;
+      const pageSize =
+        typeof values[1] === 'number' ? values[1] : LARGE_EXPORT_GOAL_COUNT;
+      const offset = typeof values[2] === 'number' ? values[2] : 0;
+      return {
+        rows: goals.slice(offset, offset + pageSize) as unknown as Row[],
+      };
+    },
+    async transaction<Result>(
+      operation: (transaction: TodayTransactionalSqlClient) => Promise<Result>,
+    ): Promise<Result> {
+      return await operation(client);
+    },
+  };
+  return { client, goalQueryCount: () => goalQueries };
+}
+
 describe('Planning data-rights runtime composition', () => {
   it('executes the service-owned data-rights contributor through the runtime', async () => {
     const runtime = createPlanningRuntime(
@@ -92,6 +129,31 @@ describe('Planning data-rights runtime composition', () => {
     } finally {
       await runtime.close();
     }
+  });
+});
+
+describe('Planning data-rights export scale', () => {
+  it('exports more than one safety page without truncation', async () => {
+    const { client, goalQueryCount } = largeExportClient();
+    const contributor = new PlanningDataRightsContributor(client);
+
+    const response = await contributor.handle({
+      contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
+      operation: 'export',
+      workspaceId: WORKSPACE_ID,
+      requestedByUserId: USER_ID,
+      requestId: REQUEST_ID,
+    });
+
+    expect(response).toMatchObject({
+      operation: 'export',
+      recordCount: LARGE_EXPORT_GOAL_COUNT,
+    });
+    if (response.operation !== 'export') {
+      throw new Error('Expected Planning export response');
+    }
+    expect(response.sha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(goalQueryCount()).toBeGreaterThan(1);
   });
 });
 
