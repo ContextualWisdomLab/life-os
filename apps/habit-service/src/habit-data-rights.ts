@@ -479,10 +479,9 @@ export class HabitDataRightsContributor {
 
       await transaction.query(
         `SELECT pg_advisory_xact_lock(
-           hashtextextended($1::text, 0),
-           hashtextextended($2::text, 0)
+           hashtextextended($1::text, 0)
          )`,
-        [`${CONTRIBUTOR_NAME}:${workspaceId}`, idempotencyKey],
+        [`${CONTRIBUTOR_NAME}:${workspaceId}:${idempotencyKey}`],
       );
 
       const existing = await transaction.query<ReceiptRow>(
