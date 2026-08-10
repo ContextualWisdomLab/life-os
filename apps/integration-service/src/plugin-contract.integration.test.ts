@@ -17,6 +17,8 @@ const GATEWAY_SECRET = [
   'fixture',
   'material',
 ].join('-');
+const BASE64URL_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 function signedWorkspaceHeaders(
   workspaceId: string,
@@ -34,6 +36,22 @@ function signedWorkspaceHeaders(
     'x-life-os-context-issued-at': issuedAt,
     'x-life-os-context-signature': signature,
   };
+}
+
+/** Returns a same-bytes base64url alias with non-zero unused trailing bits. */
+function nonCanonicalSignatureAlias(signature: string): string {
+  const finalCharacter = signature.at(-1);
+  const finalIndex = finalCharacter
+    ? BASE64URL_ALPHABET.indexOf(finalCharacter)
+    : -1;
+  if (finalIndex < 0 || (finalIndex & 0b001111) !== 0) {
+    throw new Error('Expected canonical SHA-256 base64url signature');
+  }
+  const aliasCharacter = BASE64URL_ALPHABET[finalIndex + 1];
+  if (!aliasCharacter) {
+    throw new Error('Unable to construct non-canonical signature alias');
+  }
+  return `${signature.slice(0, -1)}${aliasCharacter}`;
 }
 
 async function postJson(
@@ -195,6 +213,24 @@ describe('plugin contract HTTP boundary', () => {
       );
       expect(forged.status).toBe(401);
       expect(await forged.json()).toMatchObject({
+        code: 'invalid_gateway_context',
+      });
+
+      const canonicalHeaders = signedWorkspaceHeaders(WORKSPACE_ID);
+      const nonCanonical = await postJson(
+        address.port,
+        '/v1/events/prepare',
+        eventRequest(),
+        undefined,
+        {
+          ...canonicalHeaders,
+          'x-life-os-context-signature': nonCanonicalSignatureAlias(
+            canonicalHeaders['x-life-os-context-signature'],
+          ),
+        },
+      );
+      expect(nonCanonical.status).toBe(401);
+      expect(await nonCanonical.json()).toMatchObject({
         code: 'invalid_gateway_context',
       });
 
