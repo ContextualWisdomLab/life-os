@@ -48,9 +48,7 @@ function body() {
   };
 }
 
-function trustedContext(
-  workspaceId = WORKSPACE_ID,
-): readonly [string, string] {
+function trustedContext(workspaceId = WORKSPACE_ID): readonly [string, string] {
   const issuedAt = String(Math.floor(Date.now() / 1000));
   const normalizedWorkspaceId = workspaceId.toLowerCase();
   const signature = createHmac('sha256', GATEWAY_SECRET)
