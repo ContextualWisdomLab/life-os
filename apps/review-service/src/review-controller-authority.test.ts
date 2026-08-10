@@ -114,7 +114,9 @@ async function rejectedStatus(operation: Promise<unknown>): Promise<number> {
     expect(error).toBeInstanceOf(HttpException);
     return (error as HttpException).getStatus();
   }
-  throw new Error('Expected Review route to reject untrusted workspace context');
+  throw new Error(
+    'Expected Review route to reject untrusted workspace context',
+  );
 }
 
 afterEach(() => {
