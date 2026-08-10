@@ -177,7 +177,7 @@ test('canonical Markdown keeps balanced fenced code blocks', () => {
   }
 });
 
-test('documentation claims are anchored to current source authority', () => {
+test('documentation claims are anchored to repository authority', () => {
   const agents = text('AGENTS.md');
   const architecture = text('ARCHITECTURE.md');
   const dataRights = text('apps/identity-service/src/data-rights.ts');
@@ -204,32 +204,44 @@ test('documentation claims are anchored to current source authority', () => {
 test('canonical lifecycle reflects protected-main integrations and remaining gaps', () => {
   const prd = text('docs/PRD.md');
   const traceability = text('docs/TRACEABILITY.md');
+  const contracts = text('docs/API_CONTRACTS.md');
+  const privacy = text('docs/PRIVACY_DATA_LIFECYCLE.md');
   const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
 
   assert.match(prd, /PR #127 merged as protected main/u);
   assert.match(prd, /PR #139 merged/u);
-  assert.match(prd, /PRs #134, #136, #137, #138 and #144 integrated on main/u);
+  assert.match(prd, /PR #146 merged/u);
+  assert.match(prd, /PR #149 merged/u);
+  assert.match(traceability, /PRD-PRIV-004.*Implemented on protected main/u);
+  assert.match(traceability, /PRD-PRIV-005.*Implemented on protected main/u);
+  assert.match(contracts, /Tenant export integrity manifest.*Implemented on protected main/u);
+  assert.match(privacy, /authenticated public status resource from PR #146/u);
+  assert.match(privacy, /per-contributor export integrity evidence from PR #149/u);
   assert.match(traceability, /#55 data portability completion/u);
   assert.match(traceability, /#129 per-user calendar credentials/u);
   assert.match(traceability, /#130 plugin runtime delivery/u);
   assert.match(assessment, /old documentation PR #126 became materially diverged/u);
 });
 
-test('active successor work is represented without promoting it to protected-main truth', () => {
+test('active successor work is represented without promotion to protected-main truth', () => {
   const prd = text('docs/PRD.md');
   const traceability = text('docs/TRACEABILITY.md');
   const contracts = text('docs/API_CONTRACTS.md');
+  const dataModel = text('docs/DATA_MODEL.md');
   const uml = text('docs/UML.md');
   const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
 
-  assert.match(prd, /PR #146/u);
-  assert.match(prd, /PR #147/u);
-  assert.match(traceability, /PR #146/u);
-  assert.match(traceability, /PR #147/u);
-  assert.match(contracts, /PR #146/u);
-  assert.match(contracts, /PR #147/u);
-  assert.match(uml, /source head/u);
-  assert.match(uml, /synthetic merge/u);
-  assert.match(assessment, /machine-checkable documentation consistency.*Implemented on active PR/isu);
-  assert.match(assessment, /root Architecture.*Implemented on active PR/isu);
+  for (const pr of ['#147', '#150', '#151']) {
+    assert.match(prd, new RegExp(`PR ${pr}`, 'u'));
+    assert.match(traceability, new RegExp(`PR ${pr}`, 'u'));
+    assert.match(contracts, new RegExp(`PR ${pr}`, 'u'));
+    assert.match(assessment, new RegExp(`PR ${pr}`, 'u'));
+  }
+  assert.match(dataModel, /PR #150 is \*\*Implemented on active PR\*\*/u);
+  assert.match(dataModel, /PR #151 is \*\*Implemented on active PR\*\*/u);
+  assert.match(uml, /Calendar connection registry foundation/iu);
+  assert.match(uml, /Plugin installation authority/iu);
+  assert.match(uml, /source_head_sha/u);
+  assert.match(uml, /merge_tree_sha/u);
+  assert.match(assessment, /protected-main documentation insufficient/iu);
 });
