@@ -12,7 +12,8 @@ import {
 import { NestFactory } from '@nestjs/core';
 import {
   requireHistoryLimit,
-  requireWorkspaceHeader,
+  requireReviewGatewayContextSecret,
+  requireTrustedWorkspaceContext,
   toReviewHttpException,
 } from './http-boundary';
 import {
@@ -41,42 +42,75 @@ export class ReviewController {
     return { status: 'ok', service: 'review-service' };
   }
 
+  /** Returns readiness only when signed workspace authority can be verified. */
+  @Get('ready')
+  ready(): { status: 'ready'; service: 'review-service' } {
+    requireReviewGatewayContextSecret(
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
+    return { status: 'ready', service: 'review-service' };
+  }
+
   /** Records a completed daily planning ritual. */
   @Post('reviews/daily-planning/completions')
   async completeDailyPlanning(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<ReviewCompletionRecord> {
-    return await this.complete(workspaceHeader, 'daily-planning', body);
+    const trustedWorkspaceId = requireTrustedWorkspaceContext(
+      { workspaceId, issuedAt, signature },
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
+    return await this.complete(trustedWorkspaceId, 'daily-planning', body);
   }
 
   /** Records a completed daily shutdown ritual. */
   @Post('reviews/daily-shutdown/completions')
   async completeDailyShutdown(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<ReviewCompletionRecord> {
-    return await this.complete(workspaceHeader, 'daily-shutdown', body);
+    const trustedWorkspaceId = requireTrustedWorkspaceContext(
+      { workspaceId, issuedAt, signature },
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
+    return await this.complete(trustedWorkspaceId, 'daily-shutdown', body);
   }
 
   /** Records a completed Monday-anchored weekly review ritual. */
   @Post('reviews/weekly-review/completions')
   async completeWeeklyReview(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<ReviewCompletionRecord> {
-    return await this.complete(workspaceHeader, 'weekly-review', body);
+    const trustedWorkspaceId = requireTrustedWorkspaceContext(
+      { workspaceId, issuedAt, signature },
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
+    return await this.complete(trustedWorkspaceId, 'weekly-review', body);
   }
 
   /** Lists deterministic immutable completion history for one workspace. */
   @Get('reviews/completions')
   async listCompletions(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Query('limit') limit: string | undefined,
   ): Promise<ReviewCompletionRecord[]> {
     try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+      );
       return await this.reviewService.list(
-        requireWorkspaceHeader(workspaceHeader),
+        trustedWorkspaceId,
         requireHistoryLimit(limit),
       );
     } catch (error) {
@@ -84,17 +118,14 @@ export class ReviewController {
     }
   }
 
+  /** Records one ritual only for a workspace ID already accepted by the trusted-context verifier. */
   private async complete(
-    workspaceHeader: string | undefined,
+    workspaceId: string,
     ritualKind: ReviewRitualKind,
     body: unknown,
   ): Promise<ReviewCompletionRecord> {
     try {
-      return await this.reviewService.complete(
-        requireWorkspaceHeader(workspaceHeader),
-        ritualKind,
-        body,
-      );
+      return await this.reviewService.complete(workspaceId, ritualKind, body);
     } catch (error) {
       throw toReviewHttpException(error);
     }
@@ -118,8 +149,16 @@ export class ReviewController {
 })
 export class AppModule {}
 
+/** Verifies required security configuration before Review accepts traffic. */
+export function requireReviewServiceConfiguration(
+  env: NodeJS.ProcessEnv,
+): void {
+  requireReviewGatewayContextSecret(env.REVIEW_GATEWAY_CONTEXT_SECRET);
+}
+
 /** Boots the versioned review service on its configured public port. */
 async function bootstrap(): Promise<void> {
+  requireReviewServiceConfiguration(process.env);
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
