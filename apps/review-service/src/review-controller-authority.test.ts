@@ -1,12 +1,9 @@
 import { createHmac, randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewController } from './main';
 import type { ReviewService } from './review-domain';
 
-const controllerSource = readFileSync(resolve(__dirname, 'main.ts'), 'utf8');
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
 
@@ -24,23 +21,20 @@ interface ReviewServiceSpies {
 interface RouteCase {
   readonly name: string;
   readonly serviceMethod: keyof ReviewServiceSpies;
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
   readonly invoke: (
     controller: ReviewController,
     headers: RouteHeaders,
   ) => Promise<unknown>;
 }
 
-type InvalidContextCase = readonly [
-  name: string,
-  headers: RouteHeaders,
-  status: number,
-  secretConfigured: boolean,
-];
-
 const ROUTES: readonly RouteCase[] = [
   {
     name: 'completeDailyPlanning',
     serviceMethod: 'complete',
+    method: 'POST',
+    path: '/v1/reviews/daily-planning/completions',
     invoke: (controller, headers) =>
       controller.completeDailyPlanning(
         headers.workspaceId,
@@ -52,6 +46,8 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'completeDailyShutdown',
     serviceMethod: 'complete',
+    method: 'POST',
+    path: '/v1/reviews/daily-shutdown/completions',
     invoke: (controller, headers) =>
       controller.completeDailyShutdown(
         headers.workspaceId,
@@ -63,6 +59,8 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'completeWeeklyReview',
     serviceMethod: 'complete',
+    method: 'POST',
+    path: '/v1/reviews/weekly-review/completions',
     invoke: (controller, headers) =>
       controller.completeWeeklyReview(
         headers.workspaceId,
@@ -74,6 +72,8 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'listCompletions',
     serviceMethod: 'list',
+    method: 'GET',
+    path: '/v1/reviews/completions',
     invoke: (controller, headers) =>
       controller.listCompletions(
         headers.workspaceId,
@@ -97,11 +97,14 @@ function controllerWith(service: ReviewServiceSpies): ReviewController {
   return new ReviewController(service as unknown as ReviewService);
 }
 
-/** Produces a versioned HMAC gateway assertion at one issue time. */
-function signedHeaders(issuedAtSeconds: number): RouteHeaders {
+/** Produces a request-bound HMAC gateway assertion at one issue time. */
+function signedHeaders(route: RouteCase, issuedAtSeconds: number): RouteHeaders {
   const issuedAt = String(issuedAtSeconds);
   const signature = createHmac('sha256', CONTEXT_SECRET)
-    .update(`life-os.workspace.v1\n${WORKSPACE_ID}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.review-context.v1\n${WORKSPACE_ID}\n${issuedAt}\n${route.method}\n${route.path}`,
+      'utf8',
+    )
     .digest('base64url');
   return { workspaceId: WORKSPACE_ID, issuedAt, signature };
 }
@@ -125,20 +128,32 @@ afterEach(() => {
 });
 
 describe.sequential('Review controller tenant authority contract', () => {
-  it('rejects legacy browser-selectable workspace authority', () => {
-    expect(controllerSource).not.toContain("@Headers('x-workspace-id')");
-    expect(controllerSource).not.toContain('requireWorkspaceHeader(');
+  it('rejects a browser-selected workspace header without signed context', async () => {
+    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+    const service = serviceSpies();
+    const controller = controllerWith(service);
+    const headers: RouteHeaders = {
+      workspaceId: WORKSPACE_ID,
+      issuedAt: undefined,
+      signature: undefined,
+    };
+
+    for (const route of ROUTES) {
+      vi.clearAllMocks();
+      expect(await rejectedStatus(route.invoke(controller, headers))).toBe(401);
+      expect(service[route.serviceMethod], route.name).not.toHaveBeenCalled();
+    }
   });
 
   it('passes only the verified workspace to every Review domain route', async () => {
     process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
-    const headers = signedHeaders(Math.floor(Date.now() / 1000));
+    const nowSeconds = Math.floor(Date.now() / 1000);
     const service = serviceSpies();
     const controller = controllerWith(service);
 
     for (const route of ROUTES) {
       vi.clearAllMocks();
-      await route.invoke(controller, headers);
+      await route.invoke(controller, signedHeaders(route, nowSeconds));
       expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
       expect(service[route.serviceMethod].mock.calls[0]?.[0], route.name).toBe(
         WORKSPACE_ID,
@@ -148,46 +163,75 @@ describe.sequential('Review controller tenant authority contract', () => {
 
   it('rejects untrusted contexts before every Review domain call', async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const fresh = signedHeaders(nowSeconds);
-    const expired = signedHeaders(nowSeconds - 120);
-    const future = signedHeaders(nowSeconds + 120);
-    const tamperedDigest = Buffer.from(fresh.signature ?? '', 'base64url');
-    const firstTamperedByte = tamperedDigest.at(0);
-    if (firstTamperedByte === undefined) {
-      throw new Error('Expected a SHA-256 gateway signature');
-    }
-    tamperedDigest[0] = firstTamperedByte ^ 0xff;
-    const tampered = {
-      ...fresh,
-      signature: tamperedDigest.toString('base64url'),
-    };
-    const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
-    const invalidContexts: readonly InvalidContextCase[] = [
-      ['missing', { ...fresh, workspaceId: undefined }, 401, true],
-      ['expired', expired, 401, true],
-      ['future', future, 401, true],
-      ['tampered', tampered, 401, true],
-      ['malformed', malformed, 401, true],
-      ['secret-unconfigured', fresh, 503, false],
-    ];
     const service = serviceSpies();
     const controller = controllerWith(service);
 
-    for (const [name, headers, status, secretConfigured] of invalidContexts) {
-      for (const route of ROUTES) {
+    for (const route of ROUTES) {
+      const fresh = signedHeaders(route, nowSeconds);
+      const expired = signedHeaders(route, nowSeconds - 120);
+      const future = signedHeaders(route, nowSeconds + 120);
+      const tamperedDigest = Buffer.from(fresh.signature ?? '', 'base64url');
+      const firstTamperedByte = tamperedDigest.at(0);
+      if (firstTamperedByte === undefined) {
+        throw new Error('Expected a SHA-256 gateway signature');
+      }
+      tamperedDigest[0] = firstTamperedByte ^ 0xff;
+      const invalidContexts = [
+        {
+          name: 'missing',
+          headers: { ...fresh, workspaceId: undefined },
+          status: 401,
+          secretConfigured: true,
+        },
+        {
+          name: 'expired',
+          headers: expired,
+          status: 401,
+          secretConfigured: true,
+        },
+        {
+          name: 'future',
+          headers: future,
+          status: 401,
+          secretConfigured: true,
+        },
+        {
+          name: 'tampered',
+          headers: {
+            ...fresh,
+            signature: tamperedDigest.toString('base64url'),
+          },
+          status: 401,
+          secretConfigured: true,
+        },
+        {
+          name: 'malformed',
+          headers: { ...fresh, workspaceId: 'not-a-uuid' },
+          status: 401,
+          secretConfigured: true,
+        },
+        {
+          name: 'secret-unconfigured',
+          headers: fresh,
+          status: 503,
+          secretConfigured: false,
+        },
+      ] as const;
+
+      for (const invalid of invalidContexts) {
         vi.clearAllMocks();
-        if (secretConfigured) {
+        if (invalid.secretConfigured) {
           process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
         } else {
           delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
         }
         expect(
-          await rejectedStatus(route.invoke(controller, headers)),
-          `${route.name}:${name}`,
-        ).toBe(status);
+          await rejectedStatus(route.invoke(controller, invalid.headers)),
+          `${route.name}:${invalid.name}`,
+        ).toBe(invalid.status);
         expect(
           service[route.serviceMethod],
-          `${route.name}:${name}`,
+          `${route.name}:${invalid.name}`,
         ).not.toHaveBeenCalled();
       }
     }
