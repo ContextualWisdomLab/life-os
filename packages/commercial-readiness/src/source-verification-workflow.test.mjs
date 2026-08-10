@@ -74,6 +74,7 @@ test('merge compatibility binds the checked merge parents to fresh source and li
   const block = jobBlock(readWorkflow('ci.yml'), 'merge_compatibility');
   assert.ok(block.includes("if: github.event_name == 'pull_request'"));
   assert.ok(block.includes(MERGE_REF));
+  assert.ok(block.includes('fetch-depth: 2'), 'the checkout must retain both merge parents for identity verification');
   assert.ok(block.includes('GITHUB_TOKEN: ${{ github.token }}'));
   assert.ok(block.includes('/pulls/${{ github.event.pull_request.number }}'));
   assert.ok(block.includes('/commits/${{ github.event.pull_request.base.ref }}'));
