@@ -266,10 +266,10 @@ test('model-assisted compute authority and counterevidence remain canonical', ()
   assert.match(adr, /COPILOT_GITHUB_TOKEN/u);
   assert.match(adr, /deterministic/iu);
 
-  for (const evidenceName of ['AgentFugue', 'Conductor', 'TRINITY']) {
+  for (const evidenceName of ['Fugu', 'Conductor', 'TRINITY']) {
     assert.match(standards, new RegExp(evidenceName, 'u'));
   }
-  assert.match(standards, /Single-Agent LLMs Outperform Multi-Agent Systems/iu);
+  assert.match(standards, /Rethinking the value of multi-agent workflow/iu);
   assert.match(standards, /preprint/iu);
   assert.match(standards, /ICLR 2026/iu);
   assert.match(standards, /NVIDIA NIM/iu);
@@ -283,7 +283,7 @@ test('model-assisted compute authority and counterevidence remain canonical', ()
   assert.match(uml, /review.*merge.*release/isu);
 
   assert.match(traceability, /ADR 0012/u);
-  assert.match(traceability, /AgentFugue/iu);
+  assert.match(traceability, /Fugu/iu);
   assert.match(architecture, /A strong single-model route is measured before deeper orchestration/u);
   assert.match(agents, /NVIDIA_NIM_API_KEY/u);
   assert.doesNotMatch(agents, /use\s+COPILOT_GITHUB_TOKEN/iu);
