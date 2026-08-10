@@ -48,22 +48,35 @@ describe('Review HTTP boundary', () => {
     expect(requireHistoryLimit('100')).toBe(100);
   });
 
-  it.each([String(NOW_SECONDS - 60), String(NOW_SECONDS + 5)])(
-    'accepts signed workspace context at the exact allowed time boundary',
-    (issuedAt) => {
-      expect(
-        requireTrustedWorkspaceContext(
-          {
-            workspaceId: WORKSPACE_ID,
-            issuedAt,
-            signature: signature(issuedAt),
-          },
-          SECRET,
-          NOW_SECONDS,
-        ),
-      ).toBe(WORKSPACE_ID);
-    },
-  );
+  it('accepts the exact maximum context age', () => {
+    const issuedAt = String(NOW_SECONDS - 60);
+    expect(
+      requireTrustedWorkspaceContext(
+        {
+          workspaceId: WORKSPACE_ID,
+          issuedAt,
+          signature: signature(issuedAt),
+        },
+        SECRET,
+        NOW_SECONDS,
+      ),
+    ).toBe(WORKSPACE_ID);
+  });
+
+  it('accepts the exact maximum future clock skew', () => {
+    const issuedAt = String(NOW_SECONDS + 5);
+    expect(
+      requireTrustedWorkspaceContext(
+        {
+          workspaceId: WORKSPACE_ID,
+          issuedAt,
+          signature: signature(issuedAt),
+        },
+        SECRET,
+        NOW_SECONDS,
+      ),
+    ).toBe(WORKSPACE_ID);
+  });
 
   it.each([
     {
