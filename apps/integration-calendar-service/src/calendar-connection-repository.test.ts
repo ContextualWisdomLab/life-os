@@ -9,25 +9,28 @@ interface SqlCall {
   readonly values: readonly unknown[];
 }
 
+interface SqlResult {
+  readonly rows: readonly unknown[];
+  readonly rowCount: number | null;
+}
+
 class RecordingSqlClient {
   readonly calls: SqlCall[] = [];
+  private resultIndex = 0;
 
-  constructor(
-    private readonly results: readonly {
-      readonly rows: readonly unknown[];
-      readonly rowCount: number | null;
-    }[],
-  ) {}
+  constructor(private readonly results: readonly SqlResult[]) {}
 
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
   ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number | null }> {
     this.calls.push({ text, values });
-    return (this.results.shift?.() ?? this.results[0] ?? {
-      rows: [],
-      rowCount: 0,
-    }) as { readonly rows: readonly Row[]; readonly rowCount: number | null };
+    const result = this.results[this.resultIndex] ?? { rows: [], rowCount: 0 };
+    this.resultIndex += 1;
+    return result as {
+      readonly rows: readonly Row[];
+      readonly rowCount: number | null;
+    };
   }
 }
 
