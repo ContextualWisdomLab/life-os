@@ -45,6 +45,7 @@ function problemException(
   return new HttpException(problem, status);
 }
 
+/** Rejects malformed, forged, stale, or future trusted context with a credential-free 401 problem. */
 function invalidGatewayContext(): never {
   throw problemException(
     401,
@@ -53,6 +54,7 @@ function invalidGatewayContext(): never {
   );
 }
 
+/** Reports verifier configuration that cannot authenticate context as a bounded 503 problem. */
 function unavailableGatewayContext(): never {
   throw problemException(
     503,
@@ -61,6 +63,7 @@ function unavailableGatewayContext(): never {
   );
 }
 
+/** Computes the SHA-256 HMAC over the canonical `life-os.workspace.v1` workspace-and-time payload. */
 function workspaceContextDigest(
   workspaceId: string,
   issuedAt: string,
