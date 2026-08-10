@@ -119,20 +119,18 @@ describe('Review HTTP boundary', () => {
       status: 503,
       code: 'gateway_context_unavailable',
     },
-  ])('fails closed for stale, future, forged, or unverifiable context', ({
-    headers,
-    secret,
-    status,
-    code,
-  }) => {
-    try {
-      requireTrustedWorkspaceContext(headers, secret, NOW_SECONDS);
-      throw new Error('expected trusted context rejection');
-    } catch (error) {
-      expect(error).toBeInstanceOf(HttpException);
-      expect(response(error as HttpException)).toMatchObject({ status, code });
-    }
-  });
+  ])(
+    'fails closed for stale, future, forged, or unverifiable context',
+    ({ headers, secret, status, code }) => {
+      try {
+        requireTrustedWorkspaceContext(headers, secret, NOW_SECONDS);
+        throw new Error('expected trusted context rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(HttpException);
+        expect(response(error as HttpException)).toMatchObject({ status, code });
+      }
+    },
+  );
 
   it.each([
     () => requireRitualPath('execute'),
