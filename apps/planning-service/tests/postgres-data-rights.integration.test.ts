@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION } from '../src/planning-data-rights';
@@ -10,6 +11,7 @@ import {
 
 const DATABASE_URL = process.env.PLANNING_DATABASE_URL;
 const TEMPORARY_DATABASE_NAME = 'life_os_data_rights_test';
+const DATABASE_DISCONNECT_TIMEOUT_MS = 2_000;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
@@ -28,6 +30,25 @@ function databaseUrl(sourceUrl: string, name: string): string {
   const parsed = new URL(sourceUrl);
   parsed.pathname = `/${name}`;
   return parsed.toString();
+}
+
+/** Drops the fixture database only after every orderly pool shutdown reaches PostgreSQL. */
+async function dropTemporaryDatabaseWhenIdle(adminPool: Pool): Promise<void> {
+  const deadline = Date.now() + DATABASE_DISCONNECT_TIMEOUT_MS;
+  while (Date.now() <= deadline) {
+    const activeConnections = await adminPool.query<{ count: number }>(
+      `SELECT count(*)::integer AS count
+         FROM pg_stat_activity
+        WHERE datname = $1`,
+      [TEMPORARY_DATABASE_NAME],
+    );
+    if (activeConnections.rows[0]?.count === 0) {
+      await adminPool.query('DROP DATABASE IF EXISTS life_os_data_rights_test');
+      return;
+    }
+    await sleep(25);
+  }
+  throw new Error('Planning data-rights fixture database did not become idle');
 }
 
 async function applyPlanningMigrations(pool: Pool): Promise<void> {
@@ -106,9 +127,7 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
     let primaryFailure: unknown;
 
     try {
-      await adminPool.query(
-        'DROP DATABASE IF EXISTS life_os_data_rights_test WITH (FORCE)',
-      );
+      await dropTemporaryDatabaseWhenIdle(adminPool);
       await adminPool.query('CREATE DATABASE life_os_data_rights_test');
       const temporaryUrl = databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME);
       migrationPool = new Pool({ connectionString: temporaryUrl });
@@ -232,10 +251,7 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
       const cleanups: Array<() => Promise<unknown>> = [
         async () => await runtime?.close(),
         async () => await migrationPool?.end(),
-        async () =>
-          await adminPool.query(
-            'DROP DATABASE IF EXISTS life_os_data_rights_test WITH (FORCE)',
-          ),
+        async () => await dropTemporaryDatabaseWhenIdle(adminPool),
         async () => await adminPool.end(),
       ];
       for (const cleanup of cleanups) {
