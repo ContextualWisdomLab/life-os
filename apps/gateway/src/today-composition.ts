@@ -6,14 +6,18 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
 const MAXIMUM_RESPONSE_BYTES = 64 * 1024;
 const MAXIMUM_TODAY_ACTIONS = 50;
+const MAXIMUM_TODAY_HABITS = 100;
+const MAXIMUM_HABIT_TITLE_BYTES = 512;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 const UPSTREAM_TIMEOUT_MS = 3_000;
 
-/** Environment values required by the bounded Gateway -> Identity -> Planning path. */
+/** Environment values used by the bounded Gateway composition path. */
 export interface GatewayTodayEnvironment {
   readonly IDENTITY_SERVICE_ORIGIN?: string;
   readonly PLANNING_SERVICE_ORIGIN?: string;
   readonly PLANNING_GATEWAY_CONTEXT_SECRET?: string;
+  readonly HABIT_SERVICE_ORIGIN?: string;
+  readonly HABIT_GATEWAY_CONTEXT_SECRET?: string;
 }
 
 /** Minimal fetch surface used by production composition and deterministic tests. */
@@ -37,12 +41,41 @@ export interface GatewayPlanningToday {
   readonly actions: readonly GatewayPlanningTodayAction[];
 }
 
-/** Buyer-visible Gateway response while Habit composition remains explicitly degraded. */
-export interface GatewayTodayView {
+/** Validated Habit-owned scheduled/completion evidence. */
+export interface GatewayHabitTodayStatus {
+  readonly habitId: string;
+  readonly title: string;
+  readonly scheduledLocalDate: string;
+  readonly completed: boolean;
+  readonly completionId?: string;
+}
+
+/** Planning-only compatibility response retained while callers migrate to full composition. */
+export interface GatewayPlanningTodayView {
   readonly version: 'life-os.gateway-today.v1';
   readonly date: string;
   readonly planning: GatewayPlanningToday;
   readonly degraded: readonly ['habits_not_composed'];
+}
+
+export type GatewayTodayDegradation =
+  | 'habits_not_configured'
+  | 'habits_unavailable';
+
+/** Buyer-visible Gateway Today response composed only from validated service evidence. */
+export interface GatewayTodayView {
+  readonly version: 'life-os.gateway-today.v1';
+  readonly date: string;
+  readonly planning: GatewayPlanningToday;
+  readonly habits: readonly GatewayHabitTodayStatus[];
+  readonly degraded: readonly GatewayTodayDegradation[];
+}
+
+interface PlanningComposition {
+  readonly date: string;
+  readonly workspaceId: string;
+  readonly planning: GatewayPlanningToday;
+  readonly correlationId: string;
 }
 
 /** Credential-free typed failure translated by the public HTTP boundary. */
@@ -275,7 +308,66 @@ function requirePlanningToday(
   });
 }
 
-function planningContextHeaders(
+function requireHabitTodayItem(
+  value: unknown,
+  expectedDate: string,
+): GatewayHabitTodayStatus {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw unavailable();
+  }
+  const record = value as Record<string, unknown>;
+  const expectedKeys = record.completed === true
+    ? ['habitId', 'title', 'scheduledLocalDate', 'completed', 'completionId']
+    : ['habitId', 'title', 'scheduledLocalDate', 'completed'];
+  if (
+    Object.keys(record).length !== expectedKeys.length ||
+    expectedKeys.some((key) => !Object.hasOwn(record, key)) ||
+    typeof record.habitId !== 'string' ||
+    !UUID_V4_PATTERN.test(record.habitId) ||
+    typeof record.title !== 'string' ||
+    !record.title.trim() ||
+    Buffer.byteLength(record.title, 'utf8') > MAXIMUM_HABIT_TITLE_BYTES ||
+    /[\u0000-\u001f\u007f]/u.test(record.title) ||
+    record.scheduledLocalDate !== expectedDate ||
+    typeof record.completed !== 'boolean' ||
+    (record.completed === true &&
+      (typeof record.completionId !== 'string' ||
+        !UUID_V4_PATTERN.test(record.completionId))) ||
+    (record.completed === false && Object.hasOwn(record, 'completionId'))
+  ) {
+    throw unavailable();
+  }
+  return Object.freeze(
+    record.completed
+      ? {
+          habitId: record.habitId.toLowerCase(),
+          title: record.title,
+          scheduledLocalDate: expectedDate,
+          completed: true,
+          completionId: (record.completionId as string).toLowerCase(),
+        }
+      : {
+          habitId: record.habitId.toLowerCase(),
+          title: record.title,
+          scheduledLocalDate: expectedDate,
+          completed: false,
+        },
+  );
+}
+
+function requireHabitToday(
+  value: unknown,
+  expectedDate: string,
+): readonly GatewayHabitTodayStatus[] {
+  if (!Array.isArray(value) || value.length > MAXIMUM_TODAY_HABITS) {
+    throw unavailable();
+  }
+  return Object.freeze(
+    value.map((item) => requireHabitTodayItem(item, expectedDate)),
+  );
+}
+
+function workspaceContextHeaders(
   workspaceId: string,
   secret: string,
   nowSeconds: number,
@@ -291,17 +383,13 @@ function planningContextHeaders(
   });
 }
 
-/**
- * Authenticates the browser session with Identity, derives workspace authority,
- * and reads validated Planning-owned Today state without forwarding credentials.
- */
-export async function composePlanningToday(
+async function composePlanning(
   cookie: string | undefined,
   date: string,
   environment: GatewayTodayEnvironment,
-  fetcher: GatewayTodayFetch = fetch,
-  nowSeconds = Math.floor(Date.now() / 1000),
-): Promise<GatewayTodayView> {
+  fetcher: GatewayTodayFetch,
+  nowSeconds: number,
+): Promise<PlanningComposition> {
   const safeDate = requireDate(date);
   const safeCookie = requireCookie(cookie);
   const identityOrigin = requireServiceOrigin(
@@ -310,7 +398,7 @@ export async function composePlanningToday(
   const planningOrigin = requireServiceOrigin(
     environment.PLANNING_SERVICE_ORIGIN,
   );
-  const secret = requireGatewaySecret(
+  const planningSecret = requireGatewaySecret(
     environment.PLANNING_GATEWAY_CONTEXT_SECRET,
   );
   const correlationId = randomUUID();
@@ -351,7 +439,7 @@ export async function composePlanningToday(
       {
         method: 'GET',
         headers: serviceHeaders({
-          ...planningContextHeaders(workspaceId, secret, nowSeconds),
+          ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds),
           'x-correlation-id': correlationId,
         }),
         cache: 'no-store',
@@ -378,11 +466,142 @@ export async function composePlanningToday(
     await readBoundedJson(planningResponse),
     safeDate,
   );
+  return Object.freeze({
+    date: safeDate,
+    workspaceId,
+    planning,
+    correlationId,
+  });
+}
 
+/**
+ * Authenticates through Identity and returns the protected Planning slice only.
+ * This compatibility entry point intentionally preserves its legacy degraded marker.
+ */
+export async function composePlanningToday(
+  cookie: string | undefined,
+  date: string,
+  environment: GatewayTodayEnvironment,
+  fetcher: GatewayTodayFetch = fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<GatewayPlanningTodayView> {
+  const composed = await composePlanning(
+    cookie,
+    date,
+    environment,
+    fetcher,
+    nowSeconds,
+  );
   return Object.freeze({
     version: 'life-os.gateway-today.v1',
-    date: safeDate,
-    planning,
+    date: composed.date,
+    planning: composed.planning,
     degraded: Object.freeze(['habits_not_composed'] as const),
   });
+}
+
+/**
+ * Composes authenticated Planning and optional Habit Today evidence without
+ * forwarding browser credentials or reading another service's persistence.
+ */
+export async function composeToday(
+  cookie: string | undefined,
+  date: string,
+  environment: GatewayTodayEnvironment,
+  fetcher: GatewayTodayFetch = fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<GatewayTodayView> {
+  const composed = await composePlanning(
+    cookie,
+    date,
+    environment,
+    fetcher,
+    nowSeconds,
+  );
+  const habitOriginValue = environment.HABIT_SERVICE_ORIGIN;
+  const habitSecretValue = environment.HABIT_GATEWAY_CONTEXT_SECRET;
+  if (!habitOriginValue && !habitSecretValue) {
+    return Object.freeze({
+      version: 'life-os.gateway-today.v1',
+      date: composed.date,
+      planning: composed.planning,
+      habits: Object.freeze([]),
+      degraded: Object.freeze(['habits_not_configured'] as const),
+    });
+  }
+
+  let habitOrigin: string;
+  let habitSecret: string;
+  try {
+    habitOrigin = requireServiceOrigin(habitOriginValue);
+    habitSecret = requireGatewaySecret(habitSecretValue);
+  } catch {
+    return Object.freeze({
+      version: 'life-os.gateway-today.v1',
+      date: composed.date,
+      planning: composed.planning,
+      habits: Object.freeze([]),
+      degraded: Object.freeze(['habits_unavailable'] as const),
+    });
+  }
+
+  let habitResponse: Response;
+  try {
+    const habitUrl = new URL('/v1/habits/today', habitOrigin);
+    habitUrl.searchParams.set('date', composed.date);
+    habitResponse = await fetcher(habitUrl, {
+      method: 'GET',
+      headers: serviceHeaders({
+        ...workspaceContextHeaders(
+          composed.workspaceId,
+          habitSecret,
+          nowSeconds,
+        ),
+        'x-correlation-id': composed.correlationId,
+      }),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+  } catch {
+    return Object.freeze({
+      version: 'life-os.gateway-today.v1',
+      date: composed.date,
+      planning: composed.planning,
+      habits: Object.freeze([]),
+      degraded: Object.freeze(['habits_unavailable'] as const),
+    });
+  }
+  if (habitResponse.status !== 200) {
+    await discardBody(habitResponse);
+    return Object.freeze({
+      version: 'life-os.gateway-today.v1',
+      date: composed.date,
+      planning: composed.planning,
+      habits: Object.freeze([]),
+      degraded: Object.freeze(['habits_unavailable'] as const),
+    });
+  }
+
+  try {
+    const habits = requireHabitToday(
+      await readBoundedJson(habitResponse),
+      composed.date,
+    );
+    return Object.freeze({
+      version: 'life-os.gateway-today.v1',
+      date: composed.date,
+      planning: composed.planning,
+      habits,
+      degraded: Object.freeze([]),
+    });
+  } catch {
+    return Object.freeze({
+      version: 'life-os.gateway-today.v1',
+      date: composed.date,
+      planning: composed.planning,
+      habits: Object.freeze([]),
+      degraded: Object.freeze(['habits_unavailable'] as const),
+    });
+  }
 }
