@@ -39,6 +39,29 @@ class MemoryInstallationStore implements PluginInstallationStore {
   }
 }
 
+class CoordinatedInstallationStore extends MemoryInstallationStore {
+  private absentReads = 0;
+  private releaseAbsentReads: (() => void) | undefined;
+  private readonly absentReadBarrier = new Promise<void>((resolve) => {
+    this.releaseAbsentReads = resolve;
+  });
+
+  override async findById(
+    installationId: string,
+  ): Promise<PluginInstallationRecord | undefined> {
+    const existing = this.records.get(installationId);
+    if (existing) {
+      return existing;
+    }
+    this.absentReads += 1;
+    if (this.absentReads === 2) {
+      this.releaseAbsentReads?.();
+    }
+    await this.absentReadBarrier;
+    return existing;
+  }
+}
+
 function application(store = new MemoryInstallationStore()): {
   readonly service: PluginInstallationApplication;
   readonly store: MemoryInstallationStore;
@@ -137,6 +160,35 @@ describe('PluginInstallationApplication', () => {
       }),
     ).rejects.toBeInstanceOf(PluginInstallationError);
     expect(store.saveCalls).toBe(1);
+  });
+
+  it('rejects a conflicting concurrent installation identity instead of last-write-wins', async () => {
+    const store = new CoordinatedInstallationStore();
+    const service = new PluginInstallationApplication(store, () => FIXED_TIME);
+    const trustedContext = {
+      workspaceId: WORKSPACE_ALPHA,
+      actorUserId: USER_ALPHA,
+    } as const;
+
+    const outcomes = await Promise.allSettled([
+      service.install({
+        trustedContext,
+        installationId: INSTALLATION_ID,
+        manifest: MANIFEST,
+        grantedCapabilities: [TASK_COMPLETED],
+      }),
+      service.install({
+        trustedContext,
+        installationId: INSTALLATION_ID,
+        manifest: MANIFEST,
+        grantedCapabilities: [HABIT_COMPLETED],
+      }),
+    ]);
+
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+    expect(store.saveCalls).toBe(1);
+    expect(store.records.get(INSTALLATION_ID)?.grantedCapabilities).toHaveLength(1);
   });
 
   it('hides an installation from a different workspace and user authority', async () => {
