@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import {
   Body,
   Controller,
+  Delete,
   DynamicModule,
   Get,
   Headers,
@@ -9,12 +10,20 @@ import {
   HttpException,
   Inject,
   Module,
+  Param,
   Post,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
+  CalendarConnectionDisconnectApplication,
+  CalendarConnectionDisconnectEvidenceError,
+  type CalendarConnectionDisconnectResult,
+  CalendarConnectionDisconnectValidationError,
+} from './calendar-connection-disconnect';
+import {
   CalendarContextInvalidError,
   CalendarContextUnavailableError,
+  requireTrustedCalendarUserContext,
   requireTrustedCalendarWorkspaceContext,
 } from './calendar-service-context';
 import {
@@ -29,6 +38,9 @@ import {
 import { GoogleCalendarProvider } from './google-calendar-provider';
 
 export const CALENDAR_SYNC_SERVICE = Symbol('CALENDAR_SYNC_SERVICE');
+export const CALENDAR_CONNECTION_DISCONNECT_APPLICATION = Symbol(
+  'CALENDAR_CONNECTION_DISCONNECT_APPLICATION',
+);
 
 interface CalendarProblemDetails {
   type: 'about:blank';
@@ -118,17 +130,111 @@ export class CalendarSyncController {
   }
 }
 
+/** Authenticated hosted boundary for user-owned calendar-connection lifecycle actions. */
+@Controller()
+export class CalendarConnectionController {
+  /** Creates the controller over the application boundary only. */
+  constructor(
+    @Inject(CALENDAR_CONNECTION_DISCONNECT_APPLICATION)
+    private readonly disconnectApplication: CalendarConnectionDisconnectApplication,
+  ) {}
+
+  /** Revokes one locally owned connection without exposing provider credentials. */
+  @Delete('v1/calendar/connections/:connectionId')
+  @HttpCode(200)
+  async disconnectConnection(
+    @Param('connectionId') connectionId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') contextSignature: string | undefined,
+  ): Promise<CalendarConnectionDisconnectResult> {
+    try {
+      const authority = requireTrustedCalendarUserContext(
+        { workspaceId, userId, issuedAt, signature: contextSignature },
+        process.env.CALENDAR_GATEWAY_CONTEXT_SECRET,
+      );
+      const result = await this.disconnectApplication.disconnect(
+        authority,
+        connectionId,
+      );
+      if (!result) {
+        throw problem(
+          404,
+          'Calendar connection was not found',
+          'calendar_connection_not_found',
+        );
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof CalendarContextInvalidError) {
+        throw problem(
+          401,
+          'Calendar connection context is invalid',
+          'invalid_gateway_context',
+        );
+      }
+      if (error instanceof CalendarContextUnavailableError) {
+        throw problem(
+          503,
+          'Calendar connection context is unavailable',
+          'calendar_context_unavailable',
+        );
+      }
+      if (error instanceof CalendarConnectionDisconnectValidationError) {
+        throw problem(
+          400,
+          'Calendar connection input is invalid',
+          'invalid_request',
+        );
+      }
+      if (error instanceof CalendarConnectionDisconnectEvidenceError) {
+        throw problem(
+          503,
+          'Calendar connection persistence is unavailable',
+          'calendar_connection_unavailable',
+        );
+      }
+      throw problem(
+        503,
+        'Calendar connection operation is unavailable',
+        'calendar_connection_unavailable',
+      );
+    }
+  }
+}
+
 @Module({})
 export class CalendarAppModule {
-  static register(provider: CalendarProvider): DynamicModule {
+  /**
+   * Registers standalone calendar sync and, when supplied by the host, the
+   * authenticated user-owned connection lifecycle boundary.
+   */
+  static register(
+    provider: CalendarProvider,
+    disconnectApplication?: CalendarConnectionDisconnectApplication,
+  ): DynamicModule {
     return {
       module: CalendarAppModule,
-      controllers: [CalendarSyncController],
+      controllers: disconnectApplication
+        ? [CalendarSyncController, CalendarConnectionController]
+        : [CalendarSyncController],
       providers: [
         {
           provide: CALENDAR_SYNC_SERVICE,
           useFactory: (): CalendarSyncService => new CalendarSyncService(provider),
         },
+        ...(disconnectApplication
+          ? [
+              {
+                provide: CALENDAR_CONNECTION_DISCONNECT_APPLICATION,
+                useValue: disconnectApplication,
+              },
+            ]
+          : []),
       ],
     };
   }
