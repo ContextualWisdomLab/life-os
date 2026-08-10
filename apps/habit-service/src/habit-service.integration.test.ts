@@ -72,7 +72,10 @@ async function closeHarness(harness: TestHarness): Promise<void> {
 function signedWorkspaceHeaders(workspaceId: string): Headers {
   const issuedAt = String(Math.floor(Date.now() / 1000));
   const signature = createHmac('sha256', TEST_CONTEXT_SECRET)
-    .update(`life-os.workspace.v1\n${workspaceId.toLowerCase()}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.workspace.v1\n${workspaceId.toLowerCase()}\n${issuedAt}`,
+      'utf8',
+    )
     .digest('base64url');
   return new Headers({
     'x-life-os-workspace-id': workspaceId,
