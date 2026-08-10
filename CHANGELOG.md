@@ -38,6 +38,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.
 - The data-rights request ledger keeps personal export payloads out of durable audit rows and normalizes primary-key/idempotency collisions before dependency errors can escape the service boundary.
 - The commercial-development model account no longer performs Docker commands, never receives Docker-socket authority, and cannot trigger provider-wide model discovery through the credential bridge.
