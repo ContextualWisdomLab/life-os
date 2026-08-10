@@ -130,7 +130,18 @@ test('ADR index targets every material ADR and ADRs satisfy the quality contract
   const files = readdirSync(join(ROOT, 'docs/adr'))
     .filter((name) => /^\d{4}-.+\.md$/u.test(name))
     .sort();
-  const requiredNumbers = new Set(['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008', '0009']);
+  const requiredNumbers = new Set([
+    '0001',
+    '0002',
+    '0003',
+    '0004',
+    '0005',
+    '0006',
+    '0007',
+    '0008',
+    '0009',
+    '0010',
+  ]);
 
   for (const number of requiredNumbers) {
     assert.ok(files.some((name) => name.startsWith(`${number}-`)), `missing ADR ${number}`);
@@ -177,7 +188,13 @@ test('documentation claims are anchored to current source authority', () => {
   assert.match(agents, /Internal identifiers are opaque UUIDv4 strings/u);
   assert.match(dataRights, /UUID_V4_PATTERN/u);
   assert.match(dataRights, /-4\[0-9a-f\]\{3\}/u);
-  assert.match(architecture, /never read another service's database tables directly/u);
+  assert.match(architecture, /never read or mutate another service's database tables directly/u);
+  assert.match(architecture, /authentication ceremony time/u);
+  assert.match(architecture, /Durable Today synchronization is protected-main behavior/u);
+  assert.match(architecture, /signed trusted workspace context/u);
+  assert.match(architecture, /Privacy service owns purpose-bound sensitive-access decisions/u);
+  assert.match(architecture, /Notification service owns reminder occurrences/u);
+  assert.match(architecture, /docs\/PRD\.md/u);
   assert.match(dataModel, /does not authorize cross-service SQL joins/iu);
   assert.match(proposals, /requiresConfirmation: true/u);
   assert.match(proposals, /cannot execute its own operations/u);
@@ -196,4 +213,23 @@ test('canonical lifecycle reflects protected-main integrations and remaining gap
   assert.match(traceability, /#129 per-user calendar credentials/u);
   assert.match(traceability, /#130 plugin runtime delivery/u);
   assert.match(assessment, /old documentation PR #126 became materially diverged/u);
+});
+
+test('active successor work is represented without promoting it to protected-main truth', () => {
+  const prd = text('docs/PRD.md');
+  const traceability = text('docs/TRACEABILITY.md');
+  const contracts = text('docs/API_CONTRACTS.md');
+  const uml = text('docs/UML.md');
+  const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
+
+  assert.match(prd, /PR #146/u);
+  assert.match(prd, /PR #147/u);
+  assert.match(traceability, /PR #146/u);
+  assert.match(traceability, /PR #147/u);
+  assert.match(contracts, /PR #146/u);
+  assert.match(contracts, /PR #147/u);
+  assert.match(uml, /source head/u);
+  assert.match(uml, /synthetic merge/u);
+  assert.match(assessment, /machine-checkable documentation consistency.*Implemented on active PR/isu);
+  assert.match(assessment, /root Architecture.*Implemented on active PR/isu);
 });
