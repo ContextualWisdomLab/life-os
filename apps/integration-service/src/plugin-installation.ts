@@ -37,6 +37,13 @@ export interface PluginInstallationRecord {
   readonly revokedAt: string | null;
 }
 
+/** Atomic revocation request owned by the host persistence boundary. */
+export interface RevokePluginInstallation {
+  readonly installationId: string;
+  readonly workspaceId: string;
+  readonly revokedAt: string;
+}
+
 /** Persistence port implemented by the LifeOS host, never by a plugin. */
 export interface PluginInstallationStore {
   /**
@@ -49,7 +56,15 @@ export interface PluginInstallationStore {
    */
   createIfAbsent(record: PluginInstallationRecord): Promise<PluginInstallationRecord>;
   findById(installationId: string): Promise<PluginInstallationRecord | undefined>;
-  save(record: PluginInstallationRecord): Promise<void>;
+  /**
+   * Atomically transitions one active workspace-owned installation to revoked,
+   * returning the already-revoked durable winner for an exact replay.
+   *
+   * Durable implementations must scope the update by installation, workspace and
+   * lifecycle state so concurrent revocations cannot create last-write-wins audit
+   * timestamps or revive a revoked record.
+   */
+  revokeActive(input: RevokePluginInstallation): Promise<PluginInstallationRecord | undefined>;
 }
 
 /** Input for one idempotent, explicitly granted plugin installation. */
@@ -194,26 +209,27 @@ export class PluginInstallationApplication {
     return freezeRecord(existing);
   }
 
-  /** Revokes future use while retaining immutable host-owned installation evidence. */
+  /** Revokes future use while preserving one immutable durable lifecycle transition. */
   async revoke(
     trustedContext: PluginInstallationContext,
     installationIdInput: string,
   ): Promise<PluginInstallationRecord> {
     const context = requireContext(trustedContext);
     const installationId = requireUuidV4(installationIdInput);
-    const existing = await this.store.findById(installationId);
-    if (!existing || existing.workspaceId !== context.workspaceId) {
-      return invalid();
-    }
-    if (existing.status === 'revoked') {
-      return freezeRecord(existing);
-    }
-    const revoked = freezeRecord({
-      ...existing,
-      status: 'revoked',
+    const durable = await this.store.revokeActive({
+      installationId,
+      workspaceId: context.workspaceId,
       revokedAt: this.now().toISOString(),
     });
-    await this.store.save(revoked);
-    return revoked;
+    if (
+      !durable ||
+      durable.installationId !== installationId ||
+      durable.workspaceId !== context.workspaceId ||
+      durable.status !== 'revoked' ||
+      durable.revokedAt === null
+    ) {
+      return invalid();
+    }
+    return freezeRecord(durable);
   }
 }
