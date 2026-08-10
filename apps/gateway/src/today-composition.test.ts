@@ -33,14 +33,39 @@ function cancellableJson(
   return { response, wasCancelled: () => cancelled };
 }
 
-function planningToday(): Readonly<Record<string, unknown>> {
+function planningToday(actions: readonly unknown[] = []): Readonly<Record<string, unknown>> {
   return {
     version: 'life-os.today.v1',
     aggregateId: '22222222-2222-4222-8222-222222222222',
     revision: '33333333-3333-4333-8333-333333333333',
     date: '2026-08-10',
-    actions: [],
+    actions,
   };
+}
+
+const ENVIRONMENT = {
+  IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
+  PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
+  PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
+} as const;
+
+async function expectPlanningUnavailable(planningResponse: Response): Promise<void> {
+  const fetcher = async (input: RequestInfo | URL) =>
+    String(input).endsWith('/v1/session')
+      ? json({ workspaceId: WORKSPACE_ID })
+      : planningResponse;
+  await expect(
+    composePlanningToday(
+      'session=opaque',
+      '2026-08-10',
+      ENVIRONMENT,
+      fetcher,
+      NOW_SECONDS,
+    ),
+  ).rejects.toMatchObject({
+    status: 503,
+    code: 'today_composition_unavailable',
+  });
 }
 
 describe('Gateway planning Today composition', () => {
@@ -56,11 +81,7 @@ describe('Gateway planning Today composition', () => {
     const result = await composePlanningToday(
       'session=opaque',
       '2026-08-10',
-      {
-        IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
-        PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-        PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
-      },
+      ENVIRONMENT,
       fetcher,
       NOW_SECONDS,
     );
@@ -92,6 +113,49 @@ describe('Gateway planning Today composition', () => {
     );
   });
 
+  it('validates and canonicalizes Planning action identity before forwarding', async () => {
+    const action = {
+      id: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+      title: 'Ship bounded Today composition',
+      status: 'open',
+    };
+    const fetcher = async (input: RequestInfo | URL) =>
+      String(input).endsWith('/v1/session')
+        ? json({ workspaceId: WORKSPACE_ID })
+        : json(planningToday([action]));
+
+    const result = await composePlanningToday(
+      'session=opaque',
+      '2026-08-10',
+      ENVIRONMENT,
+      fetcher,
+      NOW_SECONDS,
+    );
+
+    expect(result.planning.actions).toEqual([
+      { ...action, id: action.id.toLowerCase() },
+    ]);
+    expect(Object.isFrozen(result.planning.actions[0])).toBe(true);
+  });
+
+  it.each([
+    ['null action', null],
+    ['array action', []],
+    ['missing action id', { title: 'missing id' }],
+    ['invalid action id', { id: 'not-a-uuid' }],
+  ])('fails closed on %s evidence', async (_name, action) => {
+    await expectPlanningUnavailable(json(planningToday([action])));
+  });
+
+  it('rejects problem-json as a successful upstream representation', async () => {
+    await expectPlanningUnavailable(
+      new Response(JSON.stringify(planningToday()), {
+        status: 200,
+        headers: { 'content-type': 'application/problem+json' },
+      }),
+    );
+  });
+
   it('returns an authentication-required failure without calling Planning', async () => {
     const calls: string[] = [];
     const fetcher = async (input: RequestInfo | URL) => {
@@ -103,11 +167,7 @@ describe('Gateway planning Today composition', () => {
       composePlanningToday(
         'session=expired',
         '2026-08-10',
-        {
-          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
-          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
-        },
+        ENVIRONMENT,
         fetcher,
         NOW_SECONDS,
       ),
@@ -128,11 +188,7 @@ describe('Gateway planning Today composition', () => {
       composePlanningToday(
         'session=expired',
         '2026-08-10',
-        {
-          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
-          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
-        },
+        ENVIRONMENT,
         async () => identityFailure.response,
         NOW_SECONDS,
       ),
@@ -141,27 +197,7 @@ describe('Gateway planning Today composition', () => {
   });
 
   it('does not fabricate success when Planning is unavailable', async () => {
-    const fetcher = async (input: RequestInfo | URL) =>
-      String(input).endsWith('/v1/session')
-        ? json({ workspaceId: WORKSPACE_ID })
-        : json({ error: 'down' }, 503);
-
-    await expect(
-      composePlanningToday(
-        'session=opaque',
-        '2026-08-10',
-        {
-          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
-          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
-        },
-        fetcher,
-        NOW_SECONDS,
-      ),
-    ).rejects.toMatchObject({
-      status: 503,
-      code: 'today_composition_unavailable',
-    });
+    await expectPlanningUnavailable(json({ error: 'down' }, 503));
   });
 
   it('cancels unread Planning error bodies before returning dependency failure', async () => {
@@ -175,11 +211,7 @@ describe('Gateway planning Today composition', () => {
       composePlanningToday(
         'session=opaque',
         '2026-08-10',
-        {
-          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
-          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
-        },
+        ENVIRONMENT,
         fetcher,
         NOW_SECONDS,
       ),
@@ -191,26 +223,8 @@ describe('Gateway planning Today composition', () => {
   });
 
   it('fails closed on malformed Planning evidence', async () => {
-    const fetcher = async (input: RequestInfo | URL) =>
-      String(input).endsWith('/v1/session')
-        ? json({ workspaceId: WORKSPACE_ID })
-        : json({ ...planningToday(), aggregateId: 'not-a-uuid' });
-
-    await expect(
-      composePlanningToday(
-        'session=opaque',
-        '2026-08-10',
-        {
-          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
-          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
-          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
-        },
-        fetcher,
-        NOW_SECONDS,
-      ),
-    ).rejects.toMatchObject({
-      status: 503,
-      code: 'today_composition_unavailable',
-    });
+    await expectPlanningUnavailable(
+      json({ ...planningToday(), aggregateId: 'not-a-uuid' }),
+    );
   });
 });
