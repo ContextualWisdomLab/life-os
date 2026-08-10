@@ -159,6 +159,15 @@ function serviceHeaders(
   return headers;
 }
 
+/** Releases an unread upstream response body before the connection is reused. */
+async function discardBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Upstream body disposal is best-effort on an already failing path.
+  }
+}
+
 async function readBoundedText(response: Response): Promise<string> {
   const declaredLength = response.headers.get('content-length');
   if (
@@ -308,13 +317,17 @@ export async function composePlanningToday(
     throw unavailable();
   }
   if (identityResponse.status === 401) {
+    await discardBody(identityResponse);
     throw new GatewayTodayError(
       401,
       'authentication_required',
       'Authentication is required',
     );
   }
-  if (identityResponse.status !== 200) throw unavailable();
+  if (identityResponse.status !== 200) {
+    await discardBody(identityResponse);
+    throw unavailable();
+  }
   const workspaceId = requireWorkspaceId(await readBoundedJson(identityResponse));
 
   let planningResponse: Response;
@@ -336,13 +349,17 @@ export async function composePlanningToday(
     throw unavailable();
   }
   if (planningResponse.status === 404) {
+    await discardBody(planningResponse);
     throw new GatewayTodayError(
       404,
       'today_not_found',
       'Today aggregate was not found',
     );
   }
-  if (planningResponse.status !== 200) throw unavailable();
+  if (planningResponse.status !== 200) {
+    await discardBody(planningResponse);
+    throw unavailable();
+  }
   const planning = requirePlanningToday(
     await readBoundedJson(planningResponse),
     safeDate,
