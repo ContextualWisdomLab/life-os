@@ -101,9 +101,9 @@ flowchart TB
 
 ## 4. Calendar integration boundary
 
-Conflict-safe CalDAV/Google synchronization and signed trusted workspace context are protected-main behavior. The calendar service rejects the legacy model in which an arbitrary client-selected workspace header could become tenant authority.
+Conflict-safe CalDAV/Google synchronization, signed trusted workspace context and the first service-owned `calendar_connection` persistence foundation are protected-main behavior after PR #150. The calendar service rejects the legacy model in which an arbitrary client-selected workspace header could become tenant authority.
 
-PR #150 is **Implemented on active PR** for the first service-owned `calendar_connection` persistence foundation. The connection is scoped simultaneously to workspace and user, carries bounded provider/account/calendar metadata and normalized scopes, and refers to protected provider credential material through opaque handles. Its migration and repository do not become protected-main evidence before merge.
+A connection is scoped simultaneously to workspace and user, carries bounded provider/account/calendar metadata and normalized scopes, and refers to protected provider credential material through opaque handles. The durable table is owned by the `calendar_integration` service namespace rather than a generic shared schema.
 
 The complete hosted per-user lifecycle remains **Partial** under issue #129: authorization callback state/PKCE, concrete managed secret storage, refresh/revocation, discovery/selection and migration from the development provider configuration are still separate work.
 
