@@ -52,6 +52,21 @@ async function applyAuthenticationAgeMigrations(pool: Pool): Promise<void> {
   await pool.query(await readMigration(AUTHENTICATION_FINALIZATION_MIGRATION));
 }
 
+async function requireNoTemporaryDatabaseConnections(
+  adminClient: PoolClient,
+): Promise<void> {
+  const active = await adminClient.query<{ active_connections: string }>(
+    `SELECT count(*)::text AS active_connections
+     FROM pg_stat_activity
+     WHERE datname = $1
+       AND pid <> pg_backend_pid()`,
+    [TEMPORARY_DATABASE_NAME],
+  );
+  if (active.rows[0]?.active_connections !== '0') {
+    throw new Error('Temporary migration database still has active connections');
+  }
+}
+
 async function withTemporaryDatabase(
   execute: (pool: Pool) => Promise<void>,
 ): Promise<void> {
@@ -69,8 +84,9 @@ async function withTemporaryDatabase(
       TEMPORARY_DATABASE_LOCK_KEY,
     ]);
     lockHeld = true;
+    await requireNoTemporaryDatabaseConnections(adminClient);
     await adminClient.query(
-      'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
+      'DROP DATABASE IF EXISTS life_os_identity_migration_test',
     );
     await adminClient.query('CREATE DATABASE life_os_identity_migration_test');
     migrationPool = new Pool({
@@ -85,8 +101,9 @@ async function withTemporaryDatabase(
       try {
         if (lockHeld && adminClient) {
           try {
+            await requireNoTemporaryDatabaseConnections(adminClient);
             await adminClient.query(
-              'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
+              'DROP DATABASE IF EXISTS life_os_identity_migration_test',
             );
           } finally {
             await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
