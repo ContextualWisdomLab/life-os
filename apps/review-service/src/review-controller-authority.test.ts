@@ -128,38 +128,44 @@ afterEach(() => {
 });
 
 describe.sequential('Review controller tenant authority contract', () => {
-  it('rejects a browser-selected workspace header without signed context', async () => {
-    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
-    const service = serviceSpies();
-    const controller = controllerWith(service);
-    const headers: RouteHeaders = {
-      workspaceId: WORKSPACE_ID,
-      issuedAt: undefined,
-      signature: undefined,
-    };
+  it(
+    'rejects a browser-selected workspace header without signed context',
+    async () => {
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+      const service = serviceSpies();
+      const controller = controllerWith(service);
+      const headers: RouteHeaders = {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: undefined,
+        signature: undefined,
+      };
 
-    for (const route of ROUTES) {
-      vi.clearAllMocks();
-      expect(await rejectedStatus(route.invoke(controller, headers))).toBe(401);
-      expect(service[route.serviceMethod], route.name).not.toHaveBeenCalled();
-    }
-  });
+      for (const route of ROUTES) {
+        vi.clearAllMocks();
+        expect(await rejectedStatus(route.invoke(controller, headers))).toBe(401);
+        expect(service[route.serviceMethod], route.name).not.toHaveBeenCalled();
+      }
+    },
+  );
 
-  it('passes only the verified workspace to every Review domain route', async () => {
-    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const service = serviceSpies();
-    const controller = controllerWith(service);
+  it(
+    'passes only the verified workspace to every Review domain route',
+    async () => {
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const service = serviceSpies();
+      const controller = controllerWith(service);
 
-    for (const route of ROUTES) {
-      vi.clearAllMocks();
-      await route.invoke(controller, signedHeaders(route, nowSeconds));
-      expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
-      expect(service[route.serviceMethod].mock.calls[0]?.[0], route.name).toBe(
-        WORKSPACE_ID,
-      );
-    }
-  });
+      for (const route of ROUTES) {
+        vi.clearAllMocks();
+        await route.invoke(controller, signedHeaders(route, nowSeconds));
+        expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
+        expect(service[route.serviceMethod].mock.calls[0]?.[0], route.name).toBe(
+          WORKSPACE_ID,
+        );
+      }
+    },
+  );
 
   it('rejects untrusted contexts before every Review domain call', async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);

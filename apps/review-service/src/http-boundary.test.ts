@@ -55,12 +55,7 @@ function expectTrustedContextRejection(
   code: string,
 ): void {
   const operation = () =>
-    requireTrustedWorkspaceContext(
-      headers,
-      secret,
-      requestBinding,
-      nowSeconds,
-    );
+    requireTrustedWorkspaceContext(headers, secret, requestBinding, nowSeconds);
   expect(operation).toThrow(HttpException);
 
   let thrown: unknown;
