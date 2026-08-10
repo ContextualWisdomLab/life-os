@@ -5,6 +5,7 @@ const INSTALLATION_ID = '11111111-1111-4111-8111-111111111111';
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const INSTALLED_AT = '2026-08-10T02:00:00.000Z';
+const REPLAY_AT = '2026-08-10T02:30:00.000Z';
 const REVOKED_AT = '2026-08-10T03:00:00.000Z';
 
 interface SqlCall {
@@ -43,7 +44,7 @@ function activeRow(overrides: Readonly<Record<string, unknown>> = {}) {
   };
 }
 
-function candidate(): PluginInstallationRecord {
+function candidate(installedAt = INSTALLED_AT): PluginInstallationRecord {
   return {
     installationId: INSTALLATION_ID,
     workspaceId: WORKSPACE_ID,
@@ -53,7 +54,7 @@ function candidate(): PluginInstallationRecord {
     manifestSha256: 'a'.repeat(64),
     grantedCapabilities: ['task.completed'],
     status: 'active',
-    installedAt: INSTALLED_AT,
+    installedAt,
     revokedAt: null,
   };
 }
@@ -91,7 +92,7 @@ describe('PostgresPluginInstallationStore', () => {
     ]);
   });
 
-  it('returns the durable winner after an installation-id conflict without widening tenant authority', async () => {
+  it('returns the original durable timestamp after an exact installation-id replay', async () => {
     const module = await repositoryModule();
     const Store = module.PostgresPluginInstallationStore as new (
       client: RecordingSqlClient,
@@ -99,7 +100,7 @@ describe('PostgresPluginInstallationStore', () => {
     const client = new RecordingSqlClient([[], [activeRow()]]);
     const store = new Store(client);
 
-    await expect(store.createIfAbsent(candidate())).resolves.toEqual(candidate());
+    await expect(store.createIfAbsent(candidate(REPLAY_AT))).resolves.toEqual(candidate());
     expect(client.calls).toHaveLength(2);
     expect(client.calls[1]?.text).toContain('WHERE installation_id = $1::uuid');
     expect(client.calls[1]?.text).toContain('workspace_id = $2::uuid');
