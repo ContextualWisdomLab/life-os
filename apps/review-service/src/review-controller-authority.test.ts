@@ -138,9 +138,10 @@ describe.sequential('Review controller tenant authority contract', () => {
       vi.clearAllMocks();
       await route.invoke(controller, headers);
       expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
-      expect(service[route.serviceMethod].mock.calls[0]?.[0], route.name).toBe(
-        WORKSPACE_ID,
-      );
+      expect(
+        service[route.serviceMethod].mock.calls[0]?.[0],
+        route.name,
+      ).toBe(WORKSPACE_ID);
     }
   });
 
