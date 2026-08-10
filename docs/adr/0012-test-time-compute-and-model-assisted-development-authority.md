@@ -29,7 +29,7 @@ Protected-main `AGENTS.md` already requires a strong single-model baseline, expl
 ## Decision
 
 1. Every material model-evaluation campaign includes a strong single-model route as the mandatory comparison baseline.
-2. Reasoning effort, workflow stages, planner/worker/verifier/synthesizer roles, task decomposition, recursion depth, access lists/communication topology, homogeneous-versus-heterogeneous model pools and verification strategy are explicit experimental/control dimensions when supported by the exact dependency revision.
+2. Reasoning effort, workflow stages, role-specific reasoning effort for planner/worker/verifier/synthesizer roles, task decomposition, recursion depth, access lists/communication topology, homogeneous-versus-heterogeneous model pools and verification strategy are explicit experimental/control dimensions when supported by the exact dependency revision.
 3. Unsupported controls remain explicitly unavailable; LifeOS does not simulate or silently infer them.
 4. Deeper orchestration is selected only when retained LifeOS evidence shows a material quality or heterogeneous-capability benefit without unacceptable safety/reliability regression under a reasonably comparable budget. This is a LifeOS product inference, not a claim of universal multi-agent superiority.
 5. Latency, token usage and provider cost are recorded for capacity/cost review but are not the sole or primary optimization objective.
@@ -51,9 +51,9 @@ Protected-main `AGENTS.md` already requires a strong single-model baseline, expl
 
 Missing provider credentials, unavailable provider/model inventory, unsupported orchestration controls, bounded provider failures or stochastic evaluation failures produce explicit sanitized unavailable/failure evidence. They do not fabricate quality results and do not weaken deterministic gates. Recovery is a later bounded rerun against an exact LifeOS/dependency revision or a reviewed fallback profile. A malformed report, unsafe credential/materialization path, invalid dependency identity or deterministic test failure fails closed.
 
-## Security, privacy, and governance impact
+## Security and privacy impact
 
-Model execution receives only the minimum inputs and credentials required by the bounded evaluation/development operation. Raw prompts, raw responses, hidden reasoning, bearer material, provider credentials and unnecessary tenant content are excluded from retained artifacts. Independent review and merge/release governance remain separate authorities. Model output is untrusted even when the provider succeeds.
+Model execution receives only the minimum inputs and credentials required by the bounded evaluation/development operation. Raw prompts, raw responses, hidden reasoning, bearer material, provider credentials and unnecessary tenant content are excluded from retained artifacts. Independent review and merge/release governance remain separate authorities. Model output is untrusted even when the provider succeeds. Governance impact is explicit: development-model identity cannot become counted independent review, merge or release authority.
 
 ## Compatibility and migration
 
