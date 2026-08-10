@@ -4,6 +4,7 @@ import {
   PluginInstallationError,
   type PluginInstallationRecord,
   type PluginInstallationStore,
+  type RevokePluginInstallation,
 } from './plugin-installation';
 import { PLUGIN_CONTRACT_VERSION, type PluginManifest } from '@life-os/plugin-sdk';
 
@@ -45,9 +46,24 @@ class MemoryInstallationStore implements PluginInstallationStore {
     return this.records.get(installationId);
   }
 
-  async save(record: PluginInstallationRecord): Promise<void> {
+  async revokeActive(
+    input: RevokePluginInstallation,
+  ): Promise<PluginInstallationRecord | undefined> {
+    const existing = this.records.get(input.installationId);
+    if (!existing || existing.workspaceId !== input.workspaceId) {
+      return undefined;
+    }
+    if (existing.status === 'revoked') {
+      return existing;
+    }
+    const revoked: PluginInstallationRecord = Object.freeze({
+      ...existing,
+      status: 'revoked',
+      revokedAt: input.revokedAt,
+    });
     this.saveCalls += 1;
-    this.records.set(record.installationId, record);
+    this.records.set(input.installationId, revoked);
+    return revoked;
   }
 }
 
