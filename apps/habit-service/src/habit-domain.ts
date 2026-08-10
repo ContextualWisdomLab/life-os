@@ -390,7 +390,8 @@ export class HabitService {
 
     for (const habit of habits) {
       if (
-        generateHabitOccurrences(habit, safeLocalDate, safeLocalDate).length !== 1
+        generateHabitOccurrences(habit, safeLocalDate, safeLocalDate).length !==
+        1
       ) {
         continue;
       }
