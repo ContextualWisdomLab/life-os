@@ -26,8 +26,8 @@ This registry summarizes repository-level API/event invariants. Concrete route s
 | Calendar sync request | calendar integration | Implemented on protected main | PR #139 signed workspace context |
 | Calendar connection registry | calendar integration | Implemented on protected main | PR #150; workspace+user scoped metadata + opaque secret references |
 | Atomic calendar connection revocation | calendar integration | Implemented on protected main | PR #153; exact tenant+user scope and revocation replay |
-| Signed calendar workspace+user context | calendar integration | Implemented on active PR | PR #155; distinct short-lived `life-os.calendar-user.v1` authority |
-| Complete per-user calendar credential lifecycle | calendar integration | Partial | issue #129; OAuth/PKCE, managed secret backend, refresh/provider revoke, discovery/selection remain |
+| Signed calendar workspace+user context | calendar integration | Implemented on protected main | PR #155 / `life-os.calendar-user.v1` |
+| Complete per-user calendar credential lifecycle | calendar integration | Partial | issue #129; public connection/disconnect composition, OAuth/PKCE, managed secret backend, refresh/provider revoke, discovery/selection remain |
 | Reminder scheduling/delivery | notification-service | Implemented on protected main | bounded claims/retries/outcomes |
 | AI proposal/evidence/decision | AI proposal service | Implemented on protected main | inert proposal + explicit decision |
 | Purpose-bound sensitive access | privacy-service | Implemented on protected main | actor/resource/purpose/lifetime bound |
@@ -37,8 +37,9 @@ This registry summarizes repository-level API/event invariants. Concrete route s
 | Complete cross-domain export/erasure | identity coordinator + contributors | Partial | issue #55 |
 | Plugin manifest/event validation | integration-service | Implemented on protected main | versioned SDK/validation |
 | Explicit plugin installation grants | integration-service | Implemented on protected main | PR #151; explicit subset, replay/conflict/revocation |
+| Durable plugin installation persistence | integration-service | Implemented on active PR | PR #156; installation+workspace+installing-user scoped persistence; no credential/delivery authority |
 | Complete plugin secret/outbound delivery runtime | integration-service | Partial | issue #130 |
-| Source-head vs merge-tree verification | repository workflows | Implemented on active PR | clean successor PR #154; #147 superseded; ADR 0010 |
+| Source/live-base/integration verification evidence | repository workflows | Implemented on protected main | PR #154 / ADR 0010; residual central scanner attribution remains #132 |
 
 ## Data-rights status
 
@@ -68,15 +69,23 @@ PR #153 adds atomic tenant+user-scoped connection revocation and exact replay be
 
 ### Hosted user authority
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-PR #155 introduces a short-lived HMAC context that binds both workspace and user UUIDv4 identities under a version distinct from workspace-only sync context. It rejects identifier substitution, stale/future/malformed evidence and unusable verifier configuration. Public disconnect/runtime composition is a later #129 slice.
+PR #155 introduces a short-lived HMAC context that binds both workspace and user UUIDv4 identities under `life-os.calendar-user.v1`, distinct from workspace-only synchronization context. It rejects identifier substitution, stale/future/malformed evidence and unusable verifier configuration. Public connection/disconnect and managed-credential runtime composition remain later #129 slices.
 
-## Plugin installation authority
+## Plugin installation authority and persistence
+
+### Installation grants
 
 **Status:** Implemented on protected main
 
-PR #151 treats a validated manifest as requested intent, not granted authority. The host grants an explicit tenant-scoped capability subset, accepts exact replay, rejects conflicting reuse, hides cross-tenant/user existence and preserves revocation evidence. Durable secret persistence and outbound delivery remain incomplete under #130.
+PR #151 treats a validated manifest as requested intent, not granted authority. The host grants an explicit tenant-scoped capability subset, accepts exact replay, rejects conflicting reuse, hides cross-tenant/user existence and preserves revocation evidence.
+
+### Durable installation persistence
+
+**Status:** Implemented on active PR
+
+PR #156 persists bounded installation identity, workspace, installing-user, exact manifest/version/digest, granted capabilities and lifecycle evidence in the integration service. Direct reads and revocation operations carry workspace and installing-user authority into fixed parameterized SQL rather than widening by installation ID and filtering afterward. Plaintext plugin credential/KMS material and outbound delivery remain outside this active slice and incomplete under #130.
 
 ## Events
 
@@ -88,8 +97,8 @@ Breaking route/event/schema semantics require explicit versioning or a reviewed 
 
 ## Verification evidence identity
 
-**Status:** Accepted architecture
+**Status:** Implemented on protected main
 
-`source_head_sha`, PR-base snapshot, independently resolved `live_base_tip_sha`, `merge_tree_sha`, `workflow_checkout_sha`, protected-main identity and release-source identity are separate authorities. Synthetic integration success is not exact contributor-source verification.
+`source_head_sha`, `pr_base_snapshot_sha`, independently resolved `live_base_tip_sha`, separately classified integration/synthetic tree identity, `workflow_checkout_sha`, protected-main identity and release-source identity are separate authorities. Integration success is not exact contributor-source verification.
 
-ADR 0010 is the durable decision. Clean successor PR #154 is `Implemented on active PR`; #147 is superseded. Issue #132 remains open until the correction integrates and residual required-workflow attribution is reconciled.
+ADR 0010 is the durable decision. PR #154 merged as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`: LifeOS source jobs explicitly bind contributor head, AppGuardrail SARIF binds the analyzed source ref/SHA, and merge compatibility reconstructs the integration tree from fresh current source and live base. Issue #132 remains open only for residual central reusable SAST/Security scanner checkout and attribution classification; their umbrella green status cannot silently promote one evidence identity into another.
