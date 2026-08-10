@@ -14,6 +14,8 @@ const MAXIMUM_PLUGIN_ID_LENGTH = 256;
 const MAXIMUM_CONTRACT_VERSION_LENGTH = 128;
 const MAXIMUM_CAPABILITY_COUNT = 32;
 const MAXIMUM_CAPABILITY_LENGTH = 256;
+const MAXIMUM_REPLAY_ATTEMPTS = 3;
+const REPLAY_DELAY_MILLISECONDS = 10;
 
 /** Result returned by the bounded installation SQL client. */
 export interface PluginInstallationSqlResult<Row> {
@@ -47,6 +49,7 @@ export class PluginInstallationPersistenceEvidenceError extends Error {
   }
 }
 
+/** Untrusted database row shape validated before it becomes installation evidence. */
 interface PluginInstallationRow {
   installation_id: unknown;
   workspace_id: unknown;
@@ -60,14 +63,17 @@ interface PluginInstallationRow {
   revoked_at: unknown;
 }
 
+/** Fails closed for malformed caller input without reflecting the bad value. */
 function invalidInput(): never {
   throw new PluginInstallationPersistenceValidationError();
 }
 
+/** Fails closed when PostgreSQL returns ambiguous or impossible durable evidence. */
 function invalidEvidence(): never {
   throw new PluginInstallationPersistenceEvidenceError();
 }
 
+/** Normalizes a caller-supplied UUIDv4 or rejects it before SQL execution. */
 function inputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -75,6 +81,7 @@ function inputUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Normalizes a persisted UUIDv4 or rejects corrupted database evidence. */
 function storedUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -82,6 +89,7 @@ function storedUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Parses one canonical UTC instant using the caller-selected fail-closed path. */
 function parseInstant(value: unknown, invalid: () => never): string {
   const candidate =
     value instanceof Date
@@ -99,6 +107,7 @@ function parseInstant(value: unknown, invalid: () => never): string {
   return candidate;
 }
 
+/** Validates bounded caller text before it can become a SQL parameter. */
 function boundedInputText(value: unknown, maximumLength: number): string {
   if (
     typeof value !== 'string' ||
@@ -111,6 +120,7 @@ function boundedInputText(value: unknown, maximumLength: number): string {
   return value;
 }
 
+/** Validates bounded persisted text before it can become trusted evidence. */
 function boundedStoredText(value: unknown, maximumLength: number): string {
   if (
     typeof value !== 'string' ||
@@ -123,6 +133,7 @@ function boundedStoredText(value: unknown, maximumLength: number): string {
   return value;
 }
 
+/** Validates a caller-supplied lowercase SHA-256 digest. */
 function inputDigest(value: unknown): string {
   if (typeof value !== 'string' || !SHA256_PATTERN.test(value)) {
     return invalidInput();
@@ -130,6 +141,7 @@ function inputDigest(value: unknown): string {
   return value;
 }
 
+/** Validates a persisted lowercase SHA-256 digest. */
 function storedDigest(value: unknown): string {
   if (typeof value !== 'string' || !SHA256_PATTERN.test(value)) {
     return invalidEvidence();
@@ -137,6 +149,7 @@ function storedDigest(value: unknown): string {
   return value;
 }
 
+/** Requires a bounded, unique, already-sorted caller capability set. */
 function inputCapabilities(value: unknown): readonly string[] {
   if (!Array.isArray(value) || value.length > MAXIMUM_CAPABILITY_COUNT) {
     return invalidInput();
@@ -154,6 +167,7 @@ function inputCapabilities(value: unknown): readonly string[] {
   return Object.freeze(normalized);
 }
 
+/** Requires persisted capabilities to remain bounded, unique, and canonical. */
 function storedCapabilities(value: unknown): readonly string[] {
   if (!Array.isArray(value) || value.length > MAXIMUM_CAPABILITY_COUNT) {
     return invalidEvidence();
@@ -171,6 +185,7 @@ function storedCapabilities(value: unknown): readonly string[] {
   return Object.freeze(normalized);
 }
 
+/** Returns at most one row and rejects ambiguous duplicate durable evidence. */
 function oneOrUndefined<Row>(rows: readonly Row[]): Row | undefined {
   if (rows.length > 1) {
     return invalidEvidence();
@@ -178,6 +193,7 @@ function oneOrUndefined<Row>(rows: readonly Row[]): Row | undefined {
   return rows[0];
 }
 
+/** Validates and freezes one new active installation before persistence. */
 function validateCreate(record: PluginInstallationRecord): PluginInstallationRecord {
   if (record.status !== 'active' || record.revokedAt !== null) {
     return invalidInput();
@@ -199,16 +215,24 @@ function validateCreate(record: PluginInstallationRecord): PluginInstallationRec
   });
 }
 
+/** Validates revocation authority including installation, workspace, and installer. */
 function validateRevocation(
   input: RevokePluginInstallation,
 ): RevokePluginInstallation {
   return Object.freeze({
     installationId: inputUuid(input.installationId),
     workspaceId: inputUuid(input.workspaceId),
+    installedByUserId: inputUuid(input.installedByUserId),
     revokedAt: parseInstant(input.revokedAt, invalidInput),
   });
 }
 
+/**
+ * Converts one untrusted row into a coherent installation record.
+ *
+ * Lifecycle/timestamp contradictions and malformed identifiers fail closed rather
+ * than becoming application authority.
+ */
 function parseRow(row: PluginInstallationRow): PluginInstallationRecord {
   const status =
     row.installation_status === 'active' || row.installation_status === 'revoked'
@@ -244,6 +268,13 @@ function parseRow(row: PluginInstallationRow): PluginInstallationRecord {
   });
 }
 
+/**
+ * Confirms that durable active authority is the same immutable installation.
+ *
+ * `installedAt` is intentionally not compared: on an exact idempotent replay the
+ * original durable timestamp is authoritative and a later retry timestamp must
+ * not rewrite history.
+ */
 function exactCandidate(
   actual: PluginInstallationRecord,
   expected: PluginInstallationRecord,
@@ -262,6 +293,13 @@ function exactCandidate(
       (capability, index) => capability === expected.grantedCapabilities[index],
     )
   );
+}
+
+/** Waits briefly before another conflict-winner visibility probe. */
+async function waitForReplayVisibility(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, REPLAY_DELAY_MILLISECONDS);
+  });
 }
 
 const RETURNING_COLUMNS = `installation_id, workspace_id, installed_by_user_id,
@@ -298,14 +336,22 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
       ],
     );
     let row = oneOrUndefined(inserted.rows);
-    if (!row) {
+    for (
+      let attempt = 0;
+      !row && attempt < MAXIMUM_REPLAY_ATTEMPTS;
+      attempt += 1
+    ) {
+      if (attempt > 0) {
+        await waitForReplayVisibility();
+      }
       const existing = await this.client.query<PluginInstallationRow>(
         `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_installation_record
          WHERE installation_id = $1::uuid
            AND workspace_id = $2::uuid
+           AND installed_by_user_id = $3::uuid
          LIMIT 2`,
-        [safe.installationId, safe.workspaceId],
+        [safe.installationId, safe.workspaceId, safe.installedByUserId],
       );
       row = oneOrUndefined(existing.rows);
     }
@@ -319,20 +365,23 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
     return durable;
   }
 
-  /** Reads one installation only inside the already-authenticated workspace scope. */
+  /** Reads one installation only inside authenticated workspace-and-user scope. */
   async findById(
     installationIdInput: string,
     workspaceIdInput: string,
+    installedByUserIdInput: string,
   ): Promise<PluginInstallationRecord | undefined> {
     const installationId = inputUuid(installationIdInput);
     const workspaceId = inputUuid(workspaceIdInput);
+    const installedByUserId = inputUuid(installedByUserIdInput);
     const result = await this.client.query<PluginInstallationRow>(
       `SELECT ${RETURNING_COLUMNS}
        FROM plugin_integration.plugin_installation_record
        WHERE installation_id = $1::uuid
          AND workspace_id = $2::uuid
+         AND installed_by_user_id = $3::uuid
        LIMIT 2`,
-      [installationId, workspaceId],
+      [installationId, workspaceId, installedByUserId],
     );
     const row = oneOrUndefined(result.rows);
     if (!row) {
@@ -341,14 +390,15 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
     const durable = parseRow(row);
     if (
       durable.installationId !== installationId ||
-      durable.workspaceId !== workspaceId
+      durable.workspaceId !== workspaceId ||
+      durable.installedByUserId !== installedByUserId
     ) {
       return invalidEvidence();
     }
     return durable;
   }
 
-  /** Atomically revokes active workspace-owned authority or returns an exact revoked replay. */
+  /** Atomically revokes installer-owned authority or returns an exact revoked replay. */
   async revokeActive(
     input: RevokePluginInstallation,
   ): Promise<PluginInstallationRecord | undefined> {
@@ -356,13 +406,19 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
     const updated = await this.client.query<PluginInstallationRow>(
       `UPDATE plugin_integration.plugin_installation_record
        SET installation_status = 'revoked',
-           revoked_at = $3::timestamptz
+           revoked_at = $4::timestamptz
        WHERE installation_id = $1::uuid
          AND workspace_id = $2::uuid
+         AND installed_by_user_id = $3::uuid
          AND installation_status = 'active'
-         AND installed_at <= $3::timestamptz
+         AND installed_at <= $4::timestamptz
        RETURNING ${RETURNING_COLUMNS}`,
-      [safe.installationId, safe.workspaceId, safe.revokedAt],
+      [
+        safe.installationId,
+        safe.workspaceId,
+        safe.installedByUserId,
+        safe.revokedAt,
+      ],
     );
     let row = oneOrUndefined(updated.rows);
     if (!row) {
@@ -371,9 +427,10 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
          FROM plugin_integration.plugin_installation_record
          WHERE installation_id = $1::uuid
            AND workspace_id = $2::uuid
+           AND installed_by_user_id = $3::uuid
            AND installation_status = 'revoked'
          LIMIT 2`,
-        [safe.installationId, safe.workspaceId],
+        [safe.installationId, safe.workspaceId, safe.installedByUserId],
       );
       row = oneOrUndefined(existing.rows);
     }
@@ -384,6 +441,7 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
     if (
       durable.installationId !== safe.installationId ||
       durable.workspaceId !== safe.workspaceId ||
+      durable.installedByUserId !== safe.installedByUserId ||
       durable.status !== 'revoked'
     ) {
       return invalidEvidence();
