@@ -145,17 +145,24 @@ describe('commercial development prompt builder', () => {
     );
   });
 
-  it('serializes issue data as JSON rather than shell syntax', () => {
+  it('serializes issue data as JSON rather than executable shell syntax', () => {
     const prompt = buildCommercialDevelopmentPrompt({
       run: run(),
-      issue: issue({ body: 'Quote "value" and newline\nvalue.' }),
+      issue: issue({
+        body: [
+          'source /tmp/should-not-run',
+          'source of truth remains ordinary prose.',
+          'Quote "value" and newline value.',
+        ].join('\n'),
+      }),
       policy: POLICY,
     });
     expect(prompt.text).toContain(
-      '"body": "Quote \\"value\\" and newline\\nvalue."',
+      '"body": "source /tmp/should-not-run\\nsource of truth remains ordinary prose.\\nQuote \\"value\\" and newline value."',
     );
+    expect(prompt.text).toContain('source of truth remains ordinary prose.');
     expect(prompt.text).not.toContain('eval ');
-    expect(prompt.text).not.toMatch(/(?:^|\n)\s*source\s+/u);
+    expect(prompt.text).not.toMatch(/(?:^|\n)\s*source\s+\/\S+/u);
   });
 
   it.each([
