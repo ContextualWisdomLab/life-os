@@ -63,7 +63,11 @@ function unavailableGatewayContext(): never {
   );
 }
 
-/** Computes the SHA-256 HMAC over the canonical `life-os.workspace.v1` workspace-and-time payload. */
+/**
+ * Computes the SHA-256 HMAC over the canonical `life-os.workspace.v1` payload.
+ * The workspace ID must already be normalized to lowercase UUIDv4 form, so the
+ * gateway must sign that normalized identifier rather than the raw header value.
+ */
 function workspaceContextDigest(
   workspaceId: string,
   issuedAt: string,
@@ -110,7 +114,6 @@ export function requireTrustedWorkspaceContext(
 
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
-    !Number.isSafeInteger(issuedAtSeconds) ||
     issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
     issuedAtSeconds < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS
   ) {
