@@ -123,12 +123,7 @@ describe('Review controller', () => {
     );
     const [issuedAt, signature] = trustedContext('invalid');
     await expect(
-      controller.completeDailyPlanning(
-        'invalid',
-        issuedAt,
-        signature,
-        body(),
-      ),
+      controller.completeDailyPlanning('invalid', issuedAt, signature, body()),
     ).rejects.toBeInstanceOf(HttpException);
   });
 });
