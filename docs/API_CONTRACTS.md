@@ -24,7 +24,7 @@ This file indexes stable repository-level API/event invariants. Concrete route s
 | Habit recurrence/completion | habit-service | Implemented on protected main | tenant-scoped replay-safe completion |
 | Review projection | review-service | Implemented on protected main | read/projection authority only |
 | Calendar sync request | calendar integration | Implemented on protected main | signed trusted workspace context; PR #139 |
-| Calendar connection registry foundation | calendar integration | Implemented on active PR | PR #150; workspace+user scoped provider metadata and opaque credential references |
+| Calendar connection registry foundation | calendar integration | Implemented on protected main | PR #150 merged as `1623df364925f84920c07c112f1ae96777277d20`; workspace+user scoped provider metadata and opaque credential references |
 | Complete per-user calendar credential lifecycle | calendar integration | Partial | issue #129; OAuth/PKCE, concrete secret backend, refresh/revocation, discovery/selection remain incomplete |
 | Reminder scheduling/delivery | notification-service | Implemented on protected main | bounded claims/retries/outcomes |
 | AI proposal/evidence/decision | AI proposal service | Implemented on protected main | inert proposal, explicit decision |
@@ -66,9 +66,9 @@ Property ordering for integrity serialization is locale-independent and uses UTF
 
 ## Calendar connection registry
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-PR #150 introduces a service-owned persistence foundation for a calendar connection scoped simultaneously to workspace and user. The active boundary carries bounded provider/account/calendar metadata, normalized scopes and opaque external credential references, uses fixed parameterized SQL, rejects malformed authority before persistence access and treats duplicate stored evidence as corruption.
+PR #150 introduced the service-owned persistence foundation for a calendar connection scoped simultaneously to workspace and user. Protected main carries bounded provider/account/calendar metadata, normalized scopes and opaque external credential references, uses fixed parameterized SQL, rejects malformed authority before persistence access, uses descriptive multiword database naming, and treats duplicate stored evidence as corruption.
 
 This foundation does not by itself implement the complete #129 OAuth/refresh/revocation/discovery/selection lifecycle.
 
