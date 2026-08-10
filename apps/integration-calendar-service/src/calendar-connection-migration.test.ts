@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const MIGRATION_PATH = fileURLToPath(
-  new URL('../migrations/0001_calendar_connection_record.sql', import.meta.url),
+const MIGRATION_PATH = join(
+  process.cwd(),
+  'migrations',
+  '0001_calendar_connection_record.sql',
 );
 
 describe('calendar connection migration', () => {
