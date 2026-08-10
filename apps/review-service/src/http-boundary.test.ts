@@ -51,23 +51,26 @@ function expectTrustedContextRejection(
 }
 
 describe('Review HTTP boundary', () => {
-  it('accepts fresh signed workspace context and bounded ritual/history values', () => {
-    const issuedAt = String(NOW_SECONDS - 30);
-    expect(
-      requireTrustedWorkspaceContext(
-        {
-          workspaceId: WORKSPACE_ID.toUpperCase(),
-          issuedAt,
-          signature: signature(issuedAt),
-        },
-        SECRET,
-        NOW_SECONDS,
-      ),
-    ).toBe(WORKSPACE_ID);
-    expect(requireRitualPath('weekly-review')).toBe('weekly-review');
-    expect(requireHistoryLimit(undefined)).toBe(50);
-    expect(requireHistoryLimit('100')).toBe(100);
-  });
+  it(
+    'accepts fresh signed workspace context and bounded ritual/history values',
+    () => {
+      const issuedAt = String(NOW_SECONDS - 30);
+      expect(
+        requireTrustedWorkspaceContext(
+          {
+            workspaceId: WORKSPACE_ID.toUpperCase(),
+            issuedAt,
+            signature: signature(issuedAt),
+          },
+          SECRET,
+          NOW_SECONDS,
+        ),
+      ).toBe(WORKSPACE_ID);
+      expect(requireRitualPath('weekly-review')).toBe('weekly-review');
+      expect(requireHistoryLimit(undefined)).toBe(50);
+      expect(requireHistoryLimit('100')).toBe(100);
+    },
+  );
 
   it('accepts the exact maximum context age', () => {
     const issuedAt = String(NOW_SECONDS - 60);
@@ -99,31 +102,34 @@ describe('Review HTTP boundary', () => {
     ).toBe(WORKSPACE_ID);
   });
 
-  it('rejects a non-canonical base64url alias for the same signature bytes', () => {
-    const issuedAt = String(NOW_SECONDS);
-    const canonical = signature(issuedAt);
-    const finalIndex = BASE64URL_ALPHABET.indexOf(canonical.at(-1) ?? '');
-    expect(finalIndex).toBeGreaterThanOrEqual(0);
-    expect(finalIndex % 4).toBe(0);
-    const nonCanonical = `${canonical.slice(0, -1)}${
-      BASE64URL_ALPHABET[finalIndex + 1]
-    }`;
-    expect(Buffer.from(nonCanonical, 'base64url')).toEqual(
-      Buffer.from(canonical, 'base64url'),
-    );
+  it(
+    'rejects a non-canonical base64url alias for the same signature bytes',
+    () => {
+      const issuedAt = String(NOW_SECONDS);
+      const canonical = signature(issuedAt);
+      const finalIndex = BASE64URL_ALPHABET.indexOf(canonical.at(-1) ?? '');
+      expect(finalIndex).toBeGreaterThanOrEqual(0);
+      expect(finalIndex % 4).toBe(0);
+      const nonCanonical = `${canonical.slice(0, -1)}${
+        BASE64URL_ALPHABET[finalIndex + 1]
+      }`;
+      expect(Buffer.from(nonCanonical, 'base64url')).toEqual(
+        Buffer.from(canonical, 'base64url'),
+      );
 
-    expect(() =>
-      requireTrustedWorkspaceContext(
-        {
-          workspaceId: WORKSPACE_ID,
-          issuedAt,
-          signature: nonCanonical,
-        },
-        SECRET,
-        NOW_SECONDS,
-      ),
-    ).toThrow(HttpException);
-  });
+      expect(() =>
+        requireTrustedWorkspaceContext(
+          {
+            workspaceId: WORKSPACE_ID,
+            issuedAt,
+            signature: nonCanonical,
+          },
+          SECRET,
+          NOW_SECONDS,
+        ),
+      ).toThrow(HttpException);
+    },
+  );
 
   it.each([
     {
