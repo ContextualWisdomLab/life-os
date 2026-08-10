@@ -30,8 +30,11 @@ export interface DataRightsWorkspaceContext {
   readonly actorUserId: string;
 }
 
+/** A bounded contributor-owned export section before LifeOS adds manifest evidence. */
 export interface DataExportSection {
   readonly schemaVersion: string;
+  /** Business-record count defined by the contributor's versioned schema. */
+  readonly recordCount: number;
   readonly data: JsonValue;
 }
 
@@ -68,7 +71,10 @@ export interface WorkspaceDataExport {
   readonly sections: readonly {
     readonly contributor: string;
     readonly schemaVersion: string;
+    readonly recordCount: number;
     readonly data: JsonValue;
+    /** SHA-256 over the canonical contributor/schema/count/data section. */
+    readonly sha256: string;
   }[];
   readonly sha256: string;
 }
@@ -137,6 +143,13 @@ function requireSchemaVersion(value: string): string {
   return value;
 }
 
+function requireRecordCount(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new DataRightsValidationError('Export section record count is invalid');
+  }
+  return value;
+}
+
 function requireIsoInstant(value: Date, field: string): string {
   if (!Number.isFinite(value.getTime())) {
     throw new DataRightsValidationError(`${field} is invalid`);
@@ -149,6 +162,16 @@ function requirePlainObject(
 ): value is Readonly<Record<string, unknown>> {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function compareUtf16CodeUnits(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 function normalizeJson(value: unknown, depth = 0): JsonValue {
@@ -189,7 +212,7 @@ function normalizeJson(value: unknown, depth = 0): JsonValue {
     JsonValue
   >;
   for (const [key, entryValue] of entries.sort(([left], [right]) =>
-    left.localeCompare(right),
+    compareUtf16CodeUnits(left, right),
   )) {
     if (
       !key ||
@@ -218,7 +241,7 @@ function canonicalJson(value: JsonValue): string {
     return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
   }
   return `{${Object.entries(value)
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareUtf16CodeUnits(left, right))
     .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJson(entryValue)}`)
     .join(',')}}`;
 }
@@ -233,19 +256,30 @@ function requireBoundedSection(
 ): {
   readonly contributor: string;
   readonly schemaVersion: string;
+  readonly recordCount: number;
   readonly data: JsonValue;
+  readonly sha256: string;
   readonly bytes: number;
 } {
   if (!section || typeof section !== 'object') {
     throw new DataRightsValidationError('Export section is invalid');
   }
   const schemaVersion = requireSchemaVersion(section.schemaVersion);
+  const recordCount = requireRecordCount(section.recordCount);
   const data = normalizeJson(section.data);
   const bytes = Buffer.byteLength(canonicalJson(data), 'utf8');
   if (bytes > MAXIMUM_SECTION_BYTES) {
     throw new DataRightsValidationError('Export section exceeds the size limit');
   }
-  return Object.freeze({ contributor, schemaVersion, data, bytes });
+  const payload = toJsonRecord({ contributor, schemaVersion, recordCount, data });
+  return Object.freeze({
+    contributor,
+    schemaVersion,
+    recordCount,
+    data,
+    sha256: digest(payload),
+    bytes,
+  });
 }
 
 function requirePreflight(value: ErasurePreflight): ErasurePreflight {
@@ -317,7 +351,7 @@ export class DataRightsApplication {
           names.add(name);
           return contributor;
         })
-        .sort((left, right) => left.name.localeCompare(right.name)),
+        .sort((left, right) => compareUtf16CodeUnits(left.name, right.name)),
     );
   }
 
@@ -332,7 +366,9 @@ export class DataRightsApplication {
     const sections: {
       contributor: string;
       schemaVersion: string;
+      recordCount: number;
       data: JsonValue;
+      sha256: string;
     }[] = [];
     let totalBytes = 0;
 
@@ -348,7 +384,9 @@ export class DataRightsApplication {
       sections.push({
         contributor: section.contributor,
         schemaVersion: section.schemaVersion,
+        recordCount: section.recordCount,
         data: section.data,
+        sha256: section.sha256,
       });
     }
 
