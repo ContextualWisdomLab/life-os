@@ -44,7 +44,7 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 | PRD-CAL-001 | Conflict-safe CalDAV/Google calendar synchronization. | Implemented on protected main | calendar adapter tests |
 | PRD-CAL-002 | Derive calendar workspace authority from signed trusted context, not legacy client headers. | Implemented on protected main | PR #139 merged; trusted-context tests |
 | PRD-CAL-003 | Complete per-user encrypted Google/CalDAV credential lifecycle, OAuth/PKCE, refresh/revocation, discovery and calendar selection. | Partial | issue #129 |
-| PRD-CAL-004 | Persist a LifeOS-owned calendar-connection foundation scoped to workspace and user, with bounded provider metadata, normalized scopes and opaque secret handles rather than plaintext provider tokens. | Implemented on active PR | PR #150; migration and repository tests; does not complete #129 |
+| PRD-CAL-004 | Persist a LifeOS-owned calendar-connection foundation scoped to workspace and user, with bounded provider metadata, normalized scopes and opaque secret handles rather than plaintext provider tokens. | Implemented on protected main | PR #150 merged as `1623df364925f84920c07c112f1ae96777277d20`; does not complete #129 |
 | PRD-NOT-001 | Timezone-correct bounded reminders with replay-safe delivery. | Implemented on protected main | notification persistence/scheduler tests |
 | PRD-AI-001 | AI output is inert proposal evidence until explicit authorized decision. | Implemented on protected main | AI proposal/audit tests |
 | PRD-AI-002 | Deterministic proposal-quality/safety gates remain independent of live provider availability. | Implemented on protected main | evaluator/live-conformance split |
