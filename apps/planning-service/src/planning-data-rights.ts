@@ -17,12 +17,17 @@ const MAXIMUM_JSON_DEPTH = 20;
 const MAXIMUM_ARRAY_ITEMS = 10_000;
 const MAXIMUM_OBJECT_KEYS = 10_000;
 const MAXIMUM_STRING_LENGTH = 100_000;
+const EXPORT_PAGE_SIZE = 1_000;
 
+/** JSON leaf values accepted by the versioned Planning data-rights contract. */
 export type DataRightsJsonPrimitive = boolean | number | string | null;
+/** Immutable JSON array returned by the Planning data-rights contract. */
 export interface DataRightsJsonArray extends ReadonlyArray<DataRightsJsonValue> {}
+/** Immutable string-keyed JSON object returned by the Planning data-rights contract. */
 export interface DataRightsJsonObject {
   readonly [key: string]: DataRightsJsonValue;
 }
+/** Fully normalized JSON value accepted in deterministic export evidence. */
 export type DataRightsJsonValue =
   | DataRightsJsonPrimitive
   | DataRightsJsonArray
@@ -35,6 +40,15 @@ interface ContributorRequestBase {
   readonly requestId: string;
 }
 
+/**
+ * One authorized request for Planning-owned data rights.
+ *
+ * `export` returns every Planning-owned record for the workspace,
+ * `erase_preflight` reports whether durable erasure receipts are available,
+ * `erase` performs replay-safe deletion with a UUIDv4 idempotency key, and
+ * `verify_erased` checks that Planning-owned user data is absent. Identity,
+ * authority, request and idempotency identifiers are validated as UUIDv4.
+ */
 export type DataRightsContributorRequest = ContributorRequestBase &
   (
     | { readonly operation: 'export' }
@@ -49,6 +63,13 @@ interface ContributorResponseBase {
   readonly requestId: string;
 }
 
+/**
+ * Successful Planning-owned data-rights evidence.
+ *
+ * Every successful response echoes the validated request ID so an orchestrator
+ * can bind evidence to its request. Validation failures throw
+ * `PlanningDataRightsError` without returning persisted data or credentials.
+ */
 export type DataRightsContributorResponse = ContributorResponseBase &
   (
     | {
@@ -277,31 +298,86 @@ function normalizeRequest(request: DataRightsContributorRequest): {
   };
 }
 
-const ERASURE_TABLES = Object.freeze([
+/** Reads one deterministic export query in bounded pages from one snapshot. */
+async function collectExportRows<Row>(
+  client: PlanningSqlClient,
+  query: string,
+  workspaceId: string,
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await client.query<Row>(query, [
+      workspaceId,
+      EXPORT_PAGE_SIZE,
+      offset,
+    ]);
+    rows.push(...page.rows);
+    if (page.rows.length < EXPORT_PAGE_SIZE) {
+      return rows;
+    }
+    offset += page.rows.length;
+  }
+}
+
+/** Normalizes every service-owned row without applying a transport-wide array cap. */
+function normalizeExportRows<Row>(
+  rows: readonly Row[],
+  mapper: (row: Row) => unknown,
+): DataRightsJsonArray {
+  return Object.freeze(rows.map((row) => normalizeJson(mapper(row))));
+}
+
+const ERASURE_TABLES = [
   'planning.today_idempotency_records',
   'planning.today_aggregates',
   'planning.tasks',
   'planning.projects',
   'planning.goals',
-]);
+] as const;
+type ErasureTable = (typeof ERASURE_TABLES)[number];
+
+const ERASURE_DELETE_SQL: Readonly<Record<ErasureTable, string>> = Object.freeze({
+  'planning.today_idempotency_records': `WITH deleted AS (
+     DELETE FROM planning.today_idempotency_records
+     WHERE workspace_id = $1
+     RETURNING 1
+   )
+   SELECT count(*)::integer AS record_count FROM deleted`,
+  'planning.today_aggregates': `WITH deleted AS (
+     DELETE FROM planning.today_aggregates
+     WHERE workspace_id = $1
+     RETURNING 1
+   )
+   SELECT count(*)::integer AS record_count FROM deleted`,
+  'planning.tasks': `WITH deleted AS (
+     DELETE FROM planning.tasks
+     WHERE workspace_id = $1
+     RETURNING 1
+   )
+   SELECT count(*)::integer AS record_count FROM deleted`,
+  'planning.projects': `WITH deleted AS (
+     DELETE FROM planning.projects
+     WHERE workspace_id = $1
+     RETURNING 1
+   )
+   SELECT count(*)::integer AS record_count FROM deleted`,
+  'planning.goals': `WITH deleted AS (
+     DELETE FROM planning.goals
+     WHERE workspace_id = $1
+     RETURNING 1
+   )
+   SELECT count(*)::integer AS record_count FROM deleted`,
+});
 
 async function countDeleted(
   client: PlanningSqlClient,
-  table: string,
+  table: ErasureTable,
   workspaceId: string,
 ): Promise<number> {
-  if (!ERASURE_TABLES.includes(table)) {
-    throw new PlanningDataRightsError('Planning erasure table is invalid');
-  }
-  const result = await client.query<CountRow>(
-    `WITH deleted AS (
-       DELETE FROM ${table}
-       WHERE workspace_id = $1
-       RETURNING 1
-     )
-     SELECT count(*)::integer AS record_count FROM deleted`,
-    [workspaceId],
-  );
+  const result = await client.query<CountRow>(ERASURE_DELETE_SQL[table], [
+    workspaceId,
+  ]);
   return requireNonnegativeInteger(result.rows[0]?.record_count, 'record_count');
 }
 
@@ -309,6 +385,13 @@ async function countDeleted(
 export class PlanningDataRightsContributor {
   constructor(private readonly client: TodayTransactionalSqlClient) {}
 
+  /**
+   * Validates one request and dispatches it only to Planning-owned persistence.
+   *
+   * Invalid contract versions, operations, identifiers or persisted evidence
+   * fail closed with `PlanningDataRightsError`. Successful responses retain the
+   * validated request ID for orchestration correlation.
+   */
   async handle(
     untrustedRequest: DataRightsContributorRequest,
   ): Promise<DataRightsContributorResponse> {
@@ -318,7 +401,7 @@ export class PlanningDataRightsContributor {
       case 'export':
         return await this.exportWorkspace(workspaceId, requestId);
       case 'erase_preflight':
-        return await this.preflightErase(workspaceId, requestId);
+        return await this.preflightErase(requestId);
       case 'erase':
         return await this.eraseWorkspace(
           workspaceId,
@@ -335,121 +418,146 @@ export class PlanningDataRightsContributor {
     workspaceId: string,
     requestId: string,
   ): Promise<DataRightsContributorResponse> {
-    const [goals, projects, tasks, todayAggregates, todayIdempotency] =
-      await Promise.all([
-        this.client.query<PlanningGoalExportRow>(
-          `SELECT id, title, created_at
-           FROM planning.goals
-           WHERE workspace_id = $1
-           ORDER BY created_at ASC, id ASC`,
-          [workspaceId],
-        ),
-        this.client.query<PlanningProjectExportRow>(
-          `SELECT id, goal_id, title, created_at
-           FROM planning.projects
-           WHERE workspace_id = $1
-           ORDER BY created_at ASC, id ASC`,
-          [workspaceId],
-        ),
-        this.client.query<PlanningTaskExportRow>(
-          `SELECT id, project_id, title, status, completed_at, created_at
-           FROM planning.tasks
-           WHERE workspace_id = $1
-           ORDER BY created_at ASC, id ASC`,
-          [workspaceId],
-        ),
-        this.client.query<TodayAggregateExportRow>(
-          `SELECT local_date::text, aggregate_id, revision_number::text,
-                  revision_token, payload_json, created_at, updated_at
-           FROM planning.today_aggregates
-           WHERE workspace_id = $1
-           ORDER BY local_date ASC, aggregate_id ASC`,
-          [workspaceId],
-        ),
-        this.client.query<TodayIdempotencyExportRow>(
-          `SELECT idempotency_key, request_digest, result_kind, aggregate_id,
-                  revision_token, payload_json, created_at
-           FROM planning.today_idempotency_records
-           WHERE workspace_id = $1
-           ORDER BY created_at ASC, idempotency_key ASC`,
-          [workspaceId],
-        ),
-      ]);
+    return await this.client.transaction(async (transaction) => {
+      await transaction.query(
+        'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',
+        [],
+      );
+      const [goals, projects, tasks, todayAggregates, todayIdempotency] =
+        await Promise.all([
+          collectExportRows<PlanningGoalExportRow>(
+            transaction,
+            `SELECT id, title, created_at
+             FROM planning.goals
+             WHERE workspace_id = $1
+             ORDER BY created_at ASC, id ASC
+             LIMIT $2 OFFSET $3`,
+            workspaceId,
+          ),
+          collectExportRows<PlanningProjectExportRow>(
+            transaction,
+            `SELECT id, goal_id, title, created_at
+             FROM planning.projects
+             WHERE workspace_id = $1
+             ORDER BY created_at ASC, id ASC
+             LIMIT $2 OFFSET $3`,
+            workspaceId,
+          ),
+          collectExportRows<PlanningTaskExportRow>(
+            transaction,
+            `SELECT id, project_id, title, status, completed_at, created_at
+             FROM planning.tasks
+             WHERE workspace_id = $1
+             ORDER BY created_at ASC, id ASC
+             LIMIT $2 OFFSET $3`,
+            workspaceId,
+          ),
+          collectExportRows<TodayAggregateExportRow>(
+            transaction,
+            `SELECT local_date::text, aggregate_id, revision_number::text,
+                    revision_token, payload_json, created_at, updated_at
+             FROM planning.today_aggregates
+             WHERE workspace_id = $1
+             ORDER BY local_date ASC, aggregate_id ASC
+             LIMIT $2 OFFSET $3`,
+            workspaceId,
+          ),
+          collectExportRows<TodayIdempotencyExportRow>(
+            transaction,
+            `SELECT idempotency_key, request_digest, result_kind, aggregate_id,
+                    revision_token, payload_json, created_at
+             FROM planning.today_idempotency_records
+             WHERE workspace_id = $1
+             ORDER BY created_at ASC, idempotency_key ASC
+             LIMIT $2 OFFSET $3`,
+            workspaceId,
+          ),
+        ]);
 
-    const data = normalizeJson({
-      goals: goals.rows.map((row) => ({
-        id: requireUuidV4(row.id, 'goal.id'),
-        title: requireString(row.title, 'goal.title'),
-        createdAt: requireTimestamp(row.created_at, 'goal.created_at'),
-      })),
-      projects: projects.rows.map((row) => ({
-        id: requireUuidV4(row.id, 'project.id'),
-        goalId: requireUuidV4(row.goal_id, 'project.goal_id'),
-        title: requireString(row.title, 'project.title'),
-        createdAt: requireTimestamp(row.created_at, 'project.created_at'),
-      })),
-      tasks: tasks.rows.map((row) => ({
-        id: requireUuidV4(row.id, 'task.id'),
-        projectId: requireUuidV4(row.project_id, 'task.project_id'),
-        title: requireString(row.title, 'task.title'),
-        status: requireString(row.status, 'task.status'),
-        completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
-        createdAt: requireTimestamp(row.created_at, 'task.created_at'),
-      })),
-      todayAggregates: todayAggregates.rows.map((row) => ({
-        localDate: requireDate(row.local_date),
-        aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
-        revisionNumber: requireString(row.revision_number, 'today.revision_number'),
-        revisionToken: requireUuidV4(row.revision_token, 'today.revision_token'),
-        payload: normalizeJson(row.payload_json),
-        createdAt: requireTimestamp(row.created_at, 'today.created_at'),
-        updatedAt: requireTimestamp(row.updated_at, 'today.updated_at'),
-      })),
-      todayIdempotencyRecords: todayIdempotency.rows.map((row) => ({
-        idempotencyKey: requireUuidV4(row.idempotency_key, 'today.idempotency_key'),
-        requestDigest: requireSha256(row.request_digest),
-        resultKind: requireString(row.result_kind, 'today.result_kind'),
-        aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
-        revisionToken: requireUuidV4(row.revision_token, 'today.revision_token'),
-        payload: normalizeJson(row.payload_json),
-        createdAt: requireTimestamp(row.created_at, 'today.created_at'),
-      })),
-    });
-    const recordCount =
-      goals.rows.length +
-      projects.rows.length +
-      tasks.rows.length +
-      todayAggregates.rows.length +
-      todayIdempotency.rows.length;
+      const data: DataRightsJsonObject = Object.freeze({
+        goals: normalizeExportRows(goals, (row) => ({
+          id: requireUuidV4(row.id, 'goal.id'),
+          title: requireString(row.title, 'goal.title'),
+          createdAt: requireTimestamp(row.created_at, 'goal.created_at'),
+        })),
+        projects: normalizeExportRows(projects, (row) => ({
+          id: requireUuidV4(row.id, 'project.id'),
+          goalId: requireUuidV4(row.goal_id, 'project.goal_id'),
+          title: requireString(row.title, 'project.title'),
+          createdAt: requireTimestamp(row.created_at, 'project.created_at'),
+        })),
+        tasks: normalizeExportRows(tasks, (row) => ({
+          id: requireUuidV4(row.id, 'task.id'),
+          projectId: requireUuidV4(row.project_id, 'task.project_id'),
+          title: requireString(row.title, 'task.title'),
+          status: requireString(row.status, 'task.status'),
+          completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
+          createdAt: requireTimestamp(row.created_at, 'task.created_at'),
+        })),
+        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({
+          localDate: requireDate(row.local_date),
+          aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
+          revisionNumber: requireString(
+            row.revision_number,
+            'today.revision_number',
+          ),
+          revisionToken: requireUuidV4(
+            row.revision_token,
+            'today.revision_token',
+          ),
+          payload: normalizeJson(row.payload_json),
+          createdAt: requireTimestamp(row.created_at, 'today.created_at'),
+          updatedAt: requireTimestamp(row.updated_at, 'today.updated_at'),
+        })),
+        todayIdempotencyRecords: normalizeExportRows(
+          todayIdempotency,
+          (row) => ({
+            idempotencyKey: requireUuidV4(
+              row.idempotency_key,
+              'today.idempotency_key',
+            ),
+            requestDigest: requireSha256(row.request_digest),
+            resultKind: requireString(row.result_kind, 'today.result_kind'),
+            aggregateId: requireUuidV4(
+              row.aggregate_id,
+              'today.aggregate_id',
+            ),
+            revisionToken: requireUuidV4(
+              row.revision_token,
+              'today.revision_token',
+            ),
+            payload: normalizeJson(row.payload_json),
+            createdAt: requireTimestamp(row.created_at, 'today.created_at'),
+          }),
+        ),
+      });
+      const recordCount =
+        goals.length +
+        projects.length +
+        tasks.length +
+        todayAggregates.length +
+        todayIdempotency.length;
 
-    return Object.freeze({
-      contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
-      operation: 'export',
-      contributor: CONTRIBUTOR_NAME,
-      requestId,
-      schemaVersion: EXPORT_SCHEMA_VERSION,
-      recordCount,
-      sha256: digest(data),
-      data,
+      return Object.freeze({
+        contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
+        operation: 'export',
+        contributor: CONTRIBUTOR_NAME,
+        requestId,
+        schemaVersion: EXPORT_SCHEMA_VERSION,
+        recordCount,
+        sha256: digest(data),
+        data,
+      });
     });
   }
 
   private async preflightErase(
-    workspaceId: string,
     requestId: string,
   ): Promise<DataRightsContributorResponse> {
     const result = await this.client.query<{ erasure_receipts_ready: unknown }>(
-      `SELECT
-         EXISTS (SELECT 1 FROM planning.goals WHERE workspace_id = $1),
-         EXISTS (SELECT 1 FROM planning.projects WHERE workspace_id = $1),
-         EXISTS (SELECT 1 FROM planning.tasks WHERE workspace_id = $1),
-         EXISTS (SELECT 1 FROM planning.today_aggregates WHERE workspace_id = $1),
-         EXISTS (
-           SELECT 1 FROM planning.today_idempotency_records WHERE workspace_id = $1
-         ),
-         to_regclass('planning.data_rights_erasure_receipts') IS NOT NULL
-           AS erasure_receipts_ready`,
-      [workspaceId],
+      `SELECT to_regclass('planning.data_rights_erasure_receipts') IS NOT NULL
+         AS erasure_receipts_ready`,
+      [],
     );
     const erasureReceiptsReady =
       result.rows[0]?.erasure_receipts_ready === true;
