@@ -39,6 +39,15 @@ export interface PluginInstallationRecord {
 
 /** Persistence port implemented by the LifeOS host, never by a plugin. */
 export interface PluginInstallationStore {
+  /**
+   * Atomically creates an installation when its opaque identity is absent and
+   * returns the durable winner when another request already owns that identity.
+   *
+   * Durable implementations must bind this operation to a unique installation
+   * identity or equivalent compare-and-set primitive; a read-then-write sequence
+   * is not sufficient because concurrent conflicting grants must fail closed.
+   */
+  createIfAbsent(record: PluginInstallationRecord): Promise<PluginInstallationRecord>;
   findById(installationId: string): Promise<PluginInstallationRecord | undefined>;
   save(record: PluginInstallationRecord): Promise<void>;
 }
@@ -164,15 +173,11 @@ export class PluginInstallationApplication {
       installedAt: this.now().toISOString(),
       revokedAt: null,
     });
-    const existing = await this.store.findById(installationId);
-    if (existing) {
-      if (!sameInstallation(existing, candidate)) {
-        return invalid();
-      }
-      return freezeRecord(existing);
+    const durable = await this.store.createIfAbsent(candidate);
+    if (!sameInstallation(durable, candidate)) {
+      return invalid();
     }
-    await this.store.save(candidate);
-    return candidate;
+    return freezeRecord(durable);
   }
 
   /** Returns an installation only inside the authenticated workspace boundary. */
