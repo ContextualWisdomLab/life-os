@@ -166,7 +166,11 @@ describe.sequential('Review controller tenant authority contract', () => {
     const expired = signedHeaders(nowSeconds - 120);
     const future = signedHeaders(nowSeconds + 120);
     const tamperedDigest = Buffer.from(fresh.signature ?? '', 'base64url');
-    tamperedDigest[0] ^= 0xff;
+    const firstTamperedByte = tamperedDigest.at(0);
+    if (firstTamperedByte === undefined) {
+      throw new Error('Expected a SHA-256 gateway signature');
+    }
+    tamperedDigest[0] = firstTamperedByte ^ 0xff;
     const tampered = {
       ...fresh,
       signature: tamperedDigest.toString('base64url'),
