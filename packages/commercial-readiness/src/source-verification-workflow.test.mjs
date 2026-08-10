@@ -70,20 +70,20 @@ test('required source-verification jobs explicitly checkout the contributor head
   assert.ok(readiness.includes(SOURCE_REF), 'Commercial Readiness is not bound to the contributor head');
 });
 
-test('merge compatibility binds a freshly resolved merge ref to current head and live base', () => {
+test('merge compatibility binds the checked merge parents to fresh source and live-base API evidence', () => {
   const block = jobBlock(readWorkflow('ci.yml'), 'merge_compatibility');
   assert.ok(block.includes("if: github.event_name == 'pull_request'"));
   assert.ok(block.includes(MERGE_REF));
-  assert.ok(block.includes('git ls-remote origin'));
-  assert.ok(block.includes('refs/pull/${{ github.event.pull_request.number }}/head'));
-  assert.ok(block.includes('refs/heads/${{ github.event.pull_request.base.ref }}'));
-  assert.ok(block.includes('refs/pull/${{ github.event.pull_request.number }}/merge'));
+  assert.ok(block.includes('GITHUB_TOKEN: ${{ github.token }}'));
+  assert.ok(block.includes('/pulls/${{ github.event.pull_request.number }}'));
+  assert.ok(block.includes('/commits/${{ github.event.pull_request.base.ref }}'));
   assert.ok(block.includes('git show -s --format=%P HEAD'));
   assert.ok(block.includes('${{ github.event.pull_request.head.sha }}'));
+  assert.equal(block.includes('git ls-remote'), false, 'merge identity must not depend on unauthenticated advertised pull refs');
   assert.equal(
     block.includes('actual_commit" != "${{ github.sha }}"'),
     false,
-    'a regenerated live merge ref must not be compared to stale event github.sha',
+    'a regenerated live merge tree must not be compared to stale event github.sha',
   );
 });
 
