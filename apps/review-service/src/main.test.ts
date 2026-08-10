@@ -57,6 +57,22 @@ function trustedContext(workspaceId = WORKSPACE_ID): readonly [string, string] {
   return [issuedAt, signature] as const;
 }
 
+function expectGatewayContextUnavailable(operation: () => unknown): void {
+  let thrown: unknown;
+  try {
+    operation();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(HttpException);
+  const exception = thrown as HttpException;
+  expect(exception.getStatus()).toBe(503);
+  expect(exception.getResponse()).toMatchObject({
+    status: 503,
+    code: 'gateway_context_unavailable',
+  });
+}
+
 describe('Review controller', () => {
   beforeEach(() => {
     previousGatewaySecret = process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
@@ -120,16 +136,16 @@ describe('Review controller', () => {
     );
 
     delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
-    expect(() => requireReviewServiceConfiguration(process.env)).toThrow(
-      HttpException,
+    expectGatewayContextUnavailable(() =>
+      requireReviewServiceConfiguration(process.env),
     );
-    expect(() => controller.ready()).toThrow(HttpException);
+    expectGatewayContextUnavailable(() => controller.ready());
 
     process.env.REVIEW_GATEWAY_CONTEXT_SECRET = 'too-short';
-    expect(() => requireReviewServiceConfiguration(process.env)).toThrow(
-      HttpException,
+    expectGatewayContextUnavailable(() =>
+      requireReviewServiceConfiguration(process.env),
     );
-    expect(() => controller.ready()).toThrow(HttpException);
+    expectGatewayContextUnavailable(() => controller.ready());
 
     process.env.REVIEW_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
     expect(() => requireReviewServiceConfiguration(process.env)).not.toThrow();
