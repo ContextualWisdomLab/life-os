@@ -256,7 +256,6 @@ function exactCandidate(
     actual.pluginContractVersion === expected.pluginContractVersion &&
     actual.manifestSha256 === expected.manifestSha256 &&
     actual.status === 'active' &&
-    actual.installedAt === expected.installedAt &&
     actual.revokedAt === null &&
     actual.grantedCapabilities.length === expected.grantedCapabilities.length &&
     actual.grantedCapabilities.every(
