@@ -30,6 +30,13 @@ interface RouteCase {
   ) => Promise<unknown>;
 }
 
+type InvalidContextCase = readonly [
+  name: string,
+  headers: RouteHeaders,
+  status: number,
+  secretConfigured: boolean,
+];
+
 const ROUTES: readonly RouteCase[] = [
   {
     name: 'completeDailyPlanning',
@@ -164,41 +171,32 @@ describe.sequential('Review controller tenant authority contract', () => {
       }`,
     };
     const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
-    const invalidContexts = [
-      {
-        name: 'missing',
-        headers: { ...fresh, workspaceId: undefined },
-        status: 401,
-      },
-      { name: 'expired', headers: expired, status: 401 },
-      { name: 'future', headers: future, status: 401 },
-      { name: 'tampered', headers: tampered, status: 401 },
-      { name: 'malformed', headers: malformed, status: 401 },
-      {
-        name: 'secret-unconfigured',
-        headers: fresh,
-        status: 503,
-        secret: false,
-      },
-    ] as const;
+    const invalidContexts: readonly InvalidContextCase[] = [
+      ['missing', { ...fresh, workspaceId: undefined }, 401, true],
+      ['expired', expired, 401, true],
+      ['future', future, 401, true],
+      ['tampered', tampered, 401, true],
+      ['malformed', malformed, 401, true],
+      ['secret-unconfigured', fresh, 503, false],
+    ];
     const service = serviceSpies();
     const controller = controllerWith(service);
 
-    for (const invalid of invalidContexts) {
+    for (const [name, headers, status, secretConfigured] of invalidContexts) {
       for (const route of ROUTES) {
         vi.clearAllMocks();
-        if ('secret' in invalid && invalid.secret === false) {
-          delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
-        } else {
+        if (secretConfigured) {
           process.env.REVIEW_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+        } else {
+          delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
         }
         expect(
-          await rejectedStatus(route.invoke(controller, invalid.headers)),
-          `${route.name}:${invalid.name}`,
-        ).toBe(invalid.status);
+          await rejectedStatus(route.invoke(controller, headers)),
+          `${route.name}:${name}`,
+        ).toBe(status);
         expect(
           service[route.serviceMethod],
-          `${route.name}:${invalid.name}`,
+          `${route.name}:${name}`,
         ).not.toHaveBeenCalled();
       }
     }
