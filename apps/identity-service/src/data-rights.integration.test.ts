@@ -30,6 +30,7 @@ class RecordingContributor implements DataRightsContributor {
   blocker: string | undefined;
   failErase = false;
   forceVerificationFailure = false;
+  exportRecordCount = 1;
 
   constructor(
     readonly name: string,
@@ -41,10 +42,12 @@ class RecordingContributor implements DataRightsContributor {
     context: DataRightsWorkspaceContext,
   ): Promise<DataExportSection> {
     this.exportCalls.push({ ...context });
-    return {
+    const section = {
       schemaVersion: `${this.name}.v1`,
+      recordCount: this.exportRecordCount,
       data: this.dataByWorkspace[context.workspaceId] ?? { records: [] },
     };
+    return section;
   }
 
   async preflightErase(
@@ -86,7 +89,7 @@ function application(
 }
 
 describe('DataRightsApplication integration boundary', () => {
-  it('builds a deterministic, tenant-scoped export without invoking mutation', async () => {
+  it('builds a deterministic, tenant-scoped export with per-domain integrity metadata', async () => {
     const planning = new RecordingContributor('planning.authored-data', {
       [WORKSPACE_ALPHA]: {
         projects: [{ id: 'project-alpha', title: 'Ship LifeOS' }],
@@ -119,6 +122,19 @@ describe('DataRightsApplication integration boundary', () => {
       'habit.completion-history',
       'planning.authored-data',
     ]);
+    expect(first.sections[0]).toEqual(
+      expect.objectContaining({
+        recordCount: 1,
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    );
+    expect(first.sections[1]).toEqual(
+      expect.objectContaining({
+        recordCount: 1,
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    );
+    expect(first.sections[0]).not.toEqual(first.sections[1]);
     expect(first.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(first.generatedAt).toBe('2026-08-04T00:00:00.000Z');
     expect(JSON.stringify(first)).not.toContain('project-beta');
@@ -126,6 +142,20 @@ describe('DataRightsApplication integration boundary', () => {
     expect(habits.eraseCalls).toHaveLength(0);
     expect(Object.isFrozen(first)).toBe(true);
     expect(Object.isFrozen(first.sections)).toBe(true);
+  });
+
+  it('rejects contributor-reported record counts that are not safe non-negative integers', async () => {
+    const identity = new RecordingContributor('identity.account-data', {
+      [WORKSPACE_ALPHA]: { displayName: 'Alpha owner' },
+    });
+    identity.exportRecordCount = -1;
+
+    await expect(
+      application([identity]).exportWorkspace({
+        workspaceId: WORKSPACE_ALPHA,
+        actorUserId: USER_ALPHA,
+      }),
+    ).rejects.toThrow('Export section record count is invalid');
   });
 
   it('passes only trusted workspace and actor ownership to every contributor', async () => {
