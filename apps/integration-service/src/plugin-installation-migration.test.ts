@@ -10,8 +10,7 @@ const MIGRATION_PATH = join(
   '0001_plugin_installation_record.sql',
 );
 const MIGRATION_SQL = readFileSync(MIGRATION_PATH, 'utf8');
-const DATABASE_URL =
-  process.env.INTEGRATION_DATABASE_URL ?? process.env.PLANNING_DATABASE_URL;
+const DATABASE_URL = process.env.INTEGRATION_DATABASE_URL;
 const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
 
 interface SqlExecution {
@@ -20,10 +19,10 @@ interface SqlExecution {
   readonly stderr: string;
 }
 
-/** Executes one isolated PostgreSQL client process against the disposable CI database. */
+/** Executes one isolated PostgreSQL client process against the dedicated disposable integration database. */
 function executeSql(sql: string): SqlExecution {
   if (!DATABASE_URL) {
-    throw new Error('A PostgreSQL test database URL is required');
+    throw new Error('A dedicated PostgreSQL integration test database URL is required');
   }
   const target = new URL(DATABASE_URL);
   const result = spawnSync(
@@ -98,6 +97,17 @@ describe('plugin installation migration contract', () => {
       'revoked_at timestamptz',
     ]) {
       expect(MIGRATION_SQL).toContain(column);
+    }
+    for (const constraint of [
+      'plugin_installation_id_uuid_v4',
+      'plugin_installation_workspace_id_uuid_v4',
+      'plugin_installation_user_id_uuid_v4',
+      'plugin_installation_manifest_sha256',
+      'plugin_installation_capability_count',
+      'plugin_installation_capability_array',
+      'plugin_installation_lifecycle_consistency',
+    ]) {
+      expect(MIGRATION_SQL).toContain(`CONSTRAINT ${constraint}`);
     }
     expect(MIGRATION_SQL).toContain(
       'plugin_integration.capability_array_is_valid',
@@ -193,14 +203,28 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
       },
       {
         sql: `INSERT INTO plugin_integration.plugin_installation_record
-          VALUES ('11111111-1111-4111-8111-111111111118', '22222222-2222-4222-8222-222222222222',
+          VALUES ('11111111-1111-4111-8111-111111111118', '22222222-2222-7222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY['a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_workspace_id_uuid_v4',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111119', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-7333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY['a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_user_id_uuid_v4',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111120', '22222222-2222-4222-8222-222222222222',
           '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
           ARRAY['a', 'a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
         constraint: 'plugin_installation_capability_array',
       },
       {
         sql: `INSERT INTO plugin_integration.plugin_installation_record
-          VALUES ('11111111-1111-4111-8111-111111111119', '22222222-2222-4222-8222-222222222222',
+          VALUES ('11111111-1111-4111-8111-111111111121', '22222222-2222-4222-8222-222222222222',
           '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
           ARRAY['b', 'a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
         constraint: 'plugin_installation_capability_array',
@@ -210,7 +234,7 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
     }
 
     requireSqlSuccess(`INSERT INTO plugin_integration.plugin_installation_record
-      VALUES ('11111111-1111-4111-8111-111111111120', '22222222-2222-4222-8222-222222222222',
+      VALUES ('11111111-1111-4111-8111-111111111122', '22222222-2222-4222-8222-222222222222',
       '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
       ARRAY['a', 'b'], 'active', '2026-08-10T02:00:00.000Z', NULL);`);
   });
