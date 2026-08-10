@@ -31,6 +31,7 @@ erDiagram
     WORKSPACE_RECORD ||--o{ REVIEW_RECORD : contains
 
     WORKSPACE_RECORD ||--o{ CALENDAR_CONNECTION : authorizes
+    USER_ACCOUNT ||--o{ CALENDAR_CONNECTION : owns
     CALENDAR_CONNECTION ||--o{ CALENDAR_SYNC_RECORD : tracks
     WORKSPACE_RECORD ||--o{ REMINDER_RECORD : contains
     REMINDER_RECORD ||--o{ DELIVERY_OUTCOME : records
@@ -43,8 +44,11 @@ erDiagram
     DATA_RIGHTS_REQUEST ||--o{ DATA_RIGHTS_RECEIPT : terminates
 
     WORKSPACE_RECORD ||--o{ PLUGIN_INSTALLATION : grants
+    USER_ACCOUNT ||--o{ PLUGIN_INSTALLATION : installs
     PLUGIN_INSTALLATION ||--o{ PLUGIN_DELIVERY : attempts
 ```
+
+Logical USER_ACCOUNT relationships to calendar/plugin records represent authority/ownership identifiers, not cross-service foreign keys or direct SQL access.
 
 ## Persisted protected-main ownership
 
@@ -64,17 +68,31 @@ Habit owns recurrence/completion evidence; Review owns guided review snapshots/p
 
 **Status:** Implemented on protected main
 
-PR #150 added the service-owned `calendar_integration.calendar_connection_record` persistence foundation scoped simultaneously to workspace and user. The row stores bounded provider/account/calendar metadata, normalized scopes and opaque credential references rather than plaintext provider credentials. PR #153 added atomic tenant+user-scoped revocation and durable revoked-state/replay semantics.
+PR #150 added the service-owned `calendar_integration.calendar_connection_record` persistence foundation scoped simultaneously to workspace and user. The row stores bounded provider/account/calendar metadata, normalized scopes and opaque credential references rather than plaintext provider credentials. PR #153 added atomic tenant+user-scoped revocation and durable revoked-state/replay semantics. PR #155 added signed workspace+user request authority without introducing additional persistence.
 
-PR #155 is **Implemented on active PR** for signed workspace+user request authority only; it adds no persistence. The complete hosted OAuth/managed-secret/refresh/provider-revocation/discovery/selection lifecycle remains **Partial** under #129.
+The complete hosted OAuth/managed-secret/refresh/provider-revocation/discovery/selection lifecycle remains **Partial** under #129.
 
 ### Plugin integration
 
-**Status:** Implemented on protected main
+Protected main through PR #151 owns the application-level plugin installation/grant authority: validated manifest intent is separated from explicit host-granted capability subsets, exact replay/conflict semantics are deterministic, cross-tenant/user existence is hidden, and revocation ends active authority while preserving bounded evidence.
 
-PR #151 protects the application-level `plugin_installation` authority model: validated manifest intent is separated from explicit host-granted capability subsets, exact replay/conflict semantics are deterministic, cross-tenant/user existence is hidden, and revocation ends active authority while preserving bounded evidence.
+#### Durable plugin installation record
 
-This is not yet a protected-main durable plugin-installation table. Persisted plugin secret records and outbound `plugin_delivery` attempts remain **Planned/Partial** under #130 until owning migrations/repositories and delivery runtime exist. The ERD therefore shows those as logical target entities, not physical tables.
+**Status:** Implemented on active PR
+
+PR #156 adds the first owning integration-service migration/repository for `plugin_integration.plugin_installation_record`. Its durable logical fields include:
+
+- `installation_id` — opaque UUIDv4 primary installation identity;
+- `workspace_id` — authenticated tenant authority;
+- `installed_by_user_id` — installing/requesting user authority;
+- `plugin_id` and `plugin_contract_version` — bounded plugin metadata;
+- `manifest_sha256` — exact validated manifest integrity evidence;
+- `granted_capabilities` — explicit bounded host-granted capability set;
+- `installation_status`, `installed_at`, `revoked_at` — lifecycle evidence.
+
+Application and repository lookup/revocation paths carry installation + workspace + installing-user authority to the fixed parameterized SQL boundary. Plaintext plugin credentials are not part of this record. The record is not evidence that outbound delivery or a managed secret/KMS lifecycle exists.
+
+Persisted plugin-secret records and `plugin_delivery` attempts therefore remain **Planned/Partial** under #130. The ERD shows those intended relationships as logical targets, not protected-main physical tables.
 
 ## Data-rights lifecycle
 
