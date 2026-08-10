@@ -110,9 +110,9 @@ describe('Review HTTP boundary', () => {
       const finalIndex = BASE64URL_ALPHABET.indexOf(canonical.at(-1) ?? '');
       expect(finalIndex).toBeGreaterThanOrEqual(0);
       expect(finalIndex % 4).toBe(0);
-      const nonCanonical = `${canonical.slice(0, -1)}${
-        BASE64URL_ALPHABET[finalIndex + 1]
-      }`;
+      const aliasCharacter = BASE64URL_ALPHABET[finalIndex + 1];
+      expect(aliasCharacter).toBeDefined();
+      const nonCanonical = `${canonical.slice(0, -1)}${aliasCharacter}`;
       expect(Buffer.from(nonCanonical, 'base64url')).toEqual(
         Buffer.from(canonical, 'base64url'),
       );
