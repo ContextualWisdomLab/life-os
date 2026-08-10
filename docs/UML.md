@@ -114,9 +114,9 @@ sequenceDiagram
 
 ## Calendar connection registry foundation
 
-**Status:** Implemented on active PR
+**Status:** Implemented on protected main
 
-**Evidence:** PR #150; full hosted credential lifecycle remains `Partial` under issue #129.
+**Evidence:** PR #150 merged as `1623df364925f84920c07c112f1ae96777277d20`; full hosted credential lifecycle remains `Partial` under issue #129.
 
 ```mermaid
 sequenceDiagram
@@ -137,7 +137,7 @@ sequenceDiagram
     end
 ```
 
-The active migration/repository does not itself implement OAuth callback state, managed secret storage, refresh/revocation or discovery/selection.
+The protected migration/repository is a persistence foundation only; OAuth callback state, managed secret storage, refresh/revocation and discovery/selection remain separate issue #129 work.
 
 ## AI proposal / evidence / decision
 
