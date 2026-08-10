@@ -1,6 +1,5 @@
 import 'reflect-metadata';
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -51,15 +50,6 @@ export const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');
 interface PassthroughResponse {
   statusCode: number;
   setHeader(name: string, value: string): void;
-}
-
-/** Requires the tenant workspace boundary used by legacy planning operations. */
-function requireWorkspaceId(value: string | undefined): string {
-  const workspaceId = value?.trim();
-  if (!workspaceId) {
-    throw new BadRequestException('x-workspace-id header is required');
-  }
-  return workspaceId;
 }
 
 /** Returns a stable not-found problem without disclosing another tenant's state. */
@@ -197,67 +187,83 @@ export class PlanningController {
     }
   }
 
-  /** Creates a goal inside the caller's required workspace. */
+  /** Creates a goal inside the signed gateway workspace. */
   @Post('goals')
   async createGoal(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: { title?: unknown },
   ): Promise<Goal> {
     try {
-      return await this.planningService.createGoal(
-        requireWorkspaceId(workspaceHeader),
-        {
-          title: requireTitle(body),
-        },
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
       );
+      return await this.planningService.createGoal(trustedWorkspaceId, {
+        title: requireTitle(body),
+      });
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
-  /** Lists goals belonging to the caller's required workspace. */
+  /** Lists goals belonging to the signed gateway workspace. */
   @Get('goals')
   async listGoals(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
   ): Promise<Goal[]> {
     try {
-      return await this.planningService.listGoals(
-        requireWorkspaceId(workspaceHeader),
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
       );
+      return await this.planningService.listGoals(trustedWorkspaceId);
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
-  /** Creates a project below a workspace-owned goal. */
+  /** Creates a project below a goal in the signed gateway workspace. */
   @Post('goals/:goalId/projects')
   async createProject(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('goalId') goalId: string,
     @Body() body: { title?: unknown },
   ): Promise<Project> {
     try {
-      return await this.planningService.createProject(
-        requireWorkspaceId(workspaceHeader),
-        {
-          goalId,
-          title: requireTitle(body),
-        },
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
       );
+      return await this.planningService.createProject(trustedWorkspaceId, {
+        goalId,
+        title: requireTitle(body),
+      });
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
-  /** Lists projects below a workspace-owned goal. */
+  /** Lists projects below a goal in the signed gateway workspace. */
   @Get('goals/:goalId/projects')
   async listProjects(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('goalId') goalId: string,
   ): Promise<Project[]> {
     try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+      );
       return await this.planningService.listProjects(
-        requireWorkspaceId(workspaceHeader),
+        trustedWorkspaceId,
         goalId,
       );
     } catch (error) {
@@ -265,35 +271,44 @@ export class PlanningController {
     }
   }
 
-  /** Creates a task below a workspace-owned project. */
+  /** Creates a task below a project in the signed gateway workspace. */
   @Post('projects/:projectId/tasks')
   async createTask(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
     @Body() body: { title?: unknown },
   ): Promise<Task> {
     try {
-      return await this.planningService.createTask(
-        requireWorkspaceId(workspaceHeader),
-        {
-          projectId,
-          title: requireTitle(body),
-        },
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
       );
+      return await this.planningService.createTask(trustedWorkspaceId, {
+        projectId,
+        title: requireTitle(body),
+      });
     } catch (error) {
       throw toHttpException(error);
     }
   }
 
-  /** Lists tasks below a workspace-owned project. */
+  /** Lists tasks below a project in the signed gateway workspace. */
   @Get('projects/:projectId/tasks')
   async listTasks(
-    @Headers('x-workspace-id') workspaceHeader: string | undefined,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
   ): Promise<Task[]> {
     try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+      );
       return await this.planningService.listTasks(
-        requireWorkspaceId(workspaceHeader),
+        trustedWorkspaceId,
         projectId,
       );
     } catch (error) {
