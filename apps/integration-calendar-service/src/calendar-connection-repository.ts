@@ -439,7 +439,12 @@ export class PostgresCalendarConnectionRepository {
       return undefined;
     }
     const connection = parseStoredConnection(row);
-    if (connection.status !== 'active') {
+    if (
+      connection.status !== 'active' ||
+      connection.connectionId !== safe.connectionId ||
+      connection.workspaceId !== safe.workspaceId ||
+      connection.userId !== safe.userId
+    ) {
       return invalidPersistence();
     }
     return connection;
