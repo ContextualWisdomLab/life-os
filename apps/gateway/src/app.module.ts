@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Header,
-  HttpException,
-  Module,
-} from '@nestjs/common';
+import { Controller, Get, Header, HttpException, Module } from '@nestjs/common';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import { gatewayMetrics } from './observability';
 
@@ -17,11 +11,7 @@ interface GatewayProblemDetails {
 }
 
 /** Builds one credential-free gateway problem response. */
-function problem(
-  status: number,
-  title: string,
-  code: string,
-): HttpException {
+function problem(status: number, title: string, code: string): HttpException {
   const details: GatewayProblemDetails = {
     type: 'about:blank',
     title,
