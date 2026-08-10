@@ -4,100 +4,75 @@
 
 ## Verdict
 
-The historical LifeOS material is extensive but was not sufficient as one code-current whole-product authority. The project moved through materially different product models: browser-only/login-free local-first, public multi-user server persistence, a single-Docker deployment direction, and finally domain-oriented modular MSA. Protected-main implementation also continued after the first canonical documentation branch diverged.
+Historical LifeOS material was extensive but not sufficient as one code-current whole-product authority. The project moved through materially different product models: browser-only/login-free local-first, public multi-user server persistence, a single-Docker direction, and finally domain-oriented modular MSA. Protected-main implementation also continued after the first canonical docs branch diverged.
 
-PR #145 is the single canonical successor. Its documentation family coverage is now **design-sufficient in scope**: PRD, TRD, root Architecture, detailed ADRs, logical ERD/Data Model, UML, API/event contracts, Security, Threat Model, Privacy/Data Lifecycle, Test Strategy, Operability, Release/Migration/Rollback, Standards/Research and Requirements Traceability are present with machine-checkable consistency rules. The repository remains **protected-main documentation insufficient** until this successor is reconciled with the current live base, passes exact-current-head checks/review, and merges. Documentation sufficiency is not product or release completion.
+PR #145 is the single canonical successor. Its family coverage is now **design-sufficient in scope**: PRD, TRD, root Architecture, detailed ADRs, logical ERD/Data Model, UML, API/event contracts, Security, Threat Model, Privacy/Data Lifecycle, Test Strategy, Operability, Release/Migration/Rollback, Standards/Research and Requirements Traceability exist with machine-checkable consistency rules. The repository remains **protected-main documentation insufficient** until this exact successor is current against live main, passes exact-head CI/security/review/documentation contracts, and integrates. Documentation sufficiency is never product/release completion.
 
 ## Fitness matrix
 
-| Family | Assessment on this branch | Maturity | Notes |
+| Family | Assessment on #145 | Maturity | Notes |
 | --- | --- | --- | --- |
-| PRD | Present-current | Implemented on active PR | Product journey, historical drift, protected #146/#149/#150 and active #147/#151 are explicit |
-| TRD | Present-current | Implemented on active PR | Shared runtime, service authority, data, HTTP/event, concurrency, AI/security/ops/release requirements |
-| Root Architecture | Present-current on this successor | Implemented on active PR | Semantically reconciles Identity rights/integrity, durable Today, protected calendar registry, active plugin authority, Notification/Privacy ownership and canonical graph |
-| ADR index/detailed decisions | Present-current | Implemented on active PR | ADR 0001-0011 including verification evidence identity and external integration authority |
-| Logical ERD/Data Model | Present-current | Implemented on active PR | Service ownership and conceptual-vs-persisted status are explicit; protected #150 persistence and active #151 non-persistence are distinguished |
-| UML | Present-current | Implemented on active PR | topology, login, Today, review, calendar, AI, rights/status/integrity, plugin authority, verification evidence, backup/deployment and degraded modes |
-| API/event contracts | Present-current | Implemented on active PR | Registry separates protected-main #146/#149/#150, active #151/#147 and still-partial parent gaps |
-| Security | Present-current on protected main | Implemented on protected main | Root `SECURITY.md` remains vulnerability-reporting authority |
-| Threat model | Present-current | Implemented on active PR | Trust boundaries and current partial/planned threats are explicit |
-| Privacy/data lifecycle | Present-current | Implemented on active PR | Rights status/integrity plus protected calendar metadata and active plugin authority remain separated from incomplete full lifecycles |
-| Test strategy | Present-current | Implemented on active PR | Realistic DB/browser/security/concurrency and documentation-evidence policy |
-| Operability | Present-current | Implemented on active PR | Deployment/readiness/observability/failure/backup/migration/release boundaries |
-| Release/migration/rollback | Present-current | Implemented on active PR | Exact integrated release and state-change recovery semantics |
-| Standards/research | Present-current | Implemented on active PR | Final-vs-draft distinction and APA 7 anchors; scoped feature research remains detailed evidence |
-| Requirements traceability | Present-current | Implemented on active PR | Requirement/decision -> protected source or exact active PR -> remaining issue evidence |
-| README/AGENTS/CLAUDE/CHANGELOG alignment | Partial | Partial | Canonical discoverability exists on the successor; protected-main integration is still pending and live root policy must be preserved semantically |
-| Machine-checkable documentation consistency | Present-current on this successor | Implemented on active PR | Contract tests check required files/links/status vocabulary/ADRs/root semantic claims and current protected-vs-active maturity |
-
-## Why file presence was not enough
-
-The prior baseline initially treated an existing root document as current because it was newer than an older documentation donor. Semantic comparison showed that chronology was not a sufficient correctness criterion. Root documentation had to be reconciled with later Identity authentication/data-rights authority, durable Today, trusted calendar workspace context, Notification/Privacy persistence ownership and the canonical documentation graph.
-
-The repository rule is therefore: **semantic evidence outranks file age**. A newer document is stale whenever protected-main source or accepted authority has outgrown the described contract.
+| PRD | Present-current | Implemented on active PR | protected #146/#149/#150/#151/#153 and active #154/#155 are separated |
+| TRD | Present-current | Implemented on active PR | shared runtime, authority, data, API/event, concurrency, AI/security/ops/release contracts |
+| Root Architecture | Present-current | Implemented on active PR | semantically reconciled with current Identity/Today/Calendar/Plugin/Privacy/Notification and verification authority |
+| ADR index / decisions | Present-current | Implemented on active PR | ADR 0001-0011 including evidence identity and external-integration authority |
+| Logical ERD / Data Model | Present-current | Implemented on active PR | protected calendar persistence/revocation and non-persisted plugin logical targets distinguished |
+| UML | Present-current | Implemented on active PR | topology, login, Today/review, calendar, AI, rights, plugin, verification, deployment/degraded modes |
+| API/event contracts | Present-current | Implemented on active PR | protected foundations, active successors and still-partial parent gaps separated |
+| Security | Present-current | Implemented on protected main | root `SECURITY.md` vulnerability-reporting authority |
+| Threat model | Present-current | Implemented on active PR | trust boundaries and residual gaps explicit |
+| Privacy/Data Lifecycle | Present-current | Implemented on active PR | rights, credential-reference, revocation and plugin authority boundaries distinguished |
+| Test Strategy | Present-current | Implemented on active PR | realistic DB/browser/security/concurrency/evidence policy |
+| Operability | Present-current | Implemented on active PR | deployment/readiness/observability/failure/backup/recovery boundaries |
+| Release/Migration/Rollback | Present-current | Implemented on active PR | one exact integrated release-source contract |
+| Standards/Research | Present-current | Implemented on active PR | source-class/final-vs-draft discipline and APA 7 anchors |
+| Requirements Traceability | Present-current | Implemented on active PR | requirement/decision -> protected source or exact active PR -> remaining issue |
+| README/AGENTS/CLAUDE/CHANGELOG alignment | Partial | Partial | discoverability exists on successor; protected-main integration is still pending |
+| Machine-checkable documentation consistency | Present-current | Implemented on active PR | semantic currentness, status vocabulary, ADRs, links, lifecycle maturity and evidence identity are gated |
 
 ## Historical drift reconciled
 
-1. **Private/login-free local-first -> public multi-user server-backed/self-hostable:** browser-local state is draft/cache/offline state, not the system of record.
-2. **Single Docker app -> modular MSA:** Compose remains a profile; service authority does not collapse.
-3. **UUIDv7 proposal -> UUIDv4 protected-main invariant:** current internal IDs are opaque UUIDv4.
-4. **Post-MVP labels -> evidence maturity:** capabilities are classified from live code/tests, not old roadmap labels.
-5. **Configured capability maturity -> whole-product readiness:** buyer-gap exhaustion is a separate evidence dimension.
-6. **Generic green check -> explicit evidence identity:** source head, PR-base snapshot, live base, synthetic merge, workflow checkout, protected main and release source are distinct authorities under ADR 0010.
-7. **External integration metadata -> ambient authority:** ADR 0011 separates LifeOS-owned integration identity, provider/plugin metadata, secret references and explicitly granted capabilities.
+1. **Private/login-free local-first -> public multi-user server-backed/self-hostable.** Browser-local state is explicit draft/cache/offline state.
+2. **Single Docker application -> modular MSA.** Compose remains a profile, not authority collapse.
+3. **UUIDv7 -> UUIDv4.** Internal product IDs are opaque UUIDv4.
+4. **Old post-MVP labels -> evidence maturity.** Protected source/tests outrank roadmap prose.
+5. **Capability maturity -> buyer-gap exhaustion.** These are independent evidence dimensions.
+6. **Generic green status -> explicit evidence identity.** ADR 0010 separates source head, PR-base snapshot, live base, merge tree, workflow checkout, protected main and release source.
+7. **External integration metadata -> ambient authority.** ADR 0011 separates LifeOS identity, provider/plugin metadata, secret references and explicit capability grants.
 
-## Protected-main evolution reconciled
+## Protected-main evolution currently represented
 
-Current protected main includes:
+Protected main includes durable Today (#127), trusted calendar workspace context (#139), recent-auth/data-rights prerequisites (#134/#136/#137), durable rights ledger (#138), tenant+actor status lookup (#144), authenticated public rights status (#146), export integrity evidence (#149), workspace+user calendar connection persistence (#150), explicit plugin installation grants (#151), migration-fixture reliability repair (#152), and atomic calendar connection revocation (#153).
 
-- durable Today synchronization (#127);
-- readiness/buyer-gap accounting and bounded OpenCode hardening;
-- authentication-age/recent-auth data-rights prerequisites (#134/#136/#137);
-- durable data-rights request/terminal receipt persistence (#138);
-- tenant-and-requesting-actor scoped request lookup (#144);
-- signed trusted calendar workspace context (#139);
-- authenticated non-cacheable public data-rights status resource (#146);
-- per-section tenant-export integrity metadata and deterministic SHA-256 evidence (#149);
-- workspace-and-user-scoped calendar connection persistence with opaque secret handles (#150), merged as `1623df364925f84920c07c112f1ae96777277d20`.
+The old documentation PR #126 is superseded. It is not evidence merely because historical review threads were once resolved.
 
-The old documentation PR #126 became materially diverged while protected work integrated and is superseded by the clean successor instead of being merged with obsolete implementation ancestry.
+## Active work represented without promotion
 
-## Active implementation that documentation must not promote prematurely
-
-### PR #147 — verification evidence identity
+### PR #154 — verification evidence identity
 
 **Status:** Implemented on active PR
 
-PR #147 advances issue #132 by separating exact contributor source-head verification from synthetic merge-tree compatibility and making evidence attribution explicit. ADR 0010 records the timeless identity model. It is not protected-main behavior until integration.
+Clean successor #154 replaces superseded #147. It separates exact contributor-head checks from synthetic merge compatibility, binds AppGuardrail SARIF to the analyzed source identity, obtains current source/live-base evidence through authenticated GitHub API calls, retains merge parents for verification and rejects identity mismatch. Issue #132 remains open until integration/residual workflow attribution closes.
 
-### PR #151 — plugin installation authority
+### PR #155 — calendar workspace+user authority
 
 **Status:** Implemented on active PR
 
-PR #151 makes plugin installation authority explicit at the application boundary: manifest intent is separated from host-granted capabilities, exact replay is bounded, conflicting reuse fails, cross-tenant/user lookup does not disclose existence and revocation ends active authority. Durable installation/secret persistence and outbound delivery remain issue #130.
+PR #155 adds the distinct short-lived `life-os.calendar-user.v1` authority context that binds both workspace and requesting user. It is a prerequisite for hosted user-sensitive calendar operations, not evidence that public disconnect/OAuth/managed-secret/refresh/provider-revocation/discovery are complete.
 
-## Current product gaps that must remain explicit
+## Remaining product gaps
 
-- **Partial:** complete tenant export/deletion orchestration — #55, despite protected #146/#149 progress.
-- **Partial:** complete per-user calendar credential lifecycle — #129, despite protected #150 persistence foundation.
-- **Planned/Partial by slice:** complete plugin secret/outbound delivery runtime — #130, with active #151 authority foundation.
-- **Implemented on active PR:** verification evidence identity hardening — PR #147 / issue #132 until integration and residual workflow reconciliation.
+- **Partial:** #55 complete export/deletion orchestration, despite protected #146/#149.
+- **Partial:** #129 complete per-user calendar credential lifecycle, despite protected #150/#153 and active #155.
+- **Partial:** #130 complete plugin secret/outbound-delivery runtime, despite protected #151 installation authority.
+- **Implemented on active PR:** #132 verification-evidence attribution via #154 until protected integration/residual closure.
 
 ## Sufficiency criteria
 
-The documentation line is design-sufficient only when:
+The documentation line is design-sufficient only when canonical families are discoverable, statuses use exact vocabulary, ADR targets/sections are valid, diagrams are balanced, root Architecture matches protected service authority, active behavior is not called shipped, requirements/gaps map to executable evidence, and semantic-regression tests fail when currentness drifts.
 
-- every canonical family is discoverable;
-- statuses use the exact vocabulary;
-- ADR index/targets and required decision sections are valid;
-- Mermaid/code fences are balanced;
-- root Architecture and canonical documents match protected-main service ownership and implemented authority;
-- active PR behavior is labeled active rather than shipped;
-- requirements and buyer gaps map to source/test/issue/PR evidence;
-- documentation contracts fail when semantic recency regresses, not merely when a file disappears.
-
-The repository becomes protected-main documentation sufficient only after PR #145 passes exact-current-head CI/security/review/documentation contracts and integrates against a freshly verified live base without regressing current source/policy.
+The repository is protected-main documentation sufficient only after PR #145 passes current exact-head checks/security/review and integrates against a freshly resolved live base without regressing current source/policy.
 
 ## Continuation rule
 
-Documentation integration is a governance gate, never product-completion. After documentation work the autonomous maintenance queue immediately returns to non-documentation execution: integrate or repair #147 when policy permits, finish #151 after its reliability prerequisite, and continue the remaining #55/#129/#130/#132 work plus subsequently discovered buyer/security/reliability/operability gaps.
+Documentation completion is a governance gate only. The autonomous queue must continue #154/#155 and the remaining #55/#129/#130/#132 work, plus newly discovered buyer/security/reliability/operability gaps, rather than stopping on a green documentation pack.
