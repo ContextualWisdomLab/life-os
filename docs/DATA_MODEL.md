@@ -46,72 +46,43 @@ erDiagram
     PLUGIN_INSTALLATION ||--o{ PLUGIN_DELIVERY : attempts
 ```
 
-## Service-owned entities
+## Persisted protected-main ownership
 
-### Identity service — persisted on protected main
+### Identity
 
-- `user_account`
-- `external_identity`
-- `browser_session`
-- `workspace_record`
-- `workspace_membership`
-- `data_rights_request` and immutable terminal receipt state as defined by current migrations/repositories
+Identity owns users, external identity mapping, browser sessions, workspace membership/authorization, authentication provenance, durable `data_rights_request`/terminal receipt evidence, authenticated request-status lookup and export-integrity composition. Authentication time remains distinct from session rotation.
 
-Authentication provenance is retained independently from session rotation so recent-auth policy can be enforced correctly. Protected-main export logic now binds each contributor section to an explicit business record count and deterministic SHA-256 integrity evidence before the whole-export digest is calculated.
+### Planning
 
-### Planning service — persisted on protected main
+Planning owns Goals, Projects, Tasks and the durable Today aggregate/action/revision/idempotency model introduced by PR #127. Review/search projections do not gain Planning mutation authority.
 
-- `goal_record`
-- `project_record`
-- `task_record`
-- durable Today aggregate/action/revision/idempotency state introduced by PR #127
+### Habit / Review / Notification / AI / Privacy
 
-Planning migrations are authoritative; review/search projections are not mutation authority.
+Habit owns recurrence/completion evidence; Review owns guided review snapshots/projections; Notification owns reminder occurrence/claim/delivery evidence; AI owns proposal/evidence/decision persistence; Privacy owns purpose-bound access decisions, grants and audit events. Logical cross-service references never authorize cross-schema SQL.
 
-### Habit service — persisted on protected main
+### Calendar integration
 
-- `habit_record`
-- `habit_completion`
+**Status:** Implemented on protected main
 
-### Review service
+PR #150 added the service-owned `calendar_integration.calendar_connection_record` persistence foundation scoped simultaneously to workspace and user. The row stores bounded provider/account/calendar metadata, normalized scopes and opaque credential references rather than plaintext provider credentials. PR #153 added atomic tenant+user-scoped revocation and durable revoked-state/replay semantics.
 
-Review snapshots/projections are service-owned. They consume planning/habit evidence without becoming their source of truth.
-
-### Notification service — persisted on protected main
-
-- reminder occurrence/claim records
-- immutable delivery outcomes/inbox evidence
-
-### AI proposal service — persisted on protected main
-
-- proposal evidence
-- explicit accept/reject decision evidence
-
-### Privacy service — persisted on protected main
-
-- purpose-bound access decisions
-- bounded grants
-- append-only privacy/audit events
-
-### Calendar integration — connection registry persisted on protected main
-
-Protected main includes sync/provider behavior, trusted signed workspace-context verification, and after PR #150 the first persisted `calendar_connection` foundation. Migration/repository scope binds one connection to workspace and user, stores bounded provider/account/calendar metadata and normalized scopes, and references external credential material through opaque handles. The durable table uses the service-owned `calendar_integration.calendar_connection_record` namespace rather than a generic one-word schema.
-
-The complete hosted lifecycle remains **Partial** under issue #129: authorization callback lifecycle, concrete managed secret storage, refresh/revocation, discovery/selection and migration from development provider configuration remain separate work.
+PR #155 is **Implemented on active PR** for signed workspace+user request authority only; it adds no persistence. The complete hosted OAuth/managed-secret/refresh/provider-revocation/discovery/selection lifecycle remains **Partial** under #129.
 
 ### Plugin integration
 
-Manifest/contract validation exists on protected main. PR #151 is **Implemented on active PR** for an application-level `plugin_installation` authority model that grants an explicit capability subset and preserves replay/conflict/revocation evidence. It does not add durable persistence.
+**Status:** Implemented on protected main
 
-Therefore persisted `plugin_installation`, plugin secret records and `plugin_delivery` attempts remain **Planned** under issue #130 until migrations/repositories and delivery runtime are merged. The logical ERD shows the intended ownership relationship, not physical protected-main tables.
+PR #151 protects the application-level `plugin_installation` authority model: validated manifest intent is separated from explicit host-granted capability subsets, exact replay/conflict semantics are deterministic, cross-tenant/user existence is hidden, and revocation ends active authority while preserving bounded evidence.
+
+This is not yet a protected-main durable plugin-installation table. Persisted plugin secret records and outbound `plugin_delivery` attempts remain **Planned/Partial** under #130 until owning migrations/repositories and delivery runtime exist. The ERD therefore shows those as logical target entities, not physical tables.
 
 ## Data-rights lifecycle
 
-Protected main proves recent-authentication provenance, authenticated ownership binding, durable request/terminal receipt persistence, tenant-scoped request lookup, an authenticated non-cacheable public status projection through PR #146, and per-section export integrity metadata through PR #149. The whole-product export/deletion participant/reconciliation/protected-delivery model remains partial under issue #55.
+Protected main includes recent-authentication provenance, durable requests/immutable terminal receipts, tenant+actor scoped status lookup, authenticated non-cacheable status projection (#146), and per-section export integrity evidence (#149). Whole-product contributor orchestration, reconciliation, protected delivery, retention/legal-hold/backup-expiry and terminal completion remain **Partial** under #55.
 
-## Temporal/provenance fields
+## Temporal / provenance rules
 
-Where current migrations define them, records retain creation/update/completion/expiry/revision/idempotency/digest evidence. Persist UTC instants and IANA timezone/local-calendar values where civil-time semantics matter. Do not add temporal columns solely to satisfy this diagram.
+Use UTC instants plus explicit IANA timezone/local-calendar fields where civil-time behavior matters. Current migrations may retain creation/update/completion/revocation/expiry/revision/idempotency/digest evidence. Do not add fields solely to satisfy a diagram.
 
 ## Cross-service relationships
 
