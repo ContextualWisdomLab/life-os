@@ -14,8 +14,8 @@ This index maps product requirements and durable decisions to representative sou
 | PRD-REV-001 review projection boundary | Implemented on protected main | review service tests | — |
 | PRD-CAL-001 conflict-safe calendar sync | Implemented on protected main | CalDAV/Google adapter tests | — |
 | PRD-CAL-002 trusted calendar workspace context | Implemented on protected main | PR #139; signed context verifier/controller regressions | — |
-| PRD-CAL-003 complete hosted per-user calendar credentials | Partial | provider adapters and trusted workspace context exist | issue #129 |
-| PRD-CAL-004 tenant+user calendar connection registry foundation | Implemented on active PR | PR #150; service-owned migration/repository with opaque credential references | issue #129 remains for complete lifecycle |
+| PRD-CAL-003 complete hosted per-user calendar credentials | Partial | provider adapters, trusted context and protected connection registry exist | issue #129 |
+| PRD-CAL-004 tenant+user calendar connection registry foundation | Implemented on protected main | PR #150 merged as `1623df364925f84920c07c112f1ae96777277d20`; service-owned migration/repository with opaque credential references | issue #129 remains for complete lifecycle |
 | PRD-NOT-001 bounded reminders | Implemented on protected main | notification scheduler/persistence tests | — |
 | PRD-AI-001 inert auditable proposals | Implemented on protected main | AI proposal/audit service tests | — |
 | PRD-AI-002 deterministic/live-provider separation | Implemented on protected main | proposal evaluator + NIM conformance workflow | — |
@@ -44,6 +44,7 @@ This index maps product requirements and durable decisions to representative sou
 | Capability maturity cannot stand in for buyer-gap exhaustion | Accepted architecture | buyer-gap registry/reporting |
 | Canonical documentation must distinguish shipped/active/planned/superseded state | Accepted architecture | ADR 0007 and documentation contract tests on PR #145 |
 | Verification evidence identities remain separate | Accepted architecture | ADR 0010; PR #147 is active implementation evidence |
+| External integration metadata, secret material and granted authority remain separate | Accepted architecture | ADR 0011; protected #150 and active #151 evidence |
 
 ## Evidence hierarchy
 
@@ -58,7 +59,7 @@ A contributor source head, PR-base snapshot, independently resolved live base ti
 
 ## Buyer gaps from live readiness state
 
-The configured capability set can be fully mature while the product still has accepted buyer gaps. Current canonical open buyer gaps are #55 data portability completion, #129 per-user calendar credentials, and #130 plugin runtime delivery. Protected-main #146 and #149 materially advance #55 without closing it. Active PR #150 advances #129 and active PR #151 advances #130 without promoting either whole gap to shipped completion. Issue #132 is a reliability/governance hardening gap; PR #147 is its active implementation line.
+The configured capability set can be fully mature while the product still has accepted buyer gaps. Current canonical open buyer gaps are #55 data portability completion, #129 per-user calendar credentials, and #130 plugin runtime delivery. Protected-main #146 and #149 materially advance #55 without closing it. Protected-main #150 advances #129 without completing its OAuth/secret/refresh/discovery lifecycle. Active PR #151 advances #130 without promoting the whole plugin-runtime gap to shipped completion. Issue #132 is a reliability/governance hardening gap; PR #147 is its active implementation line.
 
 ## Update rule
 
