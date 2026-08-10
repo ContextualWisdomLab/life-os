@@ -1,7 +1,11 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CalendarConnectionDisconnectResult } from './calendar-connection-disconnect';
+import {
+  CalendarConnectionDisconnectEvidenceError,
+  type CalendarConnectionDisconnectResult,
+  CalendarConnectionDisconnectValidationError,
+} from './calendar-connection-disconnect';
 
 const CONNECTION_ID = '11111111-1111-4111-8111-111111111111';
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222';
@@ -105,9 +109,7 @@ describe('CalendarConnectionController', () => {
     const module = await controllerModule();
     const Controller = module.CalendarConnectionController as new (
       application: DisconnectApplicationDouble,
-    ) => {
-      disconnectConnection(...args: unknown[]): Promise<unknown>;
-    };
+    ) => { disconnectConnection(...args: unknown[]): Promise<unknown> };
     const controller = new Controller({ async disconnect() { return undefined; } });
 
     await expectProblemStatus(
@@ -128,9 +130,7 @@ describe('CalendarConnectionController', () => {
     const module = await controllerModule();
     const Controller = module.CalendarConnectionController as new (
       application: DisconnectApplicationDouble,
-    ) => {
-      disconnectConnection(...args: unknown[]): Promise<unknown>;
-    };
+    ) => { disconnectConnection(...args: unknown[]): Promise<unknown> };
     let calls = 0;
     const controller = new Controller({
       async disconnect() {
@@ -158,9 +158,7 @@ describe('CalendarConnectionController', () => {
     const module = await controllerModule();
     const Controller = module.CalendarConnectionController as new (
       application: DisconnectApplicationDouble,
-    ) => {
-      disconnectConnection(...args: unknown[]): Promise<unknown>;
-    };
+    ) => { disconnectConnection(...args: unknown[]): Promise<unknown> };
     const controller = new Controller({ async disconnect() { return undefined; } });
 
     await expectProblemStatus(
@@ -173,5 +171,37 @@ describe('CalendarConnectionController', () => {
       ),
       503,
     );
+  });
+
+  it('maps application validation to 400 and evidence/dependency failures to 503', async () => {
+    vi.stubEnv('CALENDAR_GATEWAY_CONTEXT_SECRET', TEST_CONTEXT_SECRET);
+    vi.spyOn(Date, 'now').mockReturnValue(Number(ISSUED_AT) * 1000);
+    const module = await controllerModule();
+    const Controller = module.CalendarConnectionController as new (
+      application: DisconnectApplicationDouble,
+    ) => { disconnectConnection(...args: unknown[]): Promise<unknown> };
+    const failures: readonly [Error, number][] = [
+      [new CalendarConnectionDisconnectValidationError(), 400],
+      [new CalendarConnectionDisconnectEvidenceError(), 503],
+      [new Error('database unavailable'), 503],
+    ];
+
+    for (const [failure, status] of failures) {
+      const controller = new Controller({
+        async disconnect() {
+          throw failure;
+        },
+      });
+      await expectProblemStatus(
+        controller.disconnectConnection(
+          CONNECTION_ID,
+          WORKSPACE_ID,
+          USER_ID,
+          ISSUED_AT,
+          signature(),
+        ),
+        status,
+      );
+    }
   });
 });
