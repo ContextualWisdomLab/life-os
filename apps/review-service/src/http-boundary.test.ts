@@ -16,6 +16,8 @@ import { ReviewPersistenceError } from './postgres-review-repository';
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
 const SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_334_400;
+const BASE64URL_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 function response(error: HttpException): unknown {
   return error.getResponse();
@@ -77,6 +79,32 @@ describe('Review HTTP boundary', () => {
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
+  });
+
+  it('rejects a non-canonical base64url alias for the same signature bytes', () => {
+    const issuedAt = String(NOW_SECONDS);
+    const canonical = signature(issuedAt);
+    const finalIndex = BASE64URL_ALPHABET.indexOf(canonical.at(-1) ?? '');
+    expect(finalIndex).toBeGreaterThanOrEqual(0);
+    expect(finalIndex % 4).toBe(0);
+    const nonCanonical = `${canonical.slice(0, -1)}${
+      BASE64URL_ALPHABET[finalIndex + 1]
+    }`;
+    expect(Buffer.from(nonCanonical, 'base64url')).toEqual(
+      Buffer.from(canonical, 'base64url'),
+    );
+
+    expect(() =>
+      requireTrustedWorkspaceContext(
+        {
+          workspaceId: WORKSPACE_ID,
+          issuedAt,
+          signature: nonCanonical,
+        },
+        SECRET,
+        NOW_SECONDS,
+      ),
+    ).toThrow(HttpException);
   });
 
   it.each([
