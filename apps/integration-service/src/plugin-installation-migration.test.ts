@@ -1,11 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 const MIGRATION_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
+  __dirname,
   '..',
   'migrations',
   '0001_plugin_installation_record.sql',
