@@ -37,10 +37,16 @@ export interface PluginInstallationRecord {
   readonly revokedAt: string | null;
 }
 
-/** Atomic revocation request owned by the host persistence boundary. */
+/**
+ * Atomic revocation request owned by the host persistence boundary.
+ *
+ * `installedByUserId` is derived from authenticated host context and remains part
+ * of the durable lookup/update scope; plugin input never supplies this authority.
+ */
 export interface RevokePluginInstallation {
   readonly installationId: string;
   readonly workspaceId: string;
+  readonly installedByUserId: string;
   readonly revokedAt: string;
 }
 
@@ -55,14 +61,19 @@ export interface PluginInstallationStore {
    * is not sufficient because concurrent conflicting grants must fail closed.
    */
   createIfAbsent(record: PluginInstallationRecord): Promise<PluginInstallationRecord>;
-  findById(installationId: string): Promise<PluginInstallationRecord | undefined>;
+  /** Reads one installation only inside the authenticated workspace-and-user scope. */
+  findById(
+    installationId: string,
+    workspaceId: string,
+    installedByUserId: string,
+  ): Promise<PluginInstallationRecord | undefined>;
   /**
-   * Atomically transitions one active workspace-owned installation to revoked,
-   * returning the already-revoked durable winner for an exact replay.
+   * Atomically transitions one active workspace-and-user-owned installation to
+   * revoked, returning the already-revoked durable winner for an exact replay.
    *
-   * Durable implementations must scope the update by installation, workspace and
-   * lifecycle state so concurrent revocations cannot create last-write-wins audit
-   * timestamps or revive a revoked record.
+   * Durable implementations must scope the update by installation, workspace,
+   * installing user and lifecycle state so another member of the same workspace
+   * cannot read or revoke authority they do not own.
    */
   revokeActive(input: RevokePluginInstallation): Promise<PluginInstallationRecord | undefined>;
 }
@@ -159,7 +170,7 @@ function sameInstallation(
  *
  * The application treats a validated manifest as requested capability intent only.
  * LifeOS persists the smaller host-approved grant set and never lets plugin input
- * widen its own tenant authority.
+ * widen its own tenant or installer-user authority.
  */
 export class PluginInstallationApplication {
   constructor(
@@ -195,15 +206,23 @@ export class PluginInstallationApplication {
     return freezeRecord(durable);
   }
 
-  /** Returns an installation only inside the authenticated workspace boundary. */
+  /** Returns an installation only inside authenticated workspace-and-user authority. */
   async getInstallation(
     trustedContext: PluginInstallationContext,
     installationIdInput: string,
   ): Promise<PluginInstallationRecord | undefined> {
     const context = requireContext(trustedContext);
     const installationId = requireUuidV4(installationIdInput);
-    const existing = await this.store.findById(installationId);
-    if (!existing || existing.workspaceId !== context.workspaceId) {
+    const existing = await this.store.findById(
+      installationId,
+      context.workspaceId,
+      context.actorUserId,
+    );
+    if (
+      !existing ||
+      existing.workspaceId !== context.workspaceId ||
+      existing.installedByUserId !== context.actorUserId
+    ) {
       return undefined;
     }
     return freezeRecord(existing);
@@ -219,12 +238,14 @@ export class PluginInstallationApplication {
     const durable = await this.store.revokeActive({
       installationId,
       workspaceId: context.workspaceId,
+      installedByUserId: context.actorUserId,
       revokedAt: this.now().toISOString(),
     });
     if (
       !durable ||
       durable.installationId !== installationId ||
       durable.workspaceId !== context.workspaceId ||
+      durable.installedByUserId !== context.actorUserId ||
       durable.status !== 'revoked' ||
       durable.revokedAt === null
     ) {
