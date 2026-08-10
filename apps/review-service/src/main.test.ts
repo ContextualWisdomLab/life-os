@@ -1,7 +1,10 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ReviewController } from './main';
+import {
+  requireReviewServiceConfiguration,
+  ReviewController,
+} from './main';
 import {
   ReviewService,
   type ReviewCompletionRecord,
@@ -11,13 +14,7 @@ import {
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
 const IDEMPOTENCY_KEY = 'd1191b96-b7f4-4d8f-b1f7-9e2838686d5f';
 const COMPLETION_ID = '3f044b68-c515-4a52-8862-38af0047b88d';
-const GATEWAY_SECRET = [
-  'review',
-  'controller',
-  'gateway',
-  'fixture',
-  'material',
-].join('-');
+const GATEWAY_SECRET = randomBytes(32).toString('base64url');
 let previousGatewaySecret: string | undefined;
 
 class InMemoryReviewRepository implements ReviewRepository {
@@ -115,6 +112,31 @@ describe('Review controller', () => {
     await expect(
       controller.listCompletions(WORKSPACE_ID, issuedAt, signature, '10'),
     ).resolves.toHaveLength(3);
+  });
+
+  it('keeps startup and readiness fail-closed for unsafe gateway secrets', () => {
+    const controller = new ReviewController(
+      new ReviewService(new InMemoryReviewRepository()),
+    );
+
+    delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
+    expect(() => requireReviewServiceConfiguration(process.env)).toThrow(
+      HttpException,
+    );
+    expect(() => controller.ready()).toThrow(HttpException);
+
+    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = 'too-short';
+    expect(() => requireReviewServiceConfiguration(process.env)).toThrow(
+      HttpException,
+    );
+    expect(() => controller.ready()).toThrow(HttpException);
+
+    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
+    expect(() => requireReviewServiceConfiguration(process.env)).not.toThrow();
+    expect(controller.ready()).toEqual({
+      status: 'ready',
+      service: 'review-service',
+    });
   });
 
   it('fails closed before the domain for invalid workspace ownership', async () => {
