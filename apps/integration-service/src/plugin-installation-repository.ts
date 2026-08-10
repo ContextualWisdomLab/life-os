@@ -319,20 +319,33 @@ export class PostgresPluginInstallationStore implements PluginInstallationStore 
     return durable;
   }
 
-  /** Reads one installation by opaque identifier for application-level tenant filtering. */
+  /** Reads one installation only inside the already-authenticated workspace scope. */
   async findById(
     installationIdInput: string,
+    workspaceIdInput: string,
   ): Promise<PluginInstallationRecord | undefined> {
     const installationId = inputUuid(installationIdInput);
+    const workspaceId = inputUuid(workspaceIdInput);
     const result = await this.client.query<PluginInstallationRow>(
       `SELECT ${RETURNING_COLUMNS}
        FROM plugin_integration.plugin_installation_record
        WHERE installation_id = $1::uuid
+         AND workspace_id = $2::uuid
        LIMIT 2`,
-      [installationId],
+      [installationId, workspaceId],
     );
     const row = oneOrUndefined(result.rows);
-    return row ? parseRow(row) : undefined;
+    if (!row) {
+      return undefined;
+    }
+    const durable = parseRow(row);
+    if (
+      durable.installationId !== installationId ||
+      durable.workspaceId !== workspaceId
+    ) {
+      return invalidEvidence();
+    }
+    return durable;
   }
 
   /** Atomically revokes active workspace-owned authority or returns an exact revoked replay. */
