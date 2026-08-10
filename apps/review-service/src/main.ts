@@ -150,7 +150,9 @@ export class ReviewController {
 export class AppModule {}
 
 /** Verifies required security configuration before Review accepts traffic. */
-export function requireReviewServiceConfiguration(env: NodeJS.ProcessEnv): void {
+export function requireReviewServiceConfiguration(
+  env: NodeJS.ProcessEnv,
+): void {
   requireReviewGatewayContextSecret(env.REVIEW_GATEWAY_CONTEXT_SECRET);
 }
 
