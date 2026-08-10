@@ -68,6 +68,7 @@ function tableCells(line) {
     .map((value) => value.trim());
 }
 
+/** Returns whether every cell is a Markdown table separator. */
 function isSeparatorRow(cells) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
 }
@@ -132,7 +133,7 @@ test('ADR index targets every material ADR and ADRs satisfy the quality contract
     .sort();
   const requiredNumbers = new Set([
     '0001', '0002', '0003', '0004', '0005', '0006',
-    '0007', '0008', '0009', '0010', '0011',
+    '0007', '0008', '0009', '0010', '0011', '0012',
   ]);
 
   for (const number of requiredNumbers) {
@@ -196,7 +197,9 @@ test('protected lifecycle and remaining parent gaps are represented truthfully',
   const privacy = text('docs/PRIVACY_DATA_LIFECYCLE.md');
   const dataModel = text('docs/DATA_MODEL.md');
 
-  for (const protectedPr of ['#127', '#139', '#146', '#149', '#150', '#151', '#153']) {
+  for (const protectedPr of [
+    '#127', '#139', '#146', '#149', '#150', '#151', '#153', '#154', '#155',
+  ]) {
     assert.match(prd, new RegExp(`PR ${protectedPr}`, 'u'));
   }
   assert.match(traceability, /PRD-CAL-004.*Implemented on protected main/u);
@@ -213,28 +216,86 @@ test('protected lifecycle and remaining parent gaps are represented truthfully',
   assert.match(traceability, /#130 plugin runtime delivery/u);
 });
 
-test('active successors are explicit and superseded lines are not promoted', () => {
+test('current successor maturity follows protected main and active work', () => {
   const prd = text('docs/PRD.md');
   const traceability = text('docs/TRACEABILITY.md');
   const contracts = text('docs/API_CONTRACTS.md');
   const uml = text('docs/UML.md');
   const architecture = text('ARCHITECTURE.md');
   const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
+  const dataModel = text('docs/DATA_MODEL.md');
   const integrationAuthority = text(
     'docs/adr/0011-external-integration-authority-and-secret-references.md',
   );
 
-  for (const activePr of ['#154', '#155']) {
-    assert.match(prd, new RegExp(`PR ${activePr}`, 'u'));
-    assert.match(traceability, new RegExp(`PR ${activePr}`, 'u'));
-    assert.match(contracts, new RegExp(`PR ${activePr}`, 'u'));
-    assert.match(assessment, new RegExp(`PR ${activePr}`, 'u'));
+  for (const protectedPr of ['#154', '#155']) {
+    assert.match(prd, new RegExp(`PR ${protectedPr}`, 'u'));
+    assert.match(traceability, new RegExp(`PR ${protectedPr}`, 'u'));
+    assert.match(assessment, new RegExp(`PR ${protectedPr}`, 'u'));
   }
-  assert.match(architecture, /PR #155 is \*\*Implemented on active PR\*\*/u);
+  assert.match(prd, /PR #156/u);
+  assert.match(traceability, /PR #156/u);
+  assert.match(assessment, /PR #156/u);
+  assert.match(dataModel, /PR #156/u);
+  assert.match(architecture, /PR #155.*Implemented on protected main/su);
+  assert.match(architecture, /PR #154.*Implemented on protected main/su);
   assert.match(architecture, /Old PR #147 is \*\*Superseded\*\*/u);
-  assert.match(uml, /clean successor PR #154/u);
+  assert.match(uml, /PR #154.*protected main/su);
   assert.match(uml, /life-os\.calendar-user\.v1/u);
   assert.match(assessment, /protected-main documentation insufficient/iu);
   assert.match(integrationAuthority, /opaque secret handle/iu);
   assert.match(integrationAuthority, /manifest expresses requested intent/iu);
+  assert.match(contracts, /PR #156/u);
+});
+
+test('model-assisted compute authority and counterevidence remain canonical', () => {
+  const architecture = text('ARCHITECTURE.md');
+  const standards = text('docs/STANDARDS_TRACEABILITY.md');
+  const uml = text('docs/UML.md');
+  const traceability = text('docs/TRACEABILITY.md');
+  const agents = text('AGENTS.md');
+  const adr = text('docs/adr/0012-test-time-compute-and-model-development-authority.md');
+
+  assert.match(adr, /strong single-model route/iu);
+  assert.match(adr, /workflow stages/iu);
+  assert.match(adr, /decomposition/iu);
+  assert.match(adr, /recursion depth/iu);
+  assert.match(adr, /role-specific reasoning effort/iu);
+  assert.match(adr, /access (?:list|topology)/iu);
+  assert.match(adr, /NVIDIA_NIM_API_KEY/u);
+  assert.match(adr, /COPILOT_GITHUB_TOKEN/u);
+  assert.match(adr, /deterministic/iu);
+
+  for (const evidenceName of ['AgentFugue', 'Conductor', 'TRINITY']) {
+    assert.match(standards, new RegExp(evidenceName, 'u'));
+  }
+  assert.match(standards, /Single-Agent LLMs Outperform Multi-Agent Systems/iu);
+  assert.match(standards, /preprint/iu);
+  assert.match(standards, /ICLR 2026/iu);
+  assert.match(standards, /NVIDIA NIM/iu);
+  assert.match(standards, /repository-specific/iu);
+
+  assert.match(uml, /NVIDIA_NIM_API_KEY/u);
+  assert.match(uml, /contextual-orchestrator/iu);
+  assert.match(uml, /single-route/iu);
+  assert.match(uml, /conduct/iu);
+  assert.match(uml, /deterministic LifeOS proposal evaluator/iu);
+  assert.match(uml, /review.*merge.*release/isu);
+
+  assert.match(traceability, /ADR 0012/u);
+  assert.match(traceability, /AgentFugue/iu);
+  assert.match(architecture, /A strong single-model route is measured before deeper orchestration/u);
+  assert.match(agents, /NVIDIA_NIM_API_KEY/u);
+  assert.doesNotMatch(agents, /use\s+COPILOT_GITHUB_TOKEN/iu);
+});
+
+test('canonical authority does not regress to superseded product identity', () => {
+  const canonical = REQUIRED
+    .filter((path) => path.endsWith('.md'))
+    .map((path) => text(path))
+    .join('\n');
+
+  assert.doesNotMatch(canonical, /UUIDv7 is the (?:current|primary|required) LifeOS identifier/iu);
+  assert.doesNotMatch(canonical, /login-free local-first is the (?:current|primary|required) architecture/iu);
+  assert.doesNotMatch(canonical, /single[- ]application is the (?:current|primary|required) durable architecture/iu);
 });
