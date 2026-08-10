@@ -7,7 +7,7 @@
 
 LifeOS integrates with external calendar providers and versioned plugins. Both domains need to persist or carry enough metadata to identify an external integration without turning external credentials or requested plugin capabilities into ambient authority.
 
-Two active implementation lines make the shared boundary concrete: PR #150 introduces a workspace-and-user-scoped calendar connection registry, and PR #151 introduces tenant-scoped plugin installation grants. The parent product gaps #129 and #130 remain incomplete, so this ADR defines the durable authority model without promoting those active implementations to protected-main behavior.
+Protected-main PR #150 introduced a workspace-and-user-scoped calendar connection registry and protected-main PR #151 introduced tenant-scoped plugin installation grants. The parent product gaps #129 and #130 remain incomplete, so this ADR defines the durable authority model without confusing those bounded foundations with complete provider/plugin runtime lifecycles.
 
 ## Decision drivers
 
@@ -54,10 +54,10 @@ The decision reduces standing credential exposure and prevents untrusted integra
 
 ## Acceptance evidence
 
-- Protected main: signed trusted calendar workspace context from PR #139 and existing plugin manifest/event validation.
-- Active PR #150: calendar connection migration/repository scoped to workspace+user with bounded metadata and opaque secret references.
-- Active PR #151: explicit plugin capability grants, replay/conflict handling, tenant/user lookup isolation and revocation semantics.
-- Parent gaps #129 and #130 remain incomplete until their full lifecycle/delivery acceptance criteria are satisfied on protected main.
+- Protected main PR #139: signed trusted calendar workspace context.
+- Protected main PR #150 (`1623df364925f84920c07c112f1ae96777277d20`): calendar connection migration/repository scoped to workspace+user with bounded metadata and opaque secret references.
+- Protected main PR #151 (`6971c4e11b3204ec41526c7c959a248e54440e1c`): explicit plugin capability grants, replay/conflict handling, tenant/user lookup isolation and revocation semantics.
+- Parent gaps #129 and #130 remain incomplete until their full credential/runtime delivery acceptance criteria are satisfied on protected main.
 
 ## Migration and rollback
 
