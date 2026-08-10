@@ -18,10 +18,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Start and probe Compose infrastructure
         shell: bash
@@ -116,10 +117,11 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - name: Checkout
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -175,10 +177,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -196,3 +199,124 @@ jobs:
 
       - name: Run browser journey acceptance
         run: pnpm --filter @life-os/web test:e2e
+
+  merge_compatibility:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      AI_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      IDENTITY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Resolve current pull-request identities
+        id: live-identities
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          api="https://api.github.com/repos/${{ github.repository }}"
+          auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
+          api_version="X-GitHub-Api-Version: 2022-11-28"
+
+          current_source="$(curl --fail --silent --show-error --max-time 15 \
+            -H "$auth_header" -H "$api_version" \
+            "$api/pulls/${{ github.event.pull_request.number }}" | jq -er '.head.sha')"
+          current_base="$(curl --fail --silent --show-error --max-time 15 \
+            -H "$auth_header" -H "$api_version" \
+            "$api/commits/${{ github.event.pull_request.base.ref }}" | jq -er '.sha')"
+
+          for value in "$current_source" "$current_base"; do
+            if ! printf '%s' "$value" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::Merge-compatibility evidence contained a malformed or missing Git object identity."
+              exit 1
+            fi
+          done
+          if [ "$current_source" != "${{ github.event.pull_request.head.sha }}" ]; then
+            echo "::error::The pull-request source head moved after this workflow event; this run is stale."
+            exit 1
+          fi
+          printf 'current_source=%s\n' "$current_source" >> "$GITHUB_OUTPUT"
+          printf 'current_base=%s\n' "$current_base" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact current contributor head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ steps.live-identities.outputs.current_source }}
+
+      - name: Construct and verify fresh integration tree
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CURRENT_SOURCE: ${{ steps.live-identities.outputs.current_source }}
+          CURRENT_BASE: ${{ steps.live-identities.outputs.current_base }}
+        run: |
+          set -Eeuo pipefail
+          api="https://api.github.com/repos/${{ github.repository }}"
+          auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
+          api_version="X-GitHub-Api-Version: 2022-11-28"
+          current_source="$CURRENT_SOURCE"
+          current_base="$CURRENT_BASE"
+
+          if [ "$(git rev-parse HEAD)" != "$current_source" ]; then
+            echo "::error::The checked-out contributor head does not match current source evidence."
+            exit 1
+          fi
+          if ! git cat-file -e "${current_base}^{commit}"; then
+            echo "::error::The current live base commit is unavailable in the complete checkout."
+            exit 1
+          fi
+
+          git checkout --detach "$current_base"
+          git -c user.name='LifeOS integration verifier' \
+            -c user.email='integration-verifier@life-os.invalid' \
+            merge --no-commit --no-ff "$current_source"
+
+          latest_source="$(curl --fail --silent --show-error --max-time 15 \
+            -H "$auth_header" -H "$api_version" \
+            "$api/pulls/${{ github.event.pull_request.number }}" | jq -er '.head.sha')"
+          latest_base="$(curl --fail --silent --show-error --max-time 15 \
+            -H "$auth_header" -H "$api_version" \
+            "$api/commits/${{ github.event.pull_request.base.ref }}" | jq -er '.sha')"
+          if [ "$latest_source" != "$current_source" ] || [ "$latest_base" != "$current_base" ]; then
+            echo "::error::Source or live base moved while constructing integration evidence; this run is stale."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify merge-tree compatibility
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm build
