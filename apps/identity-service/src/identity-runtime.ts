@@ -306,10 +306,11 @@ export function createIdentityRuntime(
     },
     webOrigin,
   });
-  const dataRightsStatusApplication = new AuthenticatedDataRightsStatusApplication(
-    application,
-    new PostgresDataRightsRequestLedger(sqlClient),
-  );
+  const dataRightsStatusApplication =
+    new AuthenticatedDataRightsStatusApplication(
+      application,
+      new PostgresDataRightsRequestLedger(sqlClient),
+    );
   const providerHttpClient = new BoundedOAuthProviderHttpClient({
     timeoutMs: providerRequestTimeoutMs,
   });
