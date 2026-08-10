@@ -12,6 +12,7 @@ import {
 import { NestFactory } from '@nestjs/core';
 import {
   requireHistoryLimit,
+  requireReviewGatewayContextSecret,
   requireTrustedWorkspaceContext,
   toReviewHttpException,
 } from './http-boundary';
@@ -39,6 +40,15 @@ export class ReviewController {
   @Get('health')
   health(): { status: 'ok'; service: 'review-service' } {
     return { status: 'ok', service: 'review-service' };
+  }
+
+  /** Returns readiness only when signed workspace authority can be verified. */
+  @Get('ready')
+  ready(): { status: 'ready'; service: 'review-service' } {
+    requireReviewGatewayContextSecret(
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
+    return { status: 'ready', service: 'review-service' };
   }
 
   /** Records a completed daily planning ritual. */
@@ -139,8 +149,14 @@ export class ReviewController {
 })
 export class AppModule {}
 
+/** Verifies required security configuration before Review accepts traffic. */
+export function requireReviewServiceConfiguration(env: NodeJS.ProcessEnv): void {
+  requireReviewGatewayContextSecret(env.REVIEW_GATEWAY_CONTEXT_SECRET);
+}
+
 /** Boots the versioned review service on its configured public port. */
 async function bootstrap(): Promise<void> {
+  requireReviewServiceConfiguration(process.env);
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
