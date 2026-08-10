@@ -23,10 +23,24 @@ afterEach(async () => {
 });
 
 describe('Gateway Today HTTP boundary', () => {
-  it('returns explicit non-cacheable unavailable evidence instead of fake Today data', async () => {
+  it('returns a bounded invalid-request problem when the required date is absent', async () => {
     const { baseUrl } = await createHarness();
 
     const response = await fetch(`${baseUrl}/v1/today`);
+    expect(response.status).toBe(400);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      type: 'about:blank',
+      title: 'Today composition request is invalid',
+      status: 400,
+      code: 'invalid_today_request',
+    });
+  });
+
+  it('returns explicit non-cacheable unavailable evidence when trusted dependencies are not configured', async () => {
+    const { baseUrl } = await createHarness();
+
+    const response = await fetch(`${baseUrl}/v1/today?date=2026-08-10`);
     expect(response.status).toBe(503);
     expect(response.headers.get('cache-control')).toBe('no-store');
     const body = await response.json();
