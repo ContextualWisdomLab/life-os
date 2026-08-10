@@ -55,7 +55,11 @@ export interface PluginInstallationStore {
    * is not sufficient because concurrent conflicting grants must fail closed.
    */
   createIfAbsent(record: PluginInstallationRecord): Promise<PluginInstallationRecord>;
-  findById(installationId: string): Promise<PluginInstallationRecord | undefined>;
+  /** Reads one installation only inside the already-authenticated workspace scope. */
+  findById(
+    installationId: string,
+    workspaceId: string,
+  ): Promise<PluginInstallationRecord | undefined>;
   /**
    * Atomically transitions one active workspace-owned installation to revoked,
    * returning the already-revoked durable winner for an exact replay.
@@ -202,7 +206,7 @@ export class PluginInstallationApplication {
   ): Promise<PluginInstallationRecord | undefined> {
     const context = requireContext(trustedContext);
     const installationId = requireUuidV4(installationIdInput);
-    const existing = await this.store.findById(installationId);
+    const existing = await this.store.findById(installationId, context.workspaceId);
     if (!existing || existing.workspaceId !== context.workspaceId) {
       return undefined;
     }
