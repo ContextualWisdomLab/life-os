@@ -10,7 +10,7 @@ import {
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import { gatewayMetrics } from './observability';
 import {
-  composePlanningToday,
+  composeToday,
   GatewayTodayError,
   type GatewayTodayView,
 } from './today-composition';
@@ -44,8 +44,8 @@ export class HealthController {
   }
 
   /**
-   * Authenticates through Identity and returns validated Planning-owned Today
-   * state. Habit state remains an explicit degraded capability, never fake data.
+   * Authenticates through Identity and composes validated Planning and optional
+   * Habit evidence. Missing optional Habit configuration is reported explicitly.
    */
   @Get('today')
   @Header('Cache-Control', 'no-store')
@@ -54,7 +54,7 @@ export class HealthController {
     @Query('date') date: string | undefined,
   ): Promise<GatewayTodayView> {
     try {
-      return await composePlanningToday(cookie, date ?? '', process.env);
+      return await composeToday(cookie, date ?? '', process.env);
     } catch (error) {
       if (error instanceof GatewayTodayError) {
         throw problem(error.status, error.message, error.code);
