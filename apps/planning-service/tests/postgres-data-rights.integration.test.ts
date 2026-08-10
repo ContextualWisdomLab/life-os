@@ -11,6 +11,8 @@ import {
 
 const DATABASE_URL = process.env.PLANNING_DATABASE_URL;
 const TEMPORARY_DATABASE_NAME = 'life_os_data_rights_test';
+const DROP_TEMPORARY_DATABASE_SQL =
+  'DROP DATABASE IF EXISTS life_os_data_rights_test WITH (FORCE)';
 const DATABASE_DISCONNECT_TIMEOUT_MS = 2_000;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -46,9 +48,7 @@ async function dropTemporaryDatabaseWhenIdle(adminPool: Pool): Promise<void> {
       [TEMPORARY_DATABASE_NAME],
     );
     if (activeConnections.rows[0]?.count === 0) {
-      await adminPool.query(
-        `DROP DATABASE IF EXISTS "${TEMPORARY_DATABASE_NAME}" WITH (FORCE)`,
-      );
+      await adminPool.query(DROP_TEMPORARY_DATABASE_SQL);
       return;
     }
     await sleep(25);
@@ -108,8 +108,8 @@ async function seedWorkspace(pool: Pool): Promise<void> {
   await pool.query(
     `INSERT INTO planning.today_idempotency_records
        (workspace_id, idempotency_key, request_digest, result_kind,
-        aggregate_id, revision_token, payload_json)
-     VALUES ($1, $2, $3, 'created', $4, $5, $6::jsonb)`,
+        aggregate_id, revision_token, payload_json, created_at)
+     VALUES ($1, $2, $3, 'created', $4, $5, $6::jsonb, now())`,
     [
       WORKSPACE_ID,
       todayIdempotencyKey,
