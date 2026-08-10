@@ -64,6 +64,20 @@ function unavailableGatewayContext(): never {
 }
 
 /**
+ * Requires verifier key material that is long enough to authenticate gateway
+ * workspace assertions. The returned value is safe to pass to the HMAC verifier.
+ */
+export function requireReviewGatewayContextSecret(secret: unknown): string {
+  if (
+    typeof secret !== 'string' ||
+    Buffer.byteLength(secret, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
+  ) {
+    return unavailableGatewayContext();
+  }
+  return secret;
+}
+
+/**
  * Computes the SHA-256 HMAC over the canonical `life-os.workspace.v1` payload.
  * The workspace ID must already be normalized to lowercase UUIDv4 form, so the
  * gateway must sign that normalized identifier rather than the raw header value.
@@ -87,12 +101,7 @@ export function requireTrustedWorkspaceContext(
   secret: unknown,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): string {
-  if (
-    typeof secret !== 'string' ||
-    Buffer.byteLength(secret, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
-  ) {
-    return unavailableGatewayContext();
-  }
+  const verifiedSecret = requireReviewGatewayContextSecret(secret);
   if (
     typeof headers.workspaceId !== 'string' ||
     typeof headers.issuedAt !== 'string' ||
@@ -123,7 +132,7 @@ export function requireTrustedWorkspaceContext(
   const expected = workspaceContextDigest(
     workspaceId,
     headers.issuedAt,
-    secret,
+    verifiedSecret,
   );
   const actual = Buffer.from(headers.signature, 'base64url');
   if (
