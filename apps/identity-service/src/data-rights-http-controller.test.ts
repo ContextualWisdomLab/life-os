@@ -40,7 +40,7 @@ describe('DataRightsHttpController', () => {
   it('publishes one authenticated request-status resource', async () => {
     const module = await controllerModule();
     const Controller = module.DataRightsHttpController as {
-      prototype: { getRequestStatus: unknown };
+      prototype: { getRequestStatus: object };
     };
     expect(typeof Controller).toBe('function');
     expect(
