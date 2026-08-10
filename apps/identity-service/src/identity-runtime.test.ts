@@ -89,7 +89,9 @@ describe('createIdentityRuntime', () => {
       ),
     ).toThrow('must decode to 32 bytes');
     expect(() =>
-      createIdentityRuntime(environment({ IDENTITY_OAUTH_KEY_VERSION: 'version_two' }),
+      createIdentityRuntime(
+        environment({ IDENTITY_OAUTH_KEY_VERSION: 'version_two' }),
+      ),
     ).toThrow('Current encryption key version is not configured');
     expect(() =>
       createIdentityRuntime(environment({ IDENTITY_DATABASE_POOL_MAX: '33' })),
