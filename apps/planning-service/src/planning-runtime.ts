@@ -200,6 +200,7 @@ export class PlanningRuntime implements OnApplicationShutdown {
     private readonly pool: PlanningPool,
     readonly service: PlanningService,
     readonly todayService: TodaySyncService,
+    /** Handles Planning-owned data-rights requests through the runtime's shared transactional SQL client. */
     readonly dataRightsContributor: PlanningDataRightsContributor,
   ) {}
 
