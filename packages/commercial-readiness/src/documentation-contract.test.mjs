@@ -208,16 +208,21 @@ test('canonical lifecycle reflects protected-main integrations and remaining gap
   const contracts = text('docs/API_CONTRACTS.md');
   const privacy = text('docs/PRIVACY_DATA_LIFECYCLE.md');
   const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
+  const dataModel = text('docs/DATA_MODEL.md');
 
   assert.match(prd, /PR #127 merged as protected main/u);
   assert.match(prd, /PR #139 merged/u);
   assert.match(prd, /PR #146 merged/u);
   assert.match(prd, /PR #149 merged/u);
+  assert.match(prd, /PR #150 merged/u);
+  assert.match(traceability, /PRD-CAL-004.*Implemented on protected main/u);
   assert.match(traceability, /PRD-PRIV-004.*Implemented on protected main/u);
   assert.match(traceability, /PRD-PRIV-005.*Implemented on protected main/u);
+  assert.match(contracts, /Calendar connection registry foundation.*Implemented on protected main/u);
   assert.match(contracts, /Tenant export integrity manifest.*Implemented on protected main/u);
   assert.match(privacy, /authenticated public status resource from PR #146/u);
   assert.match(privacy, /per-contributor export integrity evidence from PR #149/u);
+  assert.match(dataModel, /Calendar integration — connection registry persisted on protected main/u);
   assert.match(traceability, /#55 data portability completion/u);
   assert.match(traceability, /#129 per-user calendar credentials/u);
   assert.match(traceability, /#130 plugin runtime delivery/u);
@@ -235,15 +240,13 @@ test('active successor work is represented without promotion to protected-main t
     'docs/adr/0011-external-integration-authority-and-secret-references.md',
   );
 
-  for (const pr of ['#147', '#150', '#151']) {
+  for (const pr of ['#147', '#151']) {
     assert.match(prd, new RegExp(`PR ${pr}`, 'u'));
     assert.match(traceability, new RegExp(`PR ${pr}`, 'u'));
     assert.match(contracts, new RegExp(`PR ${pr}`, 'u'));
     assert.match(assessment, new RegExp(`PR ${pr}`, 'u'));
   }
-  assert.match(dataModel, /PR #150 is \*\*Implemented on active PR\*\*/u);
   assert.match(dataModel, /PR #151 is \*\*Implemented on active PR\*\*/u);
-  assert.match(uml, /Calendar connection registry foundation/iu);
   assert.match(uml, /Plugin installation authority/iu);
   assert.match(uml, /source_head_sha/u);
   assert.match(uml, /merge_tree_sha/u);
