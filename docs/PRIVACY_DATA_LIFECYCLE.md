@@ -53,9 +53,9 @@ Tracking: issue #55 remains open for complete domain participation, durable asyn
 
 **Status:** Partial
 
-Protected main verifies signed trusted workspace context for calendar synchronization. PR #150 is `Implemented on active PR` for the first durable calendar-connection registry scoped simultaneously to workspace and user. The active repository stores bounded provider/account/calendar metadata, normalized scopes and opaque credential references rather than making provider credential content part of the row contract.
+Protected main verifies signed trusted workspace context for calendar synchronization and now includes the PR #150 durable calendar-connection registry scoped simultaneously to workspace and user. The protected repository stores bounded provider/account/calendar metadata, normalized scopes and opaque credential references rather than making provider credential plaintext part of the row contract.
 
-The complete hosted lifecycle still requires authorization callback state/PKCE, a concrete managed secret backend, refresh/revocation, calendar discovery/selection and migration from the development provider configuration under issue #129.
+That persistence foundation does not complete the hosted credential lifecycle. Authorization callback state/PKCE, a concrete managed secret backend, refresh/revocation, calendar discovery/selection and migration from the development provider configuration remain issue #129.
 
 ## Plugin credentials and installation authority
 
