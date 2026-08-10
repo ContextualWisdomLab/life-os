@@ -108,6 +108,7 @@ export class ReviewController {
     }
   }
 
+  /** Records one ritual only for a workspace ID already accepted by the trusted-context verifier. */
   private async complete(
     workspaceId: string,
     ritualKind: ReviewRitualKind,
