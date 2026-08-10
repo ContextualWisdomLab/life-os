@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const CONTROLLER_SOURCE = readFileSync(
-  fileURLToPath(new URL('./main.ts', import.meta.url)),
-  'utf8',
-);
+const CONTROLLER_SOURCE = readFileSync(join(__dirname, 'main.ts'), 'utf8');
 
 /** Counts stable route-authority tokens in the Habit controller source. */
 function count(pattern: RegExp): number {
