@@ -61,6 +61,8 @@ function preflightClient(erasureReceiptsReady: boolean): TodayTransactionalSqlCl
 function largeExportClient(): {
   readonly client: TodayTransactionalSqlClient;
   readonly goalQueryCount: () => number;
+  readonly firstGoalId: string;
+  readonly lastGoalId: string;
 } {
   const goals = Array.from({ length: LARGE_EXPORT_GOAL_COUNT }, (_, index) => ({
     id: `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
@@ -90,7 +92,12 @@ function largeExportClient(): {
       return await operation(client);
     },
   };
-  return { client, goalQueryCount: () => goalQueries };
+  return {
+    client,
+    goalQueryCount: () => goalQueries,
+    firstGoalId: goals[0].id,
+    lastGoalId: goals.at(-1)?.id ?? '',
+  };
 }
 
 describe('Planning data-rights runtime composition', () => {
@@ -134,7 +141,8 @@ describe('Planning data-rights runtime composition', () => {
 
 describe('Planning data-rights export scale', () => {
   it('exports more than one safety page without truncation', async () => {
-    const { client, goalQueryCount } = largeExportClient();
+    const { client, goalQueryCount, firstGoalId, lastGoalId } =
+      largeExportClient();
     const contributor = new PlanningDataRightsContributor(client);
 
     const response = await contributor.handle({
@@ -153,6 +161,35 @@ describe('Planning data-rights export scale', () => {
       throw new Error('Expected Planning export response');
     }
     expect(response.sha256).toMatch(/^[0-9a-f]{64}$/u);
+    if (
+      response.data === null ||
+      typeof response.data !== 'object' ||
+      Array.isArray(response.data)
+    ) {
+      throw new Error('Expected Planning export object');
+    }
+    const exportedGoals = response.data.goals;
+    if (!Array.isArray(exportedGoals)) {
+      throw new Error('Expected Planning goals export array');
+    }
+    expect(exportedGoals).toHaveLength(LARGE_EXPORT_GOAL_COUNT);
+
+    const firstExportedGoal = exportedGoals[0];
+    const lastExportedGoal = exportedGoals.at(-1);
+    expect(
+      firstExportedGoal !== null &&
+        typeof firstExportedGoal === 'object' &&
+        !Array.isArray(firstExportedGoal)
+        ? firstExportedGoal.id
+        : undefined,
+    ).toBe(firstGoalId);
+    expect(
+      lastExportedGoal !== null &&
+        typeof lastExportedGoal === 'object' &&
+        !Array.isArray(lastExportedGoal)
+        ? lastExportedGoal.id
+        : undefined,
+    ).toBe(lastGoalId);
     expect(goalQueryCount()).toBeGreaterThan(1);
   });
 });
