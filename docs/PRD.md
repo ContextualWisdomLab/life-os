@@ -43,16 +43,19 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 | PRD-REV-001 | Guided review without becoming planning mutation authority. | Implemented on protected main | review service boundary/tests |
 | PRD-CAL-001 | Conflict-safe CalDAV/Google calendar synchronization. | Implemented on protected main | calendar adapter tests |
 | PRD-CAL-002 | Derive calendar workspace authority from signed trusted context, not legacy client headers. | Implemented on protected main | PR #139 merged; trusted-context tests |
-| PRD-CAL-003 | Per-user encrypted Google Calendar credential lifecycle, refresh/revocation and calendar selection. | Partial | issue #129 |
+| PRD-CAL-003 | Complete per-user encrypted Google/CalDAV credential lifecycle, OAuth/PKCE, refresh/revocation, discovery and calendar selection. | Partial | issue #129 |
+| PRD-CAL-004 | Persist a LifeOS-owned calendar-connection foundation scoped to workspace and user, with bounded provider metadata, normalized scopes and opaque secret handles rather than plaintext provider tokens. | Implemented on active PR | PR #150; migration and repository tests; does not complete #129 |
 | PRD-NOT-001 | Timezone-correct bounded reminders with replay-safe delivery. | Implemented on protected main | notification persistence/scheduler tests |
 | PRD-AI-001 | AI output is inert proposal evidence until explicit authorized decision. | Implemented on protected main | AI proposal/audit tests |
 | PRD-AI-002 | Deterministic proposal-quality/safety gates remain independent of live provider availability. | Implemented on protected main | evaluator/live-conformance split |
 | PRD-PRIV-001 | Sensitive data access is tenant/purpose/lifetime/audit bound rather than blanket-masked. | Implemented on protected main | privacy-service tests |
 | PRD-PRIV-002 | Data-rights requests preserve recent-auth provenance and durable immutable request/terminal receipts. | Implemented on protected main | PRs #134, #136, #137, #138 and #144 integrated on main |
-| PRD-PRIV-003 | Complete export/deletion orchestration across every owned domain, delivery lifecycle and reconciliation. | Partial | issue #55 |
-| PRD-PRIV-004 | An authenticated user can query one owned data-rights request through a tenant-and-actor scoped, bounded, non-cacheable public status resource without exposing workspace/user IDs, idempotency material or receipt digests. | Implemented on active PR | PR #146; follows protected-main #144 ledger lookup |
+| PRD-PRIV-003 | Complete export/deletion orchestration across every owned domain, protected delivery lifecycle, retention/legal-hold handling and reconciliation. | Partial | issue #55 |
+| PRD-PRIV-004 | An authenticated user can query one owned data-rights request through a tenant-and-actor scoped, bounded, non-cacheable public status resource without exposing workspace/user IDs, idempotency material or receipt digests. | Implemented on protected main | PR #146 merged; session-derived scope and bounded 400/401/404/503 behavior |
+| PRD-PRIV-005 | Tenant-export sections carry contributor-defined safe record counts and deterministic per-section SHA-256 integrity evidence, with locale-independent property ordering and a whole-export digest. | Implemented on protected main | PR #149 merged; integrity regression and RFC 8785/FIPS 180-4 doctoring |
 | PRD-INT-001 | Versioned plugin SDK/validation without direct database authority. | Implemented on protected main | plugin SDK/integration-service tests |
-| PRD-INT-002 | Plugin installation grants, encrypted secrets, SSRF-safe outbound delivery, retries and revocation. | Planned | issue #130 |
+| PRD-INT-002 | Complete plugin runtime installation, encrypted secret storage, SSRF-safe outbound delivery, retries/dead-letter behavior and revocation. | Planned | issue #130 |
+| PRD-INT-003 | Treat a validated manifest as untrusted intent and grant only explicit tenant-scoped installation capabilities with exact replay/conflict/revocation semantics. | Implemented on active PR | PR #151; application authority only, not durable secret/delivery runtime |
 | PRD-WEB-001 | Responsive installable PWA with keyboard-operable core flows and Korean/English catalogs. | Implemented on protected main | browser/accessibility/localization tests |
 | PRD-OPS-001 | Logical PostgreSQL backup/restore with integrity and unsafe-target refusal. | Implemented on protected main | backup scripts/tests/runbook |
 | PRD-OPS-002 | Provider-neutral production reference deployment and bounded health/readiness/metrics. | Implemented on protected main | infra and observability tests |
@@ -65,6 +68,7 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 - Parameterize dynamic SQL and keep service-owned database authority explicit.
 - Use idempotency and version/precondition controls wherever replay or stale overwrite can cause loss.
 - Public errors/logs/metrics/artifacts exclude credentials, hidden reasoning and unbounded tenant content.
+- Integrity digests are evidence, not authorization, confidentiality, provenance or digital signatures.
 - Core customer journeys require realistic PostgreSQL and browser evidence, not mock-only success.
 - Product-owned production packages maintain exact coverage gates where configured and beginner-readable public documentation.
 - Verification evidence remains bound to the exact commit tree it inspected rather than being promoted across source, merge, base or release identities.
