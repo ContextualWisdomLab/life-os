@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createHabitRuntime,
   type HabitPool,
+  type HabitPoolConnection,
   type HabitRuntime,
 } from './habit-runtime';
 
@@ -14,9 +15,18 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 
 /** Minimal credential-free pool used only to inspect runtime composition. */
 function inertPool(): HabitPool {
+  const connection: HabitPoolConnection = {
+    async query<Row>(): Promise<{ rows: Row[] }> {
+      return { rows: [] };
+    },
+    release(): void {},
+  };
   return {
     async query<Row>(): Promise<{ rows: Row[] }> {
       return { rows: [] };
+    },
+    async connect(): Promise<HabitPoolConnection> {
+      return connection;
     },
     async end(): Promise<void> {},
   };
