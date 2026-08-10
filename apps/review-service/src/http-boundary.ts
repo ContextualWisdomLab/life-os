@@ -25,11 +25,23 @@ export interface ReviewTrustedWorkspaceContextHeaders {
   signature: unknown;
 }
 
+/** Server-owned request identity bound into each Review gateway context. */
+export interface ReviewTrustedRequestBinding {
+  method: unknown;
+  path: unknown;
+}
+
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
+const REVIEW_HISTORY_PATH = '/v1/reviews/completions';
+const REVIEW_COMPLETION_PATHS = new Set([
+  '/v1/reviews/daily-planning/completions',
+  '/v1/reviews/daily-shutdown/completions',
+  '/v1/reviews/weekly-review/completions',
+]);
 
 function problemException(
   status: number,
@@ -77,39 +89,68 @@ export function requireReviewGatewayContextSecret(secret: unknown): string {
   return secret;
 }
 
+/** Accepts only the exact method/path combinations exposed by Review. */
+function requireReviewRequestBinding(
+  binding: ReviewTrustedRequestBinding,
+): { method: 'GET' | 'POST'; path: string } {
+  if (
+    binding.method === 'GET' &&
+    binding.path === REVIEW_HISTORY_PATH
+  ) {
+    return { method: 'GET', path: REVIEW_HISTORY_PATH };
+  }
+  if (
+    binding.method === 'POST' &&
+    typeof binding.path === 'string' &&
+    REVIEW_COMPLETION_PATHS.has(binding.path)
+  ) {
+    return { method: 'POST', path: binding.path };
+  }
+  return invalidGatewayContext();
+}
+
 /**
- * Computes the SHA-256 HMAC over the canonical `life-os.workspace.v1` payload.
+ * Computes the SHA-256 HMAC over the Review-specific request-bound context.
  * The workspace ID must already be normalized to lowercase UUIDv4 form, so the
- * gateway must sign that normalized identifier rather than the raw header value.
+ * gateway signs that normalized identifier plus the exact HTTP method and path.
  */
 function workspaceContextDigest(
   workspaceId: string,
   issuedAt: string,
+  method: 'GET' | 'POST',
+  path: string,
   secret: string,
 ): Buffer {
   return createHmac('sha256', secret)
-    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.review-context.v1\n${workspaceId}\n${issuedAt}\n${method}\n${path}`,
+      'utf8',
+    )
     .digest();
 }
 
 /**
- * Verifies the short-lived workspace context created after gateway authentication.
- * A browser-selected workspace header is intentionally not an authorization input.
+ * Verifies the short-lived, method-and-path-bound workspace context created
+ * after gateway authentication. A browser-selected workspace header is never
+ * an authorization input, and a history context cannot be replayed as a write.
  */
 export function requireTrustedWorkspaceContext(
   headers: ReviewTrustedWorkspaceContextHeaders,
   secret: unknown,
+  requestBinding: ReviewTrustedRequestBinding,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): string {
   const verifiedSecret = requireReviewGatewayContextSecret(secret);
+  if (!Number.isSafeInteger(nowSeconds) || nowSeconds < 0) {
+    return unavailableGatewayContext();
+  }
+  const { method, path } = requireReviewRequestBinding(requestBinding);
   if (
     typeof headers.workspaceId !== 'string' ||
     typeof headers.issuedAt !== 'string' ||
     typeof headers.signature !== 'string' ||
     !UNIX_SECONDS_PATTERN.test(headers.issuedAt) ||
-    !BASE64URL_SHA256_PATTERN.test(headers.signature) ||
-    !Number.isSafeInteger(nowSeconds) ||
-    nowSeconds < 0
+    !BASE64URL_SHA256_PATTERN.test(headers.signature)
   ) {
     return invalidGatewayContext();
   }
@@ -132,6 +173,8 @@ export function requireTrustedWorkspaceContext(
   const expected = workspaceContextDigest(
     workspaceId,
     headers.issuedAt,
+    method,
+    path,
     verifiedSecret,
   );
   const actual = Buffer.from(headers.signature, 'base64url');
