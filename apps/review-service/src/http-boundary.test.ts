@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import {
@@ -14,7 +14,7 @@ import {
 import { ReviewPersistenceError } from './postgres-review-repository';
 
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
-const SECRET = 'review-gateway-context-fixture-material';
+const SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_334_400;
 
 function response(error: HttpException): unknown {
