@@ -42,12 +42,16 @@ function body() {
   };
 }
 
-function trustedContext(workspaceId = WORKSPACE_ID): readonly [string, string] {
+function trustedContext(
+  method: 'GET' | 'POST',
+  path: string,
+  workspaceId = WORKSPACE_ID,
+): readonly [string, string] {
   const issuedAt = String(Math.floor(Date.now() / 1000));
   const normalizedWorkspaceId = workspaceId.toLowerCase();
   const signature = createHmac('sha256', GATEWAY_SECRET)
     .update(
-      `life-os.workspace.v1\n${normalizedWorkspaceId}\n${issuedAt}`,
+      `life-os.review-context.v1\n${normalizedWorkspaceId}\n${issuedAt}\n${method}\n${path}`,
       'utf8',
     )
     .digest('base64url');
@@ -92,38 +96,62 @@ describe('Review controller', () => {
       () => '2026-08-03T20:00:01.000Z',
     );
     const controller = new ReviewController(service);
-    const [issuedAt, signature] = trustedContext();
 
     expect(controller.health()).toEqual({
       status: 'ok',
       service: 'review-service',
     });
+
+    const [dailyPlanningIssuedAt, dailyPlanningSignature] = trustedContext(
+      'POST',
+      '/v1/reviews/daily-planning/completions',
+    );
     await expect(
       controller.completeDailyPlanning(
         WORKSPACE_ID,
-        issuedAt,
-        signature,
+        dailyPlanningIssuedAt,
+        dailyPlanningSignature,
         body(),
       ),
     ).resolves.toMatchObject({ ritualKind: 'daily-planning' });
+
+    const [dailyShutdownIssuedAt, dailyShutdownSignature] = trustedContext(
+      'POST',
+      '/v1/reviews/daily-shutdown/completions',
+    );
     await expect(
       controller.completeDailyShutdown(
         WORKSPACE_ID,
-        issuedAt,
-        signature,
+        dailyShutdownIssuedAt,
+        dailyShutdownSignature,
         body(),
       ),
     ).resolves.toMatchObject({ ritualKind: 'daily-shutdown' });
+
+    const [weeklyReviewIssuedAt, weeklyReviewSignature] = trustedContext(
+      'POST',
+      '/v1/reviews/weekly-review/completions',
+    );
     await expect(
       controller.completeWeeklyReview(
         WORKSPACE_ID,
-        issuedAt,
-        signature,
+        weeklyReviewIssuedAt,
+        weeklyReviewSignature,
         body(),
       ),
     ).resolves.toMatchObject({ ritualKind: 'weekly-review' });
+
+    const [historyIssuedAt, historySignature] = trustedContext(
+      'GET',
+      '/v1/reviews/completions',
+    );
     await expect(
-      controller.listCompletions(WORKSPACE_ID, issuedAt, signature, '10'),
+      controller.listCompletions(
+        WORKSPACE_ID,
+        historyIssuedAt,
+        historySignature,
+        '10',
+      ),
     ).resolves.toHaveLength(3);
   });
 
@@ -156,7 +184,11 @@ describe('Review controller', () => {
     const controller = new ReviewController(
       new ReviewService(new InMemoryReviewRepository()),
     );
-    const [issuedAt, signature] = trustedContext('invalid');
+    const [issuedAt, signature] = trustedContext(
+      'POST',
+      '/v1/reviews/daily-planning/completions',
+      'invalid',
+    );
     await expect(
       controller.completeDailyPlanning('invalid', issuedAt, signature, body()),
     ).rejects.toBeInstanceOf(HttpException);
