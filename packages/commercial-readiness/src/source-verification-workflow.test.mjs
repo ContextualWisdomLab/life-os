@@ -7,6 +7,9 @@ import test from 'node:test';
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SOURCE_REF = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 const MERGE_REF = 'ref: refs/pull/${{ github.event.pull_request.number }}/merge';
+const SARIF_SOURCE_REF =
+  "ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref }}";
+const SARIF_SOURCE_SHA = 'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
 
 /** Reads one repository workflow as UTF-8 text. */
 function readWorkflow(name) {
@@ -21,6 +24,21 @@ function jobBlock(workflow, jobName) {
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
     if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+/** Extracts one named workflow step from an already bounded job block. */
+function stepBlock(job, stepName) {
+  const lines = job.split('\n');
+  const start = lines.findIndex((line) => line.trim() === `- name: ${stepName}`);
+  assert.notEqual(start, -1, `missing step ${stepName}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^\s+- name: /u.test(lines[index])) {
       end = index;
       break;
     }
@@ -54,6 +72,19 @@ test('required source-verification jobs explicitly checkout the contributor head
     'AppGuardrail is not bound to the contributor head',
   );
 
+  const sarifUpload = stepBlock(
+    appguardrail,
+    'Upload AppGuardrail SARIF to code scanning',
+  );
+  assert.ok(
+    sarifUpload.includes(SARIF_SOURCE_REF),
+    'AppGuardrail SARIF ref is not bound to the analyzed contributor head',
+  );
+  assert.ok(
+    sarifUpload.includes(SARIF_SOURCE_SHA),
+    'AppGuardrail SARIF SHA is not bound to the analyzed contributor head',
+  );
+
   const readiness = jobBlock(readWorkflow('commercial-readiness.yml'), 'audit');
   assert.ok(
     readiness.includes(SOURCE_REF),
@@ -84,7 +115,9 @@ test('merge-tree compatibility provisions the PostgreSQL contract required by th
     'PRIVACY_DATABASE_URL',
   ]) {
     assert.ok(
-      mergeCompatibility.includes(`${variableName}: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test`),
+      mergeCompatibility.includes(
+        `${variableName}: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test`,
+      ),
       `merge_compatibility is missing ${variableName}`,
     );
   }
