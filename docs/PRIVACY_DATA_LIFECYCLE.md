@@ -44,9 +44,9 @@ The section/whole SHA-256 evidence is integrity metadata only; it does not prove
 
 **Status:** Partial
 
-Protected main includes signed workspace context (#139), the workspace+user scoped connection registry (#150), and atomic local connection revocation (#153). Connection rows carry bounded provider/account/calendar metadata and opaque credential references rather than provider-token plaintext. Local revocation ends LifeOS connection authority but does not itself prove provider-side OAuth revocation or managed-secret deletion.
+Protected main includes signed workspace context (#139), the workspace+user scoped connection registry (#150), atomic local connection revocation (#153), and the distinct short-lived signed workspace+user authority from PR #155 (`life-os.calendar-user.v1`). Connection rows carry bounded provider/account/calendar metadata and opaque credential references rather than provider-token plaintext. Local revocation ends LifeOS connection authority but does not itself prove provider-side OAuth revocation or managed-secret deletion.
 
-PR #155 is `Implemented on active PR` for a distinct short-lived signed workspace+user context needed by hosted user-sensitive calendar operations. The complete #129 lifecycle still requires OAuth state/PKCE, a concrete managed secret backend, refresh/provider revocation, discovery/selection and public hosted disconnect/runtime composition.
+The complete #129 lifecycle still requires public authenticated connection/disconnect composition, OAuth state/PKCE, a concrete managed secret backend, refresh/provider revocation, discovery/selection and migration away from development-wide credentials.
 
 ## Plugin installation and secrets
 
@@ -54,7 +54,15 @@ PR #155 is `Implemented on active PR` for a distinct short-lived signed workspac
 
 Protected main validates plugin manifests and, through PR #151, separates manifest intent from host-granted installation authority. Explicit capability subsets, exact replay/conflict handling, tenant/user isolation and revocation are protected behavior.
 
-Durable installation/secret persistence, protected secret handles at rest, SSRF-safe outbound delivery, retry/dead-letter evidence and delivery-time revocation enforcement remain issue #130. A granted installation is not evidence that the complete plugin runtime exists.
+PR #156 is **Implemented on active PR** for restart-safe plugin installation authority persistence. Its application and SQL lookup/revocation boundaries carry installation, workspace and installing-user authority, while the durable record stores only bounded installation/manifest/grant/lifecycle evidence. Plaintext plugin credentials are not part of that record.
+
+Protected secret/KMS lifecycle, SSRF-safe authorized-origin outbound delivery, retry/dead-letter evidence and delivery-time revocation enforcement remain issue #130. A granted or durably persisted installation is not evidence that the complete plugin runtime exists.
+
+## Model-assisted development evidence
+
+**Status:** Accepted architecture
+
+ADR 0012 keeps model/provider credentials and model execution separate from product/repository authority. `NVIDIA_NIM_API_KEY` may materialize only at the reviewed bounded model-call/development boundary; retained evidence excludes provider credentials, raw prompts/responses and hidden reasoning. Model output cannot become product authorization, independent review, merge or release authority.
 
 ## Deletion semantics
 
@@ -69,4 +77,5 @@ No service may claim whole-workspace deletion merely because its own tables were
 - no whole-right success claim from partial/unknown contributor state;
 - no integrity digest is treated as access control or confidentiality;
 - no plugin manifest self-authorizes host capabilities;
-- no LifeOS connection-record revocation is silently promoted to provider credential revocation.
+- no LifeOS connection-record revocation is silently promoted to provider credential revocation;
+- no development model or model credential is promoted to independent review, merge or release authority.
