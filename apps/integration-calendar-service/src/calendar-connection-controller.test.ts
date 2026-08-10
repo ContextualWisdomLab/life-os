@@ -29,8 +29,18 @@ async function controllerModule(): Promise<Readonly<Record<string, unknown>>> {
   return import('./main');
 }
 
-function problemStatus(error: unknown): number | undefined {
-  return error instanceof HttpException ? error.getStatus() : undefined;
+async function expectProblemStatus(
+  operation: Promise<unknown>,
+  expectedStatus: number,
+): Promise<void> {
+  try {
+    await operation;
+  } catch (error) {
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(expectedStatus);
+    return;
+  }
+  throw new Error(`Expected HTTP ${expectedStatus} failure`);
 }
 
 afterEach(() => {
@@ -100,7 +110,7 @@ describe('CalendarConnectionController', () => {
     };
     const controller = new Controller({ async disconnect() { return undefined; } });
 
-    await expect(
+    await expectProblemStatus(
       controller.disconnectConnection(
         CONNECTION_ID,
         WORKSPACE_ID,
@@ -108,7 +118,8 @@ describe('CalendarConnectionController', () => {
         ISSUED_AT,
         signature(),
       ),
-    ).rejects.toSatisfy((error: unknown) => problemStatus(error) === 404);
+      404,
+    );
   });
 
   it('rejects forged user context before invoking the application', async () => {
@@ -128,7 +139,7 @@ describe('CalendarConnectionController', () => {
       },
     });
 
-    await expect(
+    await expectProblemStatus(
       controller.disconnectConnection(
         CONNECTION_ID,
         WORKSPACE_ID,
@@ -136,7 +147,8 @@ describe('CalendarConnectionController', () => {
         ISSUED_AT,
         'A'.repeat(43),
       ),
-    ).rejects.toSatisfy((error: unknown) => problemStatus(error) === 401);
+      401,
+    );
     expect(calls).toBe(0);
   });
 
@@ -151,7 +163,7 @@ describe('CalendarConnectionController', () => {
     };
     const controller = new Controller({ async disconnect() { return undefined; } });
 
-    await expect(
+    await expectProblemStatus(
       controller.disconnectConnection(
         CONNECTION_ID,
         WORKSPACE_ID,
@@ -159,6 +171,7 @@ describe('CalendarConnectionController', () => {
         ISSUED_AT,
         signature(),
       ),
-    ).rejects.toSatisfy((error: unknown) => problemStatus(error) === 503);
+      503,
+    );
   });
 });
