@@ -58,12 +58,12 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 | PRD-INT-001 | Versioned plugin SDK/validation without direct database authority. | Implemented on protected main | plugin SDK/integration-service tests |
 | PRD-INT-002 | Complete plugin runtime installation, encrypted secret storage, SSRF-safe outbound delivery, retries/dead-letter behavior and revocation. | Partial | protected installation authority exists; durable secret/delivery runtime remains issue #130 |
 | PRD-INT-003 | Treat a validated manifest as untrusted intent and grant only explicit tenant-scoped installation capabilities with exact replay/conflict/revocation semantics. | Implemented on protected main | PR #151 merged as `6971c4e11b3204ec41526c7c959a248e54440e1c` |
-| PRD-INT-004 | Persist restart-safe plugin installation authority with service-owned multiword schema/table naming, fixed SQL, explicit lifecycle evidence and workspace-scoped lookups at the persistence boundary. | Implemented on active PR | PR #156; tenant lookup hardening keeps workspace scope in SQL; no secret/delivery authority implied |
+| PRD-INT-004 | Persist restart-safe plugin installation authority with service-owned multiword schema/table naming, fixed SQL, explicit lifecycle evidence and workspace+installing-user-scoped lookups at the persistence boundary. | Implemented on active PR | PR #156; no secret/delivery authority implied |
 | PRD-WEB-001 | Responsive installable PWA with keyboard-operable core flows and Korean/English catalogs. | Implemented on protected main | browser/accessibility/localization tests |
 | PRD-OPS-001 | Logical PostgreSQL backup/restore with integrity and unsafe-target refusal. | Implemented on protected main | backup scripts/tests/runbook |
 | PRD-OPS-002 | Provider-neutral production reference deployment and bounded health/readiness/metrics. | Implemented on protected main | infra and observability tests |
 | PRD-GOV-001 | Capability maturity and buyer-gap exhaustion are reported independently. | Implemented on protected main | buyer-gap registry and issue #21 report |
-| PRD-GOV-002 | Required PR verification identifies the commit tree actually checked and does not conflate exact source-head verification, stale PR-base snapshots, independently resolved live-base state or synthetic-merge compatibility evidence. | Implemented on active PR | clean successor PR #154 advances issue #132; ADR 0010 defines the evidence identities; #147 is superseded |
+| PRD-GOV-002 | Required PR verification identifies the commit tree actually checked and does not conflate exact source-head verification, stale PR-base snapshots, independently resolved live-base state or integration compatibility evidence. | Implemented on protected main | PR #154 merged as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`; ADR 0010 defines evidence identities; issue #132 remains only for residual central scanner classification |
 
 ## Non-functional requirements
 
@@ -74,7 +74,7 @@ Canonical requirements use exactly one of: `Implemented on protected main`, `Imp
 - Integrity digests are evidence, not authorization, confidentiality, provenance or digital signatures.
 - Core customer journeys require realistic PostgreSQL and browser evidence, not mock-only success.
 - Product-owned production packages maintain exact coverage gates where configured and beginner-readable public documentation.
-- Verification evidence remains bound to the exact commit tree it inspected rather than being promoted across source, merge, base or release identities.
+- Verification evidence remains bound to the exact commit tree it inspected rather than being promoted across source, integration, base or release identities.
 
 ## Non-goals
 
