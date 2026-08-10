@@ -4,6 +4,7 @@ import {
   createHabitPoolConfiguration,
   createHabitRuntime,
   type HabitPool,
+  type HabitPoolConnection,
 } from './habit-runtime';
 
 const DATABASE_URL = [
@@ -13,11 +14,23 @@ const DATABASE_URL = [
   'life_os',
 ].join('/');
 
+class FakeHabitConnection implements HabitPoolConnection {
+  async query<Row>(): Promise<{ rows: Row[] }> {
+    return { rows: [] };
+  }
+
+  release(): void {}
+}
+
 class FakeHabitPool implements HabitPool {
   endCalls = 0;
 
   async query<Row>(): Promise<{ rows: Row[] }> {
     return { rows: [] };
+  }
+
+  async connect(): Promise<HabitPoolConnection> {
+    return new FakeHabitConnection();
   }
 
   async end(): Promise<void> {
