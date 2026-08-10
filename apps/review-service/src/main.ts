@@ -160,10 +160,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
-  await app.listen(
-    Number(process.env.REVIEW_SERVICE_PORT ?? 4104),
-    '0.0.0.0',
-  );
+  await app.listen(Number(process.env.REVIEW_SERVICE_PORT ?? 4104), '0.0.0.0');
 }
 
 if (require.main === module) {
