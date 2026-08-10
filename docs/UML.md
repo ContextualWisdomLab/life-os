@@ -65,7 +65,7 @@ Session rotation does not manufacture a new authentication ceremony.
 ```mermaid
 stateDiagram-v2
     [*] --> LocalDraft
-    LocalDraft --> DurableToday: explicit save + If-None-Match/If-Match
+    LocalDraft --> DurableToday: explicit save + precondition
     DurableToday --> DurableToday: versioned update
     DurableToday --> Conflict: stale strong precondition
     Conflict --> DurableToday: recheck + explicit reconciliation
@@ -112,7 +112,32 @@ sequenceDiagram
     Calendar-->>Web: sanitized sync result
 ```
 
-Per-user encrypted credential persistence/refresh/revocation and calendar selection are **Partial** and tracked by issue #129.
+## Calendar connection registry foundation
+
+**Status:** Implemented on active PR
+
+**Evidence:** PR #150; full hosted credential lifecycle remains `Partial` under issue #129.
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Calendar
+    participant Repo as Calendar connection repository
+    participant Pg as Calendar-owned PostgreSQL
+
+    Caller->>Calendar: trusted workspace + user + provider/account/calendar metadata + opaque credential references
+    Calendar->>Calendar: validate UUIDv4 authority, provider and normalized scopes
+    Calendar->>Repo: create / scoped lookup
+    Repo->>Pg: fixed parameterized SQL
+    alt valid unique evidence
+        Pg-->>Repo: one workspace+user scoped connection record
+        Repo-->>Calendar: immutable bounded record
+    else malformed input or duplicate persisted evidence
+        Repo-->>Calendar: fail closed
+    end
+```
+
+The active migration/repository does not itself implement OAuth callback state, managed secret storage, refresh/revocation or discovery/selection.
 
 ## AI proposal / evidence / decision
 
@@ -137,60 +162,50 @@ sequenceDiagram
     AI->>Audit: append decision evidence
 ```
 
-## Data-rights durable foundation
+## Data-rights request and status lifecycle
 
 **Status:** Implemented on protected main
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Web
-    participant Identity
-    participant Ledger as identity.data_rights_requests
-    User->>Web: export/delete request
-    Web->>Identity: validate session + recent-auth provenance
-    Identity->>Ledger: persist workspace/user-bound request
-    Ledger-->>Identity: durable request / replay / conflict
-    Identity->>Ledger: tenant-and-requesting-actor scoped lookup
-    Ledger-->>Identity: request state or indistinguishable absence
-```
-
-Recent-auth provenance, ownership binding, durable request/terminal receipt and tenant-scoped status lookup are protected-main behavior through #134/#136/#137/#138/#144.
-
-## Authenticated data-rights status resource
-
-**Status:** Implemented on active PR
-
-**Evidence:** PR #146.
-
-```mermaid
-sequenceDiagram
     actor User
-    participant Web
     participant Identity as Identity HTTP boundary
     participant Session as Session introspection
-    participant Ledger as Request ledger
+    participant Ledger as identity.data_rights_requests
 
-    User->>Identity: GET /v1/data-rights/requests/:requestId + opaque session cookie
-    Identity->>Session: introspect cookie
+    User->>Identity: create or query data-rights request
+    Identity->>Session: validate session + recent-auth provenance where required
     Session-->>Identity: userId + workspaceId
-    Identity->>Ledger: getRequest(requestId, workspaceId, userId)
+    Identity->>Ledger: tenant+actor scoped request operation
     alt owned request
         Ledger-->>Identity: durable request
-        Identity-->>User: 200 bounded public lifecycle + no-store
+        Identity-->>User: bounded public lifecycle + no-store
     else absent or other tenant
         Ledger-->>Identity: undefined
         Identity-->>User: indistinguishable 404 + no-store
-    else malformed request ID
-        Identity-->>User: bounded 400 + no-store
-    else invalid/expired session
-        Identity-->>User: bounded 401 + no-store
-    else dependency/persistence failure
-        Identity-->>User: sanitized 503 + no-store
+    else malformed / unauthenticated / dependency failure
+        Identity-->>User: bounded 400 / 401 / 503 + no-store
     end
 ```
 
-The public projection excludes workspace/user IDs, idempotency keys and request/receipt digests. Complete contributor orchestration, reconciliation, retention/legal-hold and protected export delivery remain **Partial** under issue #55.
+PR #146 is protected-main evidence for the authenticated public status resource. Complete cross-domain export/deletion remains `Partial` under issue #55.
+
+## Tenant export integrity flow
+
+**Status:** Implemented on protected main
+
+**Evidence:** PR #149.
+
+```mermaid
+flowchart LR
+    C[Domain contributor] --> S[Schema version + safe record count + bounded JSON]
+    S --> N[Deterministic normalization / UTF-16 key ordering]
+    N --> D[Section SHA-256]
+    D --> M[Ordered export manifest]
+    M --> W[Whole-export SHA-256]
+```
+
+Integrity digests do not grant access authority, confidentiality, provenance or signature identity.
 
 ## Purpose-bound sensitive-data access
 
@@ -207,25 +222,26 @@ sequenceDiagram
     Privacy-->>Caller: bounded grant/decision or denial
 ```
 
-## Backup / restore
+## Plugin installation authority
 
-**Status:** Implemented on protected main
+**Status:** Implemented on active PR
+
+**Evidence:** PR #151; full runtime remains incomplete under issue #130.
 
 ```mermaid
-sequenceDiagram
-    participant Operator
-    participant Backup
-    participant Store
-    participant Restore
-    Operator->>Backup: logical backup
-    Backup->>Backup: produce integrity/checksum evidence
-    Backup->>Store: write backup artifact
-    Operator->>Restore: restore into approved target
-    Restore->>Restore: reject corruption / unsafe non-empty target
-    Restore-->>Operator: verified restore evidence
+stateDiagram-v2
+    [*] --> ValidatedManifest
+    ValidatedManifest --> GrantedInstallation: explicit host capability subset
+    GrantedInstallation --> GrantedInstallation: exact replay
+    GrantedInstallation --> Conflict: incompatible installation-id reuse
+    GrantedInstallation --> Revoked: explicit revocation
+    Revoked --> [*]
+    Conflict --> [*]
 ```
 
-## Deployment topology
+A manifest requests capabilities but does not grant them. This active application authority does not imply durable plugin-secret or outbound-delivery persistence exists.
+
+## Backup / restore and deployment
 
 **Status:** Implemented on protected main
 
@@ -233,26 +249,18 @@ sequenceDiagram
 flowchart TB
     Ingress[Ingress / TLS] --> Web[Web/BFF]
     Web --> Services[Independent LifeOS services]
-    Services --> IStore[(identity role/schema)]
-    Services --> PStore[(planning role/schema)]
-    Services --> HStore[(habit role/schema)]
-    Services --> RStore[(review role/schema)]
-    Services --> NStore[(notification role/schema)]
-    Services --> AStore[(AI role/schema)]
-    Services --> VStore[(privacy role/schema)]
+    Services --> Pg[(Service-owned PostgreSQL authority)]
     Services <--> NATS[(NATS JetStream)]
     Operator[Operator secret manager / network policy / backups / monitoring] -. configures .-> Services
 ```
 
-The nodes represent separate service-owned database authority even when an operator co-locates them on one PostgreSQL cluster.
+Logical backup/restore verifies integrity and unsafe-target refusal; it does not claim PITR or managed infrastructure ownership.
 
 ## Verification evidence identity
 
 **Status:** Implemented on active PR
 
 **Evidence:** ADR 0010 and PR #147.
-
-The exact **source head** and a GitHub **synthetic merge** tree are different evidence subjects. The PR base snapshot is also distinct from the current live base tip.
 
 ```mermaid
 flowchart LR
@@ -269,21 +277,7 @@ flowchart LR
     Main --> Release[release_source_sha]
 ```
 
-```mermaid
-sequenceDiagram
-    participant GitHub
-    participant SourceJob as source-head job
-    participant MergeJob as merge-compatibility job
-    participant Policy as merge policy
-
-    GitHub->>SourceJob: checkout exact contributor source head
-    SourceJob-->>Policy: source-head evidence
-    GitHub->>MergeJob: checkout/construct synthetic merge against current base
-    MergeJob-->>Policy: separately classified compatibility evidence
-    Policy->>GitHub: re-resolve live base before base-sensitive decision
-```
-
-No green status is silently transferred across these identities. Issue #132 remains open until the active implementation is integrated and residual required-workflow attribution is reconciled.
+No green status is silently transferred across evidence identities. Issue #132 remains open until PR #147 integrates and residual required-workflow attribution is reconciled.
 
 ## Degraded modes
 
