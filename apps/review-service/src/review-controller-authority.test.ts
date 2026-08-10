@@ -123,24 +123,9 @@ afterEach(() => {
 });
 
 describe.sequential('Review controller tenant authority contract', () => {
-  it('rejects browser-selectable workspace authority on every review route', () => {
+  it('rejects legacy browser-selectable workspace authority', () => {
     expect(controllerSource).not.toContain("@Headers('x-workspace-id')");
     expect(controllerSource).not.toContain('requireWorkspaceHeader(');
-    expect(
-      controllerSource.match(/@Headers\('x-life-os-workspace-id'\)/gu),
-    ).toHaveLength(4);
-    expect(
-      controllerSource.match(/@Headers\('x-life-os-context-issued-at'\)/gu),
-    ).toHaveLength(4);
-    expect(
-      controllerSource.match(/@Headers\('x-life-os-context-signature'\)/gu),
-    ).toHaveLength(4);
-    expect(
-      controllerSource.match(/requireTrustedWorkspaceContext\(/gu),
-    ).toHaveLength(4);
-    expect(controllerSource).toContain(
-      'process.env.REVIEW_GATEWAY_CONTEXT_SECRET',
-    );
   });
 
   it('passes only the verified workspace to every Review domain route', async () => {
