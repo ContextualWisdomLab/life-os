@@ -108,8 +108,8 @@ async function seedWorkspace(pool: Pool): Promise<void> {
   await pool.query(
     `INSERT INTO planning.today_idempotency_records
        (workspace_id, idempotency_key, request_digest, result_kind,
-        aggregate_id, revision_token, payload_json, created_at)
-     VALUES ($1, $2, $3, 'created', $4, $5, $6::jsonb, now())`,
+        aggregate_id, revision_token, payload_json)
+     VALUES ($1, $2, $3, 'created', $4, $5, $6::jsonb)`,
     [
       WORKSPACE_ID,
       todayIdempotencyKey,
@@ -272,7 +272,10 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
           cleanupFailures,
           'Planning data-rights test cleanup failed',
         );
-        if (primaryFailure instanceof Error && primaryFailure.cause === undefined) {
+        if (
+          primaryFailure instanceof Error &&
+          primaryFailure.cause === undefined
+        ) {
           Object.defineProperty(primaryFailure, 'cause', {
             configurable: true,
             value: cleanupError,
