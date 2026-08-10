@@ -9,16 +9,19 @@ PARALLEL SAFE
 AS $$
     SELECT
         COALESCE(
-            bool_and(char_length(capability_name) BETWEEN 1 AND 256),
+            (
+                SELECT bool_and(char_length(capability_name) BETWEEN 1 AND 256)
+                FROM unnest(capability_values) AS capabilities(capability_name)
+            ),
             true
         )
         AND cardinality(capability_values) = (
             SELECT count(DISTINCT capability_name COLLATE "C")
-            FROM unnest(capability_values) AS capability_name
+            FROM unnest(capability_values) AS capabilities(capability_name)
         )
         AND capability_values = ARRAY(
             SELECT capability_name
-            FROM unnest(capability_values) AS capability_name
+            FROM unnest(capability_values) AS capabilities(capability_name)
             ORDER BY capability_name COLLATE "C"
         );
 $$;
