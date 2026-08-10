@@ -37,7 +37,12 @@ export interface PluginInstallationRecord {
   readonly revokedAt: string | null;
 }
 
-/** Atomic revocation request owned by the host persistence boundary. */
+/**
+ * Atomic revocation request owned by the host persistence boundary.
+ *
+ * `installedByUserId` is derived from authenticated host context and remains part
+ * of the durable lookup/update scope; plugin input never supplies this authority.
+ */
 export interface RevokePluginInstallation {
   readonly installationId: string;
   readonly workspaceId: string;
