@@ -57,7 +57,7 @@ function preflightClient(erasureReceiptsReady: boolean): TodayTransactionalSqlCl
 }
 
 describe('Planning data-rights runtime composition', () => {
-  it('exposes one service-owned data-rights contributor', async () => {
+  it('executes the service-owned data-rights contributor through the runtime', async () => {
     const runtime = createPlanningRuntime(
       { PLANNING_DATABASE_URL: TEST_DATABASE_URL },
       () => inertPool(),
@@ -67,9 +67,31 @@ describe('Planning data-rights runtime composition', () => {
       };
     };
 
-    expect(runtime.dataRightsContributor).toBeDefined();
-    expect(typeof runtime.dataRightsContributor?.handle).toBe('function');
-    await runtime.close();
+    try {
+      const contributor = runtime.dataRightsContributor;
+      expect(contributor).toBeDefined();
+      if (!contributor) {
+        throw new Error('Planning runtime did not compose its data-rights contributor');
+      }
+
+      const response = await contributor.handle({
+        contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
+        operation: 'export',
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        requestId: REQUEST_ID,
+      });
+
+      expect(response).toMatchObject({
+        contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
+        operation: 'export',
+        contributor: 'planning.service',
+        requestId: REQUEST_ID,
+        recordCount: 0,
+      });
+    } finally {
+      await runtime.close();
+    }
   });
 });
 
