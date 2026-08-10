@@ -34,6 +34,9 @@ function databaseUrl(sourceUrl: string, name: string): string {
 
 /** Drops the fixture database only after every orderly pool shutdown reaches PostgreSQL. */
 async function dropTemporaryDatabaseWhenIdle(adminPool: Pool): Promise<void> {
+  if (TEMPORARY_DATABASE_NAME !== 'life_os_data_rights_test') {
+    throw new Error('Unexpected Planning data-rights fixture database name');
+  }
   const deadline = Date.now() + DATABASE_DISCONNECT_TIMEOUT_MS;
   while (Date.now() <= deadline) {
     const activeConnections = await adminPool.query<{ count: number }>(
@@ -43,7 +46,9 @@ async function dropTemporaryDatabaseWhenIdle(adminPool: Pool): Promise<void> {
       [TEMPORARY_DATABASE_NAME],
     );
     if (activeConnections.rows[0]?.count === 0) {
-      await adminPool.query('DROP DATABASE IF EXISTS life_os_data_rights_test');
+      await adminPool.query(
+        `DROP DATABASE IF EXISTS "${TEMPORARY_DATABASE_NAME}" WITH (FORCE)`,
+      );
       return;
     }
     await sleep(25);
@@ -125,6 +130,7 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
     let migrationPool: Pool | undefined;
     let runtime: PlanningRuntime | undefined;
     let primaryFailure: unknown;
+    let cleanupError: AggregateError | undefined;
 
     try {
       await dropTemporaryDatabaseWhenIdle(adminPool);
@@ -262,21 +268,20 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
         }
       }
       if (cleanupFailures.length > 0) {
-        const cleanupError = new AggregateError(
+        cleanupError = new AggregateError(
           cleanupFailures,
           'Planning data-rights test cleanup failed',
         );
-        if (primaryFailure instanceof Error) {
-          if (primaryFailure.cause === undefined) {
-            Object.defineProperty(primaryFailure, 'cause', {
-              configurable: true,
-              value: cleanupError,
-            });
-          }
-        } else if (primaryFailure === undefined) {
-          throw cleanupError;
+        if (primaryFailure instanceof Error && primaryFailure.cause === undefined) {
+          Object.defineProperty(primaryFailure, 'cause', {
+            configurable: true,
+            value: cleanupError,
+          });
         }
       }
+    }
+    if (cleanupError !== undefined && primaryFailure === undefined) {
+      throw cleanupError;
     }
   }, 30_000);
 });
