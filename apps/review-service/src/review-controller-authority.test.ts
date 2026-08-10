@@ -165,11 +165,11 @@ describe.sequential('Review controller tenant authority contract', () => {
     const fresh = signedHeaders(nowSeconds);
     const expired = signedHeaders(nowSeconds - 120);
     const future = signedHeaders(nowSeconds + 120);
+    const tamperedDigest = Buffer.from(fresh.signature ?? '', 'base64url');
+    tamperedDigest[0] ^= 0xff;
     const tampered = {
       ...fresh,
-      signature: `${fresh.signature?.slice(0, -1)}${
-        fresh.signature?.endsWith('A') ? 'B' : 'A'
-      }`,
+      signature: tamperedDigest.toString('base64url'),
     };
     const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
     const invalidContexts: readonly InvalidContextCase[] = [
