@@ -19,6 +19,7 @@ ADR status uses the same exact canonical documentation values: `Implemented on p
 | [0007](0007-canonical-documentation-graph.md) | Accepted architecture | One code-current canonical documentation graph with explicit maturity |
 | [0008](0008-separate-capability-maturity-from-buyer-gap-exhaustion.md) | Accepted architecture | Capability maturity is separate from buyer-gap exhaustion |
 | [0009](0009-product-hosting-and-data-evolution.md) | Accepted architecture | Server-backed self-hostable modular MSA supersedes browser-only/single-app primary architecture |
+| [0010](0010-verification-evidence-identity.md) | Accepted architecture | Contributor source, PR-base snapshot, live base, synthetic merge, workflow checkout, protected-main and release identities remain separate evidence authorities |
 
 ## ADR quality contract
 
