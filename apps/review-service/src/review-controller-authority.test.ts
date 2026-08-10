@@ -165,12 +165,21 @@ describe.sequential('Review controller tenant authority contract', () => {
     };
     const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
     const invalidContexts = [
-      { name: 'missing', headers: { ...fresh, workspaceId: undefined }, status: 401 },
+      {
+        name: 'missing',
+        headers: { ...fresh, workspaceId: undefined },
+        status: 401,
+      },
       { name: 'expired', headers: expired, status: 401 },
       { name: 'future', headers: future, status: 401 },
       { name: 'tampered', headers: tampered, status: 401 },
       { name: 'malformed', headers: malformed, status: 401 },
-      { name: 'secret-unconfigured', headers: fresh, status: 503, secret: false },
+      {
+        name: 'secret-unconfigured',
+        headers: fresh,
+        status: 503,
+        secret: false,
+      },
     ] as const;
     const service = serviceSpies();
     const controller = controllerWith(service);
