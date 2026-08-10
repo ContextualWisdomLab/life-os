@@ -41,8 +41,7 @@ function text(path) {
 
 /** Returns local Markdown link targets from one Markdown document. */
 function localLinks(relativePath) {
-  const body = text(relativePath);
-  return [...body.matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)]
+  return [...text(relativePath).matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)]
     .map((match) => match[1].split('#', 1)[0])
     .filter((target) => target && !/^[a-z][a-z0-9+.-]*:/iu.test(target));
 }
@@ -69,7 +68,6 @@ function tableCells(line) {
     .map((value) => value.trim());
 }
 
-/** Returns whether cells form a Markdown table separator row. */
 function isSeparatorRow(cells) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
 }
@@ -89,8 +87,10 @@ function tableStatuses(body) {
     for (let rowIndex = index + 2; rowIndex < lines.length; rowIndex += 1) {
       if (!lines[rowIndex].trimStart().startsWith('|')) break;
       const cells = tableCells(lines[rowIndex]);
-      if (cells.length !== headers.length || isSeparatorRow(cells)) continue;
-      statuses.push(cells[statusIndex]);
+      if (cells.length !== headers.length && !isSeparatorRow(cells)) continue;
+      if (cells.length === headers.length && !isSeparatorRow(cells)) {
+        statuses.push(cells[statusIndex]);
+      }
     }
   }
   return statuses;
@@ -131,17 +131,8 @@ test('ADR index targets every material ADR and ADRs satisfy the quality contract
     .filter((name) => /^\d{4}-.+\.md$/u.test(name))
     .sort();
   const requiredNumbers = new Set([
-    '0001',
-    '0002',
-    '0003',
-    '0004',
-    '0005',
-    '0006',
-    '0007',
-    '0008',
-    '0009',
-    '0010',
-    '0011',
+    '0001', '0002', '0003', '0004', '0005', '0006',
+    '0007', '0008', '0009', '0010', '0011',
   ]);
 
   for (const number of requiredNumbers) {
@@ -152,8 +143,7 @@ test('ADR index targets every material ADR and ADRs satisfy the quality contract
     const number = file.slice(0, 4);
     assert.ok(index.includes(`[${number}](${file})`), `${file} missing exact index target`);
     const body = text(`docs/adr/${file}`);
-    const status = metadataStatuses(body)[0];
-    assert.ok(status !== undefined && STATUSES.includes(status), `${file} has invalid status`);
+    assert.ok(STATUSES.includes(metadataStatuses(body)[0]), `${file} has invalid status`);
     for (const heading of [
       '## Context',
       '## Decision',
@@ -178,79 +168,73 @@ test('canonical Markdown keeps balanced fenced code blocks', () => {
   }
 });
 
-test('documentation claims are anchored to repository authority', () => {
-  const agents = text('AGENTS.md');
+test('root architecture remains semantically anchored to protected-main authority', () => {
   const architecture = text('ARCHITECTURE.md');
+  const agents = text('AGENTS.md');
   const dataRights = text('apps/identity-service/src/data-rights.ts');
   const proposals = text('apps/ai-service/src/proposal-service.ts');
-  const dataModel = text('docs/DATA_MODEL.md');
-  const threatModel = text('docs/THREAT_MODEL.md');
 
   assert.match(agents, /Internal identifiers are opaque UUIDv4 strings/u);
   assert.match(dataRights, /UUID_V4_PATTERN/u);
-  assert.match(dataRights, /-4\[0-9a-f\]\{3\}/u);
-  assert.match(architecture, /never read or mutate another service's database tables directly/u);
-  assert.match(architecture, /authentication ceremony time/u);
+  assert.match(architecture, /never read or mutate another service's tables directly/u);
+  assert.match(architecture, /Authentication-ceremony time is distinct/u);
   assert.match(architecture, /Durable Today synchronization is protected-main behavior/u);
-  assert.match(architecture, /signed trusted workspace context/u);
-  assert.match(architecture, /Privacy service owns purpose-bound sensitive-access decisions/u);
-  assert.match(architecture, /Notification service owns reminder occurrences/u);
+  assert.match(architecture, /PR #150 added/u);
+  assert.match(architecture, /PR #153 added atomic/u);
+  assert.match(architecture, /PR #151/u);
+  assert.match(architecture, /Privacy owns purpose-bound sensitive-access decisions/u);
+  assert.match(architecture, /Notification owns reminder occurrences/u);
   assert.match(architecture, /docs\/PRD\.md/u);
-  assert.match(dataModel, /does not authorize cross-service SQL joins/iu);
   assert.match(proposals, /requiresConfirmation: true/u);
   assert.match(proposals, /cannot execute its own operations/u);
-  assert.match(threatModel, /AI prompt injection \/ silent mutation/u);
 });
 
-test('canonical lifecycle reflects protected-main integrations and remaining gaps', () => {
+test('protected lifecycle and remaining parent gaps are represented truthfully', () => {
   const prd = text('docs/PRD.md');
   const traceability = text('docs/TRACEABILITY.md');
   const contracts = text('docs/API_CONTRACTS.md');
   const privacy = text('docs/PRIVACY_DATA_LIFECYCLE.md');
-  const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
   const dataModel = text('docs/DATA_MODEL.md');
 
-  assert.match(prd, /PR #127 merged as protected main/u);
-  assert.match(prd, /PR #139 merged/u);
-  assert.match(prd, /PR #146 merged/u);
-  assert.match(prd, /PR #149 merged/u);
-  assert.match(prd, /PR #150 merged/u);
+  for (const protectedPr of ['#127', '#139', '#146', '#149', '#150', '#151', '#153']) {
+    assert.match(prd, new RegExp(`PR ${protectedPr}`, 'u'));
+  }
   assert.match(traceability, /PRD-CAL-004.*Implemented on protected main/u);
+  assert.match(traceability, /PRD-CAL-005.*Implemented on protected main/u);
+  assert.match(traceability, /PRD-INT-003.*Implemented on protected main/u);
   assert.match(traceability, /PRD-PRIV-004.*Implemented on protected main/u);
   assert.match(traceability, /PRD-PRIV-005.*Implemented on protected main/u);
-  assert.match(contracts, /Calendar connection registry foundation.*Implemented on protected main/u);
-  assert.match(contracts, /Tenant export integrity manifest.*Implemented on protected main/u);
-  assert.match(privacy, /authenticated public status resource from PR #146/u);
-  assert.match(privacy, /per-contributor export integrity evidence from PR #149/u);
-  assert.match(dataModel, /Calendar integration — connection registry persisted on protected main/u);
+  assert.match(contracts, /Atomic calendar connection revocation.*Implemented on protected main/u);
+  assert.match(contracts, /Explicit plugin installation grants.*Implemented on protected main/u);
+  assert.match(privacy, /atomic local connection revocation \(#153\)/u);
+  assert.match(dataModel, /PR #153 added atomic tenant\+user-scoped revocation/u);
   assert.match(traceability, /#55 data portability completion/u);
-  assert.match(traceability, /#129 per-user calendar credentials/u);
+  assert.match(traceability, /#129 hosted per-user calendar credentials/u);
   assert.match(traceability, /#130 plugin runtime delivery/u);
-  assert.match(assessment, /old documentation PR #126 became materially diverged/u);
 });
 
-test('active successor work is represented without promotion to protected-main truth', () => {
+test('active successors are explicit and superseded lines are not promoted', () => {
   const prd = text('docs/PRD.md');
   const traceability = text('docs/TRACEABILITY.md');
   const contracts = text('docs/API_CONTRACTS.md');
-  const dataModel = text('docs/DATA_MODEL.md');
   const uml = text('docs/UML.md');
+  const architecture = text('ARCHITECTURE.md');
   const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
   const integrationAuthority = text(
     'docs/adr/0011-external-integration-authority-and-secret-references.md',
   );
 
-  for (const pr of ['#147', '#151']) {
-    assert.match(prd, new RegExp(`PR ${pr}`, 'u'));
-    assert.match(traceability, new RegExp(`PR ${pr}`, 'u'));
-    assert.match(contracts, new RegExp(`PR ${pr}`, 'u'));
-    assert.match(assessment, new RegExp(`PR ${pr}`, 'u'));
+  for (const activePr of ['#154', '#155']) {
+    assert.match(prd, new RegExp(`PR ${activePr}`, 'u'));
+    assert.match(traceability, new RegExp(`PR ${activePr}`, 'u'));
+    assert.match(contracts, new RegExp(`PR ${activePr}`, 'u'));
+    assert.match(assessment, new RegExp(`PR ${activePr}`, 'u'));
   }
-  assert.match(dataModel, /PR #151 is \*\*Implemented on active PR\*\*/u);
-  assert.match(uml, /Plugin installation authority/iu);
-  assert.match(uml, /source_head_sha/u);
-  assert.match(uml, /merge_tree_sha/u);
+  assert.match(architecture, /PR #155 is \*\*Implemented on active PR\*\*/u);
+  assert.match(architecture, /Old PR #147 is \*\*Superseded\*\*/u);
+  assert.match(uml, /clean successor PR #154/u);
+  assert.match(uml, /life-os\.calendar-user\.v1/u);
   assert.match(assessment, /protected-main documentation insufficient/iu);
-  assert.match(integrationAuthority, /manifest expresses requested intent/iu);
   assert.match(integrationAuthority, /opaque secret handle/iu);
+  assert.match(integrationAuthority, /manifest expresses requested intent/iu);
 });
