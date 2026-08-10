@@ -6,7 +6,10 @@ import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SOURCE_REF = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
-const MERGE_REF = 'ref: refs/pull/${{ github.event.pull_request.number }}/merge';
+const ADVERTISED_MERGE_REF =
+  'ref: refs/pull/${{ github.event.pull_request.number }}/merge';
+const LIVE_SOURCE_REF =
+  'ref: ${{ steps.live-identities.outputs.current_source }}';
 const SARIF_SOURCE_REF =
   "ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref }}";
 const SARIF_SOURCE_SHA = 'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
@@ -55,36 +58,79 @@ test('required source-verification jobs explicitly checkout the contributor head
     'browser-acceptance',
   ]) {
     const block = jobBlock(ci, jobName);
-    assert.ok(block.includes(SOURCE_REF), `${jobName} is not bound to the contributor head`);
-    assert.equal(block.includes(MERGE_REF), false, `${jobName} must not use the synthetic merge ref`);
+    assert.ok(
+      block.includes(SOURCE_REF),
+      `${jobName} is not bound to the contributor head`,
+    );
+    assert.equal(
+      block.includes(ADVERTISED_MERGE_REF),
+      false,
+      `${jobName} must not use the synthetic merge ref`,
+    );
   }
 
   const appguardrail = jobBlock(readWorkflow('appguardrail.yml'), 'scan');
-  assert.ok(appguardrail.includes(SOURCE_REF), 'AppGuardrail is not bound to the contributor head');
+  assert.ok(
+    appguardrail.includes(SOURCE_REF),
+    'AppGuardrail is not bound to the contributor head',
+  );
 
-  const sarifUpload = stepBlock(appguardrail, 'Upload AppGuardrail SARIF to code scanning');
-  assert.ok(sarifUpload.includes(SARIF_SOURCE_REF), 'AppGuardrail SARIF ref is not bound to the analyzed contributor head');
-  assert.ok(sarifUpload.includes(SARIF_SOURCE_SHA), 'AppGuardrail SARIF SHA is not bound to the analyzed contributor head');
+  const sarifUpload = stepBlock(
+    appguardrail,
+    'Upload AppGuardrail SARIF to code scanning',
+  );
+  assert.ok(
+    sarifUpload.includes(SARIF_SOURCE_REF),
+    'AppGuardrail SARIF ref is not bound to the analyzed contributor head',
+  );
+  assert.ok(
+    sarifUpload.includes(SARIF_SOURCE_SHA),
+    'AppGuardrail SARIF SHA is not bound to the analyzed contributor head',
+  );
 
   const readiness = jobBlock(readWorkflow('commercial-readiness.yml'), 'audit');
-  assert.ok(readiness.includes(SOURCE_REF), 'Commercial Readiness is not bound to the contributor head');
+  assert.ok(
+    readiness.includes(SOURCE_REF),
+    'Commercial Readiness is not bound to the contributor head',
+  );
 });
 
-test('merge compatibility binds the checked merge parents to fresh source and live-base API evidence', () => {
+test('merge compatibility reconstructs a fresh integration tree from current API identities', () => {
   const block = jobBlock(readWorkflow('ci.yml'), 'merge_compatibility');
   assert.ok(block.includes("if: github.event_name == 'pull_request'"));
-  assert.ok(block.includes(MERGE_REF));
-  assert.ok(block.includes('fetch-depth: 2'), 'the checkout must retain both merge parents for identity verification');
+  assert.ok(block.includes('id: live-identities'));
   assert.ok(block.includes('GITHUB_TOKEN: ${{ github.token }}'));
   assert.ok(block.includes('/pulls/${{ github.event.pull_request.number }}'));
   assert.ok(block.includes('/commits/${{ github.event.pull_request.base.ref }}'));
-  assert.ok(block.includes('git show -s --format=%P HEAD'));
-  assert.ok(block.includes('${{ github.event.pull_request.head.sha }}'));
-  assert.equal(block.includes('git ls-remote'), false, 'merge identity must not depend on unauthenticated advertised pull refs');
+  assert.ok(block.includes(LIVE_SOURCE_REF));
+  assert.ok(
+    block.includes('fetch-depth: 0'),
+    'the integration job must have both current commits available locally',
+  );
+  assert.ok(block.includes('git checkout --detach "$current_base"'));
+  assert.ok(block.includes('git merge --no-commit --no-ff "$current_source"'));
+  assert.ok(
+    block.includes('latest_source'),
+    'the job must re-resolve source identity after constructing the integration tree',
+  );
+  assert.ok(
+    block.includes('latest_base'),
+    'the job must re-resolve live-base identity after constructing the integration tree',
+  );
   assert.equal(
-    block.includes('actual_commit" != "${{ github.sha }}"'),
+    block.includes(ADVERTISED_MERGE_REF),
     false,
-    'a regenerated live merge tree must not be compared to stale event github.sha',
+    'rerun-safe integration evidence must not depend on a stale advertised pull merge ref',
+  );
+  assert.equal(
+    block.includes('git ls-remote'),
+    false,
+    'merge identity must not depend on unauthenticated advertised refs',
+  );
+  assert.equal(
+    block.includes('${{ github.sha }}'),
+    false,
+    'integration evidence must not treat stale event github.sha as live-base authority',
   );
 });
 
@@ -103,7 +149,9 @@ test('merge-tree compatibility provisions the PostgreSQL contract required by th
     'PRIVACY_DATABASE_URL',
   ]) {
     assert.ok(
-      block.includes(`${variableName}: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test`),
+      block.includes(
+        `${variableName}: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test`,
+      ),
       `merge_compatibility is missing ${variableName}`,
     );
   }
