@@ -141,6 +141,7 @@ test('ADR index targets every material ADR and ADRs satisfy the quality contract
     '0008',
     '0009',
     '0010',
+    '0011',
   ]);
 
   for (const number of requiredNumbers) {
@@ -230,6 +231,9 @@ test('active successor work is represented without promotion to protected-main t
   const dataModel = text('docs/DATA_MODEL.md');
   const uml = text('docs/UML.md');
   const assessment = text('docs/DOCUMENTATION_ASSESSMENT.md');
+  const integrationAuthority = text(
+    'docs/adr/0011-external-integration-authority-and-secret-references.md',
+  );
 
   for (const pr of ['#147', '#150', '#151']) {
     assert.match(prd, new RegExp(`PR ${pr}`, 'u'));
@@ -244,4 +248,6 @@ test('active successor work is represented without promotion to protected-main t
   assert.match(uml, /source_head_sha/u);
   assert.match(uml, /merge_tree_sha/u);
   assert.match(assessment, /protected-main documentation insufficient/iu);
+  assert.match(integrationAuthority, /manifest expresses requested intent/iu);
+  assert.match(integrationAuthority, /opaque secret handle/iu);
 });
