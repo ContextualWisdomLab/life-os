@@ -20,6 +20,7 @@ ADR status uses the same exact canonical documentation values: `Implemented on p
 | [0008](0008-separate-capability-maturity-from-buyer-gap-exhaustion.md) | Accepted architecture | Capability maturity is separate from buyer-gap exhaustion |
 | [0009](0009-product-hosting-and-data-evolution.md) | Accepted architecture | Server-backed self-hostable modular MSA supersedes browser-only/single-app primary architecture |
 | [0010](0010-verification-evidence-identity.md) | Accepted architecture | Contributor source, PR-base snapshot, live base, synthetic merge, workflow checkout, protected-main and release identities remain separate evidence authorities |
+| [0011](0011-external-integration-authority-and-secret-references.md) | Accepted architecture | External integration metadata uses LifeOS-owned identity, separate secret references and explicit host-granted capability authority |
 
 ## ADR quality contract
 
