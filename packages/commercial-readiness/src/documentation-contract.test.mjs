@@ -59,13 +59,13 @@ function metadataStatuses(body) {
   );
 }
 
-/** Extracts the status column from canonical four-column requirement tables. */
+/** Extracts status values from canonical ID-keyed requirement tables. */
 function tableStatuses(body) {
   return body
     .split('\n')
     .filter((line) => /^\| [A-Z][A-Z0-9.-]+ /u.test(line))
     .map((line) => line.split('|').map((value) => value.trim()))
-    .filter((cells) => cells.length >= 6)
+    .filter((cells) => cells.length >= 6 && cells[1] !== 'ID')
     .map((cells) => cells[3]);
 }
 
@@ -151,7 +151,7 @@ test('documentation claims are anchored to current source authority', () => {
   assert.match(dataRights, /UUID_V4_PATTERN/u);
   assert.match(dataRights, /-4\[0-9a-f\]\{3\}/u);
   assert.match(architecture, /never read another service's database tables directly/u);
-  assert.match(dataModel, /do not authorize cross-service SQL joins|does not authorize cross-service SQL joins/iu);
+  assert.match(dataModel, /does not authorize cross-service SQL joins/iu);
   assert.match(proposals, /requiresConfirmation: true/u);
   assert.match(proposals, /cannot execute its own operations/u);
   assert.match(threatModel, /AI prompt injection \/ silent mutation/u);
