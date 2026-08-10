@@ -70,10 +70,11 @@ function requireSqlSuccess(sql: string): string {
   return result.stdout.trim();
 }
 
-/** Proves that a statement is rejected by the real PostgreSQL constraint boundary. */
-function expectSqlFailure(sql: string): void {
+/** Proves that a specific PostgreSQL constraint rejects one fixed hostile fixture. */
+function expectSqlFailure(sql: string, expectedConstraint: string): void {
   const result = executeSql(sql);
   expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain(expectedConstraint);
 }
 
 describe('plugin installation migration contract', () => {
@@ -113,69 +114,105 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
     requireSqlSuccess(MIGRATION_SQL);
   });
 
-  it('rejects impossible lifecycle, digest, capability-count, and capability-element evidence', () => {
-    const commonColumns = `
-      installation_id, workspace_id, installed_by_user_id, plugin_id,
-      plugin_contract_version, manifest_sha256, granted_capabilities,
-      installation_status, installed_at, revoked_at`;
-    const tooManyCapabilities = Array.from(
-      { length: 33 },
-      (_, index) => `'capability.${index}'`,
-    ).join(', ');
-    const oversizedCapability = 'x'.repeat(257);
+  it('rejects impossible lifecycle, digest, capability, and UUID authority evidence', () => {
+    expectSqlFailure(
+      `INSERT INTO plugin_integration.plugin_installation_record (
+         installation_id, workspace_id, installed_by_user_id, plugin_id,
+         plugin_contract_version, manifest_sha256, granted_capabilities,
+         installation_status, installed_at, revoked_at
+       ) VALUES (
+         '11111111-1111-4111-8111-111111111111',
+         '22222222-2222-4222-8222-222222222222',
+         '33333333-3333-4333-8333-333333333333',
+         'example.plugin', '1.0.0', repeat('a', 64), ARRAY['a'],
+         'active', '2026-08-10T02:00:00.000Z', '2026-08-10T03:00:00.000Z'
+       );`,
+      'plugin_installation_lifecycle_consistency',
+    );
 
-    expectSqlFailure(`
-      INSERT INTO plugin_integration.plugin_installation_record (${commonColumns})
-      VALUES (
-        '11111111-1111-4111-8111-111111111111',
-        '22222222-2222-4222-8222-222222222222',
-        '33333333-3333-4333-8333-333333333333',
-        'example.plugin', '1.0.0', '${'a'.repeat(64)}', ARRAY['task.completed'],
-        'active', '2026-08-10T02:00:00.000Z', '2026-08-10T03:00:00.000Z'
-      );
-    `);
+    expectSqlFailure(
+      `INSERT INTO plugin_integration.plugin_installation_record (
+         installation_id, workspace_id, installed_by_user_id, plugin_id,
+         plugin_contract_version, manifest_sha256, granted_capabilities,
+         installation_status, installed_at, revoked_at
+       ) VALUES (
+         '11111111-1111-4111-8111-111111111112',
+         '22222222-2222-4222-8222-222222222222',
+         '33333333-3333-4333-8333-333333333333',
+         'example.plugin', '1.0.0', repeat('a', 63), ARRAY['a'],
+         'active', '2026-08-10T02:00:00.000Z', NULL
+       );`,
+      'plugin_installation_manifest_sha256',
+    );
 
-    expectSqlFailure(`
-      INSERT INTO plugin_integration.plugin_installation_record (${commonColumns})
-      VALUES (
-        '11111111-1111-4111-8111-111111111112',
-        '22222222-2222-4222-8222-222222222222',
-        '33333333-3333-4333-8333-333333333333',
-        'example.plugin', '1.0.0', '${'a'.repeat(63)}', ARRAY['task.completed'],
-        'active', '2026-08-10T02:00:00.000Z', NULL
-      );
-    `);
+    expectSqlFailure(
+      `INSERT INTO plugin_integration.plugin_installation_record (
+         installation_id, workspace_id, installed_by_user_id, plugin_id,
+         plugin_contract_version, manifest_sha256, granted_capabilities,
+         installation_status, installed_at, revoked_at
+       ) VALUES (
+         '11111111-1111-4111-8111-111111111113',
+         '22222222-2222-4222-8222-222222222222',
+         '33333333-3333-4333-8333-333333333333',
+         'example.plugin', '1.0.0', repeat('a', 64),
+         ARRAY(SELECT 'capability.' || lpad(value::text, 2, '0')
+               FROM generate_series(1, 33) AS value ORDER BY value),
+         'active', '2026-08-10T02:00:00.000Z', NULL
+       );`,
+      'plugin_installation_capability_count',
+    );
 
-    expectSqlFailure(`
-      INSERT INTO plugin_integration.plugin_installation_record (${commonColumns})
-      VALUES (
-        '11111111-1111-4111-8111-111111111113',
-        '22222222-2222-4222-8222-222222222222',
-        '33333333-3333-4333-8333-333333333333',
-        'example.plugin', '1.0.0', '${'a'.repeat(64)}', ARRAY[${tooManyCapabilities}],
-        'active', '2026-08-10T02:00:00.000Z', NULL
-      );
-    `);
-
-    for (const [installationId, capabilities] of [
-      ['11111111-1111-4111-8111-111111111114', "ARRAY['']"],
-      ['11111111-1111-4111-8111-111111111115', 'ARRAY[NULL::text]'],
-      [
-        '11111111-1111-4111-8111-111111111116',
-        `ARRAY['${oversizedCapability}']`,
-      ],
+    for (const fixture of [
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111114', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY[''], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_capability_array',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111115', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY[NULL::text], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_capability_array',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111116', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY[repeat('x', 257)], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_capability_array',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-7111-8111-111111111117', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY['a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_id_uuid_v4',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111118', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY['a', 'a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_capability_array',
+      },
+      {
+        sql: `INSERT INTO plugin_integration.plugin_installation_record
+          VALUES ('11111111-1111-4111-8111-111111111119', '22222222-2222-4222-8222-222222222222',
+          '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+          ARRAY['b', 'a'], 'active', '2026-08-10T02:00:00.000Z', NULL);`,
+        constraint: 'plugin_installation_capability_array',
+      },
     ] as const) {
-      expectSqlFailure(`
-        INSERT INTO plugin_integration.plugin_installation_record (${commonColumns})
-        VALUES (
-          '${installationId}',
-          '22222222-2222-4222-8222-222222222222',
-          '33333333-3333-4333-8333-333333333333',
-          'example.plugin', '1.0.0', '${'a'.repeat(64)}', ${capabilities},
-          'active', '2026-08-10T02:00:00.000Z', NULL
-        );
-      `);
+      expectSqlFailure(fixture.sql, fixture.constraint);
     }
+
+    requireSqlSuccess(`INSERT INTO plugin_integration.plugin_installation_record
+      VALUES ('11111111-1111-4111-8111-111111111120', '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333', 'example.plugin', '1.0.0', repeat('a', 64),
+      ARRAY['a', 'b'], 'active', '2026-08-10T02:00:00.000Z', NULL);`);
   });
 
   it('preserves one durable authority row across independent PostgreSQL client processes', () => {
@@ -188,7 +225,7 @@ describeWithPostgres('plugin installation PostgreSQL constraints', () => {
         '11111111-1111-4111-8111-111111111111',
         '22222222-2222-4222-8222-222222222222',
         '33333333-3333-4333-8333-333333333333',
-        'example.plugin', '1.0.0', '${'a'.repeat(64)}', ARRAY['task.completed'],
+        'example.plugin', '1.0.0', repeat('a', 64), ARRAY['a'],
         'active', '2026-08-10T02:00:00.000Z', NULL
       );
     `);
