@@ -29,6 +29,27 @@ function signature(issuedAt: string, workspaceId = WORKSPACE_ID): string {
     .digest('base64url');
 }
 
+function expectTrustedContextRejection(
+  headers: { workspaceId: unknown; issuedAt: unknown; signature: unknown },
+  secret: unknown,
+  nowSeconds: number,
+  status: number,
+  code: string,
+): void {
+  const operation = () =>
+    requireTrustedWorkspaceContext(headers, secret, nowSeconds);
+  expect(operation).toThrow(HttpException);
+
+  let thrown: unknown;
+  try {
+    operation();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(HttpException);
+  expect(response(thrown as HttpException)).toMatchObject({ status, code });
+}
+
 describe('Review HTTP boundary', () => {
   it(
     'accepts fresh signed workspace context and bounded ritual/history values',
@@ -109,55 +130,219 @@ describe('Review HTTP boundary', () => {
 
   it.each([
     {
+      name: 'stale timestamp',
       headers: {
         workspaceId: WORKSPACE_ID,
         issuedAt: String(NOW_SECONDS - 61),
         signature: signature(String(NOW_SECONDS - 61)),
       },
       secret: SECRET,
+      nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
     },
     {
+      name: 'future timestamp',
       headers: {
         workspaceId: WORKSPACE_ID,
         issuedAt: String(NOW_SECONDS + 6),
         signature: signature(String(NOW_SECONDS + 6)),
       },
       secret: SECRET,
+      nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
     },
     {
+      name: 'forged signature',
       headers: {
         workspaceId: WORKSPACE_ID,
         issuedAt: String(NOW_SECONDS),
         signature: 'A'.repeat(43),
       },
       secret: SECRET,
+      nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
     },
     {
+      name: 'short verifier secret',
       headers: {
         workspaceId: WORKSPACE_ID,
         issuedAt: String(NOW_SECONDS),
         signature: signature(String(NOW_SECONDS)),
       },
       secret: 'too-short',
+      nowSeconds: NOW_SECONDS,
       status: 503,
       code: 'gateway_context_unavailable',
     },
+    {
+      name: 'missing verifier secret',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: undefined,
+      nowSeconds: NOW_SECONDS,
+      status: 503,
+      code: 'gateway_context_unavailable',
+    },
+    {
+      name: 'missing workspace header',
+      headers: {
+        workspaceId: undefined,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'non-string workspace header',
+      headers: {
+        workspaceId: 123,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'invalid workspace UUID',
+      headers: {
+        workspaceId: 'not-a-uuid',
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'missing issued-at header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: undefined,
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'non-string issued-at header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: 123,
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'nonnumeric issued-at header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: 'not-a-timestamp',
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'missing signature header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: undefined,
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'non-string signature header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: 123,
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'wrong-length signature',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: 'A'.repeat(42),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'invalid base64url signature characters',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: '!'.repeat(43),
+      },
+      secret: SECRET,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'non-integer verifier clock',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: Number.NaN,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'negative verifier clock',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      nowSeconds: -1,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
   ])(
-    'fails closed for stale, future, forged, or unverifiable context',
-    ({ headers, secret, status, code }) => {
-      try {
-        requireTrustedWorkspaceContext(headers, secret, NOW_SECONDS);
-        throw new Error('expected trusted context rejection');
-      } catch (error) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect(response(error as HttpException)).toMatchObject({ status, code });
-      }
+    'fails closed for $name',
+    ({ headers, secret, nowSeconds, status, code }) => {
+      expectTrustedContextRejection(
+        headers,
+        secret,
+        nowSeconds,
+        status,
+        code,
+      );
     },
   );
 
