@@ -6,8 +6,15 @@ import {
 } from './calendar-service-context';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ID = '22222222-2222-4222-8222-222222222222';
+const OTHER_USER_ID = '33333333-3333-4333-8333-333333333333';
 const TEST_CONTEXT_KEY = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_291_200;
+
+interface TrustedCalendarUserContext {
+  readonly workspaceId: string;
+  readonly userId: string;
+}
 
 interface CalendarContextModule {
   requireTrustedCalendarWorkspaceContext(
@@ -19,6 +26,16 @@ interface CalendarContextModule {
     secret: unknown,
     nowSeconds?: number,
   ): string;
+  requireTrustedCalendarUserContext(
+    headers: Readonly<{
+      workspaceId: unknown;
+      userId: unknown;
+      issuedAt: unknown;
+      signature: unknown;
+    }>,
+    secret: unknown,
+    nowSeconds?: number,
+  ): TrustedCalendarUserContext;
 }
 
 async function contextModule(): Promise<CalendarContextModule> {
@@ -33,6 +50,19 @@ async function contextModule(): Promise<CalendarContextModule> {
 function signature(workspaceId: string, issuedAt: string): string {
   return createHmac('sha256', TEST_CONTEXT_KEY)
     .update(`life-os.calendar-workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .digest('base64url');
+}
+
+function userSignature(
+  workspaceId: string,
+  userId: string,
+  issuedAt: string,
+): string {
+  return createHmac('sha256', TEST_CONTEXT_KEY)
+    .update(
+      `life-os.calendar-user.v1\n${workspaceId}\n${userId}\n${issuedAt}`,
+      'utf8',
+    )
     .digest('base64url');
 }
 
@@ -99,6 +129,75 @@ describe('trusted calendar workspace context', () => {
         'short-secret',
         NOW_SECONDS,
       ),
+    ).toThrow(CalendarContextUnavailableError);
+  });
+});
+
+describe('trusted calendar user context', () => {
+  it('binds the workspace and requesting user into one fresh signed authority', async () => {
+    const { requireTrustedCalendarUserContext } = await contextModule();
+    expect(typeof requireTrustedCalendarUserContext).toBe('function');
+    const issuedAt = String(NOW_SECONDS);
+
+    const context = requireTrustedCalendarUserContext(
+      {
+        workspaceId: WORKSPACE_ID,
+        userId: USER_ID,
+        issuedAt,
+        signature: userSignature(WORKSPACE_ID, USER_ID, issuedAt),
+      },
+      TEST_CONTEXT_KEY,
+      NOW_SECONDS,
+    );
+
+    expect(context).toEqual({ workspaceId: WORKSPACE_ID, userId: USER_ID });
+    expect(Object.isFrozen(context)).toBe(true);
+  });
+
+  it('rejects user substitution, workspace substitution, replay outside the freshness window, and workspace-only signatures', async () => {
+    const { requireTrustedCalendarUserContext } = await contextModule();
+    expect(typeof requireTrustedCalendarUserContext).toBe('function');
+    const issuedAt = String(NOW_SECONDS);
+    const valid = {
+      workspaceId: WORKSPACE_ID,
+      userId: USER_ID,
+      issuedAt,
+      signature: userSignature(WORKSPACE_ID, USER_ID, issuedAt),
+    };
+    const invalid = [
+      { ...valid, userId: OTHER_USER_ID },
+      {
+        ...valid,
+        workspaceId: '44444444-4444-4444-8444-444444444444',
+      },
+      {
+        ...valid,
+        issuedAt: String(NOW_SECONDS - 61),
+        signature: userSignature(
+          WORKSPACE_ID,
+          USER_ID,
+          String(NOW_SECONDS - 61),
+        ),
+      },
+      {
+        ...valid,
+        signature: signature(WORKSPACE_ID, issuedAt),
+      },
+      { ...valid, userId: 'attacker-selected-user' },
+    ];
+
+    for (const candidate of invalid) {
+      expect(() =>
+        requireTrustedCalendarUserContext(
+          candidate,
+          TEST_CONTEXT_KEY,
+          NOW_SECONDS,
+        ),
+      ).toThrow(CalendarContextInvalidError);
+    }
+
+    expect(() =>
+      requireTrustedCalendarUserContext(valid, 'short-secret', NOW_SECONDS),
     ).toThrow(CalendarContextUnavailableError);
   });
 });
