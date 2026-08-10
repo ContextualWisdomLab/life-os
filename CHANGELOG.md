@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- A canonical architecture/governance decision for model-assisted test-time compute and repository development: ADR 0012 requires a strong single-route baseline, explicit stage/decomposition/recursion/role-effort/access-topology evidence, comparable-budget justification for deeper orchestration, `NVIDIA_NIM_API_KEY` through approved OpenCode/contextual-orchestrator boundaries, and strict separation of model execution from deterministic review, merge, and release authority. This documents and reconciles existing protected-main governance/live-conformance behavior rather than claiming a new shipped product capability.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
 - Migration `0006_data_rights_request_ledger.sql` for the service-owned identity ledger, retaining only bounded opaque authority references and digest/status/timestamp evidence rather than exported personal payloads.
 - An hourly and manually dispatchable NVIDIA NIM live-conformance harness that pins contextual-orchestrator to an exact reviewed commit, compares strong single-route reasoning with bounded conducted workflows, and retains only validated credential-free quality, safety, orchestration, usage, and ablation evidence.
