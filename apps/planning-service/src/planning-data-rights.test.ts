@@ -5,7 +5,9 @@ import {
   type PlanningRuntime,
 } from './planning-runtime';
 
-const TEST_DATABASE_URL = 'postgresql://planning:planning@127.0.0.1:5432/planning_test';
+const TEST_DATABASE_URL = ['postgresql:', '', '127.0.0.1', 'planning_test'].join(
+  '/',
+);
 
 /** Minimal credential-free pool used only to inspect runtime composition. */
 function inertPool(): PlanningPool {
