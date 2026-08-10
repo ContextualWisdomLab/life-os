@@ -1,5 +1,6 @@
+import { createHmac } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ReviewController } from './main';
 import {
   ReviewService,
@@ -10,6 +11,14 @@ import {
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
 const IDEMPOTENCY_KEY = 'd1191b96-b7f4-4d8f-b1f7-9e2838686d5f';
 const COMPLETION_ID = '3f044b68-c515-4a52-8862-38af0047b88d';
+const GATEWAY_SECRET = [
+  'review',
+  'controller',
+  'gateway',
+  'fixture',
+  'material',
+].join('-');
+let previousGatewaySecret: string | undefined;
 
 class InMemoryReviewRepository implements ReviewRepository {
   readonly records: ReviewCompletionRecord[] = [];
@@ -39,7 +48,32 @@ function body() {
   };
 }
 
+function trustedContext(workspaceId = WORKSPACE_ID): readonly [string, string] {
+  const issuedAt = String(Math.floor(Date.now() / 1000));
+  const normalizedWorkspaceId = workspaceId.toLowerCase();
+  const signature = createHmac('sha256', GATEWAY_SECRET)
+    .update(
+      `life-os.workspace.v1\n${normalizedWorkspaceId}\n${issuedAt}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return [issuedAt, signature] as const;
+}
+
 describe('Review controller', () => {
+  beforeEach(() => {
+    previousGatewaySecret = process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
+    process.env.REVIEW_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
+  });
+
+  afterEach(() => {
+    if (previousGatewaySecret === undefined) {
+      delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
+    } else {
+      process.env.REVIEW_GATEWAY_CONTEXT_SECRET = previousGatewaySecret;
+    }
+  });
+
   it('exposes health and all three guided completion routes', async () => {
     const repository = new InMemoryReviewRepository();
     const service = new ReviewService(
@@ -48,22 +82,38 @@ describe('Review controller', () => {
       () => '2026-08-03T20:00:01.000Z',
     );
     const controller = new ReviewController(service);
+    const [issuedAt, signature] = trustedContext();
 
     expect(controller.health()).toEqual({
       status: 'ok',
       service: 'review-service',
     });
     await expect(
-      controller.completeDailyPlanning(WORKSPACE_ID, body()),
+      controller.completeDailyPlanning(
+        WORKSPACE_ID,
+        issuedAt,
+        signature,
+        body(),
+      ),
     ).resolves.toMatchObject({ ritualKind: 'daily-planning' });
     await expect(
-      controller.completeDailyShutdown(WORKSPACE_ID, body()),
+      controller.completeDailyShutdown(
+        WORKSPACE_ID,
+        issuedAt,
+        signature,
+        body(),
+      ),
     ).resolves.toMatchObject({ ritualKind: 'daily-shutdown' });
     await expect(
-      controller.completeWeeklyReview(WORKSPACE_ID, body()),
+      controller.completeWeeklyReview(
+        WORKSPACE_ID,
+        issuedAt,
+        signature,
+        body(),
+      ),
     ).resolves.toMatchObject({ ritualKind: 'weekly-review' });
     await expect(
-      controller.listCompletions(WORKSPACE_ID, '10'),
+      controller.listCompletions(WORKSPACE_ID, issuedAt, signature, '10'),
     ).resolves.toHaveLength(3);
   });
 
@@ -71,8 +121,14 @@ describe('Review controller', () => {
     const controller = new ReviewController(
       new ReviewService(new InMemoryReviewRepository()),
     );
+    const [issuedAt, signature] = trustedContext('invalid');
     await expect(
-      controller.completeDailyPlanning('invalid', body()),
+      controller.completeDailyPlanning(
+        'invalid',
+        issuedAt,
+        signature,
+        body(),
+      ),
     ).rejects.toBeInstanceOf(HttpException);
   });
 });
