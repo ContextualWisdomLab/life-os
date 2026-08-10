@@ -357,7 +357,7 @@ export class PostgresCalendarConnectionRepository {
   ): Promise<CalendarConnectionRecord> {
     const safe = validateCreateInput(input);
     const result = await this.client.query<CalendarConnectionRow>(
-      `INSERT INTO calendar.calendar_connection_record (
+      `INSERT INTO calendar_integration.calendar_connection_record (
          connection_id,
          workspace_id,
          user_id,
@@ -426,7 +426,7 @@ export class PostgresCalendarConnectionRepository {
               refresh_secret_handle, token_expires_at,
               selected_calendar_identifier, connection_status, created_at,
               updated_at, revoked_at
-       FROM calendar.calendar_connection_record
+       FROM calendar_integration.calendar_connection_record
        WHERE connection_id = $1::uuid
          AND workspace_id = $2::uuid
          AND user_id = $3::uuid
