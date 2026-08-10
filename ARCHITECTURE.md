@@ -53,7 +53,11 @@ Identity service owns LifeOS user identity, external-provider mappings, workspac
 
 Google/GitHub OAuth transactions are server-owned and replay-resistant. Session issuance/rotation time and the underlying authentication ceremony time are different facts. Compatible session rotation preserves the original authentication instant so recent-authentication policy cannot be bypassed by refreshing a session.
 
-The identity service also owns durable data-rights request identity and immutable terminal receipt evidence. Protected main includes tenant-and-requesting-actor scoped request lookup; inaccessible cross-tenant status is not disclosed. Complete cross-domain export/erasure orchestration remains **Partial** under issue #55.
+The identity service also owns durable data-rights request identity and immutable terminal receipt evidence. Protected main includes tenant-and-requesting-actor scoped request lookup plus the authenticated public status resource merged through PR #146. That resource derives authority from the validated session, exposes only bounded lifecycle fields, is non-cacheable and does not reveal cross-tenant request existence.
+
+Protected main also includes export-manifest integrity evidence from PR #149. Each contributor provides a safe business record count and LifeOS computes a deterministic SHA-256 over contributor/schema/count/bounded data plus a whole-export digest. This is integrity evidence only; it is not authorization, confidentiality, provenance or a digital signature.
+
+Complete cross-domain export/erasure orchestration remains **Partial** under issue #55 because contributor completion, durable reconciliation, protected delivery, retention/legal-hold/backup-expiry and terminal whole-product completion are separate requirements.
 
 ```mermaid
 sequenceDiagram
@@ -99,7 +103,9 @@ flowchart TB
 
 Conflict-safe CalDAV/Google synchronization and signed trusted workspace context are protected-main behavior. The calendar service rejects the legacy model in which an arbitrary client-selected workspace header could become tenant authority.
 
-A process/operator-supplied Google access token remains a bounded development/runtime credential path; the complete hosted per-user encrypted credential lifecycle, OAuth state/PKCE, refresh, revocation, discovery and explicit calendar selection remains **Partial** under issue #129.
+PR #150 is **Implemented on active PR** for the first service-owned `calendar_connection` persistence foundation. The connection is scoped simultaneously to workspace and user, carries bounded provider/account/calendar metadata and normalized scopes, and refers to protected provider credential material through opaque handles. Its migration and repository do not become protected-main evidence before merge.
+
+The complete hosted per-user lifecycle remains **Partial** under issue #129: authorization callback state/PKCE, concrete managed secret storage, refresh/revocation, discovery/selection and migration from the development provider configuration are still separate work.
 
 Provider identities/credentials never become LifeOS internal primary keys or general identity credentials.
 
@@ -133,13 +139,15 @@ Deterministic authorization, schema and proposal-quality gates remain authoritat
 
 Privacy service owns purpose-bound sensitive-access decisions, bounded grants and audit events. Sensitive access binds actor, workspace, resource/resource class, purpose and lifetime. Blanket masking is not the authorization model.
 
-Identity owns the cross-domain data-rights request/receipt lifecycle; each participating bounded context remains authoritative for its own export/erasure contribution. Whole-product completion requires durable contributor registration, reconciliation, protected delivery/erasure semantics, bounded retry/recovery, retention/legal-hold/backup-expiry handling and an immutable final receipt only after all required contributors confirm completion.
+Identity owns the cross-domain data-rights request/receipt lifecycle and export-manifest integrity boundary; each participating bounded context remains authoritative for its own export/erasure contribution. Whole-product completion requires durable contributor registration, reconciliation, protected delivery/erasure semantics, bounded retry/recovery, retention/legal-hold/backup-expiry handling and an immutable final receipt only after all required contributors confirm completion.
 
 ## 7. Plugin integration boundary
 
-Protected main owns versioned plugin manifest/event validation and preparation. It does not imply generic installation, durable plaintext secrets, unrestricted outbound delivery, inbound arbitrary commands or direct cross-service database access.
+Protected main owns versioned plugin manifest/event validation and preparation. It does not imply generic installation, durable secret persistence, unrestricted outbound delivery, inbound arbitrary commands or direct cross-service database access.
 
-Issue #130 owns the planned runtime trust boundary: explicit installation/capability grants, encrypted secret handles, authorized-origin SSRF-safe outbound delivery, bounded retries/audit and immediate revocation.
+PR #151 is **Implemented on active PR** for the first host-owned installation authority. A validated manifest remains intent rather than authority: LifeOS explicitly grants a bounded tenant-scoped capability subset, binds exact manifest/plugin evidence, permits exact replay, rejects conflicting reuse, hides cross-tenant/user installation existence and preserves revocation evidence while ending active authority.
+
+Issue #130 still owns the incomplete runtime trust boundary: durable installation/secret persistence, protected secret handles, authorized-origin SSRF-safe outbound delivery, bounded retries/dead-letter/audit and complete delivery-time revocation enforcement. An active installation object does not imply those capabilities exist.
 
 ## 8. Test-time compute and model-assisted repository development
 
