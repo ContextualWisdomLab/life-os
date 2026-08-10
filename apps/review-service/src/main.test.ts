@@ -1,10 +1,7 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  requireReviewServiceConfiguration,
-  ReviewController,
-} from './main';
+import { requireReviewServiceConfiguration, ReviewController } from './main';
 import {
   ReviewService,
   type ReviewCompletionRecord,
