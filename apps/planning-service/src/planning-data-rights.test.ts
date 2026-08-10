@@ -95,7 +95,7 @@ function largeExportClient(): {
   return {
     client,
     goalQueryCount: () => goalQueries,
-    firstGoalId: goals[0].id,
+    firstGoalId: goals[0]?.id ?? '',
     lastGoalId: goals.at(-1)?.id ?? '',
   };
 }
@@ -164,9 +164,10 @@ describe('Planning data-rights export scale', () => {
     if (
       response.data === null ||
       typeof response.data !== 'object' ||
-      Array.isArray(response.data)
+      Array.isArray(response.data) ||
+      !('goals' in response.data)
     ) {
-      throw new Error('Expected Planning export object');
+      throw new Error('Expected Planning export object with goals');
     }
     const exportedGoals = response.data.goals;
     if (!Array.isArray(exportedGoals)) {
