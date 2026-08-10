@@ -95,8 +95,9 @@ export interface PluginSecretStore {
   deleteSecret(secretReference: string): Promise<void>;
 }
 
-/** Input for one installer-authorized credential binding. */
-export interface BindPluginCredentialInput extends PutPluginSecretInput {
+/** Input for one installer-authorized credential binding. Tenant/user authority is derived from trusted context. */
+export interface BindPluginCredentialInput
+  extends Omit<PutPluginSecretInput, 'workspaceId' | 'installedByUserId'> {
   readonly trustedContext: PluginInstallationContext;
 }
 
