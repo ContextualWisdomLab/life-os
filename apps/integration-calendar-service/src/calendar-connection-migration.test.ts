@@ -9,11 +9,14 @@ const MIGRATION_PATH = join(
 );
 
 describe('calendar connection migration', () => {
-  it('persists tenant-scoped connection metadata and secret handles without plaintext token columns', () => {
+  it('persists tenant-scoped connection metadata in a descriptive multiword schema without plaintext token columns', () => {
     const sql = readFileSync(MIGRATION_PATH, 'utf8');
 
-    expect(sql).toContain('CREATE SCHEMA IF NOT EXISTS calendar');
-    expect(sql).toContain('CREATE TABLE calendar.calendar_connection_record');
+    expect(sql).toContain('CREATE SCHEMA IF NOT EXISTS calendar_integration');
+    expect(sql).toContain(
+      'CREATE TABLE calendar_integration.calendar_connection_record',
+    );
+    expect(sql).not.toContain('CREATE SCHEMA IF NOT EXISTS calendar;');
     for (const column of [
       'connection_id uuid PRIMARY KEY',
       'workspace_id uuid NOT NULL',
