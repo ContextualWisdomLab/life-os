@@ -152,6 +152,7 @@ function sameInstallation(
   candidate: PluginInstallationRecord,
 ): boolean {
   return (
+    existing.installationId === candidate.installationId &&
     existing.workspaceId === candidate.workspaceId &&
     existing.installedByUserId === candidate.installedByUserId &&
     existing.pluginId === candidate.pluginId &&
@@ -220,6 +221,7 @@ export class PluginInstallationApplication {
     );
     if (
       !existing ||
+      existing.installationId !== installationId ||
       existing.workspaceId !== context.workspaceId ||
       existing.installedByUserId !== context.actorUserId
     ) {
