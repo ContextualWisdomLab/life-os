@@ -98,7 +98,12 @@ describe('PostgresCalendarConnectionRepository', () => {
     });
 
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0]?.text).toContain('calendar.calendar_connection_record');
+    expect(client.calls[0]?.text).toContain(
+      'calendar_integration.calendar_connection_record',
+    );
+    expect(client.calls[0]?.text).not.toContain(
+      'calendar.calendar_connection_record',
+    );
     expect(client.calls[0]?.text).toContain('ON CONFLICT (connection_id) DO NOTHING');
     expect(client.calls[0]?.values).toContain('kms://calendar/access/connection-1111');
     expect(client.calls[0]?.values).toContain('kms://calendar/refresh/connection-1111');
@@ -157,6 +162,12 @@ describe('PostgresCalendarConnectionRepository', () => {
       }),
     ).resolves.toMatchObject({ connectionId: CONNECTION_ID, status: 'active' });
 
+    expect(client.calls[0]?.text).toContain(
+      'calendar_integration.calendar_connection_record',
+    );
+    expect(client.calls[0]?.text).not.toContain(
+      'calendar.calendar_connection_record',
+    );
     expect(client.calls[0]?.text).toContain('connection_id = $1::uuid');
     expect(client.calls[0]?.text).toContain('workspace_id = $2::uuid');
     expect(client.calls[0]?.text).toContain('user_id = $3::uuid');
