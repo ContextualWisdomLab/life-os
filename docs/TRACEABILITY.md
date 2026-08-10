@@ -14,16 +14,19 @@ This index maps product requirements and durable decisions to representative sou
 | PRD-REV-001 review projection boundary | Implemented on protected main | review service tests | — |
 | PRD-CAL-001 conflict-safe calendar sync | Implemented on protected main | CalDAV/Google adapter tests | — |
 | PRD-CAL-002 trusted calendar workspace context | Implemented on protected main | PR #139; signed context verifier/controller regressions | — |
-| PRD-CAL-003 per-user hosted calendar credentials | Partial | development/provider adapters exist | issue #129 |
+| PRD-CAL-003 complete hosted per-user calendar credentials | Partial | provider adapters and trusted workspace context exist | issue #129 |
+| PRD-CAL-004 tenant+user calendar connection registry foundation | Implemented on active PR | PR #150; service-owned migration/repository with opaque credential references | issue #129 remains for complete lifecycle |
 | PRD-NOT-001 bounded reminders | Implemented on protected main | notification scheduler/persistence tests | — |
 | PRD-AI-001 inert auditable proposals | Implemented on protected main | AI proposal/audit service tests | — |
 | PRD-AI-002 deterministic/live-provider separation | Implemented on protected main | proposal evaluator + NIM conformance workflow | — |
 | PRD-PRIV-001 purpose-bound sensitive access | Implemented on protected main | privacy-service grants/events/tests | — |
 | PRD-PRIV-002 data-rights auth/request ledger primitives | Implemented on protected main | PRs #134, #136, #137, #138, #144 | issue #55 for whole journey |
 | PRD-PRIV-003 complete export/delete orchestration | Partial | identity core exists; full domain/reconciliation/delivery incomplete | issue #55 |
-| PRD-PRIV-004 authenticated bounded request-status resource | Implemented on active PR | PR #146 derives tenant/actor from session, uses protected-main ledger lookup, maps bounded HTTP states and hides internal authority/digest fields | issue #55 remains for whole-right completion |
+| PRD-PRIV-004 authenticated bounded request-status resource | Implemented on protected main | PR #146; session-derived tenant/actor scope, bounded public projection and non-cacheable responses | issue #55 remains for whole-right completion |
+| PRD-PRIV-005 per-section export integrity evidence | Implemented on protected main | PR #149; safe record counts, deterministic section SHA-256 and whole-export digest | issue #55 remains for delivery/reconciliation completion |
 | PRD-INT-001 plugin SDK/validation | Implemented on protected main | plugin SDK/integration-service tests | — |
-| PRD-INT-002 plugin runtime last mile | Planned | validation-only surface is intentionally non-runtime | issue #130 |
+| PRD-INT-002 complete plugin secret/delivery runtime | Planned | validation-only surface is intentionally non-runtime | issue #130 |
+| PRD-INT-003 explicit tenant-scoped plugin installation grants | Implemented on active PR | PR #151; bounded application authority, replay/conflict/revocation semantics | issue #130 remains for durable secret/delivery runtime |
 | PRD-WEB-001 accessible localized PWA | Implemented on protected main | browser/accessibility/localization tests | — |
 | PRD-OPS-001 backup/restore | Implemented on protected main | backup scripts/tests/runbook | — |
 | PRD-GOV-001 buyer-gap vs capability maturity separation | Implemented on protected main | repository buyer-gap registry; issue #21 rendering | — |
@@ -55,7 +58,7 @@ A contributor source head, PR-base snapshot, independently resolved live base ti
 
 ## Buyer gaps from live readiness state
 
-The configured capability set can be fully mature while the product still has accepted buyer gaps. Current canonical open buyer gaps are #55 data portability completion, #129 per-user calendar credentials, and #130 plugin runtime delivery. PR #146 is a bounded active slice toward #55; it does not close the whole buyer gap. Issue #132 is a reliability/governance hardening gap for verification identity rather than a buyer capability row; PR #147 is its active implementation line.
+The configured capability set can be fully mature while the product still has accepted buyer gaps. Current canonical open buyer gaps are #55 data portability completion, #129 per-user calendar credentials, and #130 plugin runtime delivery. Protected-main #146 and #149 materially advance #55 without closing it. Active PR #150 advances #129 and active PR #151 advances #130 without promoting either whole gap to shipped completion. Issue #132 is a reliability/governance hardening gap; PR #147 is its active implementation line.
 
 ## Update rule
 
