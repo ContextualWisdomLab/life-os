@@ -14,7 +14,7 @@ The detailed live-conformance implementation and references remain in `docs/supe
 
 - Product correctness, evidence quality, controllability and security outrank latency.
 - Additional test-time compute must be justified against a strong simpler baseline under a comparable declared budget.
-- Workflow stages, task decomposition, recursion depth, model/role selection, reasoning effort, verifier topology and access lists must remain explicit experimental variables instead of hidden orchestration defaults.
+- Workflow stages, task decomposition, recursion depth, model/role selection, role-specific reasoning effort, verifier topology and access lists must remain explicit experimental variables instead of hidden orchestration defaults.
 - Model/provider availability must not become authorization, review, merge or release authority.
 - Live-provider evidence must be reproducible, bounded, credential-safe and separable from deterministic pull-request gates.
 - LifeOS and contextual-orchestrator must remain independently deployable.
@@ -36,7 +36,7 @@ Measure a strong single-model route first, compare additional bounded cells unde
 ## Decision
 
 1. **Strong baseline first.** Every material model-assisted evaluation includes a strong single-model route before any claim that a conducted or multi-agent profile is preferable.
-2. **Explicit test cells.** Reasoning effort, workflow stage, decomposition, recursion depth, worker/model assignment, role, verifier topology, access list/topology and total provider-call/token budget are explicit configuration or evidence fields where supported.
+2. **Explicit test cells.** Reasoning effort, workflow stage, decomposition, recursion depth, worker/model assignment, role-specific reasoning effort, verifier topology, access list/topology and total provider-call/token budget are explicit configuration or evidence fields where supported.
 3. **Comparable budgets.** Claims about orchestration benefit compare cells under documented comparable budgets or clearly disclose the budget difference as a limitation. More agents or tokens are never counted as an intrinsic product improvement.
 4. **Quality-first selection.** Latency, tokens and provider cost are measured for capacity and commercial review but are not the primary optimization objective. Correctness, evidence quality, safety, reliability and controllability determine acceptance.
 5. **Unsupported controls stay unavailable.** A pinned orchestrator that cannot expose a requested recursion, role-effort or generated-topology control returns explicit unsupported evidence. Tests do not simulate or fabricate that ablation.
