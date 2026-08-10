@@ -339,13 +339,7 @@ describe('Review HTTP boundary', () => {
   ])(
     'fails closed for $name',
     ({ headers, secret, nowSeconds, status, code }) => {
-      expectTrustedContextRejection(
-        headers,
-        secret,
-        nowSeconds,
-        status,
-        code,
-      );
+      expectTrustedContextRejection(headers, secret, nowSeconds, status, code);
     },
   );
 
