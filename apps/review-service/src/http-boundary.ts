@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import {
   ReviewCompletionConflictError,
@@ -17,6 +18,19 @@ export interface ReviewProblemDetails {
   code: string;
 }
 
+/** Signed tenant authority emitted by the authenticated gateway boundary. */
+export interface ReviewTrustedWorkspaceContextHeaders {
+  workspaceId: unknown;
+  issuedAt: unknown;
+  signature: unknown;
+}
+
+const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
+const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
+const MINIMUM_GATEWAY_SECRET_BYTES = 32;
+const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
+const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
+
 function problemException(
   status: number,
   title: string,
@@ -31,17 +45,88 @@ function problemException(
   return new HttpException(problem, status);
 }
 
-/** Requires a tenant UUIDv4 exclusively from the trusted workspace header. */
-export function requireWorkspaceHeader(value: string | undefined): string {
-  try {
-    return requireReviewWorkspaceId(value);
-  } catch {
-    throw problemException(
-      400,
-      'A valid x-workspace-id header is required',
-      'invalid_workspace',
-    );
+/** Rejects malformed, forged, stale, or future trusted context with a credential-free 401 problem. */
+function invalidGatewayContext(): never {
+  throw problemException(
+    401,
+    'Trusted gateway context is invalid',
+    'invalid_gateway_context',
+  );
+}
+
+/** Reports verifier configuration that cannot authenticate context as a bounded 503 problem. */
+function unavailableGatewayContext(): never {
+  throw problemException(
+    503,
+    'Trusted gateway context is unavailable',
+    'gateway_context_unavailable',
+  );
+}
+
+/** Computes the SHA-256 HMAC over the canonical `life-os.workspace.v1` workspace-and-time payload. */
+function workspaceContextDigest(
+  workspaceId: string,
+  issuedAt: string,
+  secret: string,
+): Buffer {
+  return createHmac('sha256', secret)
+    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .digest();
+}
+
+/**
+ * Verifies the short-lived workspace context created after gateway authentication.
+ * A browser-selected workspace header is intentionally not an authorization input.
+ */
+export function requireTrustedWorkspaceContext(
+  headers: ReviewTrustedWorkspaceContextHeaders,
+  secret: unknown,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): string {
+  if (
+    typeof secret !== 'string' ||
+    Buffer.byteLength(secret, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
+  ) {
+    return unavailableGatewayContext();
   }
+  if (
+    typeof headers.workspaceId !== 'string' ||
+    typeof headers.issuedAt !== 'string' ||
+    typeof headers.signature !== 'string' ||
+    !UNIX_SECONDS_PATTERN.test(headers.issuedAt) ||
+    !BASE64URL_SHA256_PATTERN.test(headers.signature) ||
+    !Number.isSafeInteger(nowSeconds) ||
+    nowSeconds < 0
+  ) {
+    return invalidGatewayContext();
+  }
+
+  let workspaceId: string;
+  try {
+    workspaceId = requireReviewWorkspaceId(headers.workspaceId);
+  } catch {
+    return invalidGatewayContext();
+  }
+
+  const issuedAtSeconds = Number(headers.issuedAt);
+  if (
+    !Number.isSafeInteger(issuedAtSeconds) ||
+    issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
+    issuedAtSeconds < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS
+  ) {
+    return invalidGatewayContext();
+  }
+
+  const expected = workspaceContextDigest(
+    workspaceId,
+    headers.issuedAt,
+    secret,
+  );
+  const actual = Buffer.from(headers.signature, 'base64url');
+  if (!timingSafeEqual(actual, expected)) {
+    return invalidGatewayContext();
+  }
+  return workspaceId;
 }
 
 /** Requires a supported ritual kind from the bounded route parameter. */
