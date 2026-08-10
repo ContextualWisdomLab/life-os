@@ -1,6 +1,8 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { OAuthTransactionService, SessionService } from './auth-security';
+import { PostgresDataRightsRequestLedger } from './data-rights-request-ledger';
+import { AuthenticatedDataRightsStatusApplication } from './data-rights-status-application';
 import { GitHubOAuthClient } from './github-oauth-client';
 import { GoogleOidcClient } from './google-oidc-client';
 import { IdentityService } from './identity-domain';
@@ -205,6 +207,7 @@ function createPoolConfiguration(environment: RuntimeEnvironment): PoolConfig {
   };
 }
 
+/** Production identity runtime and its bounded application surfaces. */
 export class IdentityRuntime implements OnApplicationShutdown {
   private closed = false;
 
@@ -212,8 +215,10 @@ export class IdentityRuntime implements OnApplicationShutdown {
     private readonly pool: Pool,
     readonly application: OAuthHttpApplication,
     readonly callbackApplication: OAuthCallbackApplication,
+    readonly dataRightsStatusApplication: AuthenticatedDataRightsStatusApplication,
   ) {}
 
+  /** Closes the shared identity PostgreSQL pool exactly once. */
   async close(): Promise<void> {
     if (this.closed) {
       return;
@@ -222,11 +227,13 @@ export class IdentityRuntime implements OnApplicationShutdown {
     await this.pool.end();
   }
 
+  /** Releases runtime resources during Nest application shutdown. */
   async onApplicationShutdown(): Promise<void> {
     await this.close();
   }
 }
 
+/** Creates the production identity runtime from bounded environment configuration. */
 export function createIdentityRuntime(
   environment: RuntimeEnvironment = process.env,
 ): IdentityRuntime {
@@ -299,6 +306,11 @@ export function createIdentityRuntime(
     },
     webOrigin,
   });
+  const dataRightsStatusApplication =
+    new AuthenticatedDataRightsStatusApplication(
+      application,
+      new PostgresDataRightsRequestLedger(sqlClient),
+    );
   const providerHttpClient = new BoundedOAuthProviderHttpClient({
     timeoutMs: providerRequestTimeoutMs,
   });
@@ -323,5 +335,10 @@ export function createIdentityRuntime(
     new JsonLineOAuthCallbackAuditSink(),
     { webOrigin },
   );
-  return new IdentityRuntime(pool, application, callbackApplication);
+  return new IdentityRuntime(
+    pool,
+    application,
+    callbackApplication,
+    dataRightsStatusApplication,
+  );
 }

@@ -1,6 +1,10 @@
 import 'reflect-metadata';
 import { Controller, Get, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import {
+  DATA_RIGHTS_STATUS_APPLICATION,
+  DataRightsHttpController,
+} from './data-rights-http-controller';
 import { createIdentityRuntime, IdentityRuntime } from './identity-runtime';
 import {
   OAUTH_CALLBACK_APPLICATION,
@@ -8,7 +12,7 @@ import {
   OAuthHttpController,
 } from './oauth-http-controller';
 
-/** Public identity routes registered by the production OAuth controller. */
+/** Public identity routes registered by the production HTTP controllers. */
 export const IDENTITY_PUBLIC_ROUTE_CONTRACT = Object.freeze([
   'v1/auth/google/start',
   'v1/auth/google/callback',
@@ -16,6 +20,7 @@ export const IDENTITY_PUBLIC_ROUTE_CONTRACT = Object.freeze([
   'v1/auth/github/callback',
   'v1/session',
   'v1/auth/logout',
+  'v1/data-rights/requests/:requestId',
 ] as const);
 
 const IDENTITY_RUNTIME = Symbol('IDENTITY_RUNTIME');
@@ -29,7 +34,11 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, OAuthHttpController],
+  controllers: [
+    HealthController,
+    OAuthHttpController,
+    DataRightsHttpController,
+  ],
   providers: [
     {
       provide: IDENTITY_RUNTIME,
@@ -44,6 +53,12 @@ class HealthController {
       provide: OAUTH_CALLBACK_APPLICATION,
       inject: [IDENTITY_RUNTIME],
       useFactory: (runtime: IdentityRuntime) => runtime.callbackApplication,
+    },
+    {
+      provide: DATA_RIGHTS_STATUS_APPLICATION,
+      inject: [IDENTITY_RUNTIME],
+      useFactory: (runtime: IdentityRuntime) =>
+        runtime.dataRightsStatusApplication,
     },
   ],
 })
