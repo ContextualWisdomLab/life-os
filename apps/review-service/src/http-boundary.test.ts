@@ -6,6 +6,7 @@ import {
   requireRitualPath,
   requireTrustedWorkspaceContext,
   toReviewHttpException,
+  type ReviewTrustedRequestBinding,
 } from './http-boundary';
 import {
   ReviewCompletionConflictError,
@@ -14,8 +15,17 @@ import {
 import { ReviewPersistenceError } from './postgres-review-repository';
 
 const WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c042';
+const OTHER_WORKSPACE_ID = '018f47b2-c1d2-4a30-8c17-221fb579c043';
 const SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_334_400;
+const HISTORY_BINDING = {
+  method: 'GET',
+  path: '/v1/reviews/completions',
+} as const;
+const DAILY_PLANNING_BINDING = {
+  method: 'POST',
+  path: '/v1/reviews/daily-planning/completions',
+} as const;
 const BASE64URL_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -23,21 +33,34 @@ function response(error: HttpException): unknown {
   return error.getResponse();
 }
 
-function signature(issuedAt: string, workspaceId = WORKSPACE_ID): string {
+function signature(
+  issuedAt: string,
+  binding: { method: 'GET' | 'POST'; path: string } = HISTORY_BINDING,
+  workspaceId = WORKSPACE_ID,
+): string {
   return createHmac('sha256', SECRET)
-    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.review-context.v1\n${workspaceId}\n${issuedAt}\n${binding.method}\n${binding.path}`,
+      'utf8',
+    )
     .digest('base64url');
 }
 
 function expectTrustedContextRejection(
   headers: { workspaceId: unknown; issuedAt: unknown; signature: unknown },
   secret: unknown,
+  requestBinding: ReviewTrustedRequestBinding,
   nowSeconds: number,
   status: number,
   code: string,
 ): void {
   const operation = () =>
-    requireTrustedWorkspaceContext(headers, secret, nowSeconds);
+    requireTrustedWorkspaceContext(
+      headers,
+      secret,
+      requestBinding,
+      nowSeconds,
+    );
   expect(operation).toThrow(HttpException);
 
   let thrown: unknown;
@@ -63,6 +86,7 @@ describe('Review HTTP boundary', () => {
             signature: signature(issuedAt),
           },
           SECRET,
+          HISTORY_BINDING,
           NOW_SECONDS,
         ),
       ).toBe(WORKSPACE_ID);
@@ -71,6 +95,38 @@ describe('Review HTTP boundary', () => {
       expect(requireHistoryLimit('100')).toBe(100);
     },
   );
+
+  it('accepts a signed completion request binding', () => {
+    const issuedAt = String(NOW_SECONDS);
+    expect(
+      requireTrustedWorkspaceContext(
+        {
+          workspaceId: WORKSPACE_ID,
+          issuedAt,
+          signature: signature(issuedAt, DAILY_PLANNING_BINDING),
+        },
+        SECRET,
+        DAILY_PLANNING_BINDING,
+        NOW_SECONDS,
+      ),
+    ).toBe(WORKSPACE_ID);
+  });
+
+  it('rejects replaying a history signature as a completion request', () => {
+    const issuedAt = String(NOW_SECONDS);
+    expectTrustedContextRejection(
+      {
+        workspaceId: WORKSPACE_ID,
+        issuedAt,
+        signature: signature(issuedAt, HISTORY_BINDING),
+      },
+      SECRET,
+      DAILY_PLANNING_BINDING,
+      NOW_SECONDS,
+      401,
+      'invalid_gateway_context',
+    );
+  });
 
   it('accepts the exact maximum context age', () => {
     const issuedAt = String(NOW_SECONDS - 60);
@@ -82,6 +138,7 @@ describe('Review HTTP boundary', () => {
           signature: signature(issuedAt),
         },
         SECRET,
+        HISTORY_BINDING,
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
@@ -97,6 +154,7 @@ describe('Review HTTP boundary', () => {
           signature: signature(issuedAt),
         },
         SECRET,
+        HISTORY_BINDING,
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
@@ -125,6 +183,7 @@ describe('Review HTTP boundary', () => {
             signature: nonCanonical,
           },
           SECRET,
+          HISTORY_BINDING,
           NOW_SECONDS,
         ),
       ).toThrow(HttpException);
@@ -140,6 +199,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS - 61)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -152,6 +212,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS + 6)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -164,6 +225,50 @@ describe('Review HTTP boundary', () => {
         signature: 'A'.repeat(43),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'signature bound to another workspace',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(
+          String(NOW_SECONDS),
+          HISTORY_BINDING,
+          OTHER_WORKSPACE_ID,
+        ),
+      },
+      secret: SECRET,
+      binding: HISTORY_BINDING,
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'unsupported request method',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      binding: { method: 'DELETE', path: '/v1/reviews/completions' },
+      nowSeconds: NOW_SECONDS,
+      status: 401,
+      code: 'invalid_gateway_context',
+    },
+    {
+      name: 'unsupported request path',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: signature(String(NOW_SECONDS)),
+      },
+      secret: SECRET,
+      binding: { method: 'POST', path: '/v1/reviews/completions' },
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -176,6 +281,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: 'too-short',
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 503,
       code: 'gateway_context_unavailable',
@@ -188,6 +294,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: undefined,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 503,
       code: 'gateway_context_unavailable',
@@ -200,6 +307,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -212,6 +320,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -224,6 +333,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -236,6 +346,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -248,6 +359,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -260,6 +372,7 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -272,6 +385,7 @@ describe('Review HTTP boundary', () => {
         signature: undefined,
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -284,6 +398,7 @@ describe('Review HTTP boundary', () => {
         signature: 123,
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -296,6 +411,7 @@ describe('Review HTTP boundary', () => {
         signature: 'A'.repeat(42),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -308,6 +424,7 @@ describe('Review HTTP boundary', () => {
         signature: '!'.repeat(43),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: NOW_SECONDS,
       status: 401,
       code: 'invalid_gateway_context',
@@ -320,9 +437,10 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: Number.NaN,
-      status: 401,
-      code: 'invalid_gateway_context',
+      status: 503,
+      code: 'gateway_context_unavailable',
     },
     {
       name: 'negative verifier clock',
@@ -332,14 +450,22 @@ describe('Review HTTP boundary', () => {
         signature: signature(String(NOW_SECONDS)),
       },
       secret: SECRET,
+      binding: HISTORY_BINDING,
       nowSeconds: -1,
-      status: 401,
-      code: 'invalid_gateway_context',
+      status: 503,
+      code: 'gateway_context_unavailable',
     },
   ])(
     'fails closed for $name',
-    ({ headers, secret, nowSeconds, status, code }) => {
-      expectTrustedContextRejection(headers, secret, nowSeconds, status, code);
+    ({ headers, secret, binding, nowSeconds, status, code }) => {
+      expectTrustedContextRejection(
+        headers,
+        secret,
+        binding,
+        nowSeconds,
+        status,
+        code,
+      );
     },
   );
 
