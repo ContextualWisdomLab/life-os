@@ -221,6 +221,7 @@ export class PluginInstallationApplication {
     );
     if (
       !existing ||
+      existing.installationId !== installationId ||
       existing.workspaceId !== context.workspaceId ||
       existing.installedByUserId !== context.actorUserId
     ) {
