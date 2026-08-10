@@ -10,6 +10,29 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
+function cancellableJson(
+  body: unknown,
+  status: number,
+): { response: Response; wasCancelled: () => boolean } {
+  let cancelled = false;
+  const bytes = new TextEncoder().encode(JSON.stringify(body));
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    {
+      status,
+      headers: { 'content-type': 'application/json' },
+    },
+  );
+  return { response, wasCancelled: () => cancelled };
+}
+
 function planningToday(): Readonly<Record<string, unknown>> {
   return {
     version: 'life-os.today.v1',
@@ -95,6 +118,28 @@ describe('Gateway planning Today composition', () => {
     expect(calls).toEqual(['https://identity.example.test/v1/session']);
   });
 
+  it('cancels unread Identity error bodies before returning authentication failure', async () => {
+    const identityFailure = cancellableJson(
+      { code: 'authentication_required' },
+      401,
+    );
+
+    await expect(
+      composePlanningToday(
+        'session=expired',
+        '2026-08-10',
+        {
+          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
+          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
+          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
+        },
+        async () => identityFailure.response,
+        NOW_SECONDS,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: 'authentication_required' });
+    expect(identityFailure.wasCancelled()).toBe(true);
+  });
+
   it('does not fabricate success when Planning is unavailable', async () => {
     const fetcher = async (input: RequestInfo | URL) =>
       String(input).endsWith('/v1/session')
@@ -117,6 +162,32 @@ describe('Gateway planning Today composition', () => {
       status: 503,
       code: 'today_composition_unavailable',
     });
+  });
+
+  it('cancels unread Planning error bodies before returning dependency failure', async () => {
+    const planningFailure = cancellableJson({ error: 'down' }, 503);
+    const fetcher = async (input: RequestInfo | URL) =>
+      String(input).endsWith('/v1/session')
+        ? json({ workspaceId: WORKSPACE_ID })
+        : planningFailure.response;
+
+    await expect(
+      composePlanningToday(
+        'session=opaque',
+        '2026-08-10',
+        {
+          IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
+          PLANNING_SERVICE_ORIGIN: 'https://planning.example.test',
+          PLANNING_GATEWAY_CONTEXT_SECRET: TEST_SIGNING_KEY,
+        },
+        fetcher,
+        NOW_SECONDS,
+      ),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'today_composition_unavailable',
+    });
+    expect(planningFailure.wasCancelled()).toBe(true);
   });
 
   it('fails closed on malformed Planning evidence', async () => {
