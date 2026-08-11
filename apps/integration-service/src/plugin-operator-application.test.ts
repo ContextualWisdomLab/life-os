@@ -237,7 +237,13 @@ describe('authenticated plugin operator composition', () => {
 
   it('fails closed before downstream authority when the replay store is unavailable', async () => {
     const installations = installationPort();
-    const app = application(installations, credentialPort(), undefined);
+    const app = new PluginOperatorApplication(
+      installations,
+      credentialPort(),
+      SECRET,
+      undefined,
+      () => NOW_SECONDS,
+    );
     const input = {
       installationId: INSTALLATION_ID,
       manifest: MANIFEST,
