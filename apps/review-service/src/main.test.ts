@@ -1,7 +1,8 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { requireReviewServiceConfiguration, ReviewController } from './main';
+import { signReviewTestContext } from './review-context.test-helper';
 import {
   ReviewService,
   type ReviewCompletionRecord,
@@ -48,13 +49,12 @@ function trustedContext(
   workspaceId = WORKSPACE_ID,
 ): readonly [string, string] {
   const issuedAt = String(Math.floor(Date.now() / 1000));
-  const normalizedWorkspaceId = workspaceId.toLowerCase();
-  const signature = createHmac('sha256', GATEWAY_SECRET)
-    .update(
-      `life-os.review-context.v1\n${normalizedWorkspaceId}\n${issuedAt}\n${method}\n${path}`,
-      'utf8',
-    )
-    .digest('base64url');
+  const signature = signReviewTestContext({
+    secret: GATEWAY_SECRET,
+    workspaceId,
+    issuedAt,
+    binding: { method, path },
+  });
   return [issuedAt, signature] as const;
 }
 
