@@ -126,6 +126,17 @@ function application(
   );
 }
 
+function applicationWithoutCredentials(
+  installations = installationPort(),
+): PluginOperatorApplication {
+  return new PluginOperatorApplication(
+    installations,
+    undefined,
+    SECRET,
+    () => NOW_SECONDS,
+  );
+}
+
 describe('authenticated plugin operator composition', () => {
   it('forwards installation input only with cryptographically derived tenant/user authority', async () => {
     const installations = installationPort();
@@ -189,7 +200,7 @@ describe('authenticated plugin operator composition', () => {
 
   it('keeps missing secret-store composition explicitly unavailable after valid authentication', async () => {
     const installations = installationPort();
-    const app = application(installations, undefined);
+    const app = applicationWithoutCredentials(installations);
     const input = {
       credentialBindingId: CREDENTIAL_BINDING_ID,
       installationId: INSTALLATION_ID,
@@ -206,7 +217,7 @@ describe('authenticated plugin operator composition', () => {
   });
 
   it('does not reveal dependency availability to an invalid operator context', async () => {
-    const app = application(installationPort(), undefined);
+    const app = applicationWithoutCredentials();
     const input = {
       credentialBindingId: CREDENTIAL_BINDING_ID,
       installationId: INSTALLATION_ID,
