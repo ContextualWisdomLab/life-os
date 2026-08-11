@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "lint": "tsc --noEmit && prettier --single-quote --write package.json migrations/README.md src/**/*.ts ../../docs/superpowers/plans/2026-08-04-guided-review-service-slice.md && git diff --exit-code -- src/http-boundary.test.ts src/http-boundary.ts src/review-controller-authority.test.ts",
+    "lint": "tsc --noEmit && prettier --single-quote --check package.json migrations/README.md 'src/**/*.ts' ../../docs/superpowers/plans/2026-08-04-guided-review-service-slice.md",
     "test": "vitest run --passWithNoTests --no-file-parallelism",
     "typecheck": "tsc --noEmit"
   },
