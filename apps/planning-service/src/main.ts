@@ -25,17 +25,12 @@ import {
   planningMetrics,
   planningObservabilityMiddleware,
 } from './observability';
-import type {
-  DataRightsContributorResponse,
-  Goal,
-  Project,
-  Task,
-} from './planning-data-rights';
+import type { DataRightsContributorResponse } from './planning-data-rights';
 import {
   parseTrustedPlanningDataRightsRequest,
   toPlanningDataRightsHttpException,
 } from './planning-data-rights-http-boundary';
-import type { Goal as PlanningGoal, Project as PlanningProject, Task as PlanningTask } from './planning-domain';
+import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 import type { PlanningSearchResult } from './search';
@@ -207,7 +202,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: { title?: unknown },
-  ): Promise<PlanningGoal> {
+  ): Promise<Goal> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -228,7 +223,7 @@ export class PlanningController {
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
-  ): Promise<PlanningGoal[]> {
+  ): Promise<Goal[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -249,7 +244,7 @@ export class PlanningController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('goalId') goalId: string,
     @Body() body: { title?: unknown },
-  ): Promise<PlanningProject> {
+  ): Promise<Project> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -272,7 +267,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('goalId') goalId: string,
-  ): Promise<PlanningProject[]> {
+  ): Promise<Project[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -296,7 +291,7 @@ export class PlanningController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
     @Body() body: { title?: unknown },
-  ): Promise<PlanningTask> {
+  ): Promise<Task> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -319,7 +314,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
-  ): Promise<PlanningTask[]> {
+  ): Promise<Task[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
