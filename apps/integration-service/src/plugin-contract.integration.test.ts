@@ -25,6 +25,24 @@ function signedWorkspaceHeaders(
   const normalizedWorkspaceId = workspaceId.toLowerCase();
   const signature = createHmac('sha256', GATEWAY_SECRET)
     .update(
+      `life-os.integration-event-context.v2\n${normalizedWorkspaceId}\n${issuedAt}\nPOST\n/v1/events/prepare`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
+
+function legacySignedWorkspaceHeaders(
+  workspaceId: string,
+  issuedAt = String(Math.floor(Date.now() / 1000)),
+): Record<string, string> {
+  const normalizedWorkspaceId = workspaceId.toLowerCase();
+  const signature = createHmac('sha256', GATEWAY_SECRET)
+    .update(
       `life-os.workspace.v1\n${normalizedWorkspaceId}\n${issuedAt}`,
       'utf8',
     )
@@ -152,6 +170,18 @@ describe('plugin contract HTTP boundary', () => {
       expect(prepared.serializedEvent.indexOf('"title"')).toBeLessThan(
         prepared.serializedEvent.indexOf('"version"'),
       );
+
+      const legacyWorkspaceOnly = await postJson(
+        address.port,
+        '/v1/events/prepare',
+        eventRequest(),
+        undefined,
+        legacySignedWorkspaceHeaders(WORKSPACE_ID),
+      );
+      expect(legacyWorkspaceOnly.status).toBe(401);
+      expect(await legacyWorkspaceOnly.json()).toMatchObject({
+        code: 'invalid_gateway_context',
+      });
 
       const otherTenantResponse = await postJson(
         address.port,

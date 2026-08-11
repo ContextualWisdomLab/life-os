@@ -33,6 +33,19 @@ interface IntegrationProblemDetails {
   readonly code: IntegrationProblemCode;
 }
 
+/** Untrusted request identity that must match the exact protected Integration route. */
+export interface IntegrationTrustedRequestBinding {
+  readonly method: string;
+  readonly path: string;
+}
+
+/** Untrusted gateway headers used only after cryptographic verification. */
+export interface IntegrationTrustedWorkspaceHeaders {
+  readonly workspaceId: unknown;
+  readonly issuedAt: unknown;
+  readonly signature: unknown;
+}
+
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
@@ -40,6 +53,10 @@ const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
+const EVENT_PREPARE_BINDING = Object.freeze({
+  method: 'POST',
+  path: '/v1/events/prepare',
+});
 
 function problemException(
   status: number,
@@ -76,37 +93,39 @@ function unavailableGatewayContext(): never {
 }
 
 /**
- * Verifies short-lived tenant authority created only after gateway authentication.
- * The legacy browser-selectable `x-workspace-id` header is intentionally ignored.
+ * Verifies short-lived tenant authority bound to the exact event-preparation
+ * method and path. Workspace-only v1 signatures and non-canonical signatures
+ * are rejected so this proof cannot be replayed as future Integration authority.
  */
-function requireTrustedWorkspaceContext(
-  workspaceValue: unknown,
-  issuedAtValue: unknown,
-  signatureValue: unknown,
+export function requireTrustedEventWorkspaceContext(
+  headers: IntegrationTrustedWorkspaceHeaders,
   secretValue: unknown,
+  requestBinding: IntegrationTrustedRequestBinding,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): string {
   if (
     typeof secretValue !== 'string' ||
-    Buffer.byteLength(secretValue, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES
+    Buffer.byteLength(secretValue, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES ||
+    !Number.isSafeInteger(nowSeconds) ||
+    nowSeconds < 0
   ) {
     return unavailableGatewayContext();
   }
   if (
-    typeof workspaceValue !== 'string' ||
-    typeof issuedAtValue !== 'string' ||
-    typeof signatureValue !== 'string' ||
-    !UUID_V4_PATTERN.test(workspaceValue) ||
-    !UNIX_SECONDS_PATTERN.test(issuedAtValue) ||
-    !BASE64URL_SHA256_PATTERN.test(signatureValue) ||
-    !Number.isSafeInteger(nowSeconds) ||
-    nowSeconds < 0
+    requestBinding.method !== EVENT_PREPARE_BINDING.method ||
+    requestBinding.path !== EVENT_PREPARE_BINDING.path ||
+    typeof headers.workspaceId !== 'string' ||
+    typeof headers.issuedAt !== 'string' ||
+    typeof headers.signature !== 'string' ||
+    !UUID_V4_PATTERN.test(headers.workspaceId) ||
+    !UNIX_SECONDS_PATTERN.test(headers.issuedAt) ||
+    !BASE64URL_SHA256_PATTERN.test(headers.signature)
   ) {
     return invalidGatewayContext();
   }
 
-  const workspaceId = workspaceValue.toLowerCase();
-  const issuedAtSeconds = Number(issuedAtValue);
+  const workspaceId = headers.workspaceId.toLowerCase();
+  const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||
     issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
@@ -115,10 +134,16 @@ function requireTrustedWorkspaceContext(
     return invalidGatewayContext();
   }
 
+  const actual = Buffer.from(headers.signature, 'base64url');
+  if (actual.toString('base64url') !== headers.signature) {
+    return invalidGatewayContext();
+  }
   const expected = createHmac('sha256', secretValue)
-    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAtValue}`, 'utf8')
+    .update(
+      `life-os.integration-event-context.v2\n${workspaceId}\n${headers.issuedAt}\n${requestBinding.method}\n${requestBinding.path}`,
+      'utf8',
+    )
     .digest();
-  const actual = Buffer.from(signatureValue, 'base64url');
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     return invalidGatewayContext();
   }
@@ -159,11 +184,10 @@ export class IntegrationController {
     @Body() body: unknown,
   ): PreparedPluginEvent {
     try {
-      const trustedWorkspaceId = requireTrustedWorkspaceContext(
-        workspaceId,
-        issuedAt,
-        signature,
+      const trustedWorkspaceId = requireTrustedEventWorkspaceContext(
+        { workspaceId, issuedAt, signature },
         process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET,
+        EVENT_PREPARE_BINDING,
       );
       return preparePluginEvent(trustedWorkspaceId, body);
     } catch (error) {
