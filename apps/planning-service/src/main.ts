@@ -58,6 +58,11 @@ interface PassthroughResponse {
   setHeader(name: string, value: string): void;
 }
 
+/**
+ * Provides untrusted HTTP request binding values for data-rights signature verification.
+ * `method` and `originalUrl` come from the inbound Nest/Express request and are
+ * validated before they can authorize a Planning-owned contributor operation.
+ */
 interface RequestBindingSource {
   readonly method?: unknown;
   readonly originalUrl?: unknown;
