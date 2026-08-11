@@ -93,7 +93,10 @@ export function requireReviewGatewayContextSecret(secret: unknown): string {
 function requireReviewRequestBinding(
   binding: ReviewTrustedRequestBinding,
 ): { method: 'GET' | 'POST'; path: string } {
-  if (binding.method === 'GET' && binding.path === REVIEW_HISTORY_PATH) {
+  if (
+    binding.method === 'GET' &&
+    binding.path === REVIEW_HISTORY_PATH
+  ) {
     return { method: 'GET', path: REVIEW_HISTORY_PATH };
   }
   if (
