@@ -21,6 +21,7 @@ interface RouteHeaders {
 interface HabitServiceSpies {
   readonly createHabit: ReturnType<typeof vi.fn>;
   readonly listHabits: ReturnType<typeof vi.fn>;
+  readonly listTodayHabits: ReturnType<typeof vi.fn>;
   readonly listOccurrences: ReturnType<typeof vi.fn>;
   readonly completeHabit: ReturnType<typeof vi.fn>;
   readonly listCompletionHistory: ReturnType<typeof vi.fn>;
@@ -60,6 +61,17 @@ const ROUTES: readonly RouteCase[] = [
         headers.workspaceId,
         headers.issuedAt,
         headers.signature,
+      ),
+  },
+  {
+    name: 'listTodayHabits',
+    serviceMethod: 'listTodayHabits',
+    invoke: (controller, headers) =>
+      controller.listTodayHabits(
+        headers.workspaceId,
+        headers.issuedAt,
+        headers.signature,
+        '2026-08-10',
       ),
   },
   {
@@ -114,6 +126,7 @@ function createHabitServiceSpies(): HabitServiceSpies {
   return {
     createHabit: vi.fn(),
     listHabits: vi.fn(),
+    listTodayHabits: vi.fn(),
     listOccurrences: vi.fn(),
     completeHabit: vi.fn(),
     listCompletionHistory: vi.fn(),
@@ -156,11 +169,11 @@ describe.sequential('HabitController workspace authority contract', () => {
     expect(CONTROLLER_SOURCE).not.toContain('requireWorkspaceId(');
   });
 
-  it('binds all five workspace-scoped routes to signed context verification', () => {
-    expect(count(/@Headers\(['"]x-life-os-workspace-id['"]\)/gu)).toBe(5);
-    expect(count(/@Headers\(['"]x-life-os-context-issued-at['"]\)/gu)).toBe(5);
-    expect(count(/@Headers\(['"]x-life-os-context-signature['"]\)/gu)).toBe(5);
-    expect(CONTROLLER_SOURCE.match(/requireTrustedWorkspaceContext\(/gu)).toHaveLength(5);
+  it('binds all six workspace-scoped routes to signed context verification', () => {
+    expect(count(/@Headers\(['"]x-life-os-workspace-id['"]\)/gu)).toBe(6);
+    expect(count(/@Headers\(['"]x-life-os-context-issued-at['"]\)/gu)).toBe(6);
+    expect(count(/@Headers\(['"]x-life-os-context-signature['"]\)/gu)).toBe(6);
+    expect(CONTROLLER_SOURCE.match(/requireTrustedWorkspaceContext\(/gu)).toHaveLength(6);
   });
 
   it('passes the verified workspace to every Habit domain route', async () => {

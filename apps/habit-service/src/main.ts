@@ -15,6 +15,7 @@ import type {
   Habit,
   HabitCompletionEvent,
   HabitOccurrence,
+  HabitTodayStatus,
 } from './habit-domain';
 import { HabitService } from './habit-domain';
 import { createHabitRuntime, HabitRuntime } from './habit-runtime';
@@ -74,6 +75,27 @@ export class HabitController {
           { workspaceId, issuedAt, signature },
           process.env.HABIT_GATEWAY_CONTEXT_SECRET,
         ),
+      );
+    } catch (error) {
+      throw toHabitHttpException(error);
+    }
+  }
+
+  /** Returns only Habit-owned scheduled/completion evidence for one local date. */
+  @Get('habits/today')
+  async listTodayHabits(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Query('date') localDate: string | undefined,
+  ): Promise<HabitTodayStatus[]> {
+    try {
+      return await this.habitService.listTodayHabits(
+        requireTrustedWorkspaceContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+        ),
+        localDate ?? '',
       );
     } catch (error) {
       throw toHabitHttpException(error);
