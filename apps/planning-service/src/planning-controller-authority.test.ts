@@ -27,6 +27,11 @@ interface RouteHeaders {
   readonly signature: string | undefined;
 }
 
+interface RouteBinding {
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+}
+
 interface PlanningServiceSpies {
   readonly createGoal: ReturnType<typeof vi.fn>;
   readonly listGoals: ReturnType<typeof vi.fn>;
@@ -39,6 +44,7 @@ interface PlanningServiceSpies {
 interface RouteCase {
   readonly name: string;
   readonly serviceMethod: keyof PlanningServiceSpies;
+  readonly binding: RouteBinding;
   readonly invoke: (
     controller: PlanningController,
     headers: RouteHeaders,
@@ -49,6 +55,7 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'createGoal',
     serviceMethod: 'createGoal',
+    binding: { method: 'POST', path: '/v1/goals' },
     invoke: (controller, headers) =>
       controller.createGoal(
         headers.workspaceId,
@@ -60,6 +67,7 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'listGoals',
     serviceMethod: 'listGoals',
+    binding: { method: 'GET', path: '/v1/goals' },
     invoke: (controller, headers) =>
       controller.listGoals(
         headers.workspaceId,
@@ -70,6 +78,7 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'createProject',
     serviceMethod: 'createProject',
+    binding: { method: 'POST', path: `/v1/goals/${GOAL_ID}/projects` },
     invoke: (controller, headers) =>
       controller.createProject(
         headers.workspaceId,
@@ -82,6 +91,7 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'listProjects',
     serviceMethod: 'listProjects',
+    binding: { method: 'GET', path: `/v1/goals/${GOAL_ID}/projects` },
     invoke: (controller, headers) =>
       controller.listProjects(
         headers.workspaceId,
@@ -93,6 +103,7 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'createTask',
     serviceMethod: 'createTask',
+    binding: { method: 'POST', path: `/v1/projects/${PROJECT_ID}/tasks` },
     invoke: (controller, headers) =>
       controller.createTask(
         headers.workspaceId,
@@ -105,6 +116,7 @@ const ROUTES: readonly RouteCase[] = [
   {
     name: 'listTasks',
     serviceMethod: 'listTasks',
+    binding: { method: 'GET', path: `/v1/projects/${PROJECT_ID}/tasks` },
     invoke: (controller, headers) =>
       controller.listTasks(
         headers.workspaceId,
@@ -140,13 +152,34 @@ function createController(service: PlanningServiceSpies): PlanningController {
   );
 }
 
-/** Produces a valid short-lived signed gateway context for the supplied issue time. */
-function signedHeaders(issuedAtSeconds: number): RouteHeaders {
+/** Produces a valid short-lived request-bound gateway context. */
+function signedHeaders(
+  issuedAtSeconds: number,
+  binding: RouteBinding,
+): RouteHeaders {
   const issuedAt = String(issuedAtSeconds);
   const signature = createHmac('sha256', CONTEXT_SECRET)
-    .update(`life-os.workspace.v1\n${WORKSPACE_ID}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.planning-context.v2\n${WORKSPACE_ID}\n${issuedAt}\n${binding.method}\n${binding.path}`,
+      'utf8',
+    )
     .digest('base64url');
   return { workspaceId: WORKSPACE_ID, issuedAt, signature };
+}
+
+/** Corrupts an otherwise valid request-bound context without changing its shape. */
+function tamperedHeaders(
+  issuedAtSeconds: number,
+  binding: RouteBinding,
+): RouteHeaders {
+  const fresh = signedHeaders(issuedAtSeconds, binding);
+  const digest = Buffer.from(fresh.signature ?? '', 'base64url');
+  const firstByte = digest.at(0);
+  if (firstByte === undefined) {
+    throw new Error('Expected a SHA-256 gateway signature');
+  }
+  digest[0] = firstByte ^ 0xff;
+  return { ...fresh, signature: digest.toString('base64url') };
 }
 
 /** Captures the status of an expected HTTP rejection without hiding false success. */
@@ -182,12 +215,12 @@ describe.sequential('PlanningController workspace authority contract', () => {
   it('passes the verified workspace to every Goal, Project, and Task service route', async () => {
     process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const headers = signedHeaders(nowSeconds);
     const service = createPlanningServiceSpies();
     const controller = createController(service);
 
     for (const route of ROUTES) {
       vi.clearAllMocks();
+      const headers = signedHeaders(nowSeconds, route.binding);
       await route.invoke(controller, headers);
       expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
       expect(service[route.serviceMethod].mock.calls[0]?.[0], route.name).toBe(
@@ -198,33 +231,46 @@ describe.sequential('PlanningController workspace authority contract', () => {
 
   it('rejects untrusted contexts before any Goal, Project, or Task service call', async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const fresh = signedHeaders(nowSeconds);
-    const expired = signedHeaders(nowSeconds - 120);
-    const future = signedHeaders(nowSeconds + 120);
-    const tamperedDigest = Buffer.from(fresh.signature ?? '', 'base64url');
-    const firstTamperedByte = tamperedDigest.at(0);
-    if (firstTamperedByte === undefined) {
-      throw new Error('Expected a SHA-256 gateway signature');
-    }
-    tamperedDigest[0] = firstTamperedByte ^ 0xff;
-    const tampered = {
-      ...fresh,
-      signature: tamperedDigest.toString('base64url'),
-    };
-    const malformed = { ...fresh, workspaceId: 'not-a-uuid' };
-    const invalidContexts = [
-      { name: 'missing', headers: { ...fresh, workspaceId: undefined }, status: 401 },
-      { name: 'expired', headers: expired, status: 401 },
-      { name: 'future', headers: future, status: 401 },
-      { name: 'tampered', headers: tampered, status: 401 },
-      { name: 'malformed', headers: malformed, status: 401 },
-      { name: 'secret-unconfigured', headers: fresh, status: 503, secret: false },
-    ] as const;
     const service = createPlanningServiceSpies();
     const controller = createController(service);
 
-    for (const invalid of invalidContexts) {
-      for (const route of ROUTES) {
+    for (const route of ROUTES) {
+      const fresh = signedHeaders(nowSeconds, route.binding);
+      const invalidContexts = [
+        {
+          name: 'missing',
+          headers: { ...fresh, workspaceId: undefined },
+          status: 401,
+        },
+        {
+          name: 'expired',
+          headers: signedHeaders(nowSeconds - 120, route.binding),
+          status: 401,
+        },
+        {
+          name: 'future',
+          headers: signedHeaders(nowSeconds + 120, route.binding),
+          status: 401,
+        },
+        {
+          name: 'tampered',
+          headers: tamperedHeaders(nowSeconds, route.binding),
+          status: 401,
+        },
+        {
+          name: 'malformed',
+          headers: { ...fresh, workspaceId: 'not-a-uuid' },
+          status: 401,
+        },
+        {
+          name: 'secret-unconfigured',
+          headers: fresh,
+          status: 503,
+          secret: false,
+        },
+      ] as const;
+
+      for (const invalid of invalidContexts) {
         vi.clearAllMocks();
         if ('secret' in invalid && invalid.secret === false) {
           delete process.env.PLANNING_GATEWAY_CONTEXT_SECRET;
