@@ -110,6 +110,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'GET', path: '/v1/search' },
       );
       return await this.planningService.search(
         trustedWorkspaceId,
@@ -134,6 +135,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'GET', path: `/v1/today/${date}` },
       );
       const aggregate = await this.todayService.getToday(
         trustedWorkspaceId,
@@ -167,6 +169,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'PUT', path: `/v1/today/${date}` },
       );
       requireTodayPathDate(date, body);
       if (typeof idempotencyKey !== 'string') {
@@ -199,6 +202,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'POST', path: '/v1/goals' },
       );
       return await this.planningService.createGoal(trustedWorkspaceId, {
         title: requireTitle(body),
@@ -219,6 +223,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'GET', path: '/v1/goals' },
       );
       return await this.planningService.listGoals(trustedWorkspaceId);
     } catch (error) {
@@ -239,6 +244,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'POST', path: `/v1/goals/${goalId}/projects` },
       );
       return await this.planningService.createProject(trustedWorkspaceId, {
         goalId,
@@ -261,6 +267,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'GET', path: `/v1/goals/${goalId}/projects` },
       );
       return await this.planningService.listProjects(
         trustedWorkspaceId,
@@ -284,6 +291,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'POST', path: `/v1/projects/${projectId}/tasks` },
       );
       return await this.planningService.createTask(trustedWorkspaceId, {
         projectId,
@@ -306,6 +314,7 @@ export class PlanningController {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'GET', path: `/v1/projects/${projectId}/tasks` },
       );
       return await this.planningService.listTasks(
         trustedWorkspaceId,
