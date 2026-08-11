@@ -92,7 +92,7 @@ describe('Planning data-rights HTTP authority', () => {
       ),
     ).resolves.toEqual(request);
 
-    await expect(
+    const status = await rejectedStatus(
       parseTrustedPlanningDataRightsRequest(
         { ...request, idempotencyKey: REQUEST_ID },
         { issuedAt, signature: signature(request, issuedAt) },
@@ -100,7 +100,8 @@ describe('Planning data-rights HTTP authority', () => {
         { method: 'POST', path: CONTRIBUTOR_PATH },
         NOW_SECONDS,
       ),
-    ).rejects.toBeInstanceOf(HttpException);
+    );
+    expect(status).toBe(401);
   });
 
   it.each([
@@ -144,7 +145,7 @@ describe('Planning data-rights HTTP authority', () => {
   it('rejects undeclared request fields before contributor code can observe them', async () => {
     const issuedAt = String(NOW_SECONDS);
     const request = { ...exportRequest, unexpected: 'authority' };
-    await expect(
+    const status = await rejectedStatus(
       parseTrustedPlanningDataRightsRequest(
         request,
         { issuedAt, signature: signature(request, issuedAt) },
@@ -152,7 +153,8 @@ describe('Planning data-rights HTTP authority', () => {
         { method: 'POST', path: CONTRIBUTOR_PATH },
         NOW_SECONDS,
       ),
-    ).rejects.toBeInstanceOf(HttpException);
+    );
+    expect(status).toBe(400);
   });
 
   it('sanitizes contributor failures into a credential-free 503 problem', () => {
