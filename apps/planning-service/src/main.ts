@@ -12,6 +12,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -55,6 +56,11 @@ export const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');
 interface PassthroughResponse {
   statusCode: number;
   setHeader(name: string, value: string): void;
+}
+
+interface RequestBindingSource {
+  readonly method?: unknown;
+  readonly originalUrl?: unknown;
 }
 
 /** Returns a stable not-found problem without disclosing another tenant's state. */
@@ -342,6 +348,7 @@ export class PlanningDataRightsController {
   /** Executes only the exact v1 contributor request authorized by Identity. */
   @Post('contributor')
   async contribute(
+    @Req() httpRequest: RequestBindingSource,
     @Headers('x-life-os-data-rights-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-data-rights-signature') signature: string | undefined,
     @Body() body: unknown,
@@ -351,8 +358,8 @@ export class PlanningDataRightsController {
       { issuedAt, signature },
       process.env.PLANNING_DATA_RIGHTS_CONTEXT_SECRET,
       {
-        method: 'POST',
-        path: '/v1/internal/data-rights/contributor',
+        method: httpRequest.method,
+        path: httpRequest.originalUrl,
       },
     );
     try {
