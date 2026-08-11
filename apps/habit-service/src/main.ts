@@ -11,6 +11,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { HabitDataRightsResponse } from './habit-data-rights';
+import {
+  parseTrustedHabitDataRightsRequest,
+  toHabitDataRightsHttpException,
+} from './habit-data-rights-http-boundary';
 import type {
   Habit,
   HabitCompletionEvent,
@@ -169,8 +174,40 @@ export class HabitController {
   }
 }
 
+/** Internal service-authenticated transport for Habit-owned data-rights work. */
+@Controller('internal/data-rights')
+export class HabitDataRightsController {
+  constructor(
+    @Inject(HABIT_RUNTIME)
+    private readonly runtime: HabitRuntime,
+  ) {}
+
+  /** Executes only the exact v1 contributor request authorized by Identity. */
+  @Post('contributor')
+  async contribute(
+    @Headers('x-life-os-data-rights-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-data-rights-signature') signature: string | undefined,
+    @Body() body: unknown,
+  ): Promise<HabitDataRightsResponse> {
+    try {
+      const request = parseTrustedHabitDataRightsRequest(
+        body,
+        { issuedAt, signature },
+        process.env.HABIT_DATA_RIGHTS_CONTEXT_SECRET,
+        {
+          method: 'POST',
+          path: '/v1/internal/data-rights/contributor',
+        },
+      );
+      return await this.runtime.dataRightsContributor.handle(request);
+    } catch (error) {
+      throw toHabitDataRightsHttpException(error);
+    }
+  }
+}
+
 @Module({
-  controllers: [HabitController],
+  controllers: [HabitController, HabitDataRightsController],
   providers: [
     {
       provide: HABIT_RUNTIME,
