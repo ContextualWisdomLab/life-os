@@ -50,8 +50,8 @@ class NodePostgresReviewPool implements ReviewPool {
         return { rows: result.rows as Row[] };
       },
     };
-    await connection.query('BEGIN');
     try {
+      await connection.query('BEGIN');
       const value = await operation(client);
       await connection.query('COMMIT');
       return value;
