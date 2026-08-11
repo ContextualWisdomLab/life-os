@@ -51,7 +51,7 @@ function evidence(
 }
 
 describe('PostgresPluginOperatorReplayGuard', () => {
-  it('atomically consumes one evidence UUID after pruning only expired rows', async () => {
+  it('atomically consumes one evidence UUID after pruning only rows expired by the database clock', async () => {
     const client = new ScriptedSqlClient([
       { rows: [], rowCount: 0 },
       { rows: [{ evidence_id: EVIDENCE_ID }], rowCount: 1 },
@@ -64,8 +64,8 @@ describe('PostgresPluginOperatorReplayGuard', () => {
     expect(client.queries[0]?.text).toContain(
       'DELETE FROM plugin_integration.plugin_operator_context_replay_record',
     );
-    expect(client.queries[0]?.text).toContain('expires_at < $1::timestamptz');
-    expect(client.queries[0]?.values).toEqual([CONSUMED_AT]);
+    expect(client.queries[0]?.text).toContain('expires_at < now()');
+    expect(client.queries[0]?.values).toBeUndefined();
     expect(client.queries[1]?.text).toContain(
       'INSERT INTO plugin_integration.plugin_operator_context_replay_record',
     );
