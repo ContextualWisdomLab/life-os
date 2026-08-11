@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { ReviewDataRightsError } from './review-data-rights';
 import { createReviewRuntime, type ReviewRuntime } from './review-runtime';
 
@@ -24,7 +32,10 @@ async function applyMigrations(pool: Pool): Promise<void> {
     '0001_guided_review_completions.sql',
     '0002_data_rights_erasure_receipt.sql',
   ]) {
-    const sql = await readFile(resolve(__dirname, '../migrations', migration), 'utf8');
+    const sql = await readFile(
+      resolve(__dirname, '../migrations', migration),
+      'utf8',
+    );
     await pool.query(sql);
   }
 }
@@ -64,7 +75,9 @@ describeWithPostgres('Review data-rights PostgreSQL integration', () => {
   });
 
   beforeEach(async () => {
-    await administrativePool.query('DROP SCHEMA IF EXISTS guided_review CASCADE');
+    await administrativePool.query(
+      'DROP SCHEMA IF EXISTS guided_review CASCADE',
+    );
     await applyMigrations(administrativePool);
   });
 
@@ -75,7 +88,9 @@ describeWithPostgres('Review data-rights PostgreSQL integration', () => {
   });
 
   afterAll(async () => {
-    await administrativePool.query('DROP SCHEMA IF EXISTS guided_review CASCADE');
+    await administrativePool.query(
+      'DROP SCHEMA IF EXISTS guided_review CASCADE',
+    );
     await administrativePool.end();
   });
 
@@ -116,7 +131,9 @@ describeWithPostgres('Review data-rights PostgreSQL integration', () => {
     });
     expect(firstExport.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(firstExport.data)).toContain(owned.id);
-    expect(JSON.stringify(firstExport.data)).not.toContain(privateCompletion.id);
+    expect(JSON.stringify(firstExport.data)).not.toContain(
+      privateCompletion.id,
+    );
 
     const replayedExport = await runtime.dataRightsContributor.handle({
       contractVersion: 'life-os.data-rights-contributor.v1',
