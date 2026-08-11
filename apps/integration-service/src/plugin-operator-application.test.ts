@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { PluginManifest } from '@life-os/plugin-sdk';
 import {
@@ -16,6 +16,10 @@ import type {
   PluginInstallationContext,
   PluginInstallationRecord,
 } from './plugin-installation';
+import type {
+  PluginOperatorReplayEvidence,
+  PluginOperatorReplayGuardPort,
+} from './plugin-operator-replay';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
@@ -24,6 +28,7 @@ const CREDENTIAL_BINDING_ID = '44444444-4444-4444-8444-444444444444';
 const SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_334_400;
 const NOW = new Date(NOW_SECONDS * 1_000).toISOString();
+const EXPIRES_AT = new Date((NOW_SECONDS + 60) * 1_000).toISOString();
 
 const MANIFEST: PluginManifest = Object.freeze({
   pluginId: 'com.example.calendar',
@@ -60,19 +65,22 @@ function signedHeaders(
   method: 'GET' | 'POST',
   path: string,
   issuedAt = String(NOW_SECONDS),
+  evidenceId = randomUUID(),
 ): {
   readonly workspaceId: string;
   readonly userId: string;
+  readonly evidenceId: string;
   readonly issuedAt: string;
   readonly signature: string;
 } {
   return {
     workspaceId: WORKSPACE_ID,
     userId: USER_ID,
+    evidenceId,
     issuedAt,
     signature: createHmac('sha256', SECRET)
       .update(
-        `life-os.integration-operator-context.v1\n${WORKSPACE_ID}\n${USER_ID}\n${issuedAt}\n${method}\n${path}`,
+        `life-os.integration-operator-context.v1\n${WORKSPACE_ID}\n${USER_ID}\n${evidenceId}\n${issuedAt}\n${method}\n${path}`,
         'utf8',
       )
       .digest('base64url'),
@@ -114,45 +122,69 @@ function credentialPort(): PluginCredentialOperatorPort & {
   };
 }
 
+function replayGuard(): PluginOperatorReplayGuardPort & {
+  consume: ReturnType<typeof vi.fn>;
+} {
+  const consumed = new Set<string>();
+  return {
+    consume: vi.fn(async (evidence: PluginOperatorReplayEvidence) => {
+      if (consumed.has(evidence.evidenceId)) {
+        return false;
+      }
+      consumed.add(evidence.evidenceId);
+      return true;
+    }),
+  };
+}
+
 function application(
   installations = installationPort(),
   credentials: PluginCredentialOperatorPort | undefined = credentialPort(),
+  replay: PluginOperatorReplayGuardPort | undefined = replayGuard(),
+  nowSeconds = NOW_SECONDS,
 ): PluginOperatorApplication {
   return new PluginOperatorApplication(
     installations,
     credentials,
     SECRET,
-    () => NOW_SECONDS,
+    replay,
+    () => nowSeconds,
   );
 }
 
 function applicationWithoutCredentials(
   installations = installationPort(),
+  replay: PluginOperatorReplayGuardPort | undefined = replayGuard(),
 ): PluginOperatorApplication {
   return new PluginOperatorApplication(
     installations,
     undefined,
     SECRET,
+    replay,
     () => NOW_SECONDS,
   );
 }
 
 describe('authenticated plugin operator composition', () => {
-  it('forwards installation input only with cryptographically derived tenant/user authority', async () => {
+  it('forwards installation input only after durable one-time evidence consumption', async () => {
     const installations = installationPort();
-    const app = application(installations);
+    const replay = replayGuard();
+    const app = application(installations, credentialPort(), replay);
+    const headers = signedHeaders('POST', '/v1/plugins/installations');
     const input = {
       installationId: INSTALLATION_ID,
       manifest: MANIFEST,
       grantedCapabilities: ['lifeos.calendar.event.v1'],
     } as const;
 
-    const result = await app.install(
-      signedHeaders('POST', '/v1/plugins/installations'),
-      input,
-    );
+    const result = await app.install(headers, input);
 
     expect(result).toEqual(INSTALLATION_RECORD);
+    expect(replay.consume).toHaveBeenCalledWith({
+      evidenceId: headers.evidenceId,
+      consumedAt: NOW,
+      expiresAt: EXPIRES_AT,
+    });
     expect(installations.install).toHaveBeenCalledWith({
       ...input,
       trustedContext: {
@@ -162,9 +194,11 @@ describe('authenticated plugin operator composition', () => {
     });
   });
 
-  it('rejects reusing the same valid signed evidence before downstream authority', async () => {
+  it('rejects reusing the same valid signed evidence across application instances', async () => {
     const installations = installationPort();
-    const app = application(installations);
+    const replay = replayGuard();
+    const first = application(installations, credentialPort(), replay);
+    const second = application(installations, credentialPort(), replay);
     const headers = signedHeaders('POST', '/v1/plugins/installations');
     const input = {
       installationId: INSTALLATION_ID,
@@ -172,14 +206,74 @@ describe('authenticated plugin operator composition', () => {
       grantedCapabilities: ['lifeos.calendar.event.v1'],
     } as const;
 
-    await expect(app.install(headers, input)).resolves.toEqual(
+    await expect(first.install(headers, input)).resolves.toEqual(
       INSTALLATION_RECORD,
     );
-    await expect(app.install(headers, input)).rejects.toMatchObject({
+    await expect(second.install(headers, input)).rejects.toMatchObject({
       name: 'IntegrationOperatorContextError',
       kind: 'invalid',
     });
     expect(installations.install).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows distinct signed evidence for otherwise identical same-second requests', async () => {
+    const installations = installationPort();
+    const replay = replayGuard();
+    const app = application(installations, credentialPort(), replay);
+    const input = {
+      installationId: INSTALLATION_ID,
+      manifest: MANIFEST,
+      grantedCapabilities: ['lifeos.calendar.event.v1'],
+    } as const;
+
+    await expect(
+      app.install(signedHeaders('POST', '/v1/plugins/installations'), input),
+    ).resolves.toEqual(INSTALLATION_RECORD);
+    await expect(
+      app.install(signedHeaders('POST', '/v1/plugins/installations'), input),
+    ).resolves.toEqual(INSTALLATION_RECORD);
+    expect(installations.install).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed before downstream authority when the replay store is unavailable', async () => {
+    const installations = installationPort();
+    const app = application(installations, credentialPort(), undefined);
+    const input = {
+      installationId: INSTALLATION_ID,
+      manifest: MANIFEST,
+      grantedCapabilities: ['lifeos.calendar.event.v1'],
+    } as const;
+
+    await expect(
+      app.install(signedHeaders('POST', '/v1/plugins/installations'), input),
+    ).rejects.toMatchObject({
+      name: 'IntegrationOperatorContextError',
+      kind: 'unavailable',
+    });
+    expect(installations.install).not.toHaveBeenCalled();
+  });
+
+  it('classifies replay-store failures as verifier unavailability without granting authority', async () => {
+    const installations = installationPort();
+    const replay: PluginOperatorReplayGuardPort = {
+      consume: vi.fn(async () => {
+        throw new Error('database unavailable');
+      }),
+    };
+    const app = application(installations, credentialPort(), replay);
+    const input = {
+      installationId: INSTALLATION_ID,
+      manifest: MANIFEST,
+      grantedCapabilities: ['lifeos.calendar.event.v1'],
+    } as const;
+
+    await expect(
+      app.install(signedHeaders('POST', '/v1/plugins/installations'), input),
+    ).rejects.toMatchObject({
+      name: 'IntegrationOperatorContextError',
+      kind: 'unavailable',
+    });
+    expect(installations.install).not.toHaveBeenCalled();
   });
 
   it('rejects replaying a read signature as revocation before application authority', async () => {
