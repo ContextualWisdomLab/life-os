@@ -26,6 +26,10 @@ const DAILY_PLANNING_BINDING = {
   method: 'POST',
   path: '/v1/reviews/daily-planning/completions',
 } as const;
+const WEEKLY_REVIEW_BINDING = {
+  method: 'POST',
+  path: '/v1/reviews/weekly-review/completions',
+} as const;
 const BASE64URL_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -117,6 +121,22 @@ describe('Review HTTP boundary', () => {
       },
       SECRET,
       DAILY_PLANNING_BINDING,
+      NOW_SECONDS,
+      401,
+      'invalid_gateway_context',
+    );
+  });
+
+  it('rejects replaying one completion signature on another completion path', () => {
+    const issuedAt = String(NOW_SECONDS);
+    expectTrustedContextRejection(
+      {
+        workspaceId: WORKSPACE_ID,
+        issuedAt,
+        signature: signature(issuedAt, DAILY_PLANNING_BINDING),
+      },
+      SECRET,
+      WEEKLY_REVIEW_BINDING,
       NOW_SECONDS,
       401,
       'invalid_gateway_context',
