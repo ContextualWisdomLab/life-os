@@ -1,5 +1,6 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
+import type { HabitDataRightsAuthorityReplayGuardPort } from './habit-data-rights-authority-replay';
 import {
   DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
   type HabitDataRightsRequest,
@@ -17,6 +18,7 @@ export interface HabitDataRightsRequestBinding {
   readonly path: unknown;
 }
 
+/** Credential-free RFC 7807-style problem shape exposed by the private contributor transport. */
 interface HabitDataRightsProblemDetails {
   readonly type: 'about:blank';
   readonly title: string;
@@ -33,6 +35,7 @@ const MINIMUM_CONTEXT_SECRET_BYTES = 32;
 const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
 
+/** Canonical request with UUIDv4 tenant, actor, request, and destructive replay fields normalized to lowercase. */
 type NormalizedRequest = HabitDataRightsRequest &
   Readonly<{
     workspaceId: string;
@@ -40,6 +43,7 @@ type NormalizedRequest = HabitDataRightsRequest &
     requestId: string;
   }>;
 
+/** Builds one bounded problem without reflecting untrusted request or dependency detail. */
 function problemException(
   status: number,
   title: string,
@@ -54,6 +58,7 @@ function problemException(
   return new HttpException(problem, status);
 }
 
+/** Rejects malformed data-rights schema or identifier input as an HTTP 400 problem. */
 function invalidRequest(): never {
   throw problemException(
     400,
@@ -62,6 +67,7 @@ function invalidRequest(): never {
   );
 }
 
+/** Rejects forged, replayed, stale, or route-mismatched authority as an HTTP 401 problem. */
 function invalidContext(): never {
   throw problemException(
     401,
@@ -70,6 +76,7 @@ function invalidContext(): never {
   );
 }
 
+/** Rejects unavailable secret or replay-store authority as a credential-free HTTP 503 problem. */
 function unavailableContext(): never {
   throw problemException(
     503,
@@ -78,6 +85,7 @@ function unavailableContext(): never {
   );
 }
 
+/** Requires a plain JSON object before any caller field can influence authority. */
 function requireRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return invalidRequest();
@@ -85,6 +93,7 @@ function requireRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** Requires an exact operation-specific field set so undeclared fields cannot alter downstream meaning. */
 function requireExactKeys(
   record: Record<string, unknown>,
   expectedKeys: readonly string[],
@@ -99,6 +108,7 @@ function requireExactKeys(
   }
 }
 
+/** Requires and canonicalizes one opaque UUIDv4 product identity. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidRequest();
@@ -106,6 +116,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Normalizes exactly the v1 contributor request schema and rejects all other shapes. */
 function normalizeRequest(body: unknown): NormalizedRequest {
   const request = requireRecord(body);
   const commonKeys = [
@@ -151,6 +162,7 @@ function normalizeRequest(body: unknown): NormalizedRequest {
   };
 }
 
+/** Requires the single POST route that owns the v1 Habit contributor transport. */
 function requireRequestBinding(
   binding: HabitDataRightsRequestBinding,
 ): { readonly method: 'POST'; readonly path: typeof CONTRIBUTOR_PATH } {
@@ -160,6 +172,11 @@ function requireRequestBinding(
   return { method: 'POST', path: CONTRIBUTOR_PATH };
 }
 
+/**
+ * Computes the canonical HMAC over contract, tenant, actor, request, operation,
+ * destructive idempotency key (or `-`), issuance time, method, and exact path in
+ * that order. Any change to one field produces a different authority proof.
+ */
 function requestDigest(
   request: NormalizedRequest,
   issuedAt: string,
@@ -187,18 +204,40 @@ function requestDigest(
     .digest();
 }
 
+/** Derives a credential-free replay identity from one already-canonical validated signature. */
+function replayDigest(signature: string): string {
+  return createHash('sha256').update(signature, 'ascii').digest('hex');
+}
+
+/** Converts the signed issuance time into the exact end of the 60-second authority lifetime. */
+function replayExpiresAt(issuedAtSeconds: number): string {
+  const expiresAt = new Date(
+    (issuedAtSeconds + MAXIMUM_CONTEXT_AGE_SECONDS) * 1_000,
+  );
+  if (!Number.isFinite(expiresAt.getTime())) {
+    return unavailableContext();
+  }
+  return expiresAt.toISOString();
+}
+
 /**
- * Parses one exact contributor request and verifies short-lived service authority.
- * The HMAC binds tenant, actor, request, purpose/operation, destructive replay key,
- * lifetime, HTTP method, and resource so credentials cannot authorize another call.
+ * Parses one exact contributor request, verifies short-lived service authority,
+ * and atomically consumes destructive `erase` evidence before persistence can run.
+ *
+ * The HMAC binds tenant, actor, request, purpose/operation, destructive idempotency
+ * key, lifetime, HTTP method, and resource. Only the SHA-256 digest of a validated
+ * signature is persisted for replay control; the short-lived signature itself is
+ * never stored. Non-destructive operations remain replay-safe domain reads/checks
+ * and do not consume the destructive replay store.
  */
-export function parseTrustedHabitDataRightsRequest(
+export async function parseTrustedHabitDataRightsRequest(
   body: unknown,
   headers: TrustedHabitDataRightsContextHeaders,
   secret: unknown,
   requestBinding: HabitDataRightsRequestBinding,
   nowSeconds = Math.floor(Date.now() / 1000),
-): HabitDataRightsRequest {
+  replayGuard?: HabitDataRightsAuthorityReplayGuardPort,
+): Promise<HabitDataRightsRequest> {
   const request = normalizeRequest(body);
   if (
     typeof secret !== 'string' ||
@@ -236,14 +275,30 @@ export function parseTrustedHabitDataRightsRequest(
   ) {
     return invalidContext();
   }
+
+  if (request.operation === 'erase') {
+    if (!replayGuard) {
+      return unavailableContext();
+    }
+    let consumed: boolean;
+    try {
+      consumed = await replayGuard.consume({
+        evidenceDigest: replayDigest(headers.signature),
+        expiresAt: replayExpiresAt(issuedAtSeconds),
+      });
+    } catch {
+      return unavailableContext();
+    }
+    if (!consumed) {
+      return invalidContext();
+    }
+  }
   return request;
 }
 
-/** Maps contributor/runtime failures to a bounded credential-free service error. */
+/** Maps every contributor/runtime failure to one bounded credential-free service error. */
 export function toHabitDataRightsHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
-    return error;
-  }
+  void error;
   return problemException(
     503,
     'Habit data-rights operation is unavailable',

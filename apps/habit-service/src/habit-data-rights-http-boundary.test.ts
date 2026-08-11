@@ -1,6 +1,6 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   parseTrustedHabitDataRightsRequest,
   type HabitDataRightsRequestBinding,
@@ -23,6 +23,11 @@ const EXPORT_REQUEST = {
   workspaceId: WORKSPACE_ID,
   requestedByUserId: USER_ID,
   requestId: REQUEST_ID,
+} as const;
+const ERASE_REQUEST = {
+  ...EXPORT_REQUEST,
+  operation: 'erase',
+  idempotencyKey: IDEMPOTENCY_KEY,
 } as const;
 
 function sign(
@@ -52,10 +57,13 @@ function sign(
     .digest('base64url');
 }
 
-function expectHttpStatus(operation: () => unknown, status: number): void {
+async function expectHttpStatus(
+  operation: () => Promise<unknown>,
+  status: number,
+): Promise<void> {
   let thrown: unknown;
   try {
-    operation();
+    await operation();
   } catch (error) {
     thrown = error;
   }
@@ -67,9 +75,9 @@ function expectHttpStatus(operation: () => unknown, status: number): void {
 }
 
 describe('Habit data-rights trusted HTTP boundary', () => {
-  it('accepts an exact short-lived service-authenticated export request', () => {
+  it('accepts an exact short-lived service-authenticated export request', async () => {
     const issuedAt = String(NOW_SECONDS);
-    expect(
+    await expect(
       parseTrustedHabitDataRightsRequest(
         EXPORT_REQUEST,
         { issuedAt, signature: sign(EXPORT_REQUEST, BINDING, issuedAt) },
@@ -77,56 +85,118 @@ describe('Habit data-rights trusted HTTP boundary', () => {
         BINDING,
         NOW_SECONDS,
       ),
-    ).toEqual(EXPORT_REQUEST);
+    ).resolves.toEqual(EXPORT_REQUEST);
   });
 
-  it('rejects replay of an export signature onto an erase request', () => {
-    const eraseRequest = {
-      ...EXPORT_REQUEST,
-      operation: 'erase',
-      idempotencyKey: IDEMPOTENCY_KEY,
-    } as const;
-    const issuedAt = String(NOW_SECONDS);
+  it('atomically consumes valid destructive authority and rejects an already consumed proof', async () => {
+    const issuedAt = String(NOW_SECONDS - 30);
+    const signature = sign(ERASE_REQUEST, BINDING, issuedAt);
+    const consume = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const replayGuard = { consume };
 
-    expectHttpStatus(
+    await expect(
+      parseTrustedHabitDataRightsRequest(
+        ERASE_REQUEST,
+        { issuedAt, signature },
+        CONTEXT_SECRET,
+        BINDING,
+        NOW_SECONDS,
+        replayGuard,
+      ),
+    ).resolves.toEqual(ERASE_REQUEST);
+    expect(consume).toHaveBeenCalledWith({
+      evidenceDigest: createHash('sha256')
+        .update(signature, 'ascii')
+        .digest('hex'),
+      expiresAt: new Date((NOW_SECONDS + 30) * 1_000).toISOString(),
+    });
+
+    await expectHttpStatus(
       () =>
         parseTrustedHabitDataRightsRequest(
-          eraseRequest,
+          ERASE_REQUEST,
+          { issuedAt, signature },
+          CONTEXT_SECRET,
+          BINDING,
+          NOW_SECONDS,
+          replayGuard,
+        ),
+      401,
+    );
+    expect(consume).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed when destructive replay persistence is absent or unavailable', async () => {
+    const issuedAt = String(NOW_SECONDS);
+    const signature = sign(ERASE_REQUEST, BINDING, issuedAt);
+
+    await expectHttpStatus(
+      () =>
+        parseTrustedHabitDataRightsRequest(
+          ERASE_REQUEST,
+          { issuedAt, signature },
+          CONTEXT_SECRET,
+          BINDING,
+          NOW_SECONDS,
+        ),
+      503,
+    );
+    await expectHttpStatus(
+      () =>
+        parseTrustedHabitDataRightsRequest(
+          ERASE_REQUEST,
+          { issuedAt, signature },
+          CONTEXT_SECRET,
+          BINDING,
+          NOW_SECONDS,
+          { consume: vi.fn().mockRejectedValue(new Error('database detail')) },
+        ),
+      503,
+    );
+  });
+
+  it('rejects replay of an export signature onto an erase request', async () => {
+    const issuedAt = String(NOW_SECONDS);
+
+    await expectHttpStatus(
+      () =>
+        parseTrustedHabitDataRightsRequest(
+          ERASE_REQUEST,
           { issuedAt, signature: sign(EXPORT_REQUEST, BINDING, issuedAt) },
           CONTEXT_SECRET,
           BINDING,
           NOW_SECONDS,
+          { consume: vi.fn().mockResolvedValue(true) },
         ),
       401,
     );
   });
 
-  it('binds destructive authority to the exact idempotency key', () => {
-    const eraseRequest = {
-      ...EXPORT_REQUEST,
-      operation: 'erase',
-      idempotencyKey: IDEMPOTENCY_KEY,
-    } as const;
+  it('binds destructive authority to the exact idempotency key', async () => {
     const tamperedRequest = {
-      ...eraseRequest,
+      ...ERASE_REQUEST,
       idempotencyKey: '55555555-5555-4555-8555-555555555555',
     } as const;
     const issuedAt = String(NOW_SECONDS);
 
-    expectHttpStatus(
+    await expectHttpStatus(
       () =>
         parseTrustedHabitDataRightsRequest(
           tamperedRequest,
-          { issuedAt, signature: sign(eraseRequest, BINDING, issuedAt) },
+          { issuedAt, signature: sign(ERASE_REQUEST, BINDING, issuedAt) },
           CONTEXT_SECRET,
           BINDING,
           NOW_SECONDS,
+          { consume: vi.fn().mockResolvedValue(true) },
         ),
       401,
     );
   });
 
-  it('rejects a valid signature replayed to another method or path', () => {
+  it('rejects a valid signature replayed to another method or path', async () => {
     const issuedAt = String(NOW_SECONDS);
     const signature = sign(EXPORT_REQUEST, BINDING, issuedAt);
 
@@ -134,7 +204,7 @@ describe('Habit data-rights trusted HTTP boundary', () => {
       { method: 'GET', path: BINDING.path },
       { method: 'POST', path: '/v1/internal/data-rights/other' },
     ]) {
-      expectHttpStatus(
+      await expectHttpStatus(
         () =>
           parseTrustedHabitDataRightsRequest(
             EXPORT_REQUEST,
@@ -148,11 +218,11 @@ describe('Habit data-rights trusted HTTP boundary', () => {
     }
   });
 
-  it('rejects stale authority, malformed UUIDs, extra fields, and missing secrets', () => {
+  it('rejects stale authority, malformed UUIDs, extra fields, and missing secrets', async () => {
     const issuedAt = String(NOW_SECONDS);
     const signature = sign(EXPORT_REQUEST, BINDING, issuedAt);
 
-    expectHttpStatus(
+    await expectHttpStatus(
       () =>
         parseTrustedHabitDataRightsRequest(
           EXPORT_REQUEST,
@@ -163,7 +233,7 @@ describe('Habit data-rights trusted HTTP boundary', () => {
         ),
       401,
     );
-    expectHttpStatus(
+    await expectHttpStatus(
       () =>
         parseTrustedHabitDataRightsRequest(
           { ...EXPORT_REQUEST, workspaceId: 'workspace-one' },
@@ -174,7 +244,7 @@ describe('Habit data-rights trusted HTTP boundary', () => {
         ),
       400,
     );
-    expectHttpStatus(
+    await expectHttpStatus(
       () =>
         parseTrustedHabitDataRightsRequest(
           { ...EXPORT_REQUEST, unexpected: true },
@@ -185,7 +255,7 @@ describe('Habit data-rights trusted HTTP boundary', () => {
         ),
       400,
     );
-    expectHttpStatus(
+    await expectHttpStatus(
       () =>
         parseTrustedHabitDataRightsRequest(
           EXPORT_REQUEST,

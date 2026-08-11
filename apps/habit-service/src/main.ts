@@ -189,16 +189,18 @@ export class HabitDataRightsController {
     @Headers('x-life-os-data-rights-signature') signature: string | undefined,
     @Body() body: unknown,
   ): Promise<HabitDataRightsResponse> {
+    const request = await parseTrustedHabitDataRightsRequest(
+      body,
+      { issuedAt, signature },
+      process.env.HABIT_DATA_RIGHTS_CONTEXT_SECRET,
+      {
+        method: 'POST',
+        path: '/v1/internal/data-rights/contributor',
+      },
+      Math.floor(Date.now() / 1000),
+      this.runtime.dataRightsAuthorityReplayGuard,
+    );
     try {
-      const request = parseTrustedHabitDataRightsRequest(
-        body,
-        { issuedAt, signature },
-        process.env.HABIT_DATA_RIGHTS_CONTEXT_SECRET,
-        {
-          method: 'POST',
-          path: '/v1/internal/data-rights/contributor',
-        },
-      );
       return await this.runtime.dataRightsContributor.handle(request);
     } catch (error) {
       throw toHabitDataRightsHttpException(error);
