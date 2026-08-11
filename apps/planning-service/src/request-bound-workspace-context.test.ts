@@ -1,10 +1,10 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { requireTrustedWorkspaceContext } from './http-boundary';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const GATEWAY_SECRET = 'trusted-gateway-context-secret-32-bytes';
+const GATEWAY_SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_785_806_400;
 const SEARCH_BINDING = { method: 'GET', path: '/v1/search' } as const;
 const GOAL_CREATE_BINDING = { method: 'POST', path: '/v1/goals' } as const;
