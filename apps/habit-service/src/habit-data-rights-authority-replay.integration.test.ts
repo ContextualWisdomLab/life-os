@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
@@ -69,7 +70,9 @@ describeWithPostgres('Habit data-rights authority replay PostgreSQL integration'
       new PoolSqlClient(administrativePool),
     );
     const rawSignature = 'sensitive-short-lived-proof';
-    const evidenceDigest = 'a'.repeat(64);
+    const evidenceDigest = createHash('sha256')
+      .update(rawSignature, 'ascii')
+      .digest('hex');
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
     const results = await Promise.all([
