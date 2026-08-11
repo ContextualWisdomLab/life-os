@@ -162,6 +162,26 @@ describe('authenticated plugin operator composition', () => {
     });
   });
 
+  it('rejects reusing the same valid signed evidence before downstream authority', async () => {
+    const installations = installationPort();
+    const app = application(installations);
+    const headers = signedHeaders('POST', '/v1/plugins/installations');
+    const input = {
+      installationId: INSTALLATION_ID,
+      manifest: MANIFEST,
+      grantedCapabilities: ['lifeos.calendar.event.v1'],
+    } as const;
+
+    await expect(app.install(headers, input)).resolves.toEqual(
+      INSTALLATION_RECORD,
+    );
+    await expect(app.install(headers, input)).rejects.toMatchObject({
+      name: 'IntegrationOperatorContextError',
+      kind: 'invalid',
+    });
+    expect(installations.install).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects replaying a read signature as revocation before application authority', async () => {
     const installations = installationPort();
     const app = application(installations);
