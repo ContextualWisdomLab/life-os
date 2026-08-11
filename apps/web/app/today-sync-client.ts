@@ -341,6 +341,10 @@ export async function handleTodaySyncRequest(
       workspaceId,
       secret,
       nowSeconds,
+      {
+        method: request.method as 'GET' | 'PUT',
+        path: `/v1/today/${safeDate}`,
+      },
     );
     const planningResponse = await fetcher(
       new URL(`/v1/today/${safeDate}`, planningOrigin),
