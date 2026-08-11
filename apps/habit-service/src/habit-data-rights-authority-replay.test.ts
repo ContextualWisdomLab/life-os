@@ -58,6 +58,7 @@ describe('PostgresHabitDataRightsAuthorityReplayGuard', () => {
     for (const evidence of [
       { evidenceDigest: 'not-a-digest', expiresAt: EXPIRES_AT },
       { evidenceDigest: DIGEST, expiresAt: '2026-08-12' },
+      { evidenceDigest: DIGEST, expiresAt: '2026-02-30T00:00:00.000Z' },
     ]) {
       await expect(guard.consume(evidence)).rejects.toBeInstanceOf(
         HabitDataRightsAuthorityReplayError,
