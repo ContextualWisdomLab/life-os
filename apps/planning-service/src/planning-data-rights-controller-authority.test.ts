@@ -12,6 +12,10 @@ const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 const SECRET = randomBytes(32).toString('base64url');
 const CONTRIBUTOR_PATH = '/v1/internal/data-rights/contributor';
+const HTTP_REQUEST = Object.freeze({
+  method: 'POST',
+  originalUrl: CONTRIBUTOR_PATH,
+});
 
 const request = Object.freeze({
   contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
@@ -62,16 +66,23 @@ describe('Planning data-rights controller authority', () => {
       contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
       contributor: 'planning.service',
       requestId: REQUEST_ID,
-      operation: 'erase_preflight',
-      ready: true,
-      blockers: [],
+      operation: 'export',
+      schemaVersion: 'planning.data-rights.v1',
+      recordCount: 0,
+      sha256: '0'.repeat(64),
+      data: {},
     };
     const handle = vi.fn().mockResolvedValue(response);
     const controller = controllerWith(handle);
     const issuedAt = String(Math.floor(Date.now() / 1000));
 
     await expect(
-      controller.contribute(issuedAt, signature(issuedAt), request),
+      controller.contribute(
+        HTTP_REQUEST,
+        issuedAt,
+        signature(issuedAt),
+        request,
+      ),
     ).resolves.toEqual(response);
     expect(handle).toHaveBeenCalledTimes(1);
     expect(handle).toHaveBeenCalledWith(request);
@@ -84,7 +95,24 @@ describe('Planning data-rights controller authority', () => {
     const issuedAt = String(Math.floor(Date.now() / 1000));
 
     await expect(
-      controller.contribute(issuedAt, 'A'.repeat(43), request),
+      controller.contribute(HTTP_REQUEST, issuedAt, 'A'.repeat(43), request),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(handle).not.toHaveBeenCalled();
+  });
+
+  it('rejects a signature replayed onto a different actual HTTP binding', async () => {
+    process.env.PLANNING_DATA_RIGHTS_CONTEXT_SECRET = SECRET;
+    const handle = vi.fn();
+    const controller = controllerWith(handle);
+    const issuedAt = String(Math.floor(Date.now() / 1000));
+
+    await expect(
+      controller.contribute(
+        { method: 'GET', originalUrl: CONTRIBUTOR_PATH },
+        issuedAt,
+        signature(issuedAt),
+        request,
+      ),
     ).rejects.toMatchObject({ status: 401 });
     expect(handle).not.toHaveBeenCalled();
   });
@@ -95,7 +123,12 @@ describe('Planning data-rights controller authority', () => {
     const issuedAt = String(Math.floor(Date.now() / 1000));
 
     await expect(
-      controller.contribute(issuedAt, signature(issuedAt), request),
+      controller.contribute(
+        HTTP_REQUEST,
+        issuedAt,
+        signature(issuedAt),
+        request,
+      ),
     ).rejects.toMatchObject({ status: 503 });
     expect(handle).not.toHaveBeenCalled();
   });
