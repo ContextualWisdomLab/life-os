@@ -21,19 +21,23 @@ function signContext(
 }
 
 function expectInvalid(operation: () => unknown): void {
+  let thrown: unknown;
   try {
     operation();
-    throw new Error('Expected request-bound context to be rejected');
   } catch (error) {
-    expect(error).toBeInstanceOf(HttpException);
-    expect((error as HttpException).getStatus()).toBe(401);
-    expect((error as HttpException).getResponse()).toEqual({
-      type: 'about:blank',
-      title: 'Trusted gateway context is invalid',
-      status: 401,
-      code: 'invalid_gateway_context',
-    });
+    thrown = error;
   }
+  if (thrown === undefined) {
+    throw new Error('Expected request-bound context to be rejected');
+  }
+  expect(thrown).toBeInstanceOf(HttpException);
+  expect((thrown as HttpException).getStatus()).toBe(401);
+  expect((thrown as HttpException).getResponse()).toEqual({
+    type: 'about:blank',
+    title: 'Trusted gateway context is invalid',
+    status: 401,
+    code: 'invalid_gateway_context',
+  });
 }
 
 describe('planning request-bound workspace authority', () => {
