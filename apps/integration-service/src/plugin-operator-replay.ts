@@ -89,8 +89,8 @@ function replayEvidence(
  *
  * A primary-key insert is the distributed compare-and-set boundary: exactly one
  * service instance can consume a signed evidence UUID. Expired rows are pruned
- * opportunistically, while still-valid rows remain durable across processes so
- * horizontal replicas cannot replay the same authority independently.
+ * against the database clock, while still-valid rows remain durable across
+ * processes so horizontal replicas cannot replay the same authority independently.
  */
 export class PostgresPluginOperatorReplayGuard
   implements PluginOperatorReplayGuardPort
@@ -103,8 +103,7 @@ export class PostgresPluginOperatorReplayGuard
     const safe = replayEvidence(evidence);
     await this.client.query(
       `DELETE FROM plugin_integration.plugin_operator_context_replay_record
-       WHERE expires_at < $1::timestamptz`,
-      [safe.consumedAt],
+       WHERE expires_at < now()`,
     );
     const inserted = await this.client.query<ReplayEvidenceRow>(
       `INSERT INTO plugin_integration.plugin_operator_context_replay_record (
