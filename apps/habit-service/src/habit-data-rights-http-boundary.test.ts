@@ -144,17 +144,24 @@ describe('Habit data-rights trusted HTTP boundary', () => {
         ),
       503,
     );
-    await expectHttpStatus(
-      () =>
-        parseTrustedHabitDataRightsRequest(
-          ERASE_REQUEST,
-          { issuedAt, signature },
-          CONTEXT_SECRET,
-          BINDING,
-          NOW_SECONDS,
-          { consume: vi.fn().mockRejectedValue(new Error('database detail')) },
-        ),
-      503,
+
+    let thrown: unknown;
+    try {
+      await parseTrustedHabitDataRightsRequest(
+        ERASE_REQUEST,
+        { issuedAt, signature },
+        CONTEXT_SECRET,
+        BINDING,
+        NOW_SECONDS,
+        { consume: vi.fn().mockRejectedValue(new Error('database detail')) },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(HttpException);
+    expect((thrown as HttpException).getStatus()).toBe(503);
+    expect(JSON.stringify((thrown as HttpException).getResponse())).not.toContain(
+      'database detail',
     );
   });
 
