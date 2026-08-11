@@ -238,7 +238,9 @@ function canonicalJson(value: ReviewDataRightsJsonValue): string {
 }
 
 function digest(value: ReviewDataRightsJsonValue): string {
-  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+  return createHash('sha256')
+    .update(canonicalJson(value), 'utf8')
+    .digest('hex');
 }
 
 function normalizeRequest(request: ReviewDataRightsRequest): {
@@ -272,7 +274,9 @@ function normalizeRequest(request: ReviewDataRightsRequest): {
   };
 }
 
-function normalizeCompletion(row: CompletionExportRow): ReviewDataRightsJsonValue {
+function normalizeCompletion(
+  row: CompletionExportRow,
+): ReviewDataRightsJsonValue {
   const ritualKind = requireString(row.ritual_kind, 'ritual_kind', 32);
   if (
     ritualKind !== 'daily-planning' &&
@@ -281,7 +285,12 @@ function normalizeCompletion(row: CompletionExportRow): ReviewDataRightsJsonValu
   ) {
     return fail('ritual_kind is invalid');
   }
-  const totalStepCount = requireInteger(row.total_step_count, 'total_step_count', 1, 64);
+  const totalStepCount = requireInteger(
+    row.total_step_count,
+    'total_step_count',
+    1,
+    64,
+  );
   const completedStepCount = requireInteger(
     row.completed_step_count,
     'completed_step_count',
@@ -316,7 +325,11 @@ function normalizeCompletion(row: CompletionExportRow): ReviewDataRightsJsonValu
       0,
       10_000,
     ),
-    reflection: requireOptionalString(row.reflection_text, 'reflection_text', 2_000),
+    reflection: requireOptionalString(
+      row.reflection_text,
+      'reflection_text',
+      2_000,
+    ),
     completedAt: requireTimestamp(row.completed_at, 'completed_at'),
     payloadDigest: requireSha256(row.payload_digest, 'payload_digest'),
     recordedAt: requireTimestamp(row.recorded_at, 'recorded_at'),
@@ -371,7 +384,9 @@ function normalizeReceipt(row: ReceiptRow): {
 /** Concrete Review-owned implementation of life-os.data-rights-contributor.v1. */
 export class ReviewDataRightsContributor {
   /** Creates a contributor over Review-owned transactional persistence only. */
-  constructor(private readonly client: ReviewDataRightsTransactionalSqlClient) {}
+  constructor(
+    private readonly client: ReviewDataRightsTransactionalSqlClient,
+  ) {}
 
   /** Validates one request before dispatching to Review-owned export/erasure work. */
   async handle(
@@ -460,7 +475,9 @@ export class ReviewDataRightsContributor {
     };
   }
 
-  private async preflightErase(requestId: string): Promise<ReviewDataRightsResponse> {
+  private async preflightErase(
+    requestId: string,
+  ): Promise<ReviewDataRightsResponse> {
     const privileges = await this.readPrivileges(this.client);
     const blockers: string[] = [];
     if (!privileges.completionsReady) {
