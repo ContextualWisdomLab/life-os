@@ -1,7 +1,8 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReviewController } from './main';
+import { signReviewTestContext } from './review-context.test-helper';
 import type { ReviewService } from './review-domain';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -103,12 +104,12 @@ function signedHeaders(
   issuedAtSeconds: number,
 ): RouteHeaders {
   const issuedAt = String(issuedAtSeconds);
-  const signature = createHmac('sha256', CONTEXT_SECRET)
-    .update(
-      `life-os.review-context.v1\n${WORKSPACE_ID}\n${issuedAt}\n${route.method}\n${route.path}`,
-      'utf8',
-    )
-    .digest('base64url');
+  const signature = signReviewTestContext({
+    secret: CONTEXT_SECRET,
+    workspaceId: WORKSPACE_ID,
+    issuedAt,
+    binding: { method: route.method, path: route.path },
+  });
   return { workspaceId: WORKSPACE_ID, issuedAt, signature };
 }
 
