@@ -105,6 +105,14 @@ describe('plugin operator replay migration contract', () => {
     expect(sql).toContain(
       'ON plugin_integration.plugin_operator_context_replay_record (expires_at)',
     );
+    for (const documentedContract of [
+      'COMMENT ON TABLE plugin_integration.plugin_operator_context_replay_record',
+      'COMMENT ON COLUMN plugin_integration.plugin_operator_context_replay_record.evidence_id',
+      'COMMENT ON COLUMN plugin_integration.plugin_operator_context_replay_record.consumed_at',
+      'COMMENT ON COLUMN plugin_integration.plugin_operator_context_replay_record.expires_at',
+    ]) {
+      expect(sql).toContain(documentedContract);
+    }
     expect(sql).not.toMatch(
       /\b(workspace_id|user_id|installed_by_user_id|signature|secret|token|password)\b/iu,
     );
@@ -143,6 +151,25 @@ describeWithPostgres('plugin operator replay PostgreSQL constraints', () => {
         SELECT count(*)
         FROM plugin_integration.plugin_operator_context_replay_record
         WHERE evidence_id = '77777777-7777-4777-8777-777777777777'::uuid;
+      `),
+    ).toBe('1');
+  });
+
+  it('accepts a zero-length retention boundary when consumption and expiry are identical', () => {
+    requireSqlSuccess(`
+      INSERT INTO plugin_integration.plugin_operator_context_replay_record (
+        evidence_id, consumed_at, expires_at
+      ) VALUES (
+        '99999999-9999-4999-8999-999999999999',
+        '2026-08-11T14:35:00.000Z',
+        '2026-08-11T14:35:00.000Z'
+      );
+    `);
+    expect(
+      requireSqlSuccess(`
+        SELECT count(*)
+        FROM plugin_integration.plugin_operator_context_replay_record
+        WHERE evidence_id = '99999999-9999-4999-8999-999999999999'::uuid;
       `),
     ).toBe('1');
   });
