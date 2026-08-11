@@ -21,6 +21,12 @@ import {
   CalendarConnectionDisconnectValidationError,
 } from './calendar-connection-disconnect';
 import {
+  CalendarConnectionReadApplication,
+  CalendarConnectionReadEvidenceError,
+  type CalendarConnectionReadResult,
+  CalendarConnectionReadValidationError,
+} from './calendar-connection-read';
+import {
   CalendarContextInvalidError,
   CalendarContextUnavailableError,
   requireTrustedCalendarUserContext,
@@ -40,6 +46,10 @@ import { GoogleCalendarProvider } from './google-calendar-provider';
 export const CALENDAR_SYNC_SERVICE = Symbol('CALENDAR_SYNC_SERVICE');
 export const CALENDAR_CONNECTION_DISCONNECT_APPLICATION = Symbol(
   'CALENDAR_CONNECTION_DISCONNECT_APPLICATION',
+);
+/** DI token for the authenticated, tenant/user-scoped calendar read application. */
+export const CALENDAR_CONNECTION_READ_APPLICATION = Symbol(
+  'CALENDAR_CONNECTION_READ_APPLICATION',
 );
 
 interface CalendarProblemDetails {
@@ -130,6 +140,83 @@ export class CalendarSyncController {
   }
 }
 
+/** Authenticated hosted boundary for reading user-owned calendar connection state. */
+@Controller()
+export class CalendarConnectionReadController {
+  /** Creates the controller over the credential-free connection read boundary. */
+  constructor(
+    @Inject(CALENDAR_CONNECTION_READ_APPLICATION)
+    private readonly readApplication: CalendarConnectionReadApplication,
+  ) {}
+
+  /** Reads one active owned connection without returning provider secret handles. */
+  @Get('v1/calendar/connections/:connectionId')
+  async getConnection(
+    @Param('connectionId') connectionId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature')
+    contextSignature: string | undefined,
+  ): Promise<CalendarConnectionReadResult> {
+    try {
+      const authority = requireTrustedCalendarUserContext(
+        { workspaceId, userId, issuedAt, signature: contextSignature },
+        process.env.CALENDAR_GATEWAY_CONTEXT_SECRET,
+      );
+      const result = await this.readApplication.getActive(
+        authority,
+        connectionId,
+      );
+      if (!result) {
+        throw problem(
+          404,
+          'Calendar connection was not found',
+          'calendar_connection_not_found',
+        );
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof CalendarContextInvalidError) {
+        throw problem(
+          401,
+          'Calendar connection context is invalid',
+          'invalid_gateway_context',
+        );
+      }
+      if (error instanceof CalendarContextUnavailableError) {
+        throw problem(
+          503,
+          'Calendar connection context is unavailable',
+          'calendar_context_unavailable',
+        );
+      }
+      if (error instanceof CalendarConnectionReadValidationError) {
+        throw problem(
+          400,
+          'Calendar connection input is invalid',
+          'invalid_request',
+        );
+      }
+      if (error instanceof CalendarConnectionReadEvidenceError) {
+        throw problem(
+          503,
+          'Calendar connection persistence is unavailable',
+          'calendar_connection_unavailable',
+        );
+      }
+      throw problem(
+        503,
+        'Calendar connection operation is unavailable',
+        'calendar_connection_unavailable',
+      );
+    }
+  }
+}
+
 /** Authenticated hosted boundary for user-owned calendar-connection lifecycle actions. */
 @Controller()
 export class CalendarConnectionController {
@@ -147,7 +234,8 @@ export class CalendarConnectionController {
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
-    @Headers('x-life-os-context-signature') contextSignature: string | undefined,
+    @Headers('x-life-os-context-signature')
+    contextSignature: string | undefined,
   ): Promise<CalendarConnectionDisconnectResult> {
     try {
       const authority = requireTrustedCalendarUserContext(
@@ -210,28 +298,40 @@ export class CalendarConnectionController {
 @Module({})
 export class CalendarAppModule {
   /**
-   * Registers standalone calendar sync and, when supplied by the host, the
-   * authenticated user-owned connection lifecycle boundary.
+   * Registers standalone calendar sync plus any supplied authenticated
+   * user-owned connection lifecycle boundaries.
    */
   static register(
     provider: CalendarProvider,
     disconnectApplication?: CalendarConnectionDisconnectApplication,
+    readApplication?: CalendarConnectionReadApplication,
   ): DynamicModule {
     return {
       module: CalendarAppModule,
-      controllers: disconnectApplication
-        ? [CalendarSyncController, CalendarConnectionController]
-        : [CalendarSyncController],
+      controllers: [
+        CalendarSyncController,
+        ...(disconnectApplication ? [CalendarConnectionController] : []),
+        ...(readApplication ? [CalendarConnectionReadController] : []),
+      ],
       providers: [
         {
           provide: CALENDAR_SYNC_SERVICE,
-          useFactory: (): CalendarSyncService => new CalendarSyncService(provider),
+          useFactory: (): CalendarSyncService =>
+            new CalendarSyncService(provider),
         },
         ...(disconnectApplication
           ? [
               {
                 provide: CALENDAR_CONNECTION_DISCONNECT_APPLICATION,
                 useValue: disconnectApplication,
+              },
+            ]
+          : []),
+        ...(readApplication
+          ? [
+              {
+                provide: CALENDAR_CONNECTION_READ_APPLICATION,
+                useValue: readApplication,
               },
             ]
           : []),
