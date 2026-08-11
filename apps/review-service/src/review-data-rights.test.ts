@@ -130,7 +130,9 @@ class FakeReviewDataRightsClient
       }
       return { rows: deleted.map(({ id }) => ({ id }) as Row) };
     }
-    if (text.startsWith('INSERT INTO guided_review.data_rights_erasure_receipt')) {
+    if (
+      text.startsWith('INSERT INTO guided_review.data_rights_erasure_receipt')
+    ) {
       const [
         idempotencyKey,
         workspaceId,
@@ -164,7 +166,9 @@ function contributor(client: FakeReviewDataRightsClient) {
   return new ReviewDataRightsContributor(client);
 }
 
-function baseRequest(operation: 'export' | 'erase_preflight' | 'verify_erased') {
+function baseRequest(
+  operation: 'export' | 'erase_preflight' | 'verify_erased',
+) {
   return {
     contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
     operation,
@@ -181,8 +185,18 @@ describe('ReviewDataRightsContributor', () => {
     const privateId = '88888888-8888-4888-8888-888888888888';
     const client = new FakeReviewDataRightsClient([
       completion(WORKSPACE_ID, secondId, '2026-08-12T02:00:00.000Z', null),
-      completion(OTHER_WORKSPACE_ID, privateId, '2026-08-12T00:00:00.000Z', 'private'),
-      completion(WORKSPACE_ID, firstId, '2026-08-12T01:00:00.000Z', 'portable'),
+      completion(
+        OTHER_WORKSPACE_ID,
+        privateId,
+        '2026-08-12T00:00:00.000Z',
+        'private',
+      ),
+      completion(
+        WORKSPACE_ID,
+        firstId,
+        '2026-08-12T01:00:00.000Z',
+        'portable',
+      ),
     ]);
 
     const first = await contributor(client).handle(baseRequest('export'));
@@ -212,7 +226,9 @@ describe('ReviewDataRightsContributor', () => {
 
   it('preflights destructive authority without treating missing privileges as success', async () => {
     const client = new FakeReviewDataRightsClient([]);
-    const ready = await contributor(client).handle(baseRequest('erase_preflight'));
+    const ready = await contributor(client).handle(
+      baseRequest('erase_preflight'),
+    );
     expect(ready).toMatchObject({
       operation: 'erase_preflight',
       ready: true,
@@ -239,7 +255,12 @@ describe('ReviewDataRightsContributor', () => {
     const privateId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     const client = new FakeReviewDataRightsClient([
       completion(WORKSPACE_ID, ownedId, '2026-08-12T01:00:00.000Z', null),
-      completion(OTHER_WORKSPACE_ID, privateId, '2026-08-12T01:00:00.000Z', null),
+      completion(
+        OTHER_WORKSPACE_ID,
+        privateId,
+        '2026-08-12T01:00:00.000Z',
+        null,
+      ),
     ]);
     const subject = contributor(client);
     const eraseRequest = {
