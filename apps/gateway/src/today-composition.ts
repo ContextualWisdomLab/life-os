@@ -371,10 +371,14 @@ function workspaceContextHeaders(
   workspaceId: string,
   secret: string,
   nowSeconds: number,
+  planningBinding?: Readonly<{ method: 'GET'; path: string }>,
 ): Readonly<Record<string, string>> {
   const issuedAt = String(requireNowSeconds(nowSeconds));
+  const payload = planningBinding
+    ? `life-os.planning-context.v2\n${workspaceId}\n${issuedAt}\n${planningBinding.method}\n${planningBinding.path}`
+    : `life-os.workspace.v1\n${workspaceId}\n${issuedAt}`;
   const signature = createHmac('sha256', secret)
-    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .update(payload, 'utf8')
     .digest('base64url');
   return Object.freeze({
     'x-life-os-workspace-id': workspaceId,
@@ -434,12 +438,16 @@ async function composePlanning(
 
   let planningResponse: Response;
   try {
+    const planningPath = `/v1/today/${safeDate}`;
     planningResponse = await fetcher(
-      new URL(`/v1/today/${safeDate}`, planningOrigin),
+      new URL(planningPath, planningOrigin),
       {
         method: 'GET',
         headers: serviceHeaders({
-          ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds),
+          ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds, {
+            method: 'GET',
+            path: planningPath,
+          }),
           'x-correlation-id': correlationId,
         }),
         cache: 'no-store',
