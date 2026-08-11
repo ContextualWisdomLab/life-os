@@ -98,7 +98,10 @@ function controllerWith(service: ReviewServiceSpies): ReviewController {
 }
 
 /** Produces a request-bound HMAC gateway assertion at one issue time. */
-function signedHeaders(route: RouteCase, issuedAtSeconds: number): RouteHeaders {
+function signedHeaders(
+  route: RouteCase,
+  issuedAtSeconds: number,
+): RouteHeaders {
   const issuedAt = String(issuedAtSeconds);
   const signature = createHmac('sha256', CONTEXT_SECRET)
     .update(
@@ -142,7 +145,9 @@ describe.sequential('Review controller tenant authority contract', () => {
 
       for (const route of ROUTES) {
         vi.clearAllMocks();
-        expect(await rejectedStatus(route.invoke(controller, headers))).toBe(401);
+        expect(await rejectedStatus(route.invoke(controller, headers))).toBe(
+          401,
+        );
         expect(service[route.serviceMethod], route.name).not.toHaveBeenCalled();
       }
     },
@@ -159,7 +164,9 @@ describe.sequential('Review controller tenant authority contract', () => {
       for (const route of ROUTES) {
         vi.clearAllMocks();
         await route.invoke(controller, signedHeaders(route, nowSeconds));
-        expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(1);
+        expect(service[route.serviceMethod], route.name).toHaveBeenCalledTimes(
+          1,
+        );
         expect(service[route.serviceMethod].mock.calls[0]?.[0], route.name).toBe(
           WORKSPACE_ID,
         );
