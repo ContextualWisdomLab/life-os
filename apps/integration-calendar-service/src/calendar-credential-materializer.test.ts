@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { TrustedCalendarUserContext } from './calendar-service-context';
 import type { CalendarConnectionRecord } from './calendar-connection-repository';
@@ -9,6 +10,8 @@ import {
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const CONNECTION_ID = '33333333-3333-4333-8333-333333333333';
+const ACCESS_MATERIAL = randomBytes(24).toString('base64url');
+const REFRESH_MATERIAL = randomBytes(24).toString('base64url');
 const AUTHORITY: TrustedCalendarUserContext = Object.freeze({
   workspaceId: WORKSPACE_ID,
   userId: USER_ID,
@@ -36,10 +39,10 @@ function connection(
   });
 }
 
-function materializer(record: CalendarConnectionRecord | undefined = connection()) {
+function materializer(record: CalendarConnectionRecord | undefined) {
   const getActiveConnection = vi.fn().mockResolvedValue(record);
   const readSecret = vi.fn(async (handle: string) =>
-    handle.includes('/refresh-') ? 'refresh-token-value' : 'access-token-value',
+    handle.includes('/refresh-') ? REFRESH_MATERIAL : ACCESS_MATERIAL,
   );
   return {
     getActiveConnection,
@@ -61,15 +64,15 @@ async function expectMaterializationFailure(
 
 describe('CalendarCredentialMaterializer', () => {
   it('materializes only the exact active connection inside trusted user authority', async () => {
-    const fixture = materializer();
+    const fixture = materializer(connection());
 
     await expect(
       fixture.subject.materialize(AUTHORITY, CONNECTION_ID),
     ).resolves.toEqual({
       connectionId: CONNECTION_ID,
       providerCode: 'google',
-      accessToken: 'access-token-value',
-      refreshToken: 'refresh-token-value',
+      accessToken: ACCESS_MATERIAL,
+      refreshToken: REFRESH_MATERIAL,
       tokenExpiresAt: '2026-08-12T12:00:00.000Z',
       selectedCalendarIdentifier: 'primary',
     });
@@ -110,7 +113,9 @@ describe('CalendarCredentialMaterializer', () => {
 
   it('fails closed when secret materialization is unavailable without exposing provider errors', async () => {
     const getActiveConnection = vi.fn().mockResolvedValue(connection());
-    const readSecret = vi.fn().mockRejectedValue(new Error('kms token leaked-value'));
+    const readSecret = vi
+      .fn()
+      .mockRejectedValue(new Error('provider sensitive-material marker'));
     const subject = new CalendarCredentialMaterializer(
       { getActiveConnection },
       { readSecret },
@@ -123,14 +128,16 @@ describe('CalendarCredentialMaterializer', () => {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(CalendarCredentialMaterializationError);
-    expect((thrown as Error).message).not.toContain('leaked-value');
+    expect((thrown as Error).message).not.toContain('sensitive-material');
   });
 
   it('rejects empty, oversized, or control-character secret values', async () => {
-    for (const secretValue of ['', 'a'.repeat(16_385), 'token\nvalue']) {
-      const getActiveConnection = vi.fn().mockResolvedValue(connection({
-        refreshSecretHandle: null,
-      }));
+    for (const secretValue of ['', 'a'.repeat(16_385), 'material\nvalue']) {
+      const getActiveConnection = vi.fn().mockResolvedValue(
+        connection({
+          refreshSecretHandle: null,
+        }),
+      );
       const readSecret = vi.fn().mockResolvedValue(secretValue);
       const subject = new CalendarCredentialMaterializer(
         { getActiveConnection },
