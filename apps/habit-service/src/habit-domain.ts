@@ -41,6 +41,15 @@ export interface HabitCompletionEvent {
   recordedAt: string;
 }
 
+/** Habit-owned evidence needed to render one local-date Today view. */
+export interface HabitTodayStatus {
+  habitId: string;
+  title: string;
+  scheduledLocalDate: string;
+  completed: boolean;
+  completionId?: string;
+}
+
 export interface HabitRepository {
   saveHabit(habit: Habit): Promise<void>;
   findHabit(workspaceId: string, habitId: string): Promise<Habit | undefined>;
@@ -367,6 +376,50 @@ export class HabitService {
 
   async listHabits(workspaceId: string): Promise<Habit[]> {
     return await this.repository.listHabits(requireOpaqueId(workspaceId));
+  }
+
+  /** Returns Habit-owned scheduled/completion evidence for one local date. */
+  async listTodayHabits(
+    workspaceId: string,
+    localDate: string,
+  ): Promise<HabitTodayStatus[]> {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const safeLocalDate = parseLocalDate(localDate).text;
+    const habits = await this.repository.listHabits(safeWorkspaceId);
+    const today: HabitTodayStatus[] = [];
+
+    for (const habit of habits) {
+      if (
+        generateHabitOccurrences(habit, safeLocalDate, safeLocalDate).length !==
+        1
+      ) {
+        continue;
+      }
+      const completions = await this.repository.listCompletions(
+        safeWorkspaceId,
+        habit.id,
+      );
+      const completion = [...completions]
+        .reverse()
+        .find((event) => event.scheduledLocalDate === safeLocalDate);
+      today.push(
+        completion
+          ? {
+              habitId: habit.id,
+              title: habit.title,
+              scheduledLocalDate: safeLocalDate,
+              completed: true,
+              completionId: completion.id,
+            }
+          : {
+              habitId: habit.id,
+              title: habit.title,
+              scheduledLocalDate: safeLocalDate,
+              completed: false,
+            },
+      );
+    }
+    return today;
   }
 
   async listOccurrences(
