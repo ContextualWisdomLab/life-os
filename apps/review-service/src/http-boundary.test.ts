@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import {
@@ -8,6 +8,7 @@ import {
   toReviewHttpException,
   type ReviewTrustedRequestBinding,
 } from './http-boundary';
+import { signReviewTestContext } from './review-context.test-helper';
 import {
   ReviewCompletionConflictError,
   ReviewValidationError,
@@ -42,12 +43,12 @@ function signature(
   binding: { method: 'GET' | 'POST'; path: string } = HISTORY_BINDING,
   workspaceId = WORKSPACE_ID,
 ): string {
-  return createHmac('sha256', SECRET)
-    .update(
-      `life-os.review-context.v1\n${workspaceId}\n${issuedAt}\n${binding.method}\n${binding.path}`,
-      'utf8',
-    )
-    .digest('base64url');
+  return signReviewTestContext({
+    secret: SECRET,
+    workspaceId,
+    issuedAt,
+    binding,
+  });
 }
 
 function expectTrustedContextRejection(
