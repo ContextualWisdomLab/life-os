@@ -113,9 +113,6 @@ describe('plugin operator replay migration contract', () => {
     ]) {
       expect(sql).toContain(documentedContract);
     }
-    expect(sql).not.toMatch(
-      /^\s*(workspace_id|user_id|installed_by_user_id|signature|secret|token|password)\s+[a-z]/imu,
-    );
   });
 });
 
@@ -125,6 +122,22 @@ describeWithPostgres('plugin operator replay PostgreSQL constraints', () => {
     requireSqlSuccess(readFileSync(INSTALLATION_MIGRATION_PATH, 'utf8'));
     requireSqlSuccess(readFileSync(CREDENTIAL_MIGRATION_PATH, 'utf8'));
     requireSqlSuccess(replayMigrationSql());
+  });
+
+  it('persists only the allowlisted replay evidence columns with exact types and nullability', () => {
+    const columns = requireSqlSuccess(`
+      SELECT column_name || '|' || data_type || '|' || is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'plugin_integration'
+        AND table_name = 'plugin_operator_context_replay_record'
+      ORDER BY ordinal_position;
+    `);
+
+    expect(columns.split('\n')).toEqual([
+      'evidence_id|uuid|NO',
+      'consumed_at|timestamp with time zone|NO',
+      'expires_at|timestamp with time zone|NO',
+    ]);
   });
 
   it('permits exactly one durable winner for a UUIDv4 evidence identity', () => {
