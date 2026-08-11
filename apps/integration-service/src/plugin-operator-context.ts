@@ -1,18 +1,28 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
 
+/** UUIDv4 grammar accepted for tenant and authenticated-user identities; values normalize to lowercase. */
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+/** Canonical unsigned decimal Unix-second grammar used by short-lived signed evidence. */
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
+/** Canonical unpadded base64url grammar for exactly one SHA-256 HMAC digest. */
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
+/** Exact lowercase installation item/revocation paths; case variants are never aliases. */
 const INSTALLATION_ROUTE_PATTERN =
-  /^\/v1\/plugins\/installations\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/revoke)?$/iu;
+  /^\/v1\/plugins\/installations\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/revoke)?$/u;
+/** Exact lowercase credential-revocation path; case variants are never aliases. */
 const CREDENTIAL_ROUTE_PATTERN =
-  /^\/v1\/plugins\/credential-bindings\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/revoke$/iu;
+  /^\/v1\/plugins\/credential-bindings\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/revoke$/u;
+/** Minimum UTF-8 verifier-key length required before any caller evidence is evaluated. */
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
+/** Maximum age of otherwise valid operator evidence before it is classified invalid. */
 const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
+/** Maximum tolerated positive clock skew before future evidence is classified invalid. */
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
+/** Exact installation collection path accepted only with POST. */
 const INSTALLATION_COLLECTION_PATH = '/v1/plugins/installations';
+/** Exact credential-binding collection path accepted only with POST. */
 const CREDENTIAL_COLLECTION_PATH = '/v1/plugins/credential-bindings';
 
 /** Untrusted signed identity forwarded by the authenticated Integration host. */
@@ -42,14 +52,17 @@ export class IntegrationOperatorContextError extends Error {
   }
 }
 
+/** Classifies malformed, forged, stale, replayed-route, or unsupported caller evidence as invalid. */
 function invalid(): never {
   throw new IntegrationOperatorContextError('invalid');
 }
 
+/** Classifies verifier configuration or clock state that cannot authenticate callers as unavailable. */
 function unavailable(): never {
   throw new IntegrationOperatorContextError('unavailable');
 }
 
+/** Requires UUIDv4 identity evidence and returns its canonical lowercase representation. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -57,6 +70,13 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/**
+ * Accepts only the implemented plugin operator method/path surface.
+ *
+ * Collection paths are exact constants. Dynamic UUID paths must already use the
+ * canonical lowercase route grammar and are returned byte-for-byte so an HMAC for
+ * a normalized alias can never authenticate a different received route.
+ */
 function requireOperatorRoute(
   binding: IntegrationOperatorRequestBinding,
 ): Readonly<{ method: 'GET' | 'POST'; path: string }> {
@@ -89,7 +109,7 @@ function requireOperatorRoute(
     ) {
       return Object.freeze({
         method: binding.method,
-        path: binding.path.toLowerCase(),
+        path: binding.path,
       });
     }
   }
@@ -100,7 +120,7 @@ function requireOperatorRoute(
   ) {
     return Object.freeze({
       method: 'POST',
-      path: binding.path.toLowerCase(),
+      path: binding.path,
     });
   }
   return invalid();
@@ -111,6 +131,8 @@ function requireOperatorRoute(
  *
  * A plugin manifest, request body, browser-selected identifier, or a signature for
  * another method/path can never become installation or credential authority.
+ * Verifier configuration/clock failures are classified `unavailable`; all caller
+ * evidence failures are classified `invalid` without reflecting untrusted input.
  */
 export function requireTrustedPluginOperatorContext(
   headers: IntegrationOperatorContextHeaders,
