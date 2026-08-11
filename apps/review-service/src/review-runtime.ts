@@ -5,6 +5,10 @@ import {
   type ReviewSqlClient,
   type ReviewSqlQueryResult,
 } from './postgres-review-repository';
+import {
+  ReviewDataRightsContributor,
+  type ReviewDataRightsSqlClient,
+} from './review-data-rights';
 import { ReviewService } from './review-domain';
 
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
@@ -17,6 +21,9 @@ export interface ReviewPool {
     text: string,
     values?: readonly unknown[],
   ): Promise<ReviewSqlQueryResult<Row>>;
+  transaction<T>(
+    operation: (client: ReviewDataRightsSqlClient) => Promise<T>,
+  ): Promise<T>;
   end(): Promise<void>;
 }
 
@@ -31,6 +38,33 @@ class NodePostgresReviewPool implements ReviewPool {
   ): Promise<ReviewSqlQueryResult<Row>> {
     const result = await this.pool.query(text, [...values]);
     return { rows: result.rows as Row[] };
+  }
+
+  async transaction<T>(
+    operation: (client: ReviewDataRightsSqlClient) => Promise<T>,
+  ): Promise<T> {
+    const connection = await this.pool.connect();
+    const client: ReviewDataRightsSqlClient = {
+      query: async <Row>(text: string, values: readonly unknown[]) => {
+        const result = await connection.query(text, [...values]);
+        return { rows: result.rows as Row[] };
+      },
+    };
+    await connection.query('BEGIN');
+    try {
+      const value = await operation(client);
+      await connection.query('COMMIT');
+      return value;
+    } catch (error) {
+      try {
+        await connection.query('ROLLBACK');
+      } catch {
+        // The original operation failure remains the authoritative error.
+      }
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async end(): Promise<void> {
@@ -125,27 +159,30 @@ function defaultPoolFactory(configuration: PoolConfig): ReviewPool {
   return new NodePostgresReviewPool(new Pool(configuration));
 }
 
-/** Owns the review database pool and closes it exactly once. */
+/** Owns the Review database pool and its service-owned data-rights contributor. */
 export class ReviewRuntime implements OnApplicationShutdown {
   private closed = false;
 
   constructor(
     private readonly pool: ReviewPool,
     readonly service: ReviewService,
+    readonly dataRightsContributor: ReviewDataRightsContributor,
   ) {}
 
+  /** Closes the Review-owned database pool exactly once. */
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
     await this.pool.end();
   }
 
+  /** Releases Review persistence during application shutdown. */
   async onApplicationShutdown(): Promise<void> {
     await this.close();
   }
 }
 
-/** Creates the production guided-review runtime. */
+/** Creates the production guided-review runtime and data-rights contributor. */
 export function createReviewRuntime(
   environment: RuntimeEnvironment = process.env,
   poolFactory: ReviewPoolFactory = defaultPoolFactory,
@@ -154,5 +191,9 @@ export function createReviewRuntime(
   const repository = new PostgresReviewRepository(
     new NodePostgresReviewSqlClient(pool),
   );
-  return new ReviewRuntime(pool, new ReviewService(repository));
+  return new ReviewRuntime(
+    pool,
+    new ReviewService(repository),
+    new ReviewDataRightsContributor(pool),
+  );
 }
