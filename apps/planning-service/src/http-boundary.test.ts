@@ -37,16 +37,20 @@ function expectProblem(
   operation: () => unknown,
   expected: { status: number; title: string; code: string },
 ): void {
+  let thrown: unknown;
   try {
     operation();
-    throw new Error('Expected operation to fail');
   } catch (error) {
-    expect(error).toBeInstanceOf(HttpException);
-    expect(responseOf(error as HttpException)).toEqual({
-      type: 'about:blank',
-      ...expected,
-    });
+    thrown = error;
   }
+  if (thrown === undefined) {
+    throw new Error('Expected operation to fail');
+  }
+  expect(thrown).toBeInstanceOf(HttpException);
+  expect(responseOf(thrown as HttpException)).toEqual({
+    type: 'about:blank',
+    ...expected,
+  });
 }
 
 describe('planning HTTP boundary', () => {
@@ -79,6 +83,61 @@ describe('planning HTTP boundary', () => {
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
+  });
+
+  it.each([
+    {
+      name: 'unsupported method',
+      binding: { method: 'DELETE', path: '/v1/search' },
+    },
+    {
+      name: 'non-string path',
+      binding: { method: 'GET', path: 123 },
+    },
+    {
+      name: 'path longer than 256 characters',
+      binding: { method: 'GET', path: `/v1/${'a'.repeat(253)}` },
+    },
+    {
+      name: 'control character in path',
+      binding: { method: 'GET', path: '/v1/search\n' },
+    },
+    {
+      name: 'query string in path',
+      binding: { method: 'GET', path: '/v1/search?q=ship' },
+    },
+    {
+      name: 'fragment in path',
+      binding: { method: 'GET', path: '/v1/search#results' },
+    },
+    {
+      name: 'non-UUID goal identifier',
+      binding: { method: 'GET', path: '/v1/goals/not-a-uuid/projects' },
+    },
+    {
+      name: 'non-UUID project identifier',
+      binding: { method: 'POST', path: '/v1/projects/not-a-uuid/tasks' },
+    },
+  ])('rejects an invalid request binding: $name', ({ binding }) => {
+    const issuedAt = String(NOW_SECONDS);
+    expectProblem(
+      () =>
+        requireTrustedWorkspaceContext(
+          {
+            workspaceId: WORKSPACE_ID,
+            issuedAt,
+            signature: signContext(WORKSPACE_ID, issuedAt),
+          },
+          GATEWAY_SECRET,
+          binding,
+          NOW_SECONDS,
+        ),
+      {
+        title: 'Trusted gateway context is invalid',
+        status: 401,
+        code: 'invalid_gateway_context',
+      },
+    );
   });
 
   it('rejects a non-canonical base64url alias for the same signature bytes', () => {
