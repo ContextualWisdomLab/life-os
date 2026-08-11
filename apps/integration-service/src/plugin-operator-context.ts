@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
 
-/** UUIDv4 grammar accepted for tenant and authenticated-user identities; values normalize to lowercase. */
+/** UUIDv4 grammar accepted for tenant, user, and one-time evidence identities; values normalize to lowercase. */
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 /** Canonical unsigned decimal Unix-second grammar used by short-lived signed evidence. */
@@ -17,7 +17,7 @@ const CREDENTIAL_ROUTE_PATTERN =
 /** Minimum UTF-8 verifier-key length required before any caller evidence is evaluated. */
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 /** Maximum age of otherwise valid operator evidence before it is classified invalid. */
-const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
+export const PLUGIN_OPERATOR_CONTEXT_MAXIMUM_AGE_SECONDS = 60;
 /** Maximum tolerated positive clock skew before future evidence is classified invalid. */
 const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
 /** Exact installation collection path accepted only with POST. */
@@ -29,6 +29,7 @@ const CREDENTIAL_COLLECTION_PATH = '/v1/plugins/credential-bindings';
 export interface IntegrationOperatorContextHeaders {
   readonly workspaceId: unknown;
   readonly userId: unknown;
+  readonly evidenceId: unknown;
   readonly issuedAt: unknown;
   readonly signature: unknown;
 }
@@ -37,6 +38,13 @@ export interface IntegrationOperatorContextHeaders {
 export interface IntegrationOperatorRequestBinding {
   readonly method: unknown;
   readonly path: unknown;
+}
+
+/** Verified authority plus the signed one-time evidence identity and issuance time. */
+export interface VerifiedPluginOperatorContext {
+  readonly trustedContext: PluginInstallationContext;
+  readonly evidenceId: string;
+  readonly issuedAtSeconds: number;
 }
 
 /** Fixed, credential-free operator-context rejection safe for HTTP classification. */
@@ -127,19 +135,19 @@ function requireOperatorRoute(
 }
 
 /**
- * Verifies tenant-and-user authority bound to one exact plugin lifecycle request.
+ * Verifies tenant-and-user authority and one-time evidence bound to one exact request.
  *
- * A plugin manifest, request body, browser-selected identifier, or a signature for
- * another method/path can never become installation or credential authority.
- * Verifier configuration/clock failures are classified `unavailable`; all caller
- * evidence failures are classified `invalid` without reflecting untrusted input.
+ * The signed UUIDv4 evidence identifier makes otherwise identical same-second
+ * requests distinguishable without trusting caller-selected tenant or user data.
+ * This verifier remains stateless; its caller must atomically consume the returned
+ * evidence identifier before any downstream authority is invoked.
  */
-export function requireTrustedPluginOperatorContext(
+export function requireVerifiedPluginOperatorContext(
   headers: IntegrationOperatorContextHeaders,
   secretValue: unknown,
   requestBinding: IntegrationOperatorRequestBinding,
   nowSeconds = Math.floor(Date.now() / 1000),
-): PluginInstallationContext {
+): VerifiedPluginOperatorContext {
   if (
     typeof secretValue !== 'string' ||
     Buffer.byteLength(secretValue, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES ||
@@ -160,11 +168,12 @@ export function requireTrustedPluginOperatorContext(
   }
   const workspaceId = requireUuidV4(headers.workspaceId);
   const actorUserId = requireUuidV4(headers.userId);
+  const evidenceId = requireUuidV4(headers.evidenceId);
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||
     issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
-    issuedAtSeconds < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS
+    issuedAtSeconds < nowSeconds - PLUGIN_OPERATOR_CONTEXT_MAXIMUM_AGE_SECONDS
   ) {
     return invalid();
   }
@@ -175,12 +184,37 @@ export function requireTrustedPluginOperatorContext(
   }
   const expected = createHmac('sha256', secretValue)
     .update(
-      `life-os.integration-operator-context.v1\n${workspaceId}\n${actorUserId}\n${headers.issuedAt}\n${binding.method}\n${binding.path}`,
+      `life-os.integration-operator-context.v1\n${workspaceId}\n${actorUserId}\n${evidenceId}\n${headers.issuedAt}\n${binding.method}\n${binding.path}`,
       'utf8',
     )
     .digest();
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     return invalid();
   }
-  return Object.freeze({ workspaceId, actorUserId });
+  return Object.freeze({
+    trustedContext: Object.freeze({ workspaceId, actorUserId }),
+    evidenceId,
+    issuedAtSeconds,
+  });
+}
+
+/**
+ * Returns trusted tenant/user authority for callers that do not need replay metadata.
+ *
+ * This compatibility verifier does not consume evidence. Security-sensitive
+ * application boundaries must use `requireVerifiedPluginOperatorContext` and a
+ * service-owned replay guard before granting downstream authority.
+ */
+export function requireTrustedPluginOperatorContext(
+  headers: IntegrationOperatorContextHeaders,
+  secretValue: unknown,
+  requestBinding: IntegrationOperatorRequestBinding,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): PluginInstallationContext {
+  return requireVerifiedPluginOperatorContext(
+    headers,
+    secretValue,
+    requestBinding,
+    nowSeconds,
+  ).trustedContext;
 }
