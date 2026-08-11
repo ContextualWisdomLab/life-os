@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import {
   IntegrationOperatorContextError,
   requireTrustedPluginOperatorContext,
+  requireVerifiedPluginOperatorContext,
 } from './plugin-operator-context';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_USER_ID = '33333333-3333-4333-8333-333333333333';
+const EVIDENCE_ID = '77777777-7777-4777-8777-777777777777';
+const OTHER_EVIDENCE_ID = '88888888-8888-4888-8888-888888888888';
 const ISSUED_AT = '1786291200';
 const SECRET = randomBytes(32).toString('base64url');
 const INSTALL_PATH = '/v1/plugins/installations';
@@ -17,11 +20,12 @@ function signature(
   path = INSTALL_PATH,
   workspaceId = WORKSPACE_ID,
   userId = USER_ID,
+  evidenceId = EVIDENCE_ID,
   issuedAt = ISSUED_AT,
 ): string {
   return createHmac('sha256', SECRET)
     .update(
-      `life-os.integration-operator-context.v1\n${workspaceId}\n${userId}\n${issuedAt}\n${method}\n${path}`,
+      `life-os.integration-operator-context.v1\n${workspaceId}\n${userId}\n${evidenceId}\n${issuedAt}\n${method}\n${path}`,
       'utf8',
     )
     .digest('base64url');
@@ -29,12 +33,16 @@ function signature(
 
 function context(
   overrides: Partial<
-    Record<'workspaceId' | 'userId' | 'issuedAt' | 'signature', unknown>
+    Record<
+      'workspaceId' | 'userId' | 'evidenceId' | 'issuedAt' | 'signature',
+      unknown
+    >
   > = {},
 ) {
   return {
     workspaceId: WORKSPACE_ID,
     userId: USER_ID,
+    evidenceId: EVIDENCE_ID,
     issuedAt: ISSUED_AT,
     signature: signature(),
     ...overrides,
@@ -64,10 +72,26 @@ describe('trusted plugin operator context', () => {
     ).toEqual({ workspaceId: WORKSPACE_ID, actorUserId: USER_ID });
   });
 
-  it('rejects cross-user, cross-workspace, method, and path replay as invalid evidence', () => {
+  it('returns the signed one-time evidence identity only after full verification', () => {
+    expect(
+      requireVerifiedPluginOperatorContext(
+        context(),
+        SECRET,
+        { method: 'POST', path: INSTALL_PATH },
+        Number(ISSUED_AT),
+      ),
+    ).toEqual({
+      trustedContext: { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+      evidenceId: EVIDENCE_ID,
+      issuedAtSeconds: Number(ISSUED_AT),
+    });
+  });
+
+  it('rejects cross-user, cross-workspace, evidence-id, method, and path replay as invalid evidence', () => {
     const cases = [
       context({ userId: OTHER_USER_ID }),
       context({ workspaceId: '44444444-4444-4444-8444-444444444444' }),
+      context({ evidenceId: OTHER_EVIDENCE_ID }),
       context({ signature: signature('GET', INSTALL_PATH) }),
       context({
         signature: signature('POST', '/v1/plugins/credential-bindings'),
@@ -150,7 +174,7 @@ describe('trusted plugin operator context', () => {
     );
   });
 
-  it('classifies stale, future, and non-canonical evidence as invalid', () => {
+  it('classifies stale, future, malformed evidence identifiers, and non-canonical signatures as invalid', () => {
     const now = Number(ISSUED_AT);
     const staleIssuedAt = String(now - 61);
     const futureIssuedAt = String(now + 6);
@@ -164,6 +188,7 @@ describe('trusted plugin operator context', () => {
             INSTALL_PATH,
             WORKSPACE_ID,
             USER_ID,
+            EVIDENCE_ID,
             staleIssuedAt,
           ),
         }),
@@ -181,9 +206,18 @@ describe('trusted plugin operator context', () => {
             INSTALL_PATH,
             WORKSPACE_ID,
             USER_ID,
+            EVIDENCE_ID,
             futureIssuedAt,
           ),
         }),
+        SECRET,
+        { method: 'POST', path: INSTALL_PATH },
+        now,
+      ),
+    );
+    expectInvalid(() =>
+      requireTrustedPluginOperatorContext(
+        context({ evidenceId: 'not-a-uuid' }),
         SECRET,
         { method: 'POST', path: INSTALL_PATH },
         now,
