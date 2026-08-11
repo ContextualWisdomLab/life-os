@@ -1,0 +1,164 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { PluginInstallationContext } from './plugin-installation';
+
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
+const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
+const INSTALLATION_ROUTE_PATTERN =
+  /^\/v1\/plugins\/installations\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/revoke)?$/iu;
+const CREDENTIAL_ROUTE_PATTERN =
+  /^\/v1\/plugins\/credential-bindings\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/revoke$/iu;
+const MINIMUM_GATEWAY_SECRET_BYTES = 32;
+const MAXIMUM_CONTEXT_AGE_SECONDS = 60;
+const MAXIMUM_FUTURE_SKEW_SECONDS = 5;
+const INSTALLATION_COLLECTION_PATH = '/v1/plugins/installations';
+const CREDENTIAL_COLLECTION_PATH = '/v1/plugins/credential-bindings';
+
+/** Untrusted signed identity forwarded by the authenticated Integration host. */
+export interface IntegrationOperatorContextHeaders {
+  readonly workspaceId: unknown;
+  readonly userId: unknown;
+  readonly issuedAt: unknown;
+  readonly signature: unknown;
+}
+
+/** Server-observed request identity included in operator-context verification. */
+export interface IntegrationOperatorRequestBinding {
+  readonly method: unknown;
+  readonly path: unknown;
+}
+
+/** Fixed, credential-free operator-context rejection safe for HTTP classification. */
+export class IntegrationOperatorContextError extends Error {
+  /** Creates an invalid-authority or verifier-unavailable failure. */
+  constructor(readonly kind: 'invalid' | 'unavailable') {
+    super(
+      kind === 'invalid'
+        ? 'Plugin operator context is invalid'
+        : 'Plugin operator context is unavailable',
+    );
+    this.name = 'IntegrationOperatorContextError';
+  }
+}
+
+function invalid(): never {
+  throw new IntegrationOperatorContextError('invalid');
+}
+
+function unavailable(): never {
+  throw new IntegrationOperatorContextError('unavailable');
+}
+
+function requireUuidV4(value: unknown): string {
+  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+    return invalid();
+  }
+  return value.toLowerCase();
+}
+
+function requireOperatorRoute(
+  binding: IntegrationOperatorRequestBinding,
+): Readonly<{ method: 'GET' | 'POST'; path: string }> {
+  if (
+    binding.method === 'POST' &&
+    binding.path === INSTALLATION_COLLECTION_PATH
+  ) {
+    return Object.freeze({
+      method: 'POST',
+      path: INSTALLATION_COLLECTION_PATH,
+    });
+  }
+  if (
+    binding.method === 'POST' &&
+    binding.path === CREDENTIAL_COLLECTION_PATH
+  ) {
+    return Object.freeze({
+      method: 'POST',
+      path: CREDENTIAL_COLLECTION_PATH,
+    });
+  }
+  if (
+    typeof binding.path === 'string' &&
+    INSTALLATION_ROUTE_PATTERN.test(binding.path)
+  ) {
+    const isRevocation = binding.path.endsWith('/revoke');
+    if (
+      (isRevocation && binding.method === 'POST') ||
+      (!isRevocation && binding.method === 'GET')
+    ) {
+      return Object.freeze({
+        method: binding.method,
+        path: binding.path.toLowerCase(),
+      });
+    }
+  }
+  if (
+    binding.method === 'POST' &&
+    typeof binding.path === 'string' &&
+    CREDENTIAL_ROUTE_PATTERN.test(binding.path)
+  ) {
+    return Object.freeze({
+      method: 'POST',
+      path: binding.path.toLowerCase(),
+    });
+  }
+  return invalid();
+}
+
+/**
+ * Verifies tenant-and-user authority bound to one exact plugin lifecycle request.
+ *
+ * A plugin manifest, request body, browser-selected identifier, or a signature for
+ * another method/path can never become installation or credential authority.
+ */
+export function requireTrustedPluginOperatorContext(
+  headers: IntegrationOperatorContextHeaders,
+  secretValue: unknown,
+  requestBinding: IntegrationOperatorRequestBinding,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): PluginInstallationContext {
+  if (
+    typeof secretValue !== 'string' ||
+    Buffer.byteLength(secretValue, 'utf8') < MINIMUM_GATEWAY_SECRET_BYTES ||
+    !Number.isSafeInteger(nowSeconds) ||
+    nowSeconds < 0
+  ) {
+    return unavailable();
+  }
+
+  const binding = requireOperatorRoute(requestBinding);
+  if (
+    typeof headers.issuedAt !== 'string' ||
+    typeof headers.signature !== 'string' ||
+    !UNIX_SECONDS_PATTERN.test(headers.issuedAt) ||
+    !BASE64URL_SHA256_PATTERN.test(headers.signature)
+  ) {
+    return invalid();
+  }
+  const workspaceId = requireUuidV4(headers.workspaceId);
+  const actorUserId = requireUuidV4(headers.userId);
+  const issuedAtSeconds = Number(headers.issuedAt);
+  if (
+    !Number.isSafeInteger(issuedAtSeconds) ||
+    issuedAtSeconds > nowSeconds + MAXIMUM_FUTURE_SKEW_SECONDS ||
+    issuedAtSeconds < nowSeconds - MAXIMUM_CONTEXT_AGE_SECONDS
+  ) {
+    return invalid();
+  }
+
+  const actual = Buffer.from(headers.signature, 'base64url');
+  if (actual.toString('base64url') !== headers.signature) {
+    return invalid();
+  }
+  const expected = createHmac('sha256', secretValue)
+    .update(
+      `life-os.integration-operator-context.v1\n${workspaceId}\n${actorUserId}\n${headers.issuedAt}\n${binding.method}\n${binding.path}`,
+      'utf8',
+    )
+    .digest();
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return invalid();
+  }
+  return Object.freeze({ workspaceId, actorUserId });
+}
