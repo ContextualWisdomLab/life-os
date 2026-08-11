@@ -7,6 +7,7 @@ import {
 } from './plugin-operator-replay';
 
 const EVIDENCE_ID = '77777777-7777-4777-8777-777777777777';
+const LOWERCASE_EVIDENCE_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const CONSUMED_AT = '2026-08-11T14:35:00.000Z';
 const EXPIRES_AT = '2026-08-11T14:36:00.000Z';
 
@@ -79,6 +80,26 @@ describe('PostgresPluginOperatorReplayGuard', () => {
     ]);
   });
 
+  it('normalizes accepted UUID evidence to lowercase before persistence', async () => {
+    const client = new ScriptedSqlClient([
+      { rows: [], rowCount: 0 },
+      { rows: [{ evidence_id: LOWERCASE_EVIDENCE_ID }], rowCount: 1 },
+    ]);
+    const guard = new PostgresPluginOperatorReplayGuard(client);
+
+    await expect(
+      guard.consume(
+        evidence({ evidenceId: LOWERCASE_EVIDENCE_ID.toUpperCase() }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(client.queries[1]?.values).toEqual([
+      LOWERCASE_EVIDENCE_ID,
+      CONSUMED_AT,
+      EXPIRES_AT,
+    ]);
+  });
+
   it('returns false when another service instance already consumed the evidence UUID', async () => {
     const client = new ScriptedSqlClient([
       { rows: [], rowCount: 0 },
@@ -108,6 +129,7 @@ describe('PostgresPluginOperatorReplayGuard', () => {
   it('rejects ambiguous or corrupted INSERT evidence instead of granting authority', async () => {
     for (const inserted of [
       { rows: [{ evidence_id: EVIDENCE_ID }], rowCount: null },
+      { rows: [], rowCount: 1 },
       {
         rows: [
           { evidence_id: EVIDENCE_ID },
