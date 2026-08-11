@@ -166,6 +166,68 @@ describe('Integration event tenant authority contract', () => {
 
   it.each([
     {
+      name: 'non-string workspace header',
+      headers: {
+        workspaceId: 42,
+        issuedAt: String(NOW_SECONDS),
+        signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
+      },
+    },
+    {
+      name: 'workspace header outside the UUIDv4 grammar',
+      headers: {
+        workspaceId: '3b237d04-e84c-1ac4-933d-7f179865e1a0',
+        issuedAt: String(NOW_SECONDS),
+        signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
+      },
+    },
+    {
+      name: 'non-string issued-at header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: NOW_SECONDS,
+        signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
+      },
+    },
+    {
+      name: 'issued-at header outside the canonical integer grammar',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: `0${NOW_SECONDS}`,
+        signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
+      },
+    },
+    {
+      name: 'non-string signature header',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: 42,
+      },
+    },
+    {
+      name: 'signature header outside the SHA-256 base64url grammar',
+      headers: {
+        workspaceId: WORKSPACE_ID,
+        issuedAt: String(NOW_SECONDS),
+        signature: 'A'.repeat(42),
+      },
+    },
+  ])('rejects malformed trusted headers: $name', ({ headers }) => {
+    expectContextProblem(
+      () =>
+        requireTrustedEventWorkspaceContext(
+          headers,
+          GATEWAY_SECRET,
+          EVENT_BINDING,
+          NOW_SECONDS,
+        ),
+      { status: 401, code: 'invalid_gateway_context' },
+    );
+  });
+
+  it.each([
+    {
       name: 'stale timestamp',
       issuedAt: String(NOW_SECONDS - 61),
       nowSeconds: NOW_SECONDS,
