@@ -8,9 +8,12 @@ import type {
   PluginInstallationRecord,
 } from './plugin-installation';
 import {
-  requireTrustedPluginOperatorContext,
+  IntegrationOperatorContextError,
+  PLUGIN_OPERATOR_CONTEXT_MAXIMUM_AGE_SECONDS,
+  requireVerifiedPluginOperatorContext,
   type IntegrationOperatorContextHeaders,
 } from './plugin-operator-context';
+import type { PluginOperatorReplayGuardPort } from './plugin-operator-replay';
 
 /** Installation lifecycle authority consumed after signed operator verification. */
 export interface PluginInstallationOperatorPort {
@@ -57,6 +60,15 @@ export type PluginOperatorCredentialInput = Omit<
   'trustedContext'
 >;
 
+/** Converts a verified Unix second to one canonical persistence instant or fails closed. */
+function canonicalInstant(seconds: number): string {
+  const value = new Date(seconds * 1_000);
+  if (!Number.isFinite(value.getTime())) {
+    throw new IntegrationOperatorContextError('unavailable');
+  }
+  return value.toISOString();
+}
+
 /**
  * Composes cryptographically verified operator identity with host-owned plugin
  * installation and credential applications.
@@ -64,15 +76,17 @@ export type PluginOperatorCredentialInput = Omit<
  * Every method constructs the exact server-owned method/path binding before any
  * downstream authority is invoked. Tenant/user identifiers are derived only from
  * the signed gateway context; request bodies and dynamic identifiers cannot widen
- * that authority. Optional credential composition is checked only after context
- * verification so an unauthenticated caller cannot probe provider availability.
+ * that authority. Signed UUIDv4 evidence is atomically consumed through a
+ * service-owned replay guard before lifecycle authority is granted, so separate
+ * service instances cannot independently accept the same request evidence.
  */
 export class PluginOperatorApplication {
-  /** Creates the operator boundary over host-owned lifecycle applications and verifier state. */
+  /** Creates the operator boundary over host-owned lifecycle, replay, and verifier state. */
   constructor(
     private readonly installations: PluginInstallationOperatorPort,
     private readonly credentials: PluginCredentialOperatorPort | undefined,
     private readonly contextSecret: unknown,
+    private readonly replayGuard: PluginOperatorReplayGuardPort | undefined,
     private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
   ) {}
 
@@ -81,7 +95,7 @@ export class PluginOperatorApplication {
     headers: IntegrationOperatorContextHeaders,
     input: PluginOperatorInstallInput,
   ): Promise<PluginInstallationRecord> {
-    const trustedContext = this.requireContext(
+    const trustedContext = await this.requireContext(
       headers,
       'POST',
       '/v1/plugins/installations',
@@ -94,7 +108,7 @@ export class PluginOperatorApplication {
     headers: IntegrationOperatorContextHeaders,
     installationId: string,
   ): Promise<PluginInstallationRecord | undefined> {
-    const trustedContext = this.requireContext(
+    const trustedContext = await this.requireContext(
       headers,
       'GET',
       `/v1/plugins/installations/${installationId}`,
@@ -107,7 +121,7 @@ export class PluginOperatorApplication {
     headers: IntegrationOperatorContextHeaders,
     installationId: string,
   ): Promise<PluginInstallationRecord> {
-    const trustedContext = this.requireContext(
+    const trustedContext = await this.requireContext(
       headers,
       'POST',
       `/v1/plugins/installations/${installationId}/revoke`,
@@ -120,7 +134,7 @@ export class PluginOperatorApplication {
     headers: IntegrationOperatorContextHeaders,
     input: PluginOperatorCredentialInput,
   ): Promise<PluginCredentialBindingView> {
-    const trustedContext = this.requireContext(
+    const trustedContext = await this.requireContext(
       headers,
       'POST',
       '/v1/plugins/credential-bindings',
@@ -134,7 +148,7 @@ export class PluginOperatorApplication {
     headers: IntegrationOperatorContextHeaders,
     credentialBindingId: string,
   ): Promise<PluginCredentialBindingView> {
-    const trustedContext = this.requireContext(
+    const trustedContext = await this.requireContext(
       headers,
       'POST',
       `/v1/plugins/credential-bindings/${credentialBindingId}/revoke`,
@@ -145,18 +159,39 @@ export class PluginOperatorApplication {
     );
   }
 
-  /** Verifies signed tenant/user authority against one server-owned request identity. */
-  private requireContext(
+  /** Verifies and atomically consumes one signed request identity before downstream authority. */
+  private async requireContext(
     headers: IntegrationOperatorContextHeaders,
     method: 'GET' | 'POST',
     path: string,
-  ): PluginInstallationContext {
-    return requireTrustedPluginOperatorContext(
+  ): Promise<PluginInstallationContext> {
+    const nowSeconds = this.nowSeconds();
+    const verified = requireVerifiedPluginOperatorContext(
       headers,
       this.contextSecret,
       { method, path },
-      this.nowSeconds(),
+      nowSeconds,
     );
+    if (!this.replayGuard) {
+      throw new IntegrationOperatorContextError('unavailable');
+    }
+    const evidence = Object.freeze({
+      evidenceId: verified.evidenceId,
+      consumedAt: canonicalInstant(nowSeconds),
+      expiresAt: canonicalInstant(
+        verified.issuedAtSeconds + PLUGIN_OPERATOR_CONTEXT_MAXIMUM_AGE_SECONDS,
+      ),
+    });
+    let consumed: boolean;
+    try {
+      consumed = await this.replayGuard.consume(evidence);
+    } catch {
+      throw new IntegrationOperatorContextError('unavailable');
+    }
+    if (!consumed) {
+      throw new IntegrationOperatorContextError('invalid');
+    }
+    return verified.trustedContext;
   }
 
   /** Returns configured credential authority only after caller authentication succeeds. */
