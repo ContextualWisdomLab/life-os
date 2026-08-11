@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import {
@@ -8,8 +8,10 @@ import {
 } from './http-boundary';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const GATEWAY_SECRET = 'trusted-gateway-context-secret-32-bytes';
+const GATEWAY_SECRET = randomBytes(32).toString('base64url');
+const DIFFERENT_GATEWAY_SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_785_806_400;
+const SEARCH_BINDING = { method: 'GET', path: '/v1/search' } as const;
 const BASE64URL_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -21,10 +23,11 @@ function signContext(
   workspaceId: string,
   issuedAt: string,
   secret = GATEWAY_SECRET,
+  binding: Readonly<{ method: string; path: string }> = SEARCH_BINDING,
 ): string {
   return createHmac('sha256', secret)
     .update(
-      `life-os.workspace.v1\n${workspaceId.toLowerCase()}\n${issuedAt}`,
+      `life-os.planning-context.v2\n${workspaceId.toLowerCase()}\n${issuedAt}\n${binding.method}\n${binding.path}`,
       'utf8',
     )
     .digest('base64url');
@@ -72,6 +75,7 @@ describe('planning HTTP boundary', () => {
           signature: signContext(WORKSPACE_ID, issuedAt),
         },
         GATEWAY_SECRET,
+        SEARCH_BINDING,
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
@@ -99,6 +103,7 @@ describe('planning HTTP boundary', () => {
             signature: nonCanonical,
           },
           GATEWAY_SECRET,
+          SEARCH_BINDING,
           NOW_SECONDS,
         ),
       {
@@ -121,6 +126,7 @@ describe('planning HTTP boundary', () => {
               signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
             },
             secret,
+            SEARCH_BINDING,
             NOW_SECONDS,
           ),
         {
@@ -172,7 +178,11 @@ describe('planning HTTP boundary', () => {
     {
       workspaceId: WORKSPACE_ID,
       issuedAt: String(NOW_SECONDS),
-      signature: signContext(WORKSPACE_ID, String(NOW_SECONDS), 'x'.repeat(32)),
+      signature: signContext(
+        WORKSPACE_ID,
+        String(NOW_SECONDS),
+        DIFFERENT_GATEWAY_SECRET,
+      ),
       nowSeconds: NOW_SECONDS,
     },
     {
@@ -191,6 +201,7 @@ describe('planning HTTP boundary', () => {
             signature: context.signature,
           },
           GATEWAY_SECRET,
+          SEARCH_BINDING,
           context.nowSeconds,
         ),
       {
@@ -212,6 +223,7 @@ describe('planning HTTP boundary', () => {
             signature: signContext(WORKSPACE_ID, issuedAt),
           },
           GATEWAY_SECRET,
+          SEARCH_BINDING,
           NOW_SECONDS,
         ),
       ).toBe(WORKSPACE_ID);
