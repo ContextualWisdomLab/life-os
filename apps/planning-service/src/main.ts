@@ -25,7 +25,17 @@ import {
   planningMetrics,
   planningObservabilityMiddleware,
 } from './observability';
-import type { Goal, Project, Task } from './planning-domain';
+import type {
+  DataRightsContributorResponse,
+  Goal,
+  Project,
+  Task,
+} from './planning-data-rights';
+import {
+  parseTrustedPlanningDataRightsRequest,
+  toPlanningDataRightsHttpException,
+} from './planning-data-rights-http-boundary';
+import type { Goal as PlanningGoal, Project as PlanningProject, Task as PlanningTask } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 import type { PlanningSearchResult } from './search';
@@ -197,7 +207,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Body() body: { title?: unknown },
-  ): Promise<Goal> {
+  ): Promise<PlanningGoal> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -218,7 +228,7 @@ export class PlanningController {
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
-  ): Promise<Goal[]> {
+  ): Promise<PlanningGoal[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -239,7 +249,7 @@ export class PlanningController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('goalId') goalId: string,
     @Body() body: { title?: unknown },
-  ): Promise<Project> {
+  ): Promise<PlanningProject> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -262,7 +272,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('goalId') goalId: string,
-  ): Promise<Project[]> {
+  ): Promise<PlanningProject[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -286,7 +296,7 @@ export class PlanningController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
     @Body() body: { title?: unknown },
-  ): Promise<Task> {
+  ): Promise<PlanningTask> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -309,7 +319,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
-  ): Promise<Task[]> {
+  ): Promise<PlanningTask[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -326,9 +336,41 @@ export class PlanningController {
   }
 }
 
+/** Internal service-authenticated transport for Planning-owned data-rights work. */
+@Controller('internal/data-rights')
+export class PlanningDataRightsController {
+  constructor(
+    @Inject(PLANNING_RUNTIME)
+    private readonly runtime: PlanningRuntime,
+  ) {}
+
+  /** Executes only the exact v1 contributor request authorized by Identity. */
+  @Post('contributor')
+  async contribute(
+    @Headers('x-life-os-data-rights-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-data-rights-signature') signature: string | undefined,
+    @Body() body: unknown,
+  ): Promise<DataRightsContributorResponse> {
+    const request = await parseTrustedPlanningDataRightsRequest(
+      body,
+      { issuedAt, signature },
+      process.env.PLANNING_DATA_RIGHTS_CONTEXT_SECRET,
+      {
+        method: 'POST',
+        path: '/v1/internal/data-rights/contributor',
+      },
+    );
+    try {
+      return await this.runtime.dataRightsContributor.handle(request);
+    } catch (error) {
+      throw toPlanningDataRightsHttpException(error);
+    }
+  }
+}
+
 /** Root NestJS module for the production planning-service process. */
 @Module({
-  controllers: [PlanningController],
+  controllers: [PlanningController, PlanningDataRightsController],
   providers: [
     {
       provide: PLANNING_RUNTIME,
@@ -337,8 +379,7 @@ export class PlanningController {
     {
       provide: PLANNING_SERVICE,
       inject: [PLANNING_RUNTIME],
-      useFactory: (runtime: PlanningRuntime): PlanningService =>
-        runtime.service,
+      useFactory: (runtime: PlanningRuntime): PlanningService => runtime.service,
     },
     {
       provide: TODAY_SYNC_SERVICE,
