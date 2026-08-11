@@ -132,7 +132,7 @@ describe('Gateway planning Today composition', () => {
     expect(calls[1]?.headers.get('x-life-os-context-signature')).toBe(
       createHmac('sha256', TEST_SIGNING_KEY)
         .update(
-          `life-os.workspace.v1\n${WORKSPACE_ID}\n${NOW_SECONDS}`,
+          `life-os.planning-context.v2\n${WORKSPACE_ID}\n${NOW_SECONDS}\nGET\n/v1/today/2026-08-10`,
           'utf8',
         )
         .digest('base64url'),

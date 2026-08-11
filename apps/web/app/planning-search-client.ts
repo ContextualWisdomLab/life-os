@@ -11,6 +11,7 @@ const MAXIMUM_TITLE_CHARACTERS = 160;
 const MAXIMUM_RESULTS = 25;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 const UPSTREAM_TIMEOUT_MS = 3_000;
+const DEFAULT_PLANNING_BINDING = { method: 'GET', path: '/v1/search' } as const;
 
 /** Credential-free planning record exposed to the browser. */
 export interface PlanningSearchView {
@@ -20,6 +21,12 @@ export interface PlanningSearchView {
   parentId?: string;
   status?: 'todo' | 'done';
   createdAt: string;
+}
+
+/** Server-owned request identity included in a Planning workspace signature. */
+export interface PlanningContextRequestBinding {
+  method: 'GET' | 'POST' | 'PUT';
+  path: string;
 }
 
 /** Minimal fetch surface used by the production BFF and deterministic tests. */
@@ -155,23 +162,42 @@ export function parseSessionWorkspace(value: unknown): string {
   return requireUuid(value.workspaceId, 'Identity session response is invalid');
 }
 
-/** Creates the exact short-lived context verified by planning-service. */
+/** Requires one bounded absolute Planning resource path without a query/fragment. */
+function requirePlanningBinding(
+  binding: PlanningContextRequestBinding,
+): PlanningContextRequestBinding {
+  if (
+    !binding.path.startsWith('/v1/') ||
+    binding.path.length > 256 ||
+    /[\u0000-\u001f\u007f?#]/u.test(binding.path)
+  ) {
+    throw new Error('Planning request binding is invalid');
+  }
+  return binding;
+}
+
+/** Creates the exact short-lived request-bound context verified by planning-service. */
 export function createPlanningContextHeaders(
   workspaceId: string,
   secret: string,
   nowSeconds: number,
+  binding: PlanningContextRequestBinding = DEFAULT_PLANNING_BINDING,
 ): Readonly<Record<string, string>> {
   const safeWorkspaceId = requireUuid(
     workspaceId,
     'Identity session response is invalid',
   );
   const safeSecret = requireGatewaySecret(secret);
+  const safeBinding = requirePlanningBinding(binding);
   if (!Number.isSafeInteger(nowSeconds) || nowSeconds < 0) {
     throw new Error('Gateway context timestamp is invalid');
   }
   const issuedAt = String(nowSeconds);
   const signature = createHmac('sha256', safeSecret)
-    .update(`life-os.workspace.v1\n${safeWorkspaceId}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.planning-context.v2\n${safeWorkspaceId}\n${issuedAt}\n${safeBinding.method}\n${safeBinding.path}`,
+      'utf8',
+    )
     .digest('base64url');
   return Object.freeze({
     'x-life-os-workspace-id': safeWorkspaceId,

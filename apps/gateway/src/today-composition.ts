@@ -367,14 +367,32 @@ function requireHabitToday(
   );
 }
 
+/**
+ * Creates trusted workspace headers for an upstream service request.
+ *
+ * With `planningBinding`, this signs the exact Planning GET method/path with
+ * `life-os.planning-context.v2`. Without it, this signs the legacy
+ * `life-os.workspace.v1` workspace context used by services that do not use
+ * Planning request binding. The returned readonly record contains only the
+ * trusted workspace context headers required by upstream verification.
+ *
+ * @param workspaceId Validated workspace UUIDv4 authorized for the upstream request.
+ * @param secret Service-specific gateway context signing secret.
+ * @param nowSeconds Unix time used as the bounded signature issuance timestamp.
+ * @param planningBinding Optional validated Planning GET method/path binding.
+ */
 function workspaceContextHeaders(
   workspaceId: string,
   secret: string,
   nowSeconds: number,
+  planningBinding?: Readonly<{ method: 'GET'; path: string }>,
 ): Readonly<Record<string, string>> {
   const issuedAt = String(requireNowSeconds(nowSeconds));
+  const payload = planningBinding
+    ? `life-os.planning-context.v2\n${workspaceId}\n${issuedAt}\n${planningBinding.method}\n${planningBinding.path}`
+    : `life-os.workspace.v1\n${workspaceId}\n${issuedAt}`;
   const signature = createHmac('sha256', secret)
-    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .update(payload, 'utf8')
     .digest('base64url');
   return Object.freeze({
     'x-life-os-workspace-id': workspaceId,
@@ -434,12 +452,16 @@ async function composePlanning(
 
   let planningResponse: Response;
   try {
+    const planningPath = `/v1/today/${safeDate}`;
     planningResponse = await fetcher(
-      new URL(`/v1/today/${safeDate}`, planningOrigin),
+      new URL(planningPath, planningOrigin),
       {
         method: 'GET',
         headers: serviceHeaders({
-          ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds),
+          ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds, {
+            method: 'GET',
+            path: planningPath,
+          }),
           'x-correlation-id': correlationId,
         }),
         cache: 'no-store',

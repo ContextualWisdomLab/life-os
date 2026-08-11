@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import {
@@ -8,8 +8,10 @@ import {
 } from './http-boundary';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const GATEWAY_SECRET = 'trusted-gateway-context-secret-32-bytes';
+const GATEWAY_SECRET = randomBytes(32).toString('base64url');
+const DIFFERENT_GATEWAY_SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_785_806_400;
+const SEARCH_BINDING = { method: 'GET', path: '/v1/search' } as const;
 const BASE64URL_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -21,10 +23,11 @@ function signContext(
   workspaceId: string,
   issuedAt: string,
   secret = GATEWAY_SECRET,
+  binding: Readonly<{ method: string; path: string }> = SEARCH_BINDING,
 ): string {
   return createHmac('sha256', secret)
     .update(
-      `life-os.workspace.v1\n${workspaceId.toLowerCase()}\n${issuedAt}`,
+      `life-os.planning-context.v2\n${workspaceId.toLowerCase()}\n${issuedAt}\n${binding.method}\n${binding.path}`,
       'utf8',
     )
     .digest('base64url');
@@ -34,16 +37,20 @@ function expectProblem(
   operation: () => unknown,
   expected: { status: number; title: string; code: string },
 ): void {
+  let thrown: unknown;
   try {
     operation();
-    throw new Error('Expected operation to fail');
   } catch (error) {
-    expect(error).toBeInstanceOf(HttpException);
-    expect(responseOf(error as HttpException)).toEqual({
-      type: 'about:blank',
-      ...expected,
-    });
+    thrown = error;
   }
+  if (thrown === undefined) {
+    throw new Error('Expected operation to fail');
+  }
+  expect(thrown).toBeInstanceOf(HttpException);
+  expect(responseOf(thrown as HttpException)).toEqual({
+    type: 'about:blank',
+    ...expected,
+  });
 }
 
 describe('planning HTTP boundary', () => {
@@ -72,9 +79,65 @@ describe('planning HTTP boundary', () => {
           signature: signContext(WORKSPACE_ID, issuedAt),
         },
         GATEWAY_SECRET,
+        SEARCH_BINDING,
         NOW_SECONDS,
       ),
     ).toBe(WORKSPACE_ID);
+  });
+
+  it.each([
+    {
+      name: 'unsupported method',
+      binding: { method: 'DELETE', path: '/v1/search' },
+    },
+    {
+      name: 'non-string path',
+      binding: { method: 'GET', path: 123 },
+    },
+    {
+      name: 'path longer than 256 characters',
+      binding: { method: 'GET', path: `/v1/${'a'.repeat(253)}` },
+    },
+    {
+      name: 'control character in path',
+      binding: { method: 'GET', path: '/v1/search\n' },
+    },
+    {
+      name: 'query string in path',
+      binding: { method: 'GET', path: '/v1/search?q=ship' },
+    },
+    {
+      name: 'fragment in path',
+      binding: { method: 'GET', path: '/v1/search#results' },
+    },
+    {
+      name: 'non-UUID goal identifier',
+      binding: { method: 'GET', path: '/v1/goals/not-a-uuid/projects' },
+    },
+    {
+      name: 'non-UUID project identifier',
+      binding: { method: 'POST', path: '/v1/projects/not-a-uuid/tasks' },
+    },
+  ])('rejects an invalid request binding: $name', ({ binding }) => {
+    const issuedAt = String(NOW_SECONDS);
+    expectProblem(
+      () =>
+        requireTrustedWorkspaceContext(
+          {
+            workspaceId: WORKSPACE_ID,
+            issuedAt,
+            signature: signContext(WORKSPACE_ID, issuedAt),
+          },
+          GATEWAY_SECRET,
+          binding,
+          NOW_SECONDS,
+        ),
+      {
+        title: 'Trusted gateway context is invalid',
+        status: 401,
+        code: 'invalid_gateway_context',
+      },
+    );
   });
 
   it('rejects a non-canonical base64url alias for the same signature bytes', () => {
@@ -99,6 +162,7 @@ describe('planning HTTP boundary', () => {
             signature: nonCanonical,
           },
           GATEWAY_SECRET,
+          SEARCH_BINDING,
           NOW_SECONDS,
         ),
       {
@@ -121,6 +185,7 @@ describe('planning HTTP boundary', () => {
               signature: signContext(WORKSPACE_ID, String(NOW_SECONDS)),
             },
             secret,
+            SEARCH_BINDING,
             NOW_SECONDS,
           ),
         {
@@ -172,7 +237,11 @@ describe('planning HTTP boundary', () => {
     {
       workspaceId: WORKSPACE_ID,
       issuedAt: String(NOW_SECONDS),
-      signature: signContext(WORKSPACE_ID, String(NOW_SECONDS), 'x'.repeat(32)),
+      signature: signContext(
+        WORKSPACE_ID,
+        String(NOW_SECONDS),
+        DIFFERENT_GATEWAY_SECRET,
+      ),
       nowSeconds: NOW_SECONDS,
     },
     {
@@ -191,6 +260,7 @@ describe('planning HTTP boundary', () => {
             signature: context.signature,
           },
           GATEWAY_SECRET,
+          SEARCH_BINDING,
           context.nowSeconds,
         ),
       {
@@ -212,6 +282,7 @@ describe('planning HTTP boundary', () => {
             signature: signContext(WORKSPACE_ID, issuedAt),
           },
           GATEWAY_SECRET,
+          SEARCH_BINDING,
           NOW_SECONDS,
         ),
       ).toBe(WORKSPACE_ID);
