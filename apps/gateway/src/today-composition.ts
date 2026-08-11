@@ -367,6 +367,20 @@ function requireHabitToday(
   );
 }
 
+/**
+ * Creates trusted workspace headers for an upstream service request.
+ *
+ * With `planningBinding`, this signs the exact Planning GET method/path with
+ * `life-os.planning-context.v2`. Without it, this signs the legacy
+ * `life-os.workspace.v1` workspace context used by services that do not use
+ * Planning request binding. The returned readonly record contains only the
+ * trusted workspace context headers required by upstream verification.
+ *
+ * @param workspaceId Validated workspace UUIDv4 authorized for the upstream request.
+ * @param secret Service-specific gateway context signing secret.
+ * @param nowSeconds Unix time used as the bounded signature issuance timestamp.
+ * @param planningBinding Optional validated Planning GET method/path binding.
+ */
 function workspaceContextHeaders(
   workspaceId: string,
   secret: string,
