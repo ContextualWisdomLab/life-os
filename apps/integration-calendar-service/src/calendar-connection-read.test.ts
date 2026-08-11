@@ -62,7 +62,9 @@ describe('CalendarConnectionReadApplication', () => {
     const reads = new RecordingReadPort(connection());
     const application = new CalendarConnectionReadApplication(reads);
 
-    await expect(application.getActive(AUTHORITY, CONNECTION_ID)).resolves.toEqual({
+    await expect(
+      application.getActive(AUTHORITY, CONNECTION_ID),
+    ).resolves.toEqual({
       connectionId: CONNECTION_ID,
       providerCode: 'google',
       scopeValues: ['calendar.readonly'],
@@ -77,9 +79,9 @@ describe('CalendarConnectionReadApplication', () => {
         userId: USER_ID,
       },
     ]);
-    expect(JSON.stringify(await application.getActive(AUTHORITY, CONNECTION_ID))).not.toContain(
-      'kms://',
-    );
+    expect(
+      JSON.stringify(await application.getActive(AUTHORITY, CONNECTION_ID)),
+    ).not.toContain('kms://');
   });
 
   it('returns undefined when no active connection exists inside the trusted scope', async () => {
@@ -87,22 +89,27 @@ describe('CalendarConnectionReadApplication', () => {
       new RecordingReadPort(undefined),
     );
 
-    await expect(application.getActive(AUTHORITY, CONNECTION_ID)).resolves.toBeUndefined();
+    await expect(
+      application.getActive(AUTHORITY, CONNECTION_ID),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects malformed connection and authority identifiers before persistence', async () => {
     const invalidCases: readonly [TrustedCalendarUserContext, string][] = [
       [AUTHORITY, 'not-a-uuid'],
       [Object.freeze({ workspaceId: 'bad', userId: USER_ID }), CONNECTION_ID],
-      [Object.freeze({ workspaceId: WORKSPACE_ID, userId: 'bad' }), CONNECTION_ID],
+      [
+        Object.freeze({ workspaceId: WORKSPACE_ID, userId: 'bad' }),
+        CONNECTION_ID,
+      ],
     ];
 
     for (const [authority, connectionId] of invalidCases) {
       const reads = new RecordingReadPort(undefined);
       const application = new CalendarConnectionReadApplication(reads);
-      await expect(application.getActive(authority, connectionId)).rejects.toThrow(
-        'Calendar connection read input is invalid',
-      );
+      await expect(
+        application.getActive(authority, connectionId),
+      ).rejects.toThrow('Calendar connection read input is invalid');
       expect(reads.calls).toHaveLength(0);
     }
   });
@@ -113,15 +120,23 @@ describe('CalendarConnectionReadApplication', () => {
       connection({ workspaceId: OTHER_WORKSPACE_ID }),
       connection({ userId: OTHER_USER_ID }),
       connection({ status: 'revoked', revokedAt: '2026-08-11T10:00:00.000Z' }),
+      connection({ providerCode: 'outlook' as never }),
+      connection({ scopeValues: 'calendar.readonly' as never }),
+      connection({ scopeValues: ['scope-with-\u0000-control'] }),
+      connection({
+        scopeValues: Array.from({ length: 33 }, (_, index) => `scope-${index}`),
+      }),
+      connection({ tokenExpiresAt: 'not-an-instant' }),
+      connection({ selectedCalendarIdentifier: 'x'.repeat(1025) }),
     ];
 
     for (const record of invalidRecords) {
       const application = new CalendarConnectionReadApplication(
         new RecordingReadPort(record),
       );
-      await expect(application.getActive(AUTHORITY, CONNECTION_ID)).rejects.toBeInstanceOf(
-        CalendarConnectionReadEvidenceError,
-      );
+      await expect(
+        application.getActive(AUTHORITY, CONNECTION_ID),
+      ).rejects.toBeInstanceOf(CalendarConnectionReadEvidenceError);
     }
   });
 });

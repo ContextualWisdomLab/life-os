@@ -5,8 +5,14 @@ import type {
   GetActiveCalendarConnection,
 } from './calendar-connection-repository';
 
+/** Accepts canonical UUIDv4 identifiers; successful values are normalized to lowercase. */
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
+const MAXIMUM_SCOPE_COUNT = 32;
+const MAXIMUM_SCOPE_LENGTH = 128;
+const MAXIMUM_CALENDAR_IDENTIFIER_LENGTH = 1024;
 
 /** Least-authority persistence port required to read one active connection. */
 export interface CalendarConnectionReadPort {
@@ -43,6 +49,7 @@ export class CalendarConnectionReadEvidenceError extends Error {
   }
 }
 
+/** Validate one opaque UUIDv4 authority identifier and return its lowercase form. */
 function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new CalendarConnectionReadValidationError();
@@ -50,6 +57,65 @@ function requireUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Reject a persisted provider code that is outside the supported public contract. */
+function requireStoredProvider(value: unknown): CalendarConnectionProvider {
+  if (value !== 'google' && value !== 'caldav') {
+    throw new CalendarConnectionReadEvidenceError();
+  }
+  return value;
+}
+
+/** Reject a persisted instant unless it is a finite canonical millisecond UTC value. */
+function requireStoredInstant(value: unknown): string {
+  if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
+    throw new CalendarConnectionReadEvidenceError();
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new CalendarConnectionReadEvidenceError();
+  }
+  return value;
+}
+
+/** Validate and bound one public persisted text field without retaining invalid input. */
+function requireStoredText(value: unknown, maximumLength: number): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > maximumLength ||
+    CONTROL_CHARACTER_PATTERN.test(value)
+  ) {
+    throw new CalendarConnectionReadEvidenceError();
+  }
+  return value;
+}
+
+/** Validate, bound, and preserve the canonical sorted scope-list representation. */
+function requireStoredScopes(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > MAXIMUM_SCOPE_COUNT
+  ) {
+    throw new CalendarConnectionReadEvidenceError();
+  }
+  const scopes = value.map((scope) =>
+    requireStoredText(scope, MAXIMUM_SCOPE_LENGTH),
+  );
+  const canonical = [...new Set(scopes)].sort();
+  if (
+    canonical.length !== scopes.length ||
+    canonical.some((scope, index) => scope !== scopes[index])
+  ) {
+    throw new CalendarConnectionReadEvidenceError();
+  }
+  return Object.freeze(canonical);
+}
+
+/**
+ * Verify storage evidence against authenticated authority and project only
+ * bounded, credential-free lifecycle fields.
+ */
 function projectConnection(
   record: CalendarConnectionRecord,
   expected: GetActiveCalendarConnection,
@@ -62,12 +128,19 @@ function projectConnection(
   ) {
     throw new CalendarConnectionReadEvidenceError();
   }
+  const providerCode = requireStoredProvider(record.providerCode);
+  const scopeValues = requireStoredScopes(record.scopeValues);
+  const tokenExpiresAt = requireStoredInstant(record.tokenExpiresAt);
+  const selectedCalendarIdentifier = requireStoredText(
+    record.selectedCalendarIdentifier,
+    MAXIMUM_CALENDAR_IDENTIFIER_LENGTH,
+  );
   return Object.freeze({
     connectionId: record.connectionId,
-    providerCode: record.providerCode,
-    scopeValues: Object.freeze([...record.scopeValues]),
-    tokenExpiresAt: record.tokenExpiresAt,
-    selectedCalendarIdentifier: record.selectedCalendarIdentifier,
+    providerCode,
+    scopeValues,
+    tokenExpiresAt,
+    selectedCalendarIdentifier,
     status: 'active',
   });
 }

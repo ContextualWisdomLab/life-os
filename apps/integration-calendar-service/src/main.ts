@@ -47,6 +47,7 @@ export const CALENDAR_SYNC_SERVICE = Symbol('CALENDAR_SYNC_SERVICE');
 export const CALENDAR_CONNECTION_DISCONNECT_APPLICATION = Symbol(
   'CALENDAR_CONNECTION_DISCONNECT_APPLICATION',
 );
+/** DI token for the authenticated, tenant/user-scoped calendar read application. */
 export const CALENDAR_CONNECTION_READ_APPLICATION = Symbol(
   'CALENDAR_CONNECTION_READ_APPLICATION',
 );
@@ -155,14 +156,18 @@ export class CalendarConnectionReadController {
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
-    @Headers('x-life-os-context-signature') contextSignature: string | undefined,
+    @Headers('x-life-os-context-signature')
+    contextSignature: string | undefined,
   ): Promise<CalendarConnectionReadResult> {
     try {
       const authority = requireTrustedCalendarUserContext(
         { workspaceId, userId, issuedAt, signature: contextSignature },
         process.env.CALENDAR_GATEWAY_CONTEXT_SECRET,
       );
-      const result = await this.readApplication.getActive(authority, connectionId);
+      const result = await this.readApplication.getActive(
+        authority,
+        connectionId,
+      );
       if (!result) {
         throw problem(
           404,
@@ -229,7 +234,8 @@ export class CalendarConnectionController {
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
-    @Headers('x-life-os-context-signature') contextSignature: string | undefined,
+    @Headers('x-life-os-context-signature')
+    contextSignature: string | undefined,
   ): Promise<CalendarConnectionDisconnectResult> {
     try {
       const authority = requireTrustedCalendarUserContext(
@@ -310,7 +316,8 @@ export class CalendarAppModule {
       providers: [
         {
           provide: CALENDAR_SYNC_SERVICE,
-          useFactory: (): CalendarSyncService => new CalendarSyncService(provider),
+          useFactory: (): CalendarSyncService =>
+            new CalendarSyncService(provider),
         },
         ...(disconnectApplication
           ? [
