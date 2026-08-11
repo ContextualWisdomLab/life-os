@@ -42,6 +42,16 @@ function controllerWith(handle: ReturnType<typeof vi.fn>): HabitDataRightsContro
   } as unknown as HabitRuntime);
 }
 
+async function rejectedStatus(operation: Promise<unknown>): Promise<number> {
+  try {
+    await operation;
+  } catch (error) {
+    expect(error).toBeInstanceOf(HttpException);
+    return (error as HttpException).getStatus();
+  }
+  throw new Error('Expected Habit data-rights transport rejection');
+}
+
 afterEach(() => {
   delete process.env.HABIT_DATA_RIGHTS_CONTEXT_SECRET;
   vi.restoreAllMocks();
@@ -77,13 +87,15 @@ describe.sequential('HabitDataRightsController authority contract', () => {
     const handle = vi.fn();
     const controller = controllerWith(handle);
 
-    await expect(
-      controller.contribute(
-        issuedAt,
-        randomBytes(32).toString('base64url'),
-        REQUEST,
+    expect(
+      await rejectedStatus(
+        controller.contribute(
+          issuedAt,
+          randomBytes(32).toString('base64url'),
+          REQUEST,
+        ),
       ),
-    ).rejects.toMatchObject({ status: 401 } satisfies Partial<HttpException>);
+    ).toBe(401);
     expect(handle).not.toHaveBeenCalled();
   });
 
@@ -92,9 +104,11 @@ describe.sequential('HabitDataRightsController authority contract', () => {
     const handle = vi.fn();
     const controller = controllerWith(handle);
 
-    await expect(
-      controller.contribute(issuedAt, signature(issuedAt), REQUEST),
-    ).rejects.toMatchObject({ status: 503 } satisfies Partial<HttpException>);
+    expect(
+      await rejectedStatus(
+        controller.contribute(issuedAt, signature(issuedAt), REQUEST),
+      ),
+    ).toBe(503);
     expect(handle).not.toHaveBeenCalled();
   });
 });
