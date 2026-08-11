@@ -1,6 +1,10 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import {
+  PostgresHabitDataRightsAuthorityReplayGuard,
+  type HabitDataRightsAuthorityReplayGuardPort,
+} from './habit-data-rights-authority-replay';
+import {
   HabitDataRightsContributor,
   type HabitTransactionalSqlClient,
 } from './habit-data-rights';
@@ -204,6 +208,8 @@ export class HabitRuntime implements OnApplicationShutdown {
     readonly service: HabitService,
     /** Service-owned export/erasure participant consumed by Identity orchestration. */
     readonly dataRightsContributor: HabitDataRightsContributor,
+    /** Durable single-consumption authority for destructive internal data-rights requests. */
+    readonly dataRightsAuthorityReplayGuard: HabitDataRightsAuthorityReplayGuardPort,
   ) {}
 
   async close(): Promise<void> {
@@ -231,5 +237,6 @@ export function createHabitRuntime(
     pool,
     new HabitService(repository),
     new HabitDataRightsContributor(sqlClient),
+    new PostgresHabitDataRightsAuthorityReplayGuard(sqlClient),
   );
 }
