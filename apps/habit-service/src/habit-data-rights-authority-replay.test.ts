@@ -3,24 +3,10 @@ import {
   HabitDataRightsAuthorityReplayError,
   PostgresHabitDataRightsAuthorityReplayGuard,
 } from './habit-data-rights-authority-replay';
-import type {
-  HabitSqlClient,
-  HabitSqlQueryResult,
-} from './postgres-habit-repository';
+import type { HabitSqlClient } from './postgres-habit-repository';
 
 const DIGEST = 'a'.repeat(64);
 const EXPIRES_AT = '2026-08-12T00:01:00.000Z';
-
-class FakeSqlClient implements HabitSqlClient {
-  readonly query = vi.fn();
-
-  async queryTyped<Row>(
-    text: string,
-    values: readonly unknown[],
-  ): Promise<HabitSqlQueryResult<Row>> {
-    return (await this.query(text, values)) as HabitSqlQueryResult<Row>;
-  }
-}
 
 function clientWith(rows: readonly unknown[]): HabitSqlClient & {
   query: ReturnType<typeof vi.fn>;
