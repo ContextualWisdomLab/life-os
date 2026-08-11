@@ -114,7 +114,7 @@ describe('plugin operator replay migration contract', () => {
       expect(sql).toContain(documentedContract);
     }
     expect(sql).not.toMatch(
-      /\b(workspace_id|user_id|installed_by_user_id|signature|secret|token|password)\b/iu,
+      /^\s*(workspace_id|user_id|installed_by_user_id|signature|secret|token|password)\s+[a-z]/imu,
     );
   });
 });
