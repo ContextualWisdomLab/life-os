@@ -7,7 +7,6 @@ import {
   type PluginCredentialOperatorPort,
   type PluginInstallationOperatorPort,
 } from './plugin-operator-application';
-import { IntegrationOperatorContextError } from './plugin-operator-context';
 import type {
   PluginCredentialBindingView,
   BindPluginCredentialInput,
@@ -162,7 +161,7 @@ describe('authenticated plugin operator composition', () => {
         signedHeaders('GET', readPath),
         INSTALLATION_ID,
       ),
-    ).rejects.toMatchObject<Partial<IntegrationOperatorContextError>>({
+    ).rejects.toMatchObject({
       name: 'IntegrationOperatorContextError',
       kind: 'invalid',
     });
@@ -182,7 +181,7 @@ describe('authenticated plugin operator composition', () => {
         ),
         ambiguousId,
       ),
-    ).rejects.toMatchObject<Partial<IntegrationOperatorContextError>>({
+    ).rejects.toMatchObject({
       kind: 'invalid',
     });
     expect(installations.getInstallation).not.toHaveBeenCalled();
@@ -219,9 +218,7 @@ describe('authenticated plugin operator composition', () => {
       signature: 'A'.repeat(43),
     };
 
-    await expect(app.bindCredential(forged, input)).rejects.toMatchObject<
-      Partial<IntegrationOperatorContextError>
-    >({
+    await expect(app.bindCredential(forged, input)).rejects.toMatchObject({
       name: 'IntegrationOperatorContextError',
       kind: 'invalid',
     });
