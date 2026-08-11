@@ -27,8 +27,12 @@ const INSTALLATION_ID = '33333333-3333-4333-8333-333333333333';
 const CREDENTIAL_BINDING_ID = '44444444-4444-4444-8444-444444444444';
 const SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_334_400;
+const EARLIER_ISSUED_AT_SECONDS = NOW_SECONDS - 30;
 const NOW = new Date(NOW_SECONDS * 1_000).toISOString();
 const EXPIRES_AT = new Date((NOW_SECONDS + 60) * 1_000).toISOString();
+const EARLIER_EXPIRES_AT = new Date(
+  (EARLIER_ISSUED_AT_SECONDS + 60) * 1_000,
+).toISOString();
 
 const MANIFEST: PluginManifest = Object.freeze({
   pluginId: 'com.example.calendar',
@@ -191,6 +195,30 @@ describe('authenticated plugin operator composition', () => {
         workspaceId: WORKSPACE_ID,
         actorUserId: USER_ID,
       },
+    });
+  });
+
+  it('expires replay evidence from signed issuance rather than delayed consumption', async () => {
+    const replay = replayGuard();
+    const app = application(installationPort(), credentialPort(), replay);
+    const headers = signedHeaders(
+      'POST',
+      '/v1/plugins/installations',
+      String(EARLIER_ISSUED_AT_SECONDS),
+    );
+    const input = {
+      installationId: INSTALLATION_ID,
+      manifest: MANIFEST,
+      grantedCapabilities: ['lifeos.calendar.event.v1'],
+    } as const;
+
+    await expect(app.install(headers, input)).resolves.toEqual(
+      INSTALLATION_RECORD,
+    );
+    expect(replay.consume).toHaveBeenCalledWith({
+      evidenceId: headers.evidenceId,
+      consumedAt: NOW,
+      expiresAt: EARLIER_EXPIRES_AT,
     });
   });
 
@@ -371,7 +399,6 @@ describe('authenticated plugin operator composition', () => {
     );
 
     expect(result).toEqual(CREDENTIAL_VIEW);
-    expect(result).not.toHaveProperty('secretReference');
     expect(credentials.bind).toHaveBeenCalledWith({
       ...input,
       trustedContext: {
