@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: 299f0d2b71f27f94ca71e64dd77826ea0cb9ba9d
+          EXPECTED_PARENT: 5f29baee08d651015c046d7cbd1428db647af366
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -115,32 +115,27 @@ jobs:
           implement = run_step(
               'Implement deterministic, least-privilege, nonblocking erasure'
           )
-          stale_sort = (
-              "old_sort = (\n"
-              '    "    entries.sort(([left], [right]) => '
-              'left.localeCompare(right));"\n'
-              ")\n"
-              'new_sort = """    entries.sort(([left], [right]) =>\n'
-              "    left < right ? -1 : 1,\n"
-              '  );"""\n'
+          sort_start = implement.index("old_sort = (\n")
+          sort_end = implement.index(
+              '\n\nold_helper = r"""',
+              sort_start,
           )
-          live_sort = (
-              'old_sort = """    entries.sort(([left], [right]) => {\n'
-              "    if (left < right) {\n"
-              "      return -1;\n"
-              "    }\n"
-              "    if (left > right) {\n"
-              "      return 1;\n"
-              "    }\n"
-              "    return 0;\n"
-              '  });"""\n'
-              'new_sort = """    entries.sort(([left], [right]) =>\n'
-              "    left < right ? -1 : 1,\n"
-              '  );"""\n'
-          )
-          if implement.count(stale_sort) != 1:
-              raise SystemExit('unexpected stale comparator repair phase')
-          implement = implement.replace(stale_sort, live_sort, 1)
+          live_sort = r'''current_sort = """    entries.sort(([left], [right]) => {
+            if (left < right) {
+              return -1;
+            }
+            if (left > right) {
+              return 1;
+            }
+            return 0;
+          });"""
+          new_sort = """    entries.sort(([left], [right]) =>
+            left < right ? -1 : 1,
+          );"""
+          if source.count(current_sort) != 1:
+            raise SystemExit('unexpected live canonical key-sort shape')
+          source = source.replace(current_sort, new_sort, 1)'''
+          implement = implement[:sort_start] + live_sort + implement[sort_end:]
 
           phases = {
               '01-add-tests.sh': add_tests,
@@ -193,5 +188,5 @@ jobs:
             '+refs/heads/main:refs/remotes/origin/main' \
             '+refs/heads/feat/notification-data-rights-contributor-v2:refs/remotes/origin/feat/notification-data-rights-contributor-v2'
           test "$(git rev-parse origin/feat/notification-data-rights-contributor-v2)" = "${{ github.sha }}"
-          test "$(git merge-base --is-ancestor origin/main HEAD; printf '%s' "$?")" = '0'
+          git merge-base --is-ancestor origin/main HEAD
           git push origin HEAD:refs/heads/feat/notification-data-rights-contributor-v2
