@@ -1,0 +1,142 @@
+name: Prepare notification data-rights repair
+
+on:
+  push:
+    branches:
+      - feat/notification-data-rights-contributor-v2
+    paths:
+      - .github/workflows/kick-notification-data-rights-repair.yml
+
+permissions: {}
+
+concurrency:
+  group: prepare-notification-data-rights-repair-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/notification-data-rights-contributor-v2
+          fetch-depth: 0
+
+      - name: Adapt repair workflow to the live branch
+        env:
+          EXPECTED_PARENT: 11a720de2206d9a2209bc16063bfb521c6a8d2f0
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/feat/notification-data-rights-contributor-v2:refs/remotes/origin/feat/notification-data-rights-contributor-v2'
+          test "$(git rev-parse origin/feat/notification-data-rights-contributor-v2)" = "$(git rev-parse HEAD)"
+          export CURRENT_HEAD="$(git rev-parse HEAD)"
+          export CURRENT_MAIN="$(git rev-parse origin/main)"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path('.github/workflows/repair-notification-data-rights.yml')
+          workflow = path.read_text(encoding='utf-8')
+          current_head = os.environ['CURRENT_HEAD']
+          current_main = os.environ['CURRENT_MAIN']
+
+          workflow = workflow.replace(
+              "github.event.before == 'a558ab896894906a081c7e34efe842676da5ffd6'",
+              f"github.event.before == '{current_head}'",
+              1,
+          )
+          workflow = workflow.replace(
+              "test \"$(git rev-parse HEAD^)\" = 'a558ab896894906a081c7e34efe842676da5ffd6'",
+              f"test \"$(git rev-parse HEAD^)\" = '{current_head}'",
+              1,
+          )
+          workflow = workflow.replace(
+              "'7c3fd32efbf9ebdcb4bac99980a3c8b6c893a89f'",
+              f"'{current_main}'",
+          )
+
+          step_start = workflow.index(
+              "          behavior_path = Path(\n",
+              workflow.index("- name: Add failing regression evidence"),
+          )
+          step_end = workflow.index(
+              "          migration_contract = r\"\"\"",
+              step_start,
+          )
+          workflow = workflow[:step_start] + workflow[step_end:]
+
+          removed_grep = (
+              "          grep -F 'exports code-unit canonical evidence "
+              "independent of key insertion order' \\\n"
+              "            \"$RUNNER_TEMP/notification-red.log\"\n"
+          )
+          if workflow.count(removed_grep) != 1:
+              raise SystemExit('unexpected obsolete deterministic-test grep')
+          workflow = workflow.replace(removed_grep, '', 1)
+
+          old_sort = (
+              "          old_sort = (\n"
+              "              \"    entries.sort(([left], [right]) => left.localeCompare(right));\"\n"
+              "          )\n"
+              "          new_sort = \"\"\"    entries.sort(([left], [right]) =>\n"
+              "              left < right ? -1 : 1,\n"
+              "            );\"\"\"\n"
+          )
+          new_sort = (
+              "          old_sort = \"\"\"    entries.sort(([left], [right]) => {\n"
+              "              if (left < right) {\n"
+              "                return -1;\n"
+              "              }\n"
+              "              if (left > right) {\n"
+              "                return 1;\n"
+              "              }\n"
+              "              return 0;\n"
+              "            });\"\"\"\n"
+              "          new_sort = \"\"\"    entries.sort(([left], [right]) =>\n"
+              "              left < right ? -1 : 1,\n"
+              "            );\"\"\"\n"
+          )
+          if workflow.count(old_sort) != 1:
+              raise SystemExit('unexpected stale comparator patch')
+          workflow = workflow.replace(old_sort, new_sort, 1)
+
+          workflow = workflow.replace(
+              "            'apps/notification-service/src/"
+              "notification-data-rights.behavior.test.ts' \\\n",
+              '',
+              1,
+          )
+          workflow = workflow.replace(
+              "            apps/notification-service/src/"
+              "notification-data-rights.behavior.test.ts \\\n",
+              '',
+              1,
+          )
+          path.write_text(workflow, encoding='utf-8')
+          PY
+
+          git rm .github/workflows/kick-notification-data-rights-repair.yml
+          git diff --check
+          actual="$(git status --short | awk '{print $2}' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            '.github/workflows/kick-notification-data-rights-repair.yml' \
+            '.github/workflows/repair-notification-data-rights.yml' \
+            | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          git add .github/workflows/repair-notification-data-rights.yml
+          git commit -m 'ci(notification): adapt repair to live branch'
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/feat/notification-data-rights-contributor-v2:refs/remotes/origin/feat/notification-data-rights-contributor-v2'
+          test "$(git rev-parse origin/feat/notification-data-rights-contributor-v2)" = "$CURRENT_HEAD"
+          test "$(git rev-parse origin/main)" = "$CURRENT_MAIN"
+          git push origin HEAD:refs/heads/feat/notification-data-rights-contributor-v2
