@@ -4,7 +4,7 @@ import {
   randomBytes,
   randomUUID,
 } from 'node:crypto';
-import { chmod, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   CalendarConnectionCredentialStore,
@@ -88,9 +88,7 @@ function requireSecret(value: unknown): string {
   return value;
 }
 
-function requireCredentialKind(
-  value: unknown,
-): 'access' | 'refresh' {
+function requireCredentialKind(value: unknown): 'access' | 'refresh' {
   if (value !== 'access' && value !== 'refresh') {
     return unavailable();
   }
@@ -136,17 +134,16 @@ function requireCanonicalBase64(
   return decoded;
 }
 
-function parseHandle(value: unknown): { readonly handle: string; readonly id: string } {
-  if (
-    typeof value !== 'string' ||
-    !value.startsWith(HANDLE_PREFIX)
-  ) {
+function parseHandle(
+  value: unknown,
+): { readonly handle: string; readonly id: string } {
+  if (typeof value !== 'string' || !value.startsWith(HANDLE_PREFIX)) {
     return unavailable();
   }
   const rawId = value.slice(HANDLE_PREFIX.length);
   const id = requireUuidV4(rawId);
   const handle = `${HANDLE_PREFIX}${id}`;
-  if (value.toLowerCase() !== handle) {
+  if (value !== handle) {
     return unavailable();
   }
   return Object.freeze({ handle, id });
@@ -308,26 +305,44 @@ export class CalendarEncryptedFileSecretStore
 
   /**
    * Reads and authenticates one exact opaque handle, returning plaintext only
-   * to the internal credential-materialization boundary.
+   * to the internal credential-materialization boundary. The opened file is
+   * identity-checked against its preceding lstat and size-bounded before read.
    */
   async readSecret(secretHandle: string): Promise<string> {
     try {
       const parsed = parseHandle(secretHandle);
       const path = this.pathForId(parsed.id);
-      const file = await lstat(path);
+      const before = await lstat(path);
       if (
-        !file.isFile() ||
-        file.isSymbolicLink() ||
-        file.size <= 0 ||
-        file.size > MAXIMUM_ENVELOPE_BYTES
+        !before.isFile() ||
+        before.isSymbolicLink() ||
+        before.size <= 0 ||
+        before.size > MAXIMUM_ENVELOPE_BYTES
       ) {
         return unavailable();
       }
 
-      const encoded = await readFile(path, 'utf8');
-      if (Buffer.byteLength(encoded, 'utf8') !== file.size) {
-        return unavailable();
+      const file = await open(path, 'r');
+      let encoded: string;
+      try {
+        const opened = await file.stat();
+        if (
+          !opened.isFile() ||
+          opened.size <= 0 ||
+          opened.size > MAXIMUM_ENVELOPE_BYTES ||
+          opened.dev !== before.dev ||
+          opened.ino !== before.ino
+        ) {
+          return unavailable();
+        }
+        encoded = await file.readFile({ encoding: 'utf8' });
+        if (Buffer.byteLength(encoded, 'utf8') !== opened.size) {
+          return unavailable();
+        }
+      } finally {
+        await file.close();
       }
+
       const envelope = requireEnvelope(JSON.parse(encoded) as unknown);
       const iv = requireCanonicalBase64(envelope.iv, IV_BYTES);
       const ciphertext = requireCanonicalBase64(envelope.ciphertext);
