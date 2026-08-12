@@ -139,6 +139,30 @@ describe('CalendarConnectionCreateApplication', () => {
     expect(credentials.deleteSecret).toHaveBeenCalledWith(ACCESS_HANDLE);
   });
 
+  it('deletes newly stored credentials when durable metadata evidence mismatches authority', async () => {
+    const credentials = store();
+    const connections: CalendarConnectionCreateRepository = {
+      async createConnection() {
+        return Object.freeze({
+          ...record(),
+          connectionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        });
+      },
+    };
+    const application = new CalendarConnectionCreateApplication(
+      connections,
+      credentials,
+      () => CREATED_AT,
+    );
+
+    await expect(application.create(authority, providerResult)).rejects.toBeInstanceOf(
+      CalendarConnectionCreateDependencyError,
+    );
+    expect(credentials.deleteSecret).toHaveBeenCalledTimes(2);
+    expect(credentials.deleteSecret).toHaveBeenCalledWith(REFRESH_HANDLE);
+    expect(credentials.deleteSecret).toHaveBeenCalledWith(ACCESS_HANDLE);
+  });
+
   it('deletes the access credential when refresh credential storage fails', async () => {
     const credentials: CalendarConnectionCredentialStore = {
       writeSecret: vi
