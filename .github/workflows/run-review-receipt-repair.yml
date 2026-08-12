@@ -42,11 +42,42 @@ jobs:
         with:
           ref: feat/review-data-rights-contributor-v1
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Verify bootstrap lineage
         env:
-          EXPECTED_PARENT: 1995c3635f653e0506fc923b20948c2d7038ac0b
-        run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          EXPECTED_PARENT: 35c53b96f8881b7ae756add6d55f81f86c9b3b70
+          EXPECTED_MAIN: f1b2f3c0cdf32e076e637ebb56719f60c1e8409b
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            '+refs/heads/feat/review-data-rights-contributor-v1:refs/remotes/origin/feat/review-data-rights-contributor-v1'
+          test "$(git rev-parse origin/feat/review-data-rights-contributor-v1)" = "$(git rev-parse HEAD)"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
 
       - name: Execute test-first repair
+        env:
+          EXPECTED_MAIN: f1b2f3c0cdf32e076e637ebb56719f60c1e8409b
         run: bash .github/scripts/repair-review-receipt-scope.sh
+
+      - name: Push only the exact verified repair
+        env:
+          EXPECTED_BRANCH_HEAD: ${{ github.sha }}
+          EXPECTED_MAIN: f1b2f3c0cdf32e076e637ebb56719f60c1e8409b
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          branch='feat/review-data-rights-contributor-v1'
+          test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/review-receipt-ready-sha")"
+          test -z "$(git status --short)"
+          git fetch --no-tags origin \
+            '+refs/heads/main:refs/remotes/origin/main' \
+            "+refs/heads/$branch:refs/remotes/origin/$branch"
+          test "$(git rev-parse "origin/$branch")" = "$EXPECTED_BRANCH_HEAD"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
+          git merge-base --is-ancestor origin/main HEAD
+          git push \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/$branch"

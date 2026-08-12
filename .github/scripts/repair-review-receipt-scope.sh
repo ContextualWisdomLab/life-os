@@ -7,7 +7,8 @@ git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git fetch --no-tags origin \
   '+refs/heads/main:refs/remotes/origin/main' \
   "+refs/heads/$branch:refs/remotes/origin/$branch"
-test "$(git rev-parse origin/$branch)" = "$GITHUB_SHA"
+test "$(git rev-parse "origin/$branch")" = "$GITHUB_SHA"
+test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
 git merge --no-edit --no-ff origin/main
 
 corepack enable
@@ -17,13 +18,32 @@ set +e
 pnpm --filter @life-os/review-service exec vitest run \
   src/review-data-rights-receipt-scope.integration.test.ts \
   --no-file-parallelism --coverage.enabled=false \
+  --reporter=json --outputFile="$RUNNER_TEMP/review-receipt-red.json" \
   >"$RUNNER_TEMP/review-receipt-red.log" 2>&1
 red_status="$?"
 set -e
 cat "$RUNNER_TEMP/review-receipt-red.log"
 test "$red_status" -ne 0
-grep -F 'allows the same idempotency key to be isolated across workspaces' \
-  "$RUNNER_TEMP/review-receipt-red.log"
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+expected = 'allows the same idempotency key to be isolated across workspaces'
+report_path = Path(os.environ['RUNNER_TEMP']) / 'review-receipt-red.json'
+report = json.loads(report_path.read_text(encoding='utf-8'))
+matching = []
+for file_result in report.get('testResults', []):
+    for assertion in file_result.get('assertionResults', []):
+        name = ' '.join(
+            str(assertion.get(field, ''))
+            for field in ('fullName', 'title', 'ancestorTitles')
+        )
+        if expected in name:
+            matching.append(assertion.get('status'))
+if matching != ['failed']:
+    raise SystemExit(f'unexpected RED assertion evidence: {matching!r}')
+PY
 grep -F 'Review erasure idempotency authority conflicts' \
   "$RUNNER_TEMP/review-receipt-red.log"
 
@@ -141,8 +161,18 @@ pnpm build
 docker compose config --quiet
 git diff --check
 
+git rm \
+  .github/scripts/repair-review-receipt-scope.sh \
+  .github/workflows/finalize-review-receipt-scope.yml \
+  .github/workflows/repair-review-data-rights-receipt-scope.yml \
+  .github/workflows/run-review-receipt-repair.yml
+
 actual="$(git status --short | awk '{print $2}' | LC_ALL=C sort)"
 expected="$(printf '%s\n' \
+  '.github/scripts/repair-review-receipt-scope.sh' \
+  '.github/workflows/finalize-review-receipt-scope.yml' \
+  '.github/workflows/repair-review-data-rights-receipt-scope.yml' \
+  '.github/workflows/run-review-receipt-repair.yml' \
   'apps/review-service/migrations/0002_data_rights_erasure_receipt.sql' \
   'apps/review-service/src/review-data-rights-receipt-scope.integration.test.ts' \
   'apps/review-service/src/review-data-rights.test.ts' \
@@ -156,10 +186,12 @@ git add \
   apps/review-service/src/review-data-rights.test.ts \
   apps/review-service/src/review-data-rights.ts
 
+git diff --cached --check
 git commit -m 'fix(review): scope erasure receipts by workspace'
 git fetch --no-tags origin \
   '+refs/heads/main:refs/remotes/origin/main' \
   "+refs/heads/$branch:refs/remotes/origin/$branch"
-test "$(git rev-parse origin/$branch)" = "$GITHUB_SHA"
+test "$(git rev-parse "origin/$branch")" = "$GITHUB_SHA"
+test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN"
 git merge-base --is-ancestor origin/main HEAD
-git push origin "HEAD:refs/heads/$branch"
+git rev-parse HEAD >"$RUNNER_TEMP/review-receipt-ready-sha"
