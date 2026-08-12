@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: 5f29baee08d651015c046d7cbd1428db647af366
+          EXPECTED_PARENT: 53c596affb873f8bca75ed2cf454eb179c15b728
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -120,22 +120,7 @@ jobs:
               '\n\nold_helper = r"""',
               sort_start,
           )
-          live_sort = r'''current_sort = """    entries.sort(([left], [right]) => {
-            if (left < right) {
-              return -1;
-            }
-            if (left > right) {
-              return 1;
-            }
-            return 0;
-          });"""
-          new_sort = """    entries.sort(([left], [right]) =>
-            left < right ? -1 : 1,
-          );"""
-          if source.count(current_sort) != 1:
-            raise SystemExit('unexpected live canonical key-sort shape')
-          source = source.replace(current_sort, new_sort, 1)'''
-          implement = implement[:sort_start] + live_sort + implement[sort_end:]
+          implement = implement[:sort_start] + implement[sort_end + 2:]
 
           phases = {
               '01-add-tests.sh': add_tests,
