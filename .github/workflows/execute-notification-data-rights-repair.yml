@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: cb4e7d4bb1725e2c542855cfc684e3e462d30cf3
+          EXPECTED_PARENT: c1ac9a4207f125669b0ddb8a5904b2b34a9d0746
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -100,7 +100,7 @@ jobs:
           )
           add_tests = add_tests[:behavior_start] + add_tests[behavior_end:]
 
-          harden_test_contract = r'''python3 - <<'PY'
+          harden_test_contract = r"""python3 - <<'PY'
           from pathlib import Path
           import re
 
@@ -109,9 +109,7 @@ jobs:
           )
           tests = path.read_text(encoding='utf-8')
           pattern = re.compile(
-              r'''expect\(sql\)\.toContain\(\s*'''
-              r'''["']set_config\('life_os\.notification_erasure_workspace'["']'''
-              r'''\s*,\s*\);''',
+              r"expect\(sql\)\.toContain\(\s*[\"']set_config\('life_os\.notification_erasure_workspace'[\"']\s*,\s*\);",
               re.MULTILINE,
           )
           replacement = (
@@ -126,7 +124,7 @@ jobs:
           PY
           pnpm exec prettier --single-quote --write \
             apps/notification-service/src/notification-data-rights-migration.test.ts
-          '''
+          """
 
           verify_red = run_step(
               'Verify the regressions fail before implementation'
