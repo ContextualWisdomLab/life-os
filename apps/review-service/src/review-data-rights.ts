@@ -25,7 +25,8 @@ export interface ReviewDataRightsSqlClient {
 }
 
 /** Transaction-capable Review SQL boundary required by destructive erasure. */
-export interface ReviewDataRightsTransactionalSqlClient extends ReviewDataRightsSqlClient {
+export interface ReviewDataRightsTransactionalSqlClient
+  extends ReviewDataRightsSqlClient {
   transaction<T>(
     operation: (client: ReviewDataRightsSqlClient) => Promise<T>,
   ): Promise<T>;
@@ -523,8 +524,8 @@ export class ReviewDataRightsContributor {
         `SELECT idempotency_key, workspace_id, requested_by_user_id,
                 request_id, erased_records, receipt_sha256
          FROM guided_review.data_rights_erasure_receipt
-         WHERE idempotency_key = $1`,
-        [idempotencyKey],
+         WHERE workspace_id = $1 AND idempotency_key = $2`,
+        [workspaceId, idempotencyKey],
       );
       if (existing.rows.length > 1) {
         return fail('Review erasure receipt evidence is malformed');
