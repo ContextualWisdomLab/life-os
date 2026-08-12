@@ -28,7 +28,7 @@ jobs:
 
       - name: Patch executor and remove bootstrap
         env:
-          EXPECTED_PARENT: 1094334622d209d072188af2b2a4d9c20e182bf0
+          EXPECTED_PARENT: da8f4ad21002100fb4b573ca3806f7fbc216acfc
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -46,7 +46,7 @@ jobs:
           workflow = path.read_text(encoding='utf-8')
           start = workflow.index("          comparator_patch = r'''source_path = Path(\n")
           end = workflow.index("\n          implement = (\n", start)
-          replacement = r'''          comparator_patch = r'''source_path = Path(
+          replacement = r"""          comparator_patch = r'''source_path = Path(
               'apps/notification-service/src/notification-data-rights.ts'
           )
           source = source_path.read_text(encoding='utf-8')
@@ -65,7 +65,7 @@ jobs:
           if comparator_replacements != 1:
             raise SystemExit('unexpected canonical comparator shape')
           source_path.write_text(source, encoding='utf-8')
-          ''''''
+          '''"""
           workflow = workflow[:start] + replacement + workflow[end:]
           path.write_text(workflow, encoding='utf-8')
           PY
