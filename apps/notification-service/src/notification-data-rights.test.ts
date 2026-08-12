@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   createNotificationRuntime,
   type NotificationPool,
-  type NotificationRuntime,
 } from './notification-runtime';
 
 const TEST_DATABASE_URL = [
@@ -18,7 +17,18 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 /** Minimal credential-free pool used only to inspect runtime composition. */
 function inertPool(): NotificationPool {
   return {
-    async query<Row>(): Promise<{ rows: Row[] }> {
+    async query<Row>(text: string): Promise<{ rows: Row[] }> {
+      if (text.includes('AS reminder_occurrences')) {
+        return {
+          rows: [
+            {
+              reminder_occurrences: [],
+              reminder_outcomes: [],
+              inbox_messages: [],
+            } as Row,
+          ],
+        };
+      }
       return { rows: [] };
     },
     async end(): Promise<void> {},
@@ -30,22 +40,10 @@ describe('Notification data-rights runtime composition', () => {
     const runtime = createNotificationRuntime(
       { NOTIFICATION_DATABASE_URL: TEST_DATABASE_URL },
       () => inertPool(),
-    ) as NotificationRuntime & {
-      readonly dataRightsContributor?: {
-        handle(request: unknown): Promise<unknown>;
-      };
-    };
+    );
 
     try {
-      const contributor = runtime.dataRightsContributor;
-      expect(contributor).toBeDefined();
-      if (!contributor) {
-        throw new Error(
-          'Notification runtime did not compose its data-rights contributor',
-        );
-      }
-
-      const response = await contributor.handle({
+      const response = await runtime.dataRightsContributor.handle({
         contractVersion: 'life-os.data-rights-contributor.v1',
         operation: 'export',
         workspaceId: WORKSPACE_ID,
