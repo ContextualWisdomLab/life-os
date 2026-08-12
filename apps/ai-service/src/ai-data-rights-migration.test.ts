@@ -7,9 +7,19 @@ import { describe, expect, it } from 'vitest';
 const DATABASE_URL =
   process.env.AI_TEST_DATABASE_URL ?? process.env.AI_DATABASE_URL;
 const TEMPORARY_DATABASE_NAME = 'life_os_ai_data_rights_test';
-const FIXTURE_ROLE_NAME = 'life_os_ai_data_rights_runtime_test';
 const DROP_TEMPORARY_DATABASE_SQL =
   'DROP DATABASE IF EXISTS life_os_ai_data_rights_test WITH (FORCE)';
+const CREATE_TEMPORARY_DATABASE_SQL =
+  'CREATE DATABASE life_os_ai_data_rights_test';
+const DROP_FIXTURE_ROLE_SQL =
+  'DROP ROLE IF EXISTS life_os_ai_data_rights_runtime_test';
+const CREATE_FIXTURE_ROLE_SQL =
+  'CREATE ROLE life_os_ai_data_rights_runtime_test NOLOGIN';
+const SET_FIXTURE_ROLE_SQL = 'SET ROLE life_os_ai_data_rights_runtime_test';
+const GRANT_FIXTURE_SCHEMA_SQL =
+  'GRANT USAGE ON SCHEMA ai TO life_os_ai_data_rights_runtime_test';
+const GRANT_FIXTURE_TABLES_SQL =
+  'GRANT SELECT, DELETE ON ai.proposal_audit_records, ai.proposal_decision_events TO life_os_ai_data_rights_runtime_test';
 const DATABASE_DISCONNECT_TIMEOUT_MS = 2_000;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -153,7 +163,7 @@ async function asFixtureRole(
 ): Promise<void> {
   const client = await pool.connect();
   try {
-    await client.query(`SET ROLE ${FIXTURE_ROLE_NAME}`);
+    await client.query(SET_FIXTURE_ROLE_SQL);
     await operation(client);
   } finally {
     await client.query('RESET ROLE').catch(() => undefined);
@@ -205,19 +215,14 @@ describeWithDatabase('PostgreSQL AI data-rights lifecycle', () => {
 
     try {
       await dropTemporaryDatabaseWhenIdle(adminPool);
-      await adminPool.query(`DROP ROLE IF EXISTS ${FIXTURE_ROLE_NAME}`);
-      await adminPool.query(`CREATE ROLE ${FIXTURE_ROLE_NAME} NOLOGIN`);
-      await adminPool.query(`CREATE DATABASE ${TEMPORARY_DATABASE_NAME}`);
+      await adminPool.query(DROP_FIXTURE_ROLE_SQL);
+      await adminPool.query(CREATE_FIXTURE_ROLE_SQL);
+      await adminPool.query(CREATE_TEMPORARY_DATABASE_SQL);
       const temporaryUrl = databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME);
       migrationPool = new Pool({ connectionString: temporaryUrl, max: 8 });
       await applyAiMigrations(migrationPool);
-      await migrationPool.query(
-        `GRANT USAGE ON SCHEMA ai TO ${FIXTURE_ROLE_NAME};
-         GRANT SELECT, DELETE ON
-           ai.proposal_audit_records,
-           ai.proposal_decision_events
-         TO ${FIXTURE_ROLE_NAME};`,
-      );
+      await migrationPool.query(GRANT_FIXTURE_SCHEMA_SQL);
+      await migrationPool.query(GRANT_FIXTURE_TABLES_SQL);
       await seedWorkspace(migrationPool, WORKSPACE_ID, 'a');
       await seedWorkspace(migrationPool, OTHER_WORKSPACE_ID, 'b');
 
@@ -388,8 +393,7 @@ describeWithDatabase('PostgreSQL AI data-rights lifecycle', () => {
         },
         async () => await migrationPool?.end(),
         async () => await dropTemporaryDatabaseWhenIdle(adminPool),
-        async () =>
-          await adminPool.query(`DROP ROLE IF EXISTS ${FIXTURE_ROLE_NAME}`),
+        async () => await adminPool.query(DROP_FIXTURE_ROLE_SQL),
         async () => await adminPool.end(),
       ];
       for (const cleanup of cleanups) {
