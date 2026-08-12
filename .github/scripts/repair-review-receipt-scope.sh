@@ -34,11 +34,13 @@ migration_path = Path(
     'apps/review-service/migrations/0002_data_rights_erasure_receipt.sql'
 )
 migration = migration_path.read_text(encoding='utf-8')
-old_primary = 'PRIMARY KEY (idempotency_key)'
-new_primary = 'PRIMARY KEY (workspace_id, idempotency_key)'
-if migration.count(old_primary) != 1:
+if migration.count('PRIMARY KEY (idempotency_key)') != 1:
     raise SystemExit('unexpected Review receipt primary-key shape')
-migration = migration.replace(old_primary, new_primary, 1)
+migration = migration.replace(
+    'PRIMARY KEY (idempotency_key)',
+    'PRIMARY KEY (workspace_id, idempotency_key)',
+    1,
+)
 migration_path.write_text(migration, encoding='utf-8')
 
 source_path = Path('apps/review-service/src/review-data-rights.ts')
@@ -56,10 +58,67 @@ if source.count(old_query) != 1:
     raise SystemExit('unexpected Review receipt lookup shape')
 source = source.replace(old_query, new_query, 1)
 source_path.write_text(source, encoding='utf-8')
+
+test_path = Path('apps/review-service/src/review-data-rights.test.ts')
+tests = test_path.read_text(encoding='utf-8')
+receipt_interface = """interface ReceiptRow {
+  idempotency_key: string;
+  workspace_id: string;
+  requested_by_user_id: string;
+  request_id: string;
+  erased_records: number;
+  receipt_sha256: string;
+}
+
+"""
+receipt_helper = receipt_interface + """function receiptKey(
+  workspaceId: string,
+  idempotencyKey: string,
+): string {
+  return `${workspaceId}:${idempotencyKey}`;
+}
+
+"""
+if tests.count(receipt_interface) != 1:
+    raise SystemExit('unexpected Review receipt fixture interface')
+tests = tests.replace(receipt_interface, receipt_helper, 1)
+
+old_lookup = """    if (text.includes('FROM guided_review.data_rights_erasure_receipt')) {
+      const idempotencyKey = String(values[0]);
+      const receipt = this.receipts.get(idempotencyKey);
+      return { rows: receipt ? ([receipt] as Row[]) : [] };
+    }
+"""
+new_lookup = """    if (text.includes('FROM guided_review.data_rights_erasure_receipt')) {
+      const workspaceId = String(values[0]);
+      const idempotencyKey = String(values[1]);
+      const receipt = this.receipts.get(
+        receiptKey(workspaceId, idempotencyKey),
+      );
+      return { rows: receipt ? ([receipt] as Row[]) : [] };
+    }
+"""
+if tests.count(old_lookup) != 1:
+    raise SystemExit('unexpected Review receipt fixture lookup')
+tests = tests.replace(old_lookup, new_lookup, 1)
+
+old_store = """      this.receipts.set(String(idempotencyKey), {
+        idempotency_key: String(idempotencyKey),
+        workspace_id: String(workspaceId),
+"""
+new_store = """      this.receipts.set(receiptKey(String(workspaceId), String(idempotencyKey)), {
+        idempotency_key: String(idempotencyKey),
+        workspace_id: String(workspaceId),
+"""
+if tests.count(old_store) != 1:
+    raise SystemExit('unexpected Review receipt fixture storage')
+tests = tests.replace(old_store, new_store, 1)
+test_path.write_text(tests, encoding='utf-8')
 PY
 
 pnpm exec prettier --single-quote --write \
   apps/review-service/src/review-data-rights.ts \
+  apps/review-service/src/review-data-rights.test.ts \
   apps/review-service/src/review-data-rights-receipt-scope.integration.test.ts
 
 git diff --check
@@ -82,19 +141,11 @@ pnpm build
 docker compose config --quiet
 git diff --check
 
-git rm \
-  .github/scripts/repair-review-receipt-scope.sh \
-  .github/workflows/repair-review-data-rights-receipt-scope.yml \
-  .github/workflows/run-review-receipt-repair.yml
-
-git diff --check
 actual="$(git status --short | awk '{print $2}' | LC_ALL=C sort)"
 expected="$(printf '%s\n' \
-  '.github/scripts/repair-review-receipt-scope.sh' \
-  '.github/workflows/repair-review-data-rights-receipt-scope.yml' \
-  '.github/workflows/run-review-receipt-repair.yml' \
   'apps/review-service/migrations/0002_data_rights_erasure_receipt.sql' \
   'apps/review-service/src/review-data-rights-receipt-scope.integration.test.ts' \
+  'apps/review-service/src/review-data-rights.test.ts' \
   'apps/review-service/src/review-data-rights.ts' \
   | LC_ALL=C sort)"
 test "$actual" = "$expected"
@@ -102,6 +153,7 @@ test "$actual" = "$expected"
 git add \
   apps/review-service/migrations/0002_data_rights_erasure_receipt.sql \
   apps/review-service/src/review-data-rights-receipt-scope.integration.test.ts \
+  apps/review-service/src/review-data-rights.test.ts \
   apps/review-service/src/review-data-rights.ts
 
 git commit -m 'fix(review): scope erasure receipts by workspace'
