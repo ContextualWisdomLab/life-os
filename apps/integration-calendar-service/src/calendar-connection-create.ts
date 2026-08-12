@@ -224,6 +224,7 @@ function projectCreated(
     readonly workspaceId: string;
     readonly userId: string;
     readonly providerCode: CalendarConnectionProvider;
+    readonly providerAccountSubject: string;
     readonly scopeValues: readonly string[];
     readonly tokenExpiresAt: string;
     readonly selectedCalendarIdentifier: string;
@@ -236,6 +237,7 @@ function projectCreated(
     record.workspaceId !== expected.workspaceId ||
     record.userId !== expected.userId ||
     record.providerCode !== expected.providerCode ||
+    record.providerAccountSubject !== expected.providerAccountSubject ||
     record.status !== 'active' ||
     record.revokedAt !== null ||
     record.accessSecretHandle !== expected.accessSecretHandle ||
@@ -271,7 +273,8 @@ export class CalendarConnectionCreateApplication {
 
   /**
    * Stores provider credentials first, persists only opaque handles, and
-   * compensates newly written credentials if durable metadata creation fails.
+   * compensates newly written credentials if durable metadata creation or
+   * returned persistence evidence fails validation.
    */
   async create(
     authority: TrustedCalendarUserContext,
@@ -334,16 +337,22 @@ export class CalendarConnectionCreateApplication {
       return unavailable();
     }
 
-    return projectCreated(record, {
-      connectionId: safe.connectionId,
-      workspaceId: safe.workspaceId,
-      userId: safe.userId,
-      providerCode: safe.providerCode,
-      scopeValues: safe.scopeValues,
-      tokenExpiresAt: safe.tokenExpiresAt,
-      selectedCalendarIdentifier: safe.selectedCalendarIdentifier,
-      accessSecretHandle,
-      refreshSecretHandle,
-    });
+    try {
+      return projectCreated(record, {
+        connectionId: safe.connectionId,
+        workspaceId: safe.workspaceId,
+        userId: safe.userId,
+        providerCode: safe.providerCode,
+        providerAccountSubject: safe.providerAccountSubject,
+        scopeValues: safe.scopeValues,
+        tokenExpiresAt: safe.tokenExpiresAt,
+        selectedCalendarIdentifier: safe.selectedCalendarIdentifier,
+        accessSecretHandle,
+        refreshSecretHandle,
+      });
+    } catch {
+      await bestEffortCleanup(this.credentials, writtenHandles);
+      return unavailable();
+    }
   }
 }
