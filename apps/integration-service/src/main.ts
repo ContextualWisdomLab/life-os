@@ -7,8 +7,12 @@ import {
   Headers,
   HttpCode,
   HttpException,
+  Inject,
   Module,
+  Optional,
+  Param,
   Post,
+  type DynamicModule,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
@@ -20,11 +24,36 @@ import {
   preparePluginEvent,
   validatePluginManifest,
 } from '@life-os/plugin-sdk';
+import {
+  PluginOperatorApplication,
+  PluginOperatorDependencyError,
+  type PluginOperatorCredentialInput,
+  type PluginOperatorInstallInput,
+} from './plugin-operator-application';
+import {
+  IntegrationOperatorContextError,
+  type IntegrationOperatorContextHeaders,
+} from './plugin-operator-context';
+import {
+  PluginInstallationError,
+  type PluginInstallationRecord,
+} from './plugin-installation';
+import {
+  PluginCredentialError,
+  type PluginCredentialBindingView,
+} from './plugin-credential';
 
 type IntegrationProblemCode =
   | 'invalid_plugin_contract'
   | 'invalid_gateway_context'
-  | 'gateway_context_unavailable';
+  | 'gateway_context_unavailable'
+  | 'plugin_operator_unavailable'
+  | 'invalid_plugin_operator_context'
+  | 'plugin_operator_context_unavailable'
+  | 'invalid_plugin_operator_request'
+  | 'plugin_operator_not_found'
+  | 'plugin_credential_capability_unavailable'
+  | 'plugin_operator_failure';
 
 interface IntegrationProblemDetails {
   readonly type: 'about:blank';
@@ -45,6 +74,11 @@ export interface IntegrationTrustedWorkspaceHeaders {
   readonly issuedAt: unknown;
   readonly signature: unknown;
 }
+
+/** Optional host composition token for the durable plugin operator application. */
+export const PLUGIN_OPERATOR_APPLICATION = Symbol(
+  'life-os.integration.plugin-operator-application',
+);
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -90,6 +124,92 @@ function unavailableGatewayContext(): never {
     'Trusted gateway context is unavailable',
     'gateway_context_unavailable',
   );
+}
+
+function unavailablePluginOperator(): never {
+  throw problemException(
+    503,
+    'Plugin operator runtime is unavailable',
+    'plugin_operator_unavailable',
+  );
+}
+
+function invalidPluginOperatorContext(): never {
+  throw problemException(
+    401,
+    'Plugin operator context is invalid',
+    'invalid_plugin_operator_context',
+  );
+}
+
+function unavailablePluginOperatorContext(): never {
+  throw problemException(
+    503,
+    'Plugin operator context is unavailable',
+    'plugin_operator_context_unavailable',
+  );
+}
+
+function invalidPluginOperatorRequest(): never {
+  throw problemException(
+    400,
+    'Plugin operator request is invalid',
+    'invalid_plugin_operator_request',
+  );
+}
+
+function missingPluginOperatorRecord(): never {
+  throw problemException(
+    404,
+    'Plugin operator resource was not found',
+    'plugin_operator_not_found',
+  );
+}
+
+function unavailablePluginCredentialCapability(): never {
+  throw problemException(
+    503,
+    'Plugin credential capability is unavailable',
+    'plugin_credential_capability_unavailable',
+  );
+}
+
+function pluginOperatorFailure(): never {
+  throw problemException(
+    503,
+    'Plugin operator request could not be completed',
+    'plugin_operator_failure',
+  );
+}
+
+function requireObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return invalidPluginOperatorRequest();
+  }
+  return value as Record<string, unknown>;
+}
+
+/** Selects only operator-owned installation fields from an untrusted HTTP body. */
+function pluginOperatorInstallInput(body: unknown): PluginOperatorInstallInput {
+  const value = requireObject(body);
+  return Object.freeze({
+    installationId: value.installationId as string,
+    manifest: value.manifest as PluginManifest,
+    grantedCapabilities: value.grantedCapabilities as readonly string[],
+  });
+}
+
+/** Selects only operator-owned credential fields from an untrusted HTTP body. */
+function pluginOperatorCredentialInput(
+  body: unknown,
+): PluginOperatorCredentialInput {
+  const value = requireObject(body);
+  return Object.freeze({
+    credentialBindingId: value.credentialBindingId as string,
+    installationId: value.installationId as string,
+    credentialName: value.credentialName as string,
+    secretValue: value.secretValue as string,
+  });
 }
 
 /**
@@ -199,8 +319,183 @@ export class IntegrationController {
   }
 }
 
-@Module({ controllers: [IntegrationController] })
-export class IntegrationAppModule {}
+/**
+ * HTTP transport for the host-owned plugin installation and credential lifecycle.
+ *
+ * The controller never derives tenant or user authority from route/body data. It
+ * forwards signed gateway evidence to `PluginOperatorApplication`, which verifies
+ * the exact method/path binding and atomically consumes the one-time evidence
+ * before any durable lifecycle authority is invoked. A standalone deployment
+ * without a durable operator composition exposes the routes fail-closed as 503.
+ */
+@Controller()
+export class PluginOperatorHttpController {
+  /** Receives a durable host composition when one is explicitly registered. */
+  constructor(
+    @Optional()
+    @Inject(PLUGIN_OPERATOR_APPLICATION)
+    private readonly operator?: PluginOperatorApplication,
+  ) {}
+
+  /** Installs a plugin under signed workspace-and-user authority. */
+  @Post('v1/plugins/installations')
+  @HttpCode(200)
+  async install(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Body() body: unknown,
+  ): Promise<PluginInstallationRecord> {
+    const operator = this.requireOperator();
+    try {
+      return await operator.install(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        pluginOperatorInstallInput(body),
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Reads one installation under its exact signed dynamic route authority. */
+  @Get('v1/plugins/installations/:installationId')
+  async getInstallation(
+    @Param('installationId') installationId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+  ): Promise<PluginInstallationRecord> {
+    const operator = this.requireOperator();
+    try {
+      const record = await operator.getInstallation(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        installationId,
+      );
+      return record ?? missingPluginOperatorRecord();
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Revokes one installation under its exact signed dynamic route authority. */
+  @Post('v1/plugins/installations/:installationId/revoke')
+  @HttpCode(200)
+  async revokeInstallation(
+    @Param('installationId') installationId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+  ): Promise<PluginInstallationRecord> {
+    const operator = this.requireOperator();
+    try {
+      return await operator.revokeInstallation(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        installationId,
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Binds one credential while returning only the secret-reference-free public view. */
+  @Post('v1/plugins/credential-bindings')
+  @HttpCode(200)
+  async bindCredential(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Body() body: unknown,
+  ): Promise<PluginCredentialBindingView> {
+    const operator = this.requireOperator();
+    try {
+      return await operator.bindCredential(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        pluginOperatorCredentialInput(body),
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Revokes one credential binding under its exact signed route authority. */
+  @Post('v1/plugins/credential-bindings/:credentialBindingId/revoke')
+  @HttpCode(200)
+  async revokeCredential(
+    @Param('credentialBindingId') credentialBindingId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+  ): Promise<PluginCredentialBindingView> {
+    const operator = this.requireOperator();
+    try {
+      return await operator.revokeCredential(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        credentialBindingId,
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Requires a deliberately composed durable runtime; absence never creates fake success. */
+  private requireOperator(): PluginOperatorApplication {
+    return this.operator ?? unavailablePluginOperator();
+  }
+
+  /** Builds untrusted header evidence without accepting tenant/user authority from request bodies. */
+  private headers(
+    workspaceId: unknown,
+    userId: unknown,
+    evidenceId: unknown,
+    issuedAt: unknown,
+    signature: unknown,
+  ): IntegrationOperatorContextHeaders {
+    return Object.freeze({ workspaceId, userId, evidenceId, issuedAt, signature });
+  }
+
+  /** Converts domain/dependency failures to fixed, credential-free HTTP problems. */
+  private classify(error: unknown): never {
+    if (error instanceof HttpException) {
+      throw error;
+    }
+    if (error instanceof IntegrationOperatorContextError) {
+      return error.kind === 'invalid'
+        ? invalidPluginOperatorContext()
+        : unavailablePluginOperatorContext();
+    }
+    if (error instanceof PluginOperatorDependencyError) {
+      return unavailablePluginCredentialCapability();
+    }
+    if (
+      error instanceof PluginInstallationError ||
+      error instanceof PluginCredentialError
+    ) {
+      return invalidPluginOperatorRequest();
+    }
+    return pluginOperatorFailure();
+  }
+}
+
+@Module({ controllers: [IntegrationController, PluginOperatorHttpController] })
+export class IntegrationAppModule {
+  /** Registers an explicitly constructed durable plugin operator for host deployments. */
+  static withPluginOperator(operator: PluginOperatorApplication): DynamicModule {
+    return {
+      module: IntegrationAppModule,
+      providers: [{ provide: PLUGIN_OPERATOR_APPLICATION, useValue: operator }],
+    };
+  }
+}
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(IntegrationAppModule);
