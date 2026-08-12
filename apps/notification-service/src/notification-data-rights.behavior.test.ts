@@ -263,11 +263,18 @@ describe('NotificationDataRightsContributor', () => {
     ]);
     const contributor = new NotificationDataRightsContributor(client);
 
-    const failure = contributor.handle(request('export'));
-    await expect(failure).rejects.toBeInstanceOf(NotificationDataRightsError);
-    await expect(failure).rejects.toThrowError(
-      'Notification data-rights operation failed',
-    );
+    let failure: unknown;
+    try {
+      await contributor.handle(request('export'));
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(NotificationDataRightsError);
+    if (!(failure instanceof Error)) {
+      throw new Error('Expected notification data-rights error');
+    }
+    expect(failure.message).toBe('Notification data-rights operation failed');
   });
 
   it('rejects missing, duplicate, or sparse SQL result evidence', async () => {
