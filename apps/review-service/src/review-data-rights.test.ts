@@ -64,9 +64,7 @@ function completion(
   };
 }
 
-class FakeReviewDataRightsClient
-  implements ReviewDataRightsTransactionalSqlClient
-{
+class FakeReviewDataRightsClient implements ReviewDataRightsTransactionalSqlClient {
   readonly queries: Array<{ text: string; values: readonly unknown[] }> = [];
   readonly receipts = new Map<string, ReceiptRow>();
   privilegesReady = true;
@@ -191,12 +189,7 @@ describe('ReviewDataRightsContributor', () => {
         '2026-08-12T00:00:00.000Z',
         'private',
       ),
-      completion(
-        WORKSPACE_ID,
-        firstId,
-        '2026-08-12T01:00:00.000Z',
-        'portable',
-      ),
+      completion(WORKSPACE_ID, firstId, '2026-08-12T01:00:00.000Z', 'portable'),
     ]);
 
     const first = await contributor(client).handle(baseRequest('export'));
