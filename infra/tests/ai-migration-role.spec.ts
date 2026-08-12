@@ -24,6 +24,9 @@ describe('AI database migration authority contract', () => {
       'GRANT USAGE ON SCHEMA ai TO :"service_runtime_role"',
     );
     expect(migrationRunner).toContain(
+      'REVOKE ALL PRIVILEGES ON TABLE\n  ai.proposal_audit_records,\n  ai.proposal_decision_events\nFROM :"service_runtime_role";\nGRANT SELECT, INSERT ON TABLE',
+    );
+    expect(migrationRunner).toContain(
       'GRANT SELECT, INSERT ON TABLE ai.proposal_audit_records, ai.proposal_decision_events',
     );
     expect(migrationRunner).toContain(
