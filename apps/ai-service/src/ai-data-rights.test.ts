@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createAiRuntime, type AiPool } from './ai-runtime';
-import type { ProposalAuditSqlQueryResult } from './postgres-proposal-audit-repository';
+import type {
+  ProposalAuditSqlQueryResult,
+} from './postgres-proposal-audit-repository';
 
 const DATABASE_URL = ['postgresql:', '', 'db', 'life_os'].join('/');
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -11,12 +13,11 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 function inertPool(): AiPool {
   return {
     async query<Row>(text: string): Promise<ProposalAuditSqlQueryResult<Row>> {
-      if (text.includes('AS proposal_audit_records')) {
+      if (text.includes('AS evidence_records')) {
         return {
           rows: [
             {
-              proposal_audit_records: [],
-              proposal_decision_events: [],
+              evidence_records: [],
             } as Row,
           ],
         };
