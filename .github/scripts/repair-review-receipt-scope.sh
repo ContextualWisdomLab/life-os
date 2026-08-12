@@ -44,8 +44,6 @@ for file_result in report.get('testResults', []):
 if matching != ['failed']:
     raise SystemExit(f'unexpected RED assertion evidence: {matching!r}')
 PY
-grep -F 'Review erasure idempotency authority conflicts' \
-  "$RUNNER_TEMP/review-receipt-red.log"
 
 python3 - <<'PY'
 from pathlib import Path

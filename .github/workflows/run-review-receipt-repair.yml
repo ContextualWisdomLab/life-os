@@ -46,7 +46,7 @@ jobs:
 
       - name: Verify bootstrap lineage
         env:
-          EXPECTED_PARENT: 35c53b96f8881b7ae756add6d55f81f86c9b3b70
+          EXPECTED_PARENT: 0056953dac47b2cbaa7b901fc4cea6bfbaa26a58
           EXPECTED_MAIN: f1b2f3c0cdf32e076e637ebb56719f60c1e8409b
         run: |
           set -Eeuo pipefail
