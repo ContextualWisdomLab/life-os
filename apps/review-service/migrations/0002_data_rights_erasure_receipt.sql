@@ -6,7 +6,10 @@ CREATE TABLE IF NOT EXISTS guided_review.data_rights_erasure_receipt (
   erased_records INTEGER NOT NULL,
   receipt_sha256 TEXT NOT NULL,
   erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT data_rights_erasure_receipt_primary_key PRIMARY KEY (idempotency_key),
+  CONSTRAINT data_rights_erasure_receipt_primary_key PRIMARY KEY (
+    workspace_id,
+    idempotency_key
+  ),
   CONSTRAINT data_rights_erasure_receipt_idempotency_uuid_v4 CHECK (
     idempotency_key::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
   ),
