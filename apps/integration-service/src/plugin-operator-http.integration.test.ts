@@ -158,14 +158,14 @@ function replayGuard(): PluginOperatorReplayGuardPort {
 
 function operator(
   installations: PluginInstallationOperatorPort = new InMemoryInstallationPort(),
-  credentials: PluginCredentialOperatorPort | undefined = new InMemoryCredentialPort(),
-  guard: PluginOperatorReplayGuardPort | undefined = replayGuard(),
+  credentials: PluginCredentialOperatorPort | null = new InMemoryCredentialPort(),
+  guard: PluginOperatorReplayGuardPort | null = replayGuard(),
 ): PluginOperatorApplication {
   return new PluginOperatorApplication(
     installations,
-    credentials,
+    credentials ?? undefined,
     CONTEXT_SECRET,
-    guard,
+    guard ?? undefined,
     () => NOW_SECONDS,
   );
 }
@@ -374,7 +374,7 @@ describe('plugin operator HTTP composition', () => {
     });
 
     const unavailableApp = await startApplication(
-      operator(new InMemoryInstallationPort(), new InMemoryCredentialPort(), undefined),
+      operator(new InMemoryInstallationPort(), new InMemoryCredentialPort(), null),
     );
     const unavailable = await fetch(`${unavailableApp.origin}${installPath}`, {
       method: 'POST',
@@ -405,7 +405,7 @@ describe('plugin operator HTTP composition', () => {
 
   it('maps credential capability, domain validation, invalid bodies, and unknown failures without reflection', async () => {
     const noCredentials = await startApplication(
-      operator(new InMemoryInstallationPort(), undefined),
+      operator(new InMemoryInstallationPort(), null),
     );
     const bindPath = '/v1/plugins/credential-bindings';
     const unavailableCredential = await fetch(`${noCredentials.origin}${bindPath}`, {
