@@ -74,7 +74,10 @@ test('paginates the complete registry and binds evidence to an unchanged default
       if (path === `/repos/ContextualWisdomLab/life-os/git/trees/${SHA}?recursive=1`) {
         return {
           truncated: false,
-          tree: [{ type: 'blob', path: '.github/workflows/ci.yml' }],
+          tree: [
+            { type: 'blob', path: '.github/dependabot.yml' },
+            { type: 'blob', path: '.github/workflows/ci.yml' },
+          ],
         };
       }
       if (path.endsWith('per_page=100&page=1')) {
