@@ -163,6 +163,30 @@ describe('CalendarConnectionCreateApplication', () => {
     expect(credentials.deleteSecret).toHaveBeenCalledWith(ACCESS_HANDLE);
   });
 
+  it('rejects mismatched durable provider identity and compensates credentials', async () => {
+    const credentials = store();
+    const connections: CalendarConnectionCreateRepository = {
+      async createConnection() {
+        return Object.freeze({
+          ...record(),
+          providerAccountSubject: 'different-provider-subject',
+        });
+      },
+    };
+    const application = new CalendarConnectionCreateApplication(
+      connections,
+      credentials,
+      () => CREATED_AT,
+    );
+
+    await expect(application.create(authority, providerResult)).rejects.toBeInstanceOf(
+      CalendarConnectionCreateDependencyError,
+    );
+    expect(credentials.deleteSecret).toHaveBeenCalledTimes(2);
+    expect(credentials.deleteSecret).toHaveBeenCalledWith(REFRESH_HANDLE);
+    expect(credentials.deleteSecret).toHaveBeenCalledWith(ACCESS_HANDLE);
+  });
+
   it('deletes the access credential when refresh credential storage fails', async () => {
     const credentials: CalendarConnectionCredentialStore = {
       writeSecret: vi
