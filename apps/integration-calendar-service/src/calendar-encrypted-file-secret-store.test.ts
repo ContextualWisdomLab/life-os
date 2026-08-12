@@ -100,7 +100,7 @@ describe('CalendarEncryptedFileSecretStore', () => {
       ciphertext: string;
     };
     const ciphertextBytes = Buffer.from(payload.ciphertext, 'base64');
-    ciphertextBytes[0] ^= 0x01;
+    ciphertextBytes[0] = ciphertextBytes.readUInt8(0) ^ 0x01;
     payload.ciphertext = ciphertextBytes.toString('base64');
     await writeFile(path, JSON.stringify(payload), { mode: 0o600 });
 
