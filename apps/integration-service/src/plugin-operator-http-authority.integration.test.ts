@@ -335,6 +335,10 @@ describe('plugin operator HTTP authority failures', () => {
       { ...installBody, installationId: '88888888-8888-4888-8888-888888888881' },
     );
     expect(stale.status).toBe(401);
+    expect(await problem(stale)).toMatchObject({
+      status: 401,
+      code: 'invalid_plugin_operator_context',
+    });
 
     const futureIssuedAt = String(NOW_SECONDS + 6);
     const future = await requestJson(
@@ -345,6 +349,10 @@ describe('plugin operator HTTP authority failures', () => {
       { ...installBody, installationId: '88888888-8888-4888-8888-888888888882' },
     );
     expect(future.status).toBe(401);
+    expect(await problem(future)).toMatchObject({
+      status: 401,
+      code: 'invalid_plugin_operator_context',
+    });
 
     const malformed = await requestJson(
       origin,
@@ -354,6 +362,10 @@ describe('plugin operator HTTP authority failures', () => {
       { ...installBody, installationId: '88888888-8888-4888-8888-888888888883' },
     );
     expect(malformed.status).toBe(401);
+    expect(await problem(malformed)).toMatchObject({
+      status: 401,
+      code: 'invalid_plugin_operator_context',
+    });
     expect(runtime.installations.records.size).toBe(1);
   });
 
