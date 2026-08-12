@@ -7,7 +7,7 @@ const CONTRIBUTOR_NAME = 'review.service' as const;
 const EXPORT_SCHEMA_VERSION = 'review.data-rights.v1' as const;
 const EXPORT_PAGE_SIZE = 1_000;
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
