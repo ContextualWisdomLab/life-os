@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CalendarConnectionCreateApplication,
@@ -15,6 +16,8 @@ const CREATED_AT = '2026-08-12T01:15:00.000Z';
 const EXPIRES_AT = '2026-08-12T02:15:00.000Z';
 const ACCESS_HANDLE = 'kms://calendar/access/opaque-1';
 const REFRESH_HANDLE = 'kms://calendar/refresh/opaque-2';
+const ACCESS_TOKEN = randomBytes(24).toString('base64url');
+const REFRESH_TOKEN = randomBytes(24).toString('base64url');
 
 const authority = Object.freeze({ workspaceId: WORKSPACE_ID, userId: USER_ID });
 const providerResult = Object.freeze({
@@ -22,8 +25,8 @@ const providerResult = Object.freeze({
   providerCode: 'google' as const,
   providerAccountSubject: 'google-subject-123',
   scopeValues: ['calendar.events.readonly'],
-  accessToken: 'access-token-secret',
-  refreshToken: 'refresh-token-secret',
+  accessToken: ACCESS_TOKEN,
+  refreshToken: REFRESH_TOKEN,
   tokenExpiresAt: EXPIRES_AT,
   selectedCalendarIdentifier: 'primary',
 });
@@ -109,8 +112,10 @@ describe('CalendarConnectionCreateApplication', () => {
       selectedCalendarIdentifier: 'primary',
       status: 'active',
     });
-    expect(JSON.stringify(result)).not.toContain('secret');
-    expect(JSON.stringify(result)).not.toContain('token-secret');
+    expect(result).not.toHaveProperty('accessToken');
+    expect(result).not.toHaveProperty('refreshToken');
+    expect(result).not.toHaveProperty('accessSecretHandle');
+    expect(result).not.toHaveProperty('refreshSecretHandle');
   });
 
   it('deletes every newly stored credential if durable metadata creation fails', async () => {
@@ -152,7 +157,8 @@ describe('CalendarConnectionCreateApplication', () => {
     await expect(application.create(authority, providerResult)).rejects.toBeInstanceOf(
       CalendarConnectionCreateDependencyError,
     );
-    expect(credentials.deleteSecret).toHaveBeenCalledExactlyOnceWith(ACCESS_HANDLE);
+    expect(credentials.deleteSecret).toHaveBeenCalledTimes(1);
+    expect(credentials.deleteSecret).toHaveBeenCalledWith(ACCESS_HANDLE);
     expect(connections.createConnection).not.toHaveBeenCalled();
   });
 
