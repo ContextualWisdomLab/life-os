@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  createAiRuntime,
-  type AiPool,
-  type AiRuntime,
-} from './ai-runtime';
+import { createAiRuntime, type AiPool } from './ai-runtime';
 import type { ProposalAuditSqlQueryResult } from './postgres-proposal-audit-repository';
 
 const DATABASE_URL = ['postgresql:', '', 'db', 'life_os'].join('/');
@@ -36,20 +32,10 @@ describe('AI data-rights runtime composition', () => {
     const runtime = createAiRuntime(
       { AI_DATABASE_URL: DATABASE_URL },
       () => inertPool(),
-    ) as AiRuntime & {
-      readonly dataRightsContributor?: {
-        handle(request: unknown): Promise<unknown>;
-      };
-    };
+    );
 
     try {
-      const contributor = runtime.dataRightsContributor;
-      expect(contributor).toBeDefined();
-      if (!contributor) {
-        throw new Error('AI runtime did not compose its data-rights contributor');
-      }
-
-      const response = await contributor.handle({
+      const response = await runtime.dataRightsContributor.handle({
         contractVersion: 'life-os.data-rights-contributor.v1',
         operation: 'export',
         workspaceId: WORKSPACE_ID,

@@ -1,5 +1,6 @@
 import { Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolConfig } from 'pg';
+import { AiDataRightsContributor } from './ai-data-rights';
 import type { ContextualOrchestratorFetch } from './contextual-orchestrator-proposal-model';
 import { createProposalModelRuntime } from './ai-model-runtime';
 import { ProposalAuditApplication } from './proposal-audit-application';
@@ -172,6 +173,8 @@ export class AiRuntime implements OnApplicationShutdown {
   constructor(
     private readonly pool: AiPool,
     readonly application: ProposalAuditApplication,
+    /** Service-owned export/erasure participant consumed by Identity orchestration. */
+    readonly dataRightsContributor: AiDataRightsContributor,
   ) {}
 
   /**
@@ -216,9 +219,8 @@ export function createAiRuntime(
     modelFetcher,
   );
   const pool = poolFactory(createAiPoolConfiguration(environment));
-  const repository = new PostgresProposalAuditRepository(
-    new NodePostgresProposalAuditSqlClient(pool),
-  );
+  const client = new NodePostgresProposalAuditSqlClient(pool);
+  const repository = new PostgresProposalAuditRepository(client);
   const proposalService = new ProposalService(proposalModelRuntime.model);
   return new AiRuntime(
     pool,
@@ -227,5 +229,6 @@ export function createAiRuntime(
       repository,
       proposalModelRuntime.modelId,
     ),
+    new AiDataRightsContributor(client),
   );
 }
