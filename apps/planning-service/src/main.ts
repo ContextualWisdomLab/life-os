@@ -12,6 +12,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -25,6 +26,11 @@ import {
   planningMetrics,
   planningObservabilityMiddleware,
 } from './observability';
+import type { DataRightsContributorResponse } from './planning-data-rights';
+import {
+  parseTrustedPlanningDataRightsRequest,
+  toPlanningDataRightsHttpException,
+} from './planning-data-rights-http-boundary';
 import type { Goal, Project, Task } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
@@ -50,6 +56,16 @@ export const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');
 interface PassthroughResponse {
   statusCode: number;
   setHeader(name: string, value: string): void;
+}
+
+/**
+ * Provides untrusted HTTP request binding values for data-rights signature verification.
+ * `method` and `originalUrl` come from the inbound Nest/Express request and are
+ * validated before they can authorize a Planning-owned contributor operation.
+ */
+interface RequestBindingSource {
+  readonly method?: unknown;
+  readonly originalUrl?: unknown;
 }
 
 /** Returns a stable not-found problem without disclosing another tenant's state. */
@@ -326,9 +342,42 @@ export class PlanningController {
   }
 }
 
+/** Internal service-authenticated transport for Planning-owned data-rights work. */
+@Controller('internal/data-rights')
+export class PlanningDataRightsController {
+  constructor(
+    @Inject(PLANNING_RUNTIME)
+    private readonly runtime: PlanningRuntime,
+  ) {}
+
+  /** Executes only the exact v1 contributor request authorized by Identity. */
+  @Post('contributor')
+  async contribute(
+    @Req() httpRequest: RequestBindingSource,
+    @Headers('x-life-os-data-rights-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-data-rights-signature') signature: string | undefined,
+    @Body() body: unknown,
+  ): Promise<DataRightsContributorResponse> {
+    const request = await parseTrustedPlanningDataRightsRequest(
+      body,
+      { issuedAt, signature },
+      process.env.PLANNING_DATA_RIGHTS_CONTEXT_SECRET,
+      {
+        method: httpRequest.method,
+        path: httpRequest.originalUrl,
+      },
+    );
+    try {
+      return await this.runtime.dataRightsContributor.handle(request);
+    } catch (error) {
+      throw toPlanningDataRightsHttpException(error);
+    }
+  }
+}
+
 /** Root NestJS module for the production planning-service process. */
 @Module({
-  controllers: [PlanningController],
+  controllers: [PlanningController, PlanningDataRightsController],
   providers: [
     {
       provide: PLANNING_RUNTIME,
