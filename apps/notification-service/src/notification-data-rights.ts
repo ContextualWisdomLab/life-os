@@ -239,7 +239,15 @@ function canonicalJson(value: unknown, depth = 0): string {
     if (entries.length > MAX_JSON_CONTAINER_ITEMS) {
       return invalidDataRights();
     }
-    entries.sort(([left], [right]) => left.localeCompare(right));
+    entries.sort(([left], [right]) => {
+      if (left < right) {
+        return -1;
+      }
+      if (left > right) {
+        return 1;
+      }
+      return 0;
+    });
     const serialized = entries.map(([key, entry]) => {
       if (Buffer.byteLength(key, 'utf8') > MAX_JSON_KEY_BYTES) {
         return invalidDataRights();
@@ -333,7 +341,9 @@ export class NotificationDataRightsContributor {
   }
 
   /** Validates and dispatches one internal contributor request. */
-  async handle(untrustedRequest: unknown): Promise<NotificationDataRightsResponse> {
+  async handle(
+    untrustedRequest: unknown,
+  ): Promise<NotificationDataRightsResponse> {
     const request = normalizeRequest(untrustedRequest);
     switch (request.operation) {
       case 'export':
@@ -539,7 +549,11 @@ export class NotificationDataRightsContributor {
       operation: 'verify_erased',
       requestId,
       erased: liveRecords === 0,
-      evidenceSha256: digest({ contributor: CONTRIBUTOR_NAME, workspaceId, liveRecords }),
+      evidenceSha256: digest({
+        contributor: CONTRIBUTOR_NAME,
+        workspaceId,
+        liveRecords,
+      }),
     };
   }
 }
