@@ -1,7 +1,9 @@
 import 'reflect-metadata';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
+  BadRequestException,
   Body,
+  Catch,
   Controller,
   Get,
   Headers,
@@ -12,9 +14,11 @@ import {
   Optional,
   Param,
   Post,
+  type ArgumentsHost,
   type DynamicModule,
+  type ExceptionFilter,
 } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { APP_FILTER, NestFactory } from '@nestjs/core';
 import {
   getPluginContractDiscovery,
   type PluginContractDiscovery,
@@ -60,6 +64,16 @@ interface IntegrationProblemDetails {
   readonly title: string;
   readonly status: number;
   readonly code: IntegrationProblemCode;
+}
+
+interface IntegrationHttpRequest {
+  readonly originalUrl?: string;
+  readonly url?: string;
+}
+
+interface IntegrationHttpResponse {
+  status(statusCode: number): IntegrationHttpResponse;
+  json(body: unknown): void;
 }
 
 /** Untrusted request identity that must match the exact protected Integration route. */
@@ -187,6 +201,42 @@ function requireObject(value: unknown): Record<string, unknown> {
     return invalidPluginOperatorRequest();
   }
   return value as Record<string, unknown>;
+}
+
+/** Returns true only for the bounded plugin-operator lifecycle route family. */
+function isPluginOperatorPath(path: string): boolean {
+  return (
+    path === '/v1/plugins/installations' ||
+    path.startsWith('/v1/plugins/installations/') ||
+    path === '/v1/plugins/credential-bindings' ||
+    path.startsWith('/v1/plugins/credential-bindings/')
+  );
+}
+
+/**
+ * Normalizes framework/body-parser 400s on operator routes into the same fixed,
+ * credential-free problem contract used by controller-level input validation.
+ */
+@Catch(BadRequestException)
+class IntegrationBadRequestFilter implements ExceptionFilter {
+  catch(exception: BadRequestException, host: ArgumentsHost): void {
+    const http = host.switchToHttp();
+    const request = http.getRequest<IntegrationHttpRequest>();
+    const response = http.getResponse<IntegrationHttpResponse>();
+    const path = (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+
+    if (isPluginOperatorPath(path)) {
+      response.status(400).json({
+        type: 'about:blank',
+        title: 'Plugin operator request is invalid',
+        status: 400,
+        code: 'invalid_plugin_operator_request',
+      } satisfies IntegrationProblemDetails);
+      return;
+    }
+
+    response.status(exception.getStatus()).json(exception.getResponse());
+  }
 }
 
 /** Selects only operator-owned installation fields from an untrusted HTTP body. */
@@ -486,7 +536,10 @@ export class PluginOperatorHttpController {
   }
 }
 
-@Module({ controllers: [IntegrationController, PluginOperatorHttpController] })
+@Module({
+  controllers: [IntegrationController, PluginOperatorHttpController],
+  providers: [{ provide: APP_FILTER, useClass: IntegrationBadRequestFilter }],
+})
 export class IntegrationAppModule {
   /** Registers an explicitly constructed durable plugin operator for host deployments. */
   static withPluginOperator(operator: PluginOperatorApplication): DynamicModule {
