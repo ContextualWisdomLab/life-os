@@ -99,7 +99,6 @@ interface ExportRow {
 
 /** Privilege evidence required before destructive Notification erasure. */
 interface PrivilegeRow {
-  erasure_receipts_ready: unknown;
   erasure_function_ready: unknown;
 }
 
@@ -460,32 +459,22 @@ export class NotificationDataRightsContributor {
     };
   }
 
-  /** Checks owner-controlled erasure privileges without mutating tenant data. */
+  /** Checks owner-controlled erasure function authority without requiring direct receipt-table access. */
   private async preflightErase(
     requestId: string,
   ): Promise<NotificationDataRightsResponse> {
     const row = exactlyOne(
       await this.query<PrivilegeRow>(
-        `SELECT
-           COALESCE(has_table_privilege(
-             current_user,
-             to_regclass('notification_service.data_rights_erasure_receipts'),
-             'SELECT,INSERT'
-           ), false) AS erasure_receipts_ready,
-           COALESCE(has_function_privilege(
-             current_user,
-             to_regprocedure('notification_service.erase_workspace_data(uuid,uuid,uuid,uuid)'),
-             'EXECUTE'
-           ), false) AS erasure_function_ready`,
+        `SELECT COALESCE(has_function_privilege(
+           current_user,
+           to_regprocedure('notification_service.erase_workspace_data(uuid,uuid,uuid,uuid)'),
+           'EXECUTE'
+         ), false) AS erasure_function_ready`,
         [],
       ),
     );
-    const receiptsReady = requireBoolean(row.erasure_receipts_ready);
     const functionReady = requireBoolean(row.erasure_function_ready);
     const blockers: string[] = [];
-    if (!receiptsReady) {
-      blockers.push('notification_erasure_receipt_privileges_unavailable');
-    }
     if (!functionReady) {
       blockers.push('notification_erasure_function_unavailable');
     }
