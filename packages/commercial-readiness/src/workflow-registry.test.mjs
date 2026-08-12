@@ -7,6 +7,8 @@ import {
 } from './workflow-registry.mjs';
 
 const SHA = 'f'.repeat(40);
+const TREE_SHA = 'a'.repeat(40);
+const GENERATED_AT = '2026-08-12T12:00:00.000Z';
 
 function workflow(id, path, state = 'active', name = `workflow-${id}`) {
   return { id, name, path, state };
@@ -62,7 +64,7 @@ test('rejects ambiguous workflow identities and unsafe repository paths', () => 
   }
 });
 
-test('paginates the complete registry and binds evidence to an unchanged default-branch head', async () => {
+test('paginates the complete registry and binds receipts to an unchanged default-branch tree', async () => {
   const calls = [];
   const client = {
     async requestJson(path) {
@@ -71,7 +73,10 @@ test('paginates the complete registry and binds evidence to an unchanged default
       if (path === '/repos/ContextualWisdomLab/life-os/branches/main') {
         return { commit: { sha: SHA } };
       }
-      if (path === `/repos/ContextualWisdomLab/life-os/git/trees/${SHA}?recursive=1`) {
+      if (path === `/repos/ContextualWisdomLab/life-os/git/commits/${SHA}`) {
+        return { sha: SHA, tree: { sha: TREE_SHA } };
+      }
+      if (path === `/repos/ContextualWisdomLab/life-os/git/trees/${TREE_SHA}?recursive=1`) {
         return {
           truncated: false,
           tree: [
@@ -94,8 +99,13 @@ test('paginates the complete registry and binds evidence to an unchanged default
     client,
     'ContextualWisdomLab/life-os',
     SHA,
+    { generatedAt: GENERATED_AT },
   );
 
+  assert.equal(result.commit_sha, SHA);
+  assert.equal(result.tree_sha, TREE_SHA);
+  assert.equal(result.generated_at, GENERATED_AT);
+  assert.deepEqual(result.registry_receipt, { pages: 2, total_count: 101 });
   assert.equal(result.workflow_count, 101);
   assert.equal(result.active_orphans.length, 100);
   assert.deepEqual(result.present.map((entry) => entry.id), [101]);
@@ -108,7 +118,8 @@ test('fails closed on pagination truncation, tree truncation, and branch movemen
     async requestJson(path) {
       if (path === '/repos/ContextualWisdomLab/life-os') return { default_branch: 'main' };
       if (path === '/repos/ContextualWisdomLab/life-os/branches/main') return { commit: { sha: SHA } };
-      if (path.startsWith(`/repos/ContextualWisdomLab/life-os/git/trees/${SHA}`)) return { truncated: true, tree: [] };
+      if (path === `/repos/ContextualWisdomLab/life-os/git/commits/${SHA}`) return { sha: SHA, tree: { sha: TREE_SHA } };
+      if (path.startsWith(`/repos/ContextualWisdomLab/life-os/git/trees/${TREE_SHA}`)) return { truncated: true, tree: [] };
       throw new Error(`unexpected ${path}`);
     },
   };
@@ -125,7 +136,8 @@ test('fails closed on pagination truncation, tree truncation, and branch movemen
         branchReads += 1;
         return { commit: { sha: branchReads === 1 ? SHA : 'e'.repeat(40) } };
       }
-      if (path.startsWith(`/repos/ContextualWisdomLab/life-os/git/trees/${SHA}`)) {
+      if (path === `/repos/ContextualWisdomLab/life-os/git/commits/${SHA}`) return { sha: SHA, tree: { sha: TREE_SHA } };
+      if (path.startsWith(`/repos/ContextualWisdomLab/life-os/git/trees/${TREE_SHA}`)) {
         return { truncated: false, tree: [] };
       }
       if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
