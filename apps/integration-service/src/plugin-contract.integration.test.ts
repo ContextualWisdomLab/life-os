@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
@@ -9,19 +10,64 @@ const EVENT_ID = '59b7f370-b733-435d-a72a-40878d6cffd1';
 const SUBJECT_ID = 'e021b411-f75e-4490-97a4-f1f6ee811849';
 const SYNTHETIC_CSRF_TOKEN = ['unit', 'csrf', 'value'].join(':');
 const TEST_EMBEDDED_VALUE = ['must', 'not', 'be', 'embedded'].join(':');
+const GATEWAY_SECRET = [
+  'integration',
+  'gateway',
+  'context',
+  'fixture',
+  'material',
+].join('-');
+
+function signedWorkspaceHeaders(
+  workspaceId: string,
+  issuedAt = String(Math.floor(Date.now() / 1000)),
+): Record<string, string> {
+  const normalizedWorkspaceId = workspaceId.toLowerCase();
+  const signature = createHmac('sha256', GATEWAY_SECRET)
+    .update(
+      `life-os.integration-event-context.v2\n${normalizedWorkspaceId}\n${issuedAt}\nPOST\n/v1/events/prepare`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
+
+function legacySignedWorkspaceHeaders(
+  workspaceId: string,
+  issuedAt = String(Math.floor(Date.now() / 1000)),
+): Record<string, string> {
+  const normalizedWorkspaceId = workspaceId.toLowerCase();
+  const signature = createHmac('sha256', GATEWAY_SECRET)
+    .update(
+      `life-os.workspace.v1\n${normalizedWorkspaceId}\n${issuedAt}`,
+      'utf8',
+    )
+    .digest('base64url');
+  return {
+    'x-life-os-workspace-id': workspaceId,
+    'x-life-os-context-issued-at': issuedAt,
+    'x-life-os-context-signature': signature,
+  };
+}
 
 async function postJson(
   port: number,
   path: string,
   body: unknown,
   workspaceId?: string,
+  headers: Record<string, string> = {},
 ): Promise<Response> {
   return await fetch(`http://127.0.0.1:${port}${path}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-csrf-token': SYNTHETIC_CSRF_TOKEN,
-      ...(workspaceId ? { 'x-workspace-id': workspaceId } : {}),
+      ...(workspaceId ? signedWorkspaceHeaders(workspaceId) : {}),
+      ...headers,
     },
     body: JSON.stringify(body),
   });
@@ -39,7 +85,9 @@ function eventRequest(data: unknown = { title: 'Prepare launch', version: 2 }) {
 }
 
 describe('plugin contract HTTP boundary', () => {
-  it('exposes strict discovery, manifest validation, and tenant-scoped event preparation only', async () => {
+  it('exposes strict discovery, manifest validation, and signed tenant-scoped event preparation only', async () => {
+    const previousSecret = process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET;
+    process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
     const app = await NestFactory.create(IntegrationAppModule, { logger: false });
     await app.listen(0, '127.0.0.1');
 
@@ -123,6 +171,18 @@ describe('plugin contract HTTP boundary', () => {
         prepared.serializedEvent.indexOf('"version"'),
       );
 
+      const legacyWorkspaceOnly = await postJson(
+        address.port,
+        '/v1/events/prepare',
+        eventRequest(),
+        undefined,
+        legacySignedWorkspaceHeaders(WORKSPACE_ID),
+      );
+      expect(legacyWorkspaceOnly.status).toBe(401);
+      expect(await legacyWorkspaceOnly.json()).toMatchObject({
+        code: 'invalid_gateway_context',
+      });
+
       const otherTenantResponse = await postJson(
         address.port,
         '/v1/events/prepare',
@@ -148,7 +208,38 @@ describe('plugin contract HTTP boundary', () => {
         '/v1/events/prepare',
         eventRequest(),
       );
-      expect(noWorkspace.status).toBe(400);
+      expect(noWorkspace.status).toBe(401);
+      expect(await noWorkspace.json()).toMatchObject({
+        code: 'invalid_gateway_context',
+      });
+
+      const forged = await postJson(
+        address.port,
+        '/v1/events/prepare',
+        eventRequest(),
+        undefined,
+        {
+          ...signedWorkspaceHeaders(WORKSPACE_ID),
+          'x-life-os-context-signature': 'A'.repeat(43),
+        },
+      );
+      expect(forged.status).toBe(401);
+      expect(await forged.json()).toMatchObject({
+        code: 'invalid_gateway_context',
+      });
+
+      delete process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET;
+      const unverifiable = await postJson(
+        address.port,
+        '/v1/events/prepare',
+        eventRequest(),
+        WORKSPACE_ID,
+      );
+      expect(unverifiable.status).toBe(503);
+      expect(await unverifiable.json()).toMatchObject({
+        code: 'gateway_context_unavailable',
+      });
+      process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET = GATEWAY_SECRET;
 
       const unsupportedDelivery = await postJson(
         address.port,
@@ -166,6 +257,11 @@ describe('plugin contract HTTP boundary', () => {
       expect(unsupportedCommand.status).toBe(404);
     } finally {
       await app.close();
+      if (previousSecret === undefined) {
+        delete process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET;
+      } else {
+        process.env.INTEGRATION_GATEWAY_CONTEXT_SECRET = previousSecret;
+      }
     }
   });
 });

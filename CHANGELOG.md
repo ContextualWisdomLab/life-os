@@ -40,8 +40,10 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
 - Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.
+- Goal, project, and task create/list routes now reject bare client-selected `x-workspace-id` authority and require the same short-lived signed `life-os.workspace.v1` context used by planning search and durable Today.
 - The data-rights request ledger keeps personal export payloads out of durable audit rows and normalizes primary-key/idempotency collisions before dependency errors can escape the service boundary.
 - The commercial-development model account no longer performs Docker commands, never receives Docker-socket authority, and cannot trigger provider-wide model discovery through the credential bridge.
 - The scheduled live-model harness uses only `NVIDIA_NIM_API_KEY`, seeds it through the encrypted contextual-orchestrator credential registry, installs hash-locked dependencies from an exact commit, confines LifeOS traffic to loopback, allowlists NVIDIA NIM egress, and excludes provider credentials, prompts, responses, traces, and hidden reasoning from retained artifacts.

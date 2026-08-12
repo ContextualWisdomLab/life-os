@@ -62,6 +62,7 @@ async function withTemporaryDatabase(
   let adminClient: PoolClient | undefined;
   let migrationPool: Pool | undefined;
   let lockHeld = false;
+  let databaseCreated = false;
 
   try {
     adminClient = await adminPool.connect();
@@ -70,9 +71,10 @@ async function withTemporaryDatabase(
     ]);
     lockHeld = true;
     await adminClient.query(
-      'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
+      'DROP DATABASE IF EXISTS life_os_identity_migration_test',
     );
     await adminClient.query('CREATE DATABASE life_os_identity_migration_test');
+    databaseCreated = true;
     migrationPool = new Pool({
       connectionString: databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME),
     });
@@ -85,9 +87,11 @@ async function withTemporaryDatabase(
       try {
         if (lockHeld && adminClient) {
           try {
-            await adminClient.query(
-              'DROP DATABASE IF EXISTS life_os_identity_migration_test WITH (FORCE)',
-            );
+            if (databaseCreated) {
+              await adminClient.query(
+                'DROP DATABASE IF EXISTS life_os_identity_migration_test',
+              );
+            }
           } finally {
             await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
               TEMPORARY_DATABASE_LOCK_KEY,
@@ -161,7 +165,7 @@ async function insertSession(
 }
 
 describeWithDatabase('session authentication-age migration', () => {
-  it('serializes concurrent migration fixtures that share the disposable database', async () => {
+  it('serializes concurrent migration fixtures without force-terminating database clients', async () => {
     const completed: string[] = [];
 
     await Promise.all([
@@ -177,6 +181,19 @@ describeWithDatabase('session authentication-age migration', () => {
 
     expect(completed).toHaveLength(2);
     expect(new Set(completed)).toEqual(new Set(['first', 'second']));
+
+    const adminPool = new Pool({
+      connectionString: databaseUrl(requireDatabaseUrl(), 'postgres'),
+    });
+    try {
+      const remaining = await adminPool.query<{ database_name: string }>(
+        'SELECT datname AS database_name FROM pg_database WHERE datname = $1',
+        [TEMPORARY_DATABASE_NAME],
+      );
+      expect(remaining.rows).toHaveLength(0);
+    } finally {
+      await adminPool.end();
+    }
   }, 30_000);
 
   it('backfills every legacy rotated session from its authenticated chain root', async () => {

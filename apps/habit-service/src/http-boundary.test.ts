@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import {
@@ -5,7 +6,7 @@ import {
   parseCreateHabitRequest,
   requireHabitId,
   requireLocalDateQuery,
-  requireWorkspaceId,
+  requireTrustedWorkspaceContext,
   toHabitHttpException,
 } from './http-boundary';
 import {
@@ -16,9 +17,19 @@ import {
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const HABIT_ID = '22222222-2222-4222-8222-222222222222';
 const IDEMPOTENCY_KEY = '33333333-3333-4333-8333-333333333333';
+const CONTEXT_SECRET = randomBytes(32).toString('base64url');
+const NOW_SECONDS = 1_786_334_400;
+const BASE64URL_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 function responseOf(exception: HttpException): unknown {
   return exception.getResponse();
+}
+
+function workspaceContextSignature(issuedAt: string): string {
+  return createHmac('sha256', CONTEXT_SECRET)
+    .update(`life-os.workspace.v1\n${WORKSPACE_ID}\n${issuedAt}`, 'utf8')
+    .digest('base64url');
 }
 
 describe('Habit HTTP boundary', () => {
@@ -46,7 +57,6 @@ describe('Habit HTTP boundary', () => {
     ).toMatchObject({
       recurrence: { kind: 'weekly', interval: 1, weekdays: [1, 5] },
     });
-    expect(requireWorkspaceId(WORKSPACE_ID)).toBe(WORKSPACE_ID);
     expect(requireHabitId(HABIT_ID)).toBe(HABIT_ID);
     expect(requireLocalDateQuery('2026-08-04', 'from')).toBe('2026-08-04');
     expect(
@@ -60,6 +70,32 @@ describe('Habit HTTP boundary', () => {
       completedAt: '2026-08-04T08:00:00.000Z',
       idempotencyKey: IDEMPOTENCY_KEY,
     });
+  });
+
+  it('rejects a non-canonical base64url alias for the same gateway signature bytes', () => {
+    const issuedAt = String(NOW_SECONDS);
+    const canonical = workspaceContextSignature(issuedAt);
+    const finalIndex = BASE64URL_ALPHABET.indexOf(canonical.at(-1) ?? '');
+    expect(finalIndex).toBeGreaterThanOrEqual(0);
+    expect(finalIndex % 4).toBe(0);
+    const nonCanonical = `${canonical.slice(0, -1)}${
+      BASE64URL_ALPHABET[finalIndex + 1]
+    }`;
+    expect(Buffer.from(nonCanonical, 'base64url')).toEqual(
+      Buffer.from(canonical, 'base64url'),
+    );
+
+    expect(() =>
+      requireTrustedWorkspaceContext(
+        {
+          workspaceId: WORKSPACE_ID,
+          issuedAt,
+          signature: nonCanonical,
+        },
+        CONTEXT_SECRET,
+        NOW_SECONDS,
+      ),
+    ).toThrow(HttpException);
   });
 
   it('rejects unknown fields, invalid calendar dates, and malformed rules', () => {
@@ -92,7 +128,6 @@ describe('Habit HTTP boundary', () => {
     ]) {
       expect(() => parseCreateHabitRequest(value)).toThrowError(HttpException);
     }
-    expect(() => requireWorkspaceId('not-a-uuid')).toThrowError(HttpException);
     expect(() => requireHabitId('not-a-uuid')).toThrowError(HttpException);
     expect(() => requireLocalDateQuery('2026-13-01', 'to')).toThrowError(
       HttpException,

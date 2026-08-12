@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   DataRightsRequestConflictError,
@@ -13,10 +13,11 @@ import {
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 const TEST_DATABASE_NAME = 'life_os_data_rights_ledger_test';
+const TEST_DATABASE_LOCK_KEY = 7_903_341_702;
 if (!/^[a-z][a-z0-9_]*$/u.test(TEST_DATABASE_NAME)) {
   throw new Error('TEST_DATABASE_NAME must be a safe PostgreSQL identifier');
 }
-const DROP_TEST_DATABASE = `DROP DATABASE IF EXISTS "${TEST_DATABASE_NAME}" WITH (FORCE)`;
+const DROP_TEST_DATABASE = `DROP DATABASE IF EXISTS "${TEST_DATABASE_NAME}"`;
 const CREATE_TEST_DATABASE = `CREATE DATABASE "${TEST_DATABASE_NAME}"`;
 const MIGRATION_DIRECTORY = resolve(__dirname, '../migrations');
 
@@ -34,6 +35,7 @@ class NodePostgresDataRightsClient implements DataRightsRequestSqlClient {
 
 describeWithDatabase('PostgreSQL data-rights request ledger', () => {
   let adminPool: Pool;
+  let adminClient: PoolClient | undefined;
   let pool: Pool;
 
   beforeAll(async () => {
@@ -43,8 +45,12 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     const adminUrl = new URL(DATABASE_URL);
     adminUrl.pathname = '/postgres';
     adminPool = new Pool({ connectionString: adminUrl.toString() });
-    await adminPool.query(DROP_TEST_DATABASE);
-    await adminPool.query(CREATE_TEST_DATABASE);
+    adminClient = await adminPool.connect();
+    await adminClient.query('SELECT pg_advisory_lock($1)', [
+      TEST_DATABASE_LOCK_KEY,
+    ]);
+    await adminClient.query(DROP_TEST_DATABASE);
+    await adminClient.query(CREATE_TEST_DATABASE);
 
     const testUrl = new URL(DATABASE_URL);
     testUrl.pathname = `/${TEST_DATABASE_NAME}`;
@@ -62,14 +68,18 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
   afterAll(async () => {
     try {
       if (pool) await pool.end();
+      if (adminClient) await adminClient.query(DROP_TEST_DATABASE);
     } finally {
-      if (adminPool) {
+      if (adminClient) {
         try {
-          await adminPool.query(DROP_TEST_DATABASE);
+          await adminClient.query('SELECT pg_advisory_unlock($1)', [
+            TEST_DATABASE_LOCK_KEY,
+          ]);
         } finally {
-          await adminPool.end();
+          adminClient.release();
         }
       }
+      if (adminPool) await adminPool.end();
     }
   });
 
@@ -148,8 +158,12 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     );
     expect(blockedMutation.rowCount).toBe(0);
 
-    await pool.query(`DELETE FROM identity.workspaces WHERE id = $1::uuid`, [workspaceId]);
-    await pool.query(`DELETE FROM identity.users WHERE id = $1::uuid`, [userId]);
+    await pool.query(`DELETE FROM identity.workspaces WHERE id = $1::uuid`, [
+      workspaceId,
+    ]);
+    await pool.query(`DELETE FROM identity.users WHERE id = $1::uuid`, [
+      userId,
+    ]);
 
     const retained = await pool.query<{
       request_id: string;
@@ -214,11 +228,51 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
   it('enforces request kind, digest, completion consistency, receipt digest, and time ordering constraints', async () => {
     const base = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
     const invalidRows: ReadonlyArray<readonly unknown[]> = [
-      [...base, 'invalid-kind', 'a'.repeat(64), 'pending', null, '2026-08-09T20:00:00.000Z', null],
-      [...base, 'export', 'not-a-digest', 'pending', null, '2026-08-09T20:00:00.000Z', null],
-      [...base, 'export', 'a'.repeat(64), 'completed', null, '2026-08-09T20:00:00.000Z', '2026-08-09T20:01:00.000Z'],
-      [...base, 'export', 'a'.repeat(64), 'completed', 'not-a-digest', '2026-08-09T20:00:00.000Z', '2026-08-09T20:01:00.000Z'],
-      [...base, 'export', 'a'.repeat(64), 'completed', 'b'.repeat(64), '2026-08-09T20:02:00.000Z', '2026-08-09T20:01:00.000Z'],
+      [
+        ...base,
+        'invalid-kind',
+        'a'.repeat(64),
+        'pending',
+        null,
+        '2026-08-09T20:00:00.000Z',
+        null,
+      ],
+      [
+        ...base,
+        'export',
+        'not-a-digest',
+        'pending',
+        null,
+        '2026-08-09T20:00:00.000Z',
+        null,
+      ],
+      [
+        ...base,
+        'export',
+        'a'.repeat(64),
+        'completed',
+        null,
+        '2026-08-09T20:00:00.000Z',
+        '2026-08-09T20:01:00.000Z',
+      ],
+      [
+        ...base,
+        'export',
+        'a'.repeat(64),
+        'completed',
+        'not-a-digest',
+        '2026-08-09T20:00:00.000Z',
+        '2026-08-09T20:01:00.000Z',
+      ],
+      [
+        ...base,
+        'export',
+        'a'.repeat(64),
+        'completed',
+        'b'.repeat(64),
+        '2026-08-09T20:02:00.000Z',
+        '2026-08-09T20:01:00.000Z',
+      ],
     ];
 
     for (const values of invalidRows) {

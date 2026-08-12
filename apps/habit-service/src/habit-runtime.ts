@@ -1,5 +1,13 @@
 import type { OnApplicationShutdown } from '@nestjs/common';
-import { Pool, type PoolConfig } from 'pg';
+import { Pool, type PoolClient, type PoolConfig } from 'pg';
+import {
+  PostgresHabitDataRightsAuthorityReplayGuard,
+  type HabitDataRightsAuthorityReplayGuardPort,
+} from './habit-data-rights-authority-replay';
+import {
+  HabitDataRightsContributor,
+  type HabitTransactionalSqlClient,
+} from './habit-data-rights';
 import { HabitService } from './habit-domain';
 import {
   type HabitSqlClient,
@@ -11,17 +19,43 @@ const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
+/** Borrowed PostgreSQL connection used for one Habit-owned transaction. */
+export interface HabitPoolConnection {
+  query<Row>(
+    text: string,
+    values?: readonly unknown[],
+  ): Promise<HabitSqlQueryResult<Row>>;
+  release(): void;
+}
+
 /** PostgreSQL pool boundary owned by the Habit service runtime. */
 export interface HabitPool {
   query<Row>(
     text: string,
     values?: readonly unknown[],
   ): Promise<HabitSqlQueryResult<Row>>;
+  connect(): Promise<HabitPoolConnection>;
   end(): Promise<void>;
 }
 
 /** Factory boundary used to construct a validated Habit database pool. */
 export type HabitPoolFactory = (configuration: PoolConfig) => HabitPool;
+
+class NodePostgresHabitPoolConnection implements HabitPoolConnection {
+  constructor(private readonly connection: PoolClient) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<HabitSqlQueryResult<Row>> {
+    const result = await this.connection.query(text, [...values]);
+    return { rows: result.rows as Row[] };
+  }
+
+  release(): void {
+    this.connection.release();
+  }
+}
 
 class NodePostgresHabitPool implements HabitPool {
   constructor(private readonly pool: Pool) {}
@@ -34,12 +68,27 @@ class NodePostgresHabitPool implements HabitPool {
     return { rows: result.rows as Row[] };
   }
 
+  async connect(): Promise<HabitPoolConnection> {
+    return new NodePostgresHabitPoolConnection(await this.pool.connect());
+  }
+
   async end(): Promise<void> {
     await this.pool.end();
   }
 }
 
-class NodePostgresHabitSqlClient implements HabitSqlClient {
+class ConnectionHabitSqlClient implements HabitSqlClient {
+  constructor(private readonly connection: HabitPoolConnection) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[],
+  ): Promise<HabitSqlQueryResult<Row>> {
+    return await this.connection.query<Row>(text, values);
+  }
+}
+
+class NodePostgresHabitSqlClient implements HabitTransactionalSqlClient {
   constructor(private readonly pool: HabitPool) {}
 
   async query<Row>(
@@ -47,6 +96,28 @@ class NodePostgresHabitSqlClient implements HabitSqlClient {
     values: readonly unknown[],
   ): Promise<HabitSqlQueryResult<Row>> {
     return await this.pool.query<Row>(text, values);
+  }
+
+  async transaction<T>(
+    operation: (client: HabitSqlClient) => Promise<T>,
+  ): Promise<T> {
+    const connection = await this.pool.connect();
+    const transaction = new ConnectionHabitSqlClient(connection);
+    try {
+      await transaction.query('BEGIN', []);
+      const result = await operation(transaction);
+      await transaction.query('COMMIT', []);
+      return result;
+    } catch (error) {
+      try {
+        await transaction.query('ROLLBACK', []);
+      } catch {
+        // Preserve the original application or database failure.
+      }
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 }
 
@@ -128,13 +199,17 @@ function defaultPoolFactory(configuration: PoolConfig): HabitPool {
   return new NodePostgresHabitPool(new Pool(configuration));
 }
 
-/** Owns the Habit service and closes its PostgreSQL pool exactly once. */
+/** Owns Habit service components and closes their PostgreSQL pool exactly once. */
 export class HabitRuntime implements OnApplicationShutdown {
   private closed = false;
 
   constructor(
     private readonly pool: HabitPool,
     readonly service: HabitService,
+    /** Service-owned export/erasure participant consumed by Identity orchestration. */
+    readonly dataRightsContributor: HabitDataRightsContributor,
+    /** Durable single-consumption authority for destructive internal data-rights requests. */
+    readonly dataRightsAuthorityReplayGuard: HabitDataRightsAuthorityReplayGuardPort,
   ) {}
 
   async close(): Promise<void> {
@@ -156,8 +231,12 @@ export function createHabitRuntime(
   poolFactory: HabitPoolFactory = defaultPoolFactory,
 ): HabitRuntime {
   const pool = poolFactory(createHabitPoolConfiguration(environment));
-  const repository = new PostgresHabitRepository(
-    new NodePostgresHabitSqlClient(pool),
+  const sqlClient = new NodePostgresHabitSqlClient(pool);
+  const repository = new PostgresHabitRepository(sqlClient);
+  return new HabitRuntime(
+    pool,
+    new HabitService(repository),
+    new HabitDataRightsContributor(sqlClient),
+    new PostgresHabitDataRightsAuthorityReplayGuard(sqlClient),
   );
-  return new HabitRuntime(pool, new HabitService(repository));
 }
