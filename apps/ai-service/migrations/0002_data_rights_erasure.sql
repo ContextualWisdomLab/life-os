@@ -1,5 +1,11 @@
 BEGIN;
 
+ALTER SCHEMA ai OWNER TO CURRENT_USER;
+REVOKE CREATE ON SCHEMA ai FROM PUBLIC;
+ALTER TABLE ai.proposal_audit_records OWNER TO CURRENT_USER;
+ALTER TABLE ai.proposal_decision_events OWNER TO CURRENT_USER;
+ALTER FUNCTION ai.reject_proposal_audit_mutation() OWNER TO CURRENT_USER;
+
 CREATE TABLE ai.data_rights_erasure_receipts (
   workspace_id uuid NOT NULL,
   idempotency_key uuid NOT NULL,

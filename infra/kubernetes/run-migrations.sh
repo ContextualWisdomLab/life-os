@@ -24,7 +24,7 @@ migration_roots=(
   'identity|IDENTITY_DATABASE_URL|apps/identity-service/migrations'
   'planning|PLANNING_DATABASE_URL|apps/planning-service/migrations'
   'habit|HABIT_DATABASE_URL|apps/habit-service/migrations'
-  'ai|AI_DATABASE_URL|apps/ai-service/migrations'
+  'ai|AI_MIGRATION_DATABASE_URL|apps/ai-service/migrations'
   'review|REVIEW_DATABASE_URL|apps/review-service/migrations'
 )
 
@@ -123,12 +123,36 @@ SELECT
 SQL
 }
 
+append_ai_runtime_privileges() {
+  local command_file="$1"
+  cat >>"${command_file}" <<'SQL'
+REVOKE CREATE ON SCHEMA ai FROM :"service_runtime_role";
+GRANT USAGE ON SCHEMA ai TO :"service_runtime_role";
+REVOKE ALL ON TABLE
+  ai.data_rights_erasure_authorizations,
+  ai.data_rights_erasure_receipts
+FROM :"service_runtime_role";
+GRANT SELECT, INSERT ON TABLE
+  ai.proposal_audit_records,
+  ai.proposal_decision_events
+TO :"service_runtime_role";
+REVOKE UPDATE, DELETE, TRUNCATE ON TABLE
+  ai.proposal_audit_records,
+  ai.proposal_decision_events
+FROM :"service_runtime_role";
+REVOKE ALL ON FUNCTION ai.reject_proposal_audit_mutation()
+FROM :"service_runtime_role";
+GRANT EXECUTE ON FUNCTION ai.erase_workspace_data(uuid, uuid, uuid, uuid)
+TO :"service_runtime_role";
+SQL
+}
+
 apply_service_migrations() {
   local service_name="$1"
   local database_url_name="$2"
   local migration_directory="$3"
   local migration_file migration_name migration_sequence migration_sha
-  local workspace command_file service_file
+  local workspace command_file service_file service_runtime_role=''
   local -a migration_files=()
 
   [[ "${service_name}" =~ ^[a-z][a-z0-9_]*$ ]] || fail 'service_name_invalid'
@@ -138,6 +162,13 @@ apply_service_migrations() {
 
   ((${#migration_files[@]} > 0)) || return 0
   [[ -n "${!database_url_name:-}" ]] || fail "${database_url_name}_required"
+
+  if [[ "${service_name}" == 'ai' ]]; then
+    service_runtime_role="${AI_DATABASE_RUNTIME_ROLE:-}"
+    [[ -n "${service_runtime_role}" ]] || fail 'AI_DATABASE_RUNTIME_ROLE_required'
+    [[ "${service_runtime_role}" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] ||
+      fail 'AI_DATABASE_RUNTIME_ROLE_invalid'
+  fi
 
   workspace="$(mktemp -d)"
   command_file="${workspace}/migration_commands.psql"
@@ -153,6 +184,33 @@ apply_service_migrations() {
 
   cat >"${command_file}" <<SQL
 \\set ON_ERROR_STOP on
+\\set service_name '${service_name}'
+SQL
+
+  if [[ "${service_name}" == 'ai' ]]; then
+    cat >>"${command_file}" <<SQL
+\\set service_runtime_role '${service_runtime_role}'
+SELECT
+  current_user = :'service_runtime_role' AS migration_role_matches_runtime_role,
+  EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname = :'service_runtime_role'
+  ) AS service_runtime_role_exists
+\\gset
+\\if :migration_role_matches_runtime_role
+  \\echo migration_error=migration_role_matches_runtime_role service=:service_name
+  \\quit 1
+\\endif
+\\if :service_runtime_role_exists
+\\else
+  \\echo migration_error=runtime_role_not_found service=:service_name
+  \\quit 1
+\\endif
+SQL
+  fi
+
+  cat >>"${command_file}" <<SQL
 SELECT pg_advisory_lock(hashtextextended('life-os-migrations:${service_name}', 0));
 CREATE SCHEMA IF NOT EXISTS ${MIGRATION_SCHEMA};
 CREATE TABLE IF NOT EXISTS ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
@@ -208,6 +266,10 @@ SQL
       "${migration_sequence}" \
       "${migration_sha}"
   done
+
+  if [[ "${service_name}" == 'ai' ]]; then
+    append_ai_runtime_privileges "${command_file}"
+  fi
 
   cat >>"${command_file}" <<SQL
 SELECT pg_advisory_unlock(hashtextextended('life-os-migrations:${service_name}', 0));
