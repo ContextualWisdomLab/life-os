@@ -16,7 +16,7 @@ concurrency:
 jobs:
   repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 55
     permissions:
       contents: write
     env:
@@ -45,7 +45,7 @@ jobs:
 
       - name: Verify bootstrap lineage
         env:
-          EXPECTED_PARENT: e901268ab499add9fae33ebb9a75db89182aa6e6
+          EXPECTED_PARENT: 1995c3635f653e0506fc923b20948c2d7038ac0b
         run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
 
       - name: Execute test-first repair
