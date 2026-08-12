@@ -1,0 +1,52 @@
+name: Run Review receipt-scope repair
+
+on:
+  push:
+    branches:
+      - feat/review-data-rights-contributor-v1
+    paths:
+      - .github/workflows/run-review-receipt-repair.yml
+
+permissions: {}
+
+concurrency:
+  group: run-review-receipt-repair-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: write
+    env:
+      REVIEW_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/review-data-rights-contributor-v1
+          fetch-depth: 0
+
+      - name: Verify bootstrap lineage
+        env:
+          EXPECTED_PARENT: e901268ab499add9fae33ebb9a75db89182aa6e6
+        run: test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+
+      - name: Execute test-first repair
+        run: bash .github/scripts/repair-review-receipt-scope.sh
