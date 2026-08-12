@@ -13,6 +13,8 @@ const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 const IDEMPOTENCY_KEY = '44444444-4444-4444-8444-444444444444';
 const SHA256 = 'a'.repeat(64);
+const CODEPOINT_CANONICAL_DIGEST =
+  '3ab3b13cd6c0ab42b9cbed3c685c5b4d0b065f94b5e147b267a3ab4e00f0d356';
 
 class ScriptedClient implements NotificationSqlClient {
   readonly calls: Array<{
@@ -129,6 +131,31 @@ describe('NotificationDataRightsContributor', () => {
     expect(client.calls[0]?.text).not.toContain('idempotency_key_hash');
   });
 
+  it('uses codepoint-stable canonical JSON for reproducible export evidence', async () => {
+    const first = new NotificationDataRightsContributor(
+      new ScriptedClient([
+        exportResult([{ a: 'lower', Z: 'upper' }], [], []),
+      ]),
+    );
+    const second = new NotificationDataRightsContributor(
+      new ScriptedClient([
+        exportResult([{ Z: 'upper', a: 'lower' }], [], []),
+      ]),
+    );
+
+    const firstResponse = await first.handle(request('export'));
+    const secondResponse = await second.handle(request('export'));
+
+    if (
+      firstResponse.operation !== 'export' ||
+      secondResponse.operation !== 'export'
+    ) {
+      throw new Error('Expected export responses');
+    }
+    expect(firstResponse.sha256).toBe(CODEPOINT_CANONICAL_DIGEST);
+    expect(secondResponse.sha256).toBe(CODEPOINT_CANONICAL_DIGEST);
+  });
+
   it('dispatches every contributor lifecycle operation with tenant-scoped parameters', async () => {
     const client = new ScriptedClient([
       { rows: [{ erasure_receipts_ready: true, erasure_function_ready: true }] },
@@ -138,7 +165,9 @@ describe('NotificationDataRightsContributor', () => {
     ]);
     const contributor = new NotificationDataRightsContributor(client);
 
-    await expect(contributor.handle(request('erase_preflight'))).resolves.toEqual({
+    await expect(
+      contributor.handle(request('erase_preflight')),
+    ).resolves.toEqual({
       contractVersion: 'life-os.data-rights-contributor.v1',
       contributor: 'notification.service',
       operation: 'erase_preflight',
@@ -154,12 +183,16 @@ describe('NotificationDataRightsContributor', () => {
       erasedRecords: 3,
       receiptSha256: SHA256,
     });
-    await expect(contributor.handle(request('verify_erased'))).resolves.toMatchObject({
+    await expect(
+      contributor.handle(request('verify_erased')),
+    ).resolves.toMatchObject({
       operation: 'verify_erased',
       erased: true,
       requestId: REQUEST_ID,
     });
-    await expect(contributor.handle(request('verify_erased'))).resolves.toMatchObject({
+    await expect(
+      contributor.handle(request('verify_erased')),
+    ).resolves.toMatchObject({
       operation: 'verify_erased',
       erased: false,
       requestId: REQUEST_ID,
@@ -175,11 +208,17 @@ describe('NotificationDataRightsContributor', () => {
 
   it('reports each erasure preflight blocker without mutating data', async () => {
     const client = new ScriptedClient([
-      { rows: [{ erasure_receipts_ready: false, erasure_function_ready: false }] },
+      {
+        rows: [
+          { erasure_receipts_ready: false, erasure_function_ready: false },
+        ],
+      },
     ]);
     const contributor = new NotificationDataRightsContributor(client);
 
-    await expect(contributor.handle(request('erase_preflight'))).resolves.toEqual({
+    await expect(
+      contributor.handle(request('erase_preflight')),
+    ).resolves.toEqual({
       contractVersion: 'life-os.data-rights-contributor.v1',
       contributor: 'notification.service',
       operation: 'erase_preflight',
@@ -195,7 +234,10 @@ describe('NotificationDataRightsContributor', () => {
   it('rejects malformed request envelopes before persistence access', async () => {
     const client = new ScriptedClient([]);
     const contributor = new NotificationDataRightsContributor(client);
-    const nullPrototypeRequest = Object.assign(Object.create(null), request('export'));
+    const nullPrototypeRequest = Object.assign(
+      Object.create(null),
+      request('export'),
+    );
     const malformed = [
       undefined,
       null,
@@ -223,7 +265,9 @@ describe('NotificationDataRightsContributor', () => {
 
     const failure = contributor.handle(request('export'));
     await expect(failure).rejects.toBeInstanceOf(NotificationDataRightsError);
-    await expect(failure).rejects.toThrowError('Notification data-rights operation failed');
+    await expect(failure).rejects.toThrowError(
+      'Notification data-rights operation failed',
+    );
   });
 
   it('rejects missing, duplicate, or sparse SQL result evidence', async () => {
@@ -256,7 +300,9 @@ describe('NotificationDataRightsContributor', () => {
 
   it('fails closed when a bounded export exceeds its total record ceiling', async () => {
     const contributor = new NotificationDataRightsContributor(
-      new ScriptedClient([exportResult(Array.from({ length: 1_001 }, () => null))]),
+      new ScriptedClient([
+        exportResult(Array.from({ length: 1_001 }, () => null)),
+      ]),
     );
     await expectDataRightsFailure(contributor, request('export'));
   });
@@ -299,7 +345,9 @@ describe('NotificationDataRightsContributor', () => {
       {
         requestValue: request('erase_preflight'),
         result: {
-          rows: [{ erasure_receipts_ready: 'true', erasure_function_ready: true }],
+          rows: [
+            { erasure_receipts_ready: 'true', erasure_function_ready: true },
+          ],
         },
       },
       {
@@ -326,7 +374,9 @@ describe('NotificationDataRightsContributor', () => {
       },
       {
         requestValue: request('erase'),
-        result: { rows: [{ erased_records: 0, receipt_sha256: 'not-a-digest' }] },
+        result: {
+          rows: [{ erased_records: 0, receipt_sha256: 'not-a-digest' }],
+        },
       },
     ];
 
