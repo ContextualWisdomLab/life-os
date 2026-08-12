@@ -28,7 +28,7 @@ describe('AI database migration authority contract', () => {
       'REVOKE ALL PRIVILEGES ON TABLE\n  ai.proposal_audit_records,\n  ai.proposal_decision_events\nFROM :"service_runtime_role";\nGRANT SELECT, INSERT ON TABLE',
     );
     expect(migrationRunner).toContain(
-      'GRANT SELECT, INSERT ON TABLE ai.proposal_audit_records, ai.proposal_decision_events',
+      'GRANT SELECT, INSERT ON TABLE\n  ai.proposal_audit_records,\n  ai.proposal_decision_events\nTO :"service_runtime_role";',
     );
     expect(migrationRunner).toContain(
       'GRANT EXECUTE ON FUNCTION ai.erase_workspace_data(uuid, uuid, uuid, uuid)',
