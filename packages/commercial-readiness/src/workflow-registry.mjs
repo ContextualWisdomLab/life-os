@@ -24,6 +24,17 @@ function requireSha(value) {
   return value.toLowerCase();
 }
 
+function requireGeneratedAt(value) {
+  if (typeof value !== 'string') {
+    return invalid('Workflow registry timestamp is invalid');
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== value) {
+    return invalid('Workflow registry timestamp is invalid');
+  }
+  return value;
+}
+
 function requireWorkflowPath(value) {
   if (
     typeof value !== 'string' ||
@@ -148,7 +159,13 @@ async function collectWorkflowRegistry(client, repository) {
     if (workflows.length > expectedTotal) {
       return invalid('GitHub workflow registry pagination is inconsistent');
     }
-    if (workflows.length === expectedTotal) return workflows;
+    if (workflows.length === expectedTotal) {
+      return Object.freeze({
+        workflows: Object.freeze([...workflows]),
+        pages: page,
+        total_count: expectedTotal,
+      });
+    }
     if (payload.workflows.length < PAGE_SIZE) {
       return invalid('GitHub workflow registry pagination was truncated');
     }
@@ -179,21 +196,34 @@ async function readDefaultBranchHead(client, repository, defaultBranch) {
   return requireSha(payload?.commit?.sha);
 }
 
+async function readCommitTreeSha(client, repository, commitSha) {
+  const payload = await client.requestJson(
+    `/repos/${repository}/git/commits/${commitSha}`,
+  );
+  if (requireSha(payload?.sha) !== commitSha) {
+    return invalid('GitHub workflow commit evidence is inconsistent');
+  }
+  return requireSha(payload?.tree?.sha);
+}
+
 /**
  * Builds read-only, pagination-complete Actions registry evidence for one unchanged
- * protected default-branch head. Any branch movement, incomplete tree, or incomplete
- * registry response fails closed so an orphan workflow cannot disappear by omission.
+ * protected default-branch head and its exact Git tree. Any branch movement,
+ * incomplete tree, or incomplete registry response fails closed so an orphan
+ * workflow cannot disappear by omission.
  */
 export async function collectWorkflowRegistrySnapshot(
   client,
   repositoryValue,
   expectedCommitSha,
+  { generatedAt = new Date().toISOString() } = {},
 ) {
   if (!client || typeof client.requestJson !== 'function') {
     return invalid('GitHub workflow registry client is invalid');
   }
   const repository = requireRepository(repositoryValue);
   const expected = requireSha(expectedCommitSha);
+  const evidenceTimestamp = requireGeneratedAt(generatedAt);
   const metadata = await client.requestJson(`/repos/${repository}`);
   const defaultBranch = metadata?.default_branch;
   if (
@@ -210,20 +240,30 @@ export async function collectWorkflowRegistrySnapshot(
     return invalid('Protected default branch moved before workflow inventory');
   }
 
+  const treeSha = await readCommitTreeSha(client, repository, expected);
   const treePayload = await client.requestJson(
-    `/repos/${repository}/git/trees/${expected}?recursive=1`,
+    `/repos/${repository}/git/trees/${treeSha}?recursive=1`,
   );
   const treePaths = workflowPathsFromTree(treePayload);
-  const workflows = await collectWorkflowRegistry(client, repository);
+  const registry = await collectWorkflowRegistry(client, repository);
 
   const finalHead = await readDefaultBranchHead(client, repository, defaultBranch);
   if (finalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
   }
 
-  return classifyWorkflowRegistry({
+  const classified = classifyWorkflowRegistry({
     commitSha: expected,
     treePaths,
-    workflows,
+    workflows: registry.workflows,
+  });
+  return Object.freeze({
+    ...classified,
+    tree_sha: treeSha,
+    generated_at: evidenceTimestamp,
+    registry_receipt: Object.freeze({
+      pages: registry.pages,
+      total_count: registry.total_count,
+    }),
   });
 }
