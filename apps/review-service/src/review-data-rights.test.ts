@@ -68,6 +68,7 @@ class FakeReviewDataRightsClient implements ReviewDataRightsTransactionalSqlClie
   readonly queries: Array<{ text: string; values: readonly unknown[] }> = [];
   readonly receipts = new Map<string, ReceiptRow>();
   privilegesReady = true;
+  returnCrossTenantRows = false;
 
   constructor(readonly completions: CompletionRow[]) {}
 
@@ -104,7 +105,10 @@ class FakeReviewDataRightsClient implements ReviewDataRightsTransactionalSqlClie
     ) {
       const [workspaceId, limit, offset] = values as [string, number, number];
       const rows = this.completions
-        .filter((row) => row.workspace_id === workspaceId)
+        .filter(
+          (row) =>
+            this.returnCrossTenantRows || row.workspace_id === workspaceId,
+        )
         .sort((left, right) =>
           `${left.recorded_at}:${left.id}`.localeCompare(
             `${right.recorded_at}:${right.id}`,
@@ -215,6 +219,22 @@ describe('ReviewDataRightsContributor', () => {
     expect(JSON.stringify(first.data)).toContain('portable');
     expect(JSON.stringify(first.data)).not.toContain(privateId);
     expect(JSON.stringify(first.data)).not.toContain('private');
+  });
+
+  it('fails closed if persistence returns a completion from another workspace', async () => {
+    const client = new FakeReviewDataRightsClient([
+      completion(
+        OTHER_WORKSPACE_ID,
+        '99999999-9999-4999-8999-999999999999',
+        '2026-08-12T00:00:00.000Z',
+        'private',
+      ),
+    ]);
+    client.returnCrossTenantRows = true;
+
+    await expect(
+      contributor(client).handle(baseRequest('export')),
+    ).rejects.toBeInstanceOf(ReviewDataRightsError);
   });
 
   it('preflights destructive authority without treating missing privileges as success', async () => {
