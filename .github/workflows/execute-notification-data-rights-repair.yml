@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: c1ac9a4207f125669b0ddb8a5904b2b34a9d0746
+          EXPECTED_PARENT: a07c315a4bb5802680eba9a471bd97840e022140
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -73,6 +73,7 @@ jobs:
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           workflow = Path(
               '.github/workflows/repair-notification-data-rights.yml'
@@ -100,31 +101,22 @@ jobs:
           )
           add_tests = add_tests[:behavior_start] + add_tests[behavior_end:]
 
-          harden_test_contract = r"""python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          path = Path(
-              'apps/notification-service/src/notification-data-rights-migration.test.ts'
-          )
-          tests = path.read_text(encoding='utf-8')
-          pattern = re.compile(
+          marker_assertion = re.compile(
               r"expect\(sql\)\.toContain\(\s*[\"']set_config\('life_os\.notification_erasure_workspace'[\"']\s*,\s*\);",
               re.MULTILINE,
           )
-          replacement = (
+          marker_replacement = (
               "expect(sql).toMatch(\n"
-              "      /set_config\\(\\s*'life_os\\.notification_erasure_workspace'/u,\n"
-              "    );"
+              "              /set_config\\(\\s*'life_os\\.notification_erasure_workspace'/u,\n"
+              "            );"
           )
-          tests, replacements = pattern.subn(replacement, tests, count=1)
+          add_tests, replacements = marker_assertion.subn(
+              lambda _match: marker_replacement,
+              add_tests,
+              count=1,
+          )
           if replacements != 1:
               raise SystemExit('unexpected transaction-local marker assertion')
-          path.write_text(tests, encoding='utf-8')
-          PY
-          pnpm exec prettier --single-quote --write \
-            apps/notification-service/src/notification-data-rights-migration.test.ts
-          """
 
           verify_red = run_step(
               'Verify the regressions fail before implementation'
@@ -150,13 +142,12 @@ jobs:
 
           phases = {
               '01-add-tests.sh': add_tests,
-              '02-harden-test-contract.sh': harden_test_contract,
-              '03-verify-red.sh': verify_red,
-              '04-implement.sh': implement,
-              '05-verify-focused.sh': run_step(
+              '02-verify-red.sh': verify_red,
+              '03-implement.sh': implement,
+              '04-verify-focused.sh': run_step(
                   'Verify focused and package evidence'
               ),
-              '06-verify-repository.sh': run_step(
+              '05-verify-repository.sh': run_step(
                   'Verify current-main whole-repository gates'
               ),
           }
