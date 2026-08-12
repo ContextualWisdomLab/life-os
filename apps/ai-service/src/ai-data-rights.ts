@@ -141,7 +141,6 @@ interface ExportEvidenceRecord {
 
 /** Privilege evidence required before destructive AI erasure. */
 interface PrivilegeRow {
-  erasure_receipts_ready: unknown;
   erasure_function_ready: unknown;
 }
 
@@ -602,25 +601,16 @@ export class AiDataRightsContributor {
   private async preflightErase(requestId: string): Promise<AiDataRightsResponse> {
     const row = exactlyOne(
       await this.query<PrivilegeRow>(
-        `SELECT
-           COALESCE(has_table_privilege(
-             current_user,
-             to_regclass('ai.data_rights_erasure_receipts'),
-             'SELECT,INSERT'
-           ), false) AS erasure_receipts_ready,
-           COALESCE(has_function_privilege(
-             current_user,
-             to_regprocedure('ai.erase_workspace_data(uuid,uuid,uuid,uuid)'),
-             'EXECUTE'
-           ), false) AS erasure_function_ready`,
+        `SELECT COALESCE(has_function_privilege(
+           current_user,
+           to_regprocedure('ai.erase_workspace_data(uuid,uuid,uuid,uuid)'),
+           'EXECUTE'
+         ), false) AS erasure_function_ready`,
         [],
       ),
     );
-    const receiptsReady = requireBoolean(row.erasure_receipts_ready);
     const functionReady = requireBoolean(row.erasure_function_ready);
-    const blockers: string[] = [];
-    if (!receiptsReady) blockers.push('ai_erasure_receipt_privileges_unavailable');
-    if (!functionReady) blockers.push('ai_erasure_function_unavailable');
+    const blockers = functionReady ? [] : ['ai_erasure_function_unavailable'];
     return {
       contractVersion: AI_DATA_RIGHTS_CONTRACT_VERSION,
       contributor: CONTRIBUTOR_NAME,
