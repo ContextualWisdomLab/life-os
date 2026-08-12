@@ -37,6 +37,58 @@ CREATE TABLE ai.data_rights_erasure_receipts (
 COMMENT ON TABLE ai.data_rights_erasure_receipts IS
   'Replay evidence for explicitly authorized AI-owned data-rights erasure.';
 
+CREATE TABLE ai.data_rights_erasure_authorizations (
+  backend_process_id integer NOT NULL,
+  transaction_id xid8 NOT NULL,
+  workspace_id uuid NOT NULL,
+  authorized_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
+  CONSTRAINT ai_data_rights_erasure_authorizations_primary
+    PRIMARY KEY (backend_process_id, transaction_id, workspace_id),
+  CONSTRAINT ai_data_rights_authorizations_workspace_uuid_v4 CHECK (
+    get_byte(uuid_send(workspace_id), 6) >> 4 = 4
+    AND get_byte(uuid_send(workspace_id), 8) >> 6 = 2
+  )
+);
+
+COMMENT ON TABLE ai.data_rights_erasure_authorizations IS
+  'Owner-only transaction-local authorization consumed by append-only AI audit triggers.';
+
+REVOKE ALL ON TABLE ai.data_rights_erasure_authorizations FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION ai.reject_proposal_audit_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, ai
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM ai.data_rights_erasure_authorizations
+      WHERE backend_process_id = pg_backend_pid()
+        AND transaction_id = pg_current_xact_id()
+        AND workspace_id = OLD.workspace_id
+    ) THEN
+      RETURN OLD;
+    END IF;
+  END IF;
+
+  RAISE EXCEPTION USING
+    ERRCODE = '55000',
+    MESSAGE = 'AI proposal audit history is append-only';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION ai.reject_proposal_audit_mutation() FROM PUBLIC;
+
+CREATE INDEX proposal_decision_events_workspace_recorded_idx
+  ON ai.proposal_decision_events (
+    workspace_id,
+    recorded_at ASC,
+    id ASC
+  );
+
 CREATE FUNCTION ai.erase_workspace_data(
   target_workspace_id uuid,
   target_requested_by_user_id uuid,
@@ -82,7 +134,7 @@ BEGIN
 
   PERFORM pg_advisory_xact_lock(
     hashtextextended(
-      'ai.service:' || target_workspace_id::text || ':' || target_idempotency_key::text,
+      'ai.service:erase:' || target_workspace_id::text,
       0
     )
   );
@@ -114,29 +166,34 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Normal application roles retain append-only AI audit semantics. The reviewed,
-  -- owner-executed erasure function disables only the DELETE/UPDATE guard needed
-  -- for this tenant-scoped right and PostgreSQL rolls the trigger state back with
-  -- the transaction if any subsequent statement fails.
-  ALTER TABLE ai.proposal_decision_events
-    DISABLE TRIGGER proposal_decision_events_append_only;
+  INSERT INTO ai.data_rights_erasure_authorizations (
+    backend_process_id,
+    transaction_id,
+    workspace_id
+  ) VALUES (
+    pg_backend_pid(),
+    pg_current_xact_id(),
+    target_workspace_id
+  );
 
   DELETE FROM ai.proposal_decision_events
   WHERE workspace_id = target_workspace_id;
   GET DIAGNOSTICS deleted_decisions = ROW_COUNT;
 
-  ALTER TABLE ai.proposal_decision_events
-    ENABLE TRIGGER proposal_decision_events_append_only;
-
-  ALTER TABLE ai.proposal_audit_records
-    DISABLE TRIGGER proposal_audit_records_append_only;
-
   DELETE FROM ai.proposal_audit_records
   WHERE workspace_id = target_workspace_id;
   GET DIAGNOSTICS deleted_proposals = ROW_COUNT;
 
-  ALTER TABLE ai.proposal_audit_records
-    ENABLE TRIGGER proposal_audit_records_append_only;
+  DELETE FROM ai.data_rights_erasure_authorizations
+  WHERE backend_process_id = pg_backend_pid()
+    AND transaction_id = pg_current_xact_id()
+    AND workspace_id = target_workspace_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '55000',
+      MESSAGE = 'AI erasure authorization cleanup failed';
+  END IF;
 
   deleted_records := deleted_decisions + deleted_proposals;
 
