@@ -64,91 +64,88 @@ function completionBody(idempotencyKey: string, reflection: string) {
   };
 }
 
-describeWithPostgres(
-  'Review data-rights receipt tenant isolation',
-  () => {
-    beforeAll(async () => {
-      administrativePool = new Pool({
-        connectionString: requireDatabaseUrl(),
-        application_name: 'life-os-review-data-rights-receipt-scope',
-        max: 3,
-      });
+describeWithPostgres('Review data-rights receipt tenant isolation', () => {
+  beforeAll(async () => {
+    administrativePool = new Pool({
+      connectionString: requireDatabaseUrl(),
+      application_name: 'life-os-review-data-rights-receipt-scope',
+      max: 3,
+    });
+  });
+
+  beforeEach(async () => {
+    await administrativePool.query(
+      'DROP SCHEMA IF EXISTS guided_review CASCADE',
+    );
+    await applyMigrations(administrativePool);
+  });
+
+  afterEach(async () => {
+    await Promise.all(
+      activeRuntimes.splice(0).map((runtime) => runtime.close()),
+    );
+  });
+
+  afterAll(async () => {
+    await administrativePool.query(
+      'DROP SCHEMA IF EXISTS guided_review CASCADE',
+    );
+    await administrativePool.end();
+  });
+
+  it('allows the same idempotency key to be isolated across workspaces', async () => {
+    const firstWorkspaceId = randomUUID();
+    const secondWorkspaceId = randomUUID();
+    const requestedByUserId = randomUUID();
+    const idempotencyKey = randomUUID();
+    const runtime = createRuntime();
+
+    await runtime.service.complete(
+      firstWorkspaceId,
+      'daily-planning',
+      completionBody(randomUUID(), 'First tenant evidence.'),
+    );
+    await runtime.service.complete(
+      secondWorkspaceId,
+      'daily-planning',
+      completionBody(randomUUID(), 'Second tenant evidence.'),
+    );
+
+    const first = await runtime.dataRightsContributor.handle({
+      contractVersion: 'life-os.data-rights-contributor.v1',
+      operation: 'erase',
+      workspaceId: firstWorkspaceId,
+      requestedByUserId,
+      requestId: randomUUID(),
+      idempotencyKey,
+    });
+    const second = await runtime.dataRightsContributor.handle({
+      contractVersion: 'life-os.data-rights-contributor.v1',
+      operation: 'erase',
+      workspaceId: secondWorkspaceId,
+      requestedByUserId,
+      requestId: randomUUID(),
+      idempotencyKey,
     });
 
-    beforeEach(async () => {
-      await administrativePool.query(
-        'DROP SCHEMA IF EXISTS guided_review CASCADE',
-      );
-      await applyMigrations(administrativePool);
-    });
+    expect(first).toMatchObject({ operation: 'erase', erasedRecords: 1 });
+    expect(second).toMatchObject({ operation: 'erase', erasedRecords: 1 });
+    if (first.operation !== 'erase' || second.operation !== 'erase') {
+      throw new Error('Expected Review erasure responses');
+    }
+    expect(second.receiptSha256).not.toBe(first.receiptSha256);
 
-    afterEach(async () => {
-      await Promise.all(
-        activeRuntimes.splice(0).map((runtime) => runtime.close()),
-      );
-    });
-
-    afterAll(async () => {
-      await administrativePool.query(
-        'DROP SCHEMA IF EXISTS guided_review CASCADE',
-      );
-      await administrativePool.end();
-    });
-
-    it('allows the same idempotency key to be isolated across workspaces', async () => {
-      const firstWorkspaceId = randomUUID();
-      const secondWorkspaceId = randomUUID();
-      const requestedByUserId = randomUUID();
-      const idempotencyKey = randomUUID();
-      const runtime = createRuntime();
-
-      await runtime.service.complete(
-        firstWorkspaceId,
-        'daily-planning',
-        completionBody(randomUUID(), 'First tenant evidence.'),
-      );
-      await runtime.service.complete(
-        secondWorkspaceId,
-        'daily-planning',
-        completionBody(randomUUID(), 'Second tenant evidence.'),
-      );
-
-      const first = await runtime.dataRightsContributor.handle({
-        contractVersion: 'life-os.data-rights-contributor.v1',
-        operation: 'erase',
-        workspaceId: firstWorkspaceId,
-        requestedByUserId,
-        requestId: randomUUID(),
-        idempotencyKey,
-      });
-      const second = await runtime.dataRightsContributor.handle({
-        contractVersion: 'life-os.data-rights-contributor.v1',
-        operation: 'erase',
-        workspaceId: secondWorkspaceId,
-        requestedByUserId,
-        requestId: randomUUID(),
-        idempotencyKey,
-      });
-
-      expect(first).toMatchObject({ operation: 'erase', erasedRecords: 1 });
-      expect(second).toMatchObject({ operation: 'erase', erasedRecords: 1 });
-      if (first.operation !== 'erase' || second.operation !== 'erase') {
-        throw new Error('Expected Review erasure responses');
-      }
-      expect(second.receiptSha256).not.toBe(first.receiptSha256);
-
-      const receipts = await administrativePool.query(
-        `SELECT workspace_id
-         FROM guided_review.data_rights_erasure_receipt
-         WHERE idempotency_key = $1
-         ORDER BY workspace_id ASC`,
-        [idempotencyKey],
-      );
-      expect(receipts.rows).toEqual(
-        [firstWorkspaceId, secondWorkspaceId]
-          .sort()
-          .map((workspaceId) => ({ workspace_id: workspaceId })),
-      );
-    });
-  },
-);
+    const receipts = await administrativePool.query(
+      `SELECT workspace_id
+       FROM guided_review.data_rights_erasure_receipt
+       WHERE idempotency_key = $1
+       ORDER BY workspace_id ASC`,
+      [idempotencyKey],
+    );
+    expect(receipts.rows).toEqual(
+      [firstWorkspaceId, secondWorkspaceId]
+        .sort()
+        .map((workspaceId) => ({ workspace_id: workspaceId })),
+    );
+  });
+});
