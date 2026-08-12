@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: 09a7b363a1c184ae3d7ee2d82f50499bacc334f5
+          EXPECTED_PARENT: 9b1969cb2559983fb8bb7761230c312bbada5e8f
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -150,12 +150,12 @@ jobs:
           implement = run_step(
               'Implement deterministic, least-privilege, nonblocking erasure'
           )
-          sort_start = implement.index("old_sort = (\n")
-          sort_end = implement.index(
-              '\n\nold_helper = r"""',
-              sort_start,
+          source_start = implement.index("source_path = Path(\n")
+          source_end = implement.index(
+              "\nmigration_path = Path(\n",
+              source_start,
           )
-          implement = implement[:sort_start] + implement[sort_end + 2:]
+          implement = implement[:source_start] + implement[source_end + 1:]
 
           focused = run_step('Verify focused and package evidence')
           focused_command = (
@@ -208,7 +208,6 @@ jobs:
             'apps/notification-service/migrations/0002_data_rights_erasure.sql' \
             'apps/notification-service/src/notification-data-rights-migration.test.ts' \
             'apps/notification-service/src/notification-data-rights.integration.test.ts' \
-            'apps/notification-service/src/notification-data-rights.ts' \
             'docs/operations/notification-persistence.md' \
             | LC_ALL=C sort)"
           test "$actual" = "$expected"
@@ -216,7 +215,6 @@ jobs:
             apps/notification-service/migrations/0002_data_rights_erasure.sql \
             apps/notification-service/src/notification-data-rights-migration.test.ts \
             apps/notification-service/src/notification-data-rights.integration.test.ts \
-            apps/notification-service/src/notification-data-rights.ts \
             docs/operations/notification-persistence.md
           git commit -m 'fix(notification): harden data-rights erasure authority'
           git fetch --no-tags origin \
