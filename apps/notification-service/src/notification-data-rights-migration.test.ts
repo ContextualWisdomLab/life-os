@@ -40,7 +40,9 @@ describe('Notification data-rights erasure database contract', () => {
     expect(sql).toContain('SECURITY DEFINER');
     expect(sql).toContain('SET search_path = pg_catalog, notification_service');
     expect(sql).toContain('pg_advisory_xact_lock');
-    expect(sql).toContain('hashtextextended');
+    expect(sql).toContain(
+      "'notification.service:erase:' || target_workspace_id::text",
+    );
     expect(sql).toContain('IF FOUND THEN');
     expect(sql).toContain('Notification erasure replay authority conflicts');
     expect(sql).toContain('sha256(');
@@ -50,28 +52,35 @@ describe('Notification data-rights erasure database contract', () => {
     );
   });
 
-  it('deletes Notification-owned records in foreign-key-safe order and restores immutability', async () => {
+  it('keeps append-only outcome protection active during owner-authorized erasure', async () => {
     const sql = await migrationSql();
     const inboxDelete = sql.indexOf(
       'DELETE FROM notification_service.inbox_messages',
     );
-    const outcomeDisable = sql.indexOf(
-      'DISABLE TRIGGER reminder_outcomes_row_mutation_guard',
+    const authorizationInsert = sql.indexOf(
+      'INSERT INTO notification_service.data_rights_erasure_authorizations',
     );
     const outcomeDelete = sql.indexOf(
       'DELETE FROM notification_service.reminder_outcomes',
     );
-    const outcomeEnable = sql.indexOf(
-      'ENABLE TRIGGER reminder_outcomes_row_mutation_guard',
+    const authorizationDelete = sql.indexOf(
+      'DELETE FROM notification_service.data_rights_erasure_authorizations',
     );
     const occurrenceDelete = sql.indexOf(
       'DELETE FROM notification_service.reminder_occurrences',
     );
 
+    expect(sql).toContain(
+      'CREATE TABLE notification_service.data_rights_erasure_authorizations',
+    );
+    expect(sql).toContain('pg_backend_pid()');
+    expect(sql).toContain('pg_current_xact_id()');
+    expect(sql).not.toContain('DISABLE TRIGGER');
+    expect(sql).not.toContain('ENABLE TRIGGER reminder_outcomes_row_mutation_guard');
     expect(inboxDelete).toBeGreaterThan(-1);
-    expect(outcomeDisable).toBeGreaterThan(inboxDelete);
-    expect(outcomeDelete).toBeGreaterThan(outcomeDisable);
-    expect(outcomeEnable).toBeGreaterThan(outcomeDelete);
-    expect(occurrenceDelete).toBeGreaterThan(outcomeEnable);
+    expect(authorizationInsert).toBeGreaterThan(inboxDelete);
+    expect(outcomeDelete).toBeGreaterThan(authorizationInsert);
+    expect(authorizationDelete).toBeGreaterThan(outcomeDelete);
+    expect(occurrenceDelete).toBeGreaterThan(authorizationDelete);
   });
 });
