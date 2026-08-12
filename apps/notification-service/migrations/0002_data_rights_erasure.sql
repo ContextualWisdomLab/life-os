@@ -37,6 +37,50 @@ CREATE TABLE notification_service.data_rights_erasure_receipts (
 COMMENT ON TABLE notification_service.data_rights_erasure_receipts IS
   'Replay evidence for explicitly authorized Notification-owned data-rights erasure.';
 
+CREATE TABLE notification_service.data_rights_erasure_authorizations (
+  backend_process_id integer NOT NULL,
+  transaction_id xid8 NOT NULL,
+  workspace_id uuid NOT NULL,
+  authorized_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
+  CONSTRAINT notification_data_rights_erasure_authorizations_primary
+    PRIMARY KEY (backend_process_id, transaction_id, workspace_id),
+  CONSTRAINT notification_data_rights_authorizations_workspace_uuid_v4 CHECK (
+    get_byte(uuid_send(workspace_id), 6) >> 4 = 4
+    AND get_byte(uuid_send(workspace_id), 8) >> 6 = 2
+  )
+);
+
+COMMENT ON TABLE notification_service.data_rights_erasure_authorizations IS
+  'Owner-only transaction-local authorization consumed by Notification append-only outcome triggers.';
+
+REVOKE ALL ON TABLE notification_service.data_rights_erasure_authorizations FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION notification_service.reject_reminder_outcome_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, notification_service
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF EXISTS (
+      SELECT 1
+      FROM notification_service.data_rights_erasure_authorizations
+      WHERE backend_process_id = pg_backend_pid()
+        AND transaction_id = pg_current_xact_id()
+        AND workspace_id = OLD.workspace_id
+    ) THEN
+      RETURN OLD;
+    END IF;
+  END IF;
+
+  RAISE EXCEPTION 'reminder outcomes are immutable'
+    USING ERRCODE = '55000';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION notification_service.reject_reminder_outcome_mutation() FROM PUBLIC;
+
 CREATE FUNCTION notification_service.erase_workspace_data(
   target_workspace_id uuid,
   target_requested_by_user_id uuid,
@@ -83,9 +127,7 @@ BEGIN
 
   PERFORM pg_advisory_xact_lock(
     hashtextextended(
-      'notification.service:' ||
-      target_workspace_id::text || ':' ||
-      target_idempotency_key::text,
+      'notification.service:erase:' || target_workspace_id::text,
       0
     )
   );
@@ -122,19 +164,30 @@ BEGIN
   WHERE workspace_id = target_workspace_id;
   GET DIAGNOSTICS deleted_inbox_messages = ROW_COUNT;
 
-  -- Reminder outcomes remain immutable to ordinary callers. This reviewed,
-  -- owner-executed erasure function is the only path that temporarily disables
-  -- the row mutation trigger. PostgreSQL transaction rollback restores both
-  -- data and trigger state if any following statement fails.
-  ALTER TABLE notification_service.reminder_outcomes
-    DISABLE TRIGGER reminder_outcomes_row_mutation_guard;
+  INSERT INTO notification_service.data_rights_erasure_authorizations (
+    backend_process_id,
+    transaction_id,
+    workspace_id
+  ) VALUES (
+    pg_backend_pid(),
+    pg_current_xact_id(),
+    target_workspace_id
+  );
 
   DELETE FROM notification_service.reminder_outcomes
   WHERE workspace_id = target_workspace_id;
   GET DIAGNOSTICS deleted_reminder_outcomes = ROW_COUNT;
 
-  ALTER TABLE notification_service.reminder_outcomes
-    ENABLE TRIGGER reminder_outcomes_row_mutation_guard;
+  DELETE FROM notification_service.data_rights_erasure_authorizations
+  WHERE backend_process_id = pg_backend_pid()
+    AND transaction_id = pg_current_xact_id()
+    AND workspace_id = target_workspace_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '55000',
+      MESSAGE = 'Notification erasure authorization cleanup failed';
+  END IF;
 
   DELETE FROM notification_service.reminder_occurrences
   WHERE workspace_id = target_workspace_id;
