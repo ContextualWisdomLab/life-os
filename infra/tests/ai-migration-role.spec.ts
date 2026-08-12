@@ -12,6 +12,7 @@ function read(path: string): string {
 describe('AI database migration authority contract', () => {
   const migrationRunner = read('infra/kubernetes/run-migrations.sh');
   const deploymentWorkflow = read('.github/workflows/deploy.yml');
+  const environmentExample = read('.env.example');
   const erasureMigration = read(
     'apps/ai-service/migrations/0002_data_rights_erasure.sql',
   );
@@ -44,6 +45,18 @@ describe('AI database migration authority contract', () => {
       'AI_DATABASE_RUNTIME_ROLE: ${{ vars.AI_DATABASE_RUNTIME_ROLE }}',
     );
     expect(migrationStep).not.toContain('AI_DATABASE_URL:');
+  });
+
+  it('documents separate local migration and runtime identities', () => {
+    expect(environmentExample).toContain(
+      'AI_MIGRATION_DATABASE_URL=postgresql://lifeos_migrator:lifeos@postgres:5432/lifeos',
+    );
+    expect(environmentExample).toContain(
+      'AI_DATABASE_RUNTIME_ROLE=lifeos',
+    );
+    expect(environmentExample).toContain(
+      'AI_DATABASE_URL=postgresql://lifeos:lifeos@postgres:5432/lifeos',
+    );
   });
 
   it('transfers legacy AI object ownership to the migration authority', () => {
