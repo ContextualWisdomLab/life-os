@@ -25,8 +25,7 @@ export interface ReviewDataRightsSqlClient {
 }
 
 /** Transaction-capable Review SQL boundary required by destructive erasure. */
-export interface ReviewDataRightsTransactionalSqlClient
-  extends ReviewDataRightsSqlClient {
+export interface ReviewDataRightsTransactionalSqlClient extends ReviewDataRightsSqlClient {
   transaction<T>(
     operation: (client: ReviewDataRightsSqlClient) => Promise<T>,
   ): Promise<T>;
