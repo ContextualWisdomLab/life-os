@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: 9b1969cb2559983fb8bb7761230c312bbada5e8f
+          EXPECTED_PARENT: 121279ce6eb131e1638b96c7a1343472cd78942b
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -155,7 +155,32 @@ jobs:
               "\nmigration_path = Path(\n",
               source_start,
           )
-          implement = implement[:source_start] + implement[source_end + 1:]
+          comparator_patch = r'''source_path = Path(
+              'apps/notification-service/src/notification-data-rights.ts'
+          )
+          source = source_path.read_text(encoding='utf-8')
+          old_sort = """    entries.sort(([left], [right]) => {
+            if (left < right) {
+              return -1;
+            }
+            if (left > right) {
+              return 1;
+            }
+            return 0;
+          });"""
+          new_sort = """    entries.sort(([left], [right]) =>
+            left < right ? -1 : 1,
+          );"""
+          if source.count(old_sort) != 1:
+            raise SystemExit('unexpected canonical comparator shape')
+          source = source.replace(old_sort, new_sort, 1)
+          source_path.write_text(source, encoding='utf-8')
+          '''
+          implement = (
+              implement[:source_start]
+              + comparator_patch
+              + implement[source_end + 1:]
+          )
 
           focused = run_step('Verify focused and package evidence')
           focused_command = (
@@ -208,6 +233,7 @@ jobs:
             'apps/notification-service/migrations/0002_data_rights_erasure.sql' \
             'apps/notification-service/src/notification-data-rights-migration.test.ts' \
             'apps/notification-service/src/notification-data-rights.integration.test.ts' \
+            'apps/notification-service/src/notification-data-rights.ts' \
             'docs/operations/notification-persistence.md' \
             | LC_ALL=C sort)"
           test "$actual" = "$expected"
@@ -215,6 +241,7 @@ jobs:
             apps/notification-service/migrations/0002_data_rights_erasure.sql \
             apps/notification-service/src/notification-data-rights-migration.test.ts \
             apps/notification-service/src/notification-data-rights.integration.test.ts \
+            apps/notification-service/src/notification-data-rights.ts \
             docs/operations/notification-persistence.md
           git commit -m 'fix(notification): harden data-rights erasure authority'
           git fetch --no-tags origin \
