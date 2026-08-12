@@ -21,12 +21,11 @@ import { IntegrationAppModule } from './main';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const INSTALLATION_ID = '44444444-4444-4444-8444-444444444444';
-const CREDENTIAL_BINDING_ID = '55555555-5555-4555-8555-555555555555';
 const ISSUED_AT = '1786497600';
 const NOW_SECONDS = Number(ISSUED_AT);
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
 const SECRET_VALUE = randomBytes(24).toString('base64url');
-const EVIDENCE_IDS = Object.freeze([
+const EVIDENCE_IDS = [
   '77777777-7777-4777-8777-777777777771',
   '77777777-7777-4777-8777-777777777772',
   '77777777-7777-4777-8777-777777777773',
@@ -34,7 +33,7 @@ const EVIDENCE_IDS = Object.freeze([
   '77777777-7777-4777-8777-777777777775',
   '77777777-7777-4777-8777-777777777776',
   '77777777-7777-4777-8777-777777777777',
-]);
+] as const;
 const MANIFEST = Object.freeze({
   pluginId: 'com.example.calendar',
   displayName: 'Example Calendar',
@@ -149,7 +148,9 @@ class MemorySecretStore implements PluginSecretStore {
   readonly references = new Set<string>();
   readonly puts: string[] = [];
 
-  async putSecret(input: Parameters<PluginSecretStore['putSecret']>[0]): Promise<string> {
+  async putSecret(
+    input: Parameters<PluginSecretStore['putSecret']>[0],
+  ): Promise<string> {
     this.puts.push(input.credentialBindingId);
     const reference = `kms://plugin/${input.credentialBindingId}`;
     this.references.add(reference);
@@ -236,16 +237,19 @@ function headers(
 }
 
 async function startApplication(
-  operator: PluginOperatorApplication,
-): Promise<string> {
-  const app = await NestFactory.create(
-    IntegrationAppModule.withPluginOperator(operator),
-    { logger: false },
-  );
+  configuredOperator?: PluginOperatorApplication,
+): Promise<{
+  readonly app: INestApplication;
+  readonly origin: string;
+}> {
+  const module = configuredOperator
+    ? IntegrationAppModule.withPluginOperator(configuredOperator)
+    : IntegrationAppModule;
+  const app = await NestFactory.create(module, { logger: false });
   openApplications.add(app);
   await app.listen(0, '127.0.0.1');
   const address = app.getHttpServer().address() as AddressInfo;
-  return `http://127.0.0.1:${address.port}`;
+  return Object.freeze({ app, origin: `http://127.0.0.1:${address.port}` });
 }
 
 /**
@@ -271,7 +275,10 @@ async function problem(response: Response): Promise<{
   readonly status: number;
   readonly code: string;
 }> {
-  return (await response.json()) as { readonly status: number; readonly code: string };
+  return (await response.json()) as {
+    readonly status: number;
+    readonly code: string;
+  };
 }
 
 afterEach(async () => {
@@ -286,7 +293,7 @@ afterEach(async () => {
 describe('plugin operator HTTP authority failures', () => {
   it('rejects replayed, stale, future, and malformed signed evidence before durable mutation', async () => {
     const runtime = createOperator();
-    const origin = await startApplication(runtime.operator);
+    const { origin } = await startApplication(runtime.operator);
     const installPath = '/v1/plugins/installations';
     const installBody = {
       installationId: INSTALLATION_ID,
@@ -352,7 +359,7 @@ describe('plugin operator HTTP authority failures', () => {
 
   it('rejects malformed body identities without creating installation, credential, or secret state', async () => {
     const runtime = createOperator();
-    const origin = await startApplication(runtime.operator);
+    const { origin } = await startApplication(runtime.operator);
     const installPath = '/v1/plugins/installations';
 
     const malformedInstallation = await requestJson(
@@ -411,7 +418,7 @@ describe('plugin operator HTTP authority failures', () => {
 
   it('treats malformed dynamic route identities as invalid signed authority rather than a body-validation error', async () => {
     const runtime = createOperator();
-    const origin = await startApplication(runtime.operator);
+    const { origin } = await startApplication(runtime.operator);
     const malformedInstallationPath = '/v1/plugins/installations/not-a-uuid';
     const malformedRead = await requestJson(
       origin,
