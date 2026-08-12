@@ -224,6 +224,7 @@ function projectCreated(
     readonly workspaceId: string;
     readonly userId: string;
     readonly providerCode: CalendarConnectionProvider;
+    readonly providerAccountSubject: string;
     readonly scopeValues: readonly string[];
     readonly tokenExpiresAt: string;
     readonly selectedCalendarIdentifier: string;
@@ -236,6 +237,7 @@ function projectCreated(
     record.workspaceId !== expected.workspaceId ||
     record.userId !== expected.userId ||
     record.providerCode !== expected.providerCode ||
+    record.providerAccountSubject !== expected.providerAccountSubject ||
     record.status !== 'active' ||
     record.revokedAt !== null ||
     record.accessSecretHandle !== expected.accessSecretHandle ||
@@ -341,6 +343,7 @@ export class CalendarConnectionCreateApplication {
         workspaceId: safe.workspaceId,
         userId: safe.userId,
         providerCode: safe.providerCode,
+        providerAccountSubject: safe.providerAccountSubject,
         scopeValues: safe.scopeValues,
         tokenExpiresAt: safe.tokenExpiresAt,
         selectedCalendarIdentifier: safe.selectedCalendarIdentifier,
