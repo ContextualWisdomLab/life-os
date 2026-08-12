@@ -158,7 +158,7 @@ describe('NotificationDataRightsContributor', () => {
 
   it('dispatches every contributor lifecycle operation with tenant-scoped parameters', async () => {
     const client = new ScriptedClient([
-      { rows: [{ erasure_receipts_ready: true, erasure_function_ready: true }] },
+      { rows: [{ erasure_function_ready: true }] },
       { rows: [{ erased_records: 3, receipt_sha256: SHA256 }] },
       { rows: [{ record_count: 0 }] },
       { rows: [{ record_count: 2 }] },
@@ -206,13 +206,9 @@ describe('NotificationDataRightsContributor', () => {
     expect(client.calls[2]?.values).toEqual([WORKSPACE_ID]);
   });
 
-  it('reports each erasure preflight blocker without mutating data', async () => {
+  it('requires only function execution authority for erasure preflight', async () => {
     const client = new ScriptedClient([
-      {
-        rows: [
-          { erasure_receipts_ready: false, erasure_function_ready: false },
-        ],
-      },
+      { rows: [{ erasure_function_ready: false }] },
     ]);
     const contributor = new NotificationDataRightsContributor(client);
 
@@ -224,11 +220,14 @@ describe('NotificationDataRightsContributor', () => {
       operation: 'erase_preflight',
       requestId: REQUEST_ID,
       ready: false,
-      blockers: [
-        'notification_erasure_receipt_privileges_unavailable',
-        'notification_erasure_function_unavailable',
-      ],
+      blockers: ['notification_erasure_function_unavailable'],
     });
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]?.text).toContain('has_function_privilege');
+    expect(client.calls[0]?.text).not.toContain('has_table_privilege');
+    expect(client.calls[0]?.text).not.toContain(
+      'data_rights_erasure_receipts',
+    );
   });
 
   it('rejects malformed request envelopes before persistence access', async () => {
@@ -351,17 +350,7 @@ describe('NotificationDataRightsContributor', () => {
     }> = [
       {
         requestValue: request('erase_preflight'),
-        result: {
-          rows: [
-            { erasure_receipts_ready: 'true', erasure_function_ready: true },
-          ],
-        },
-      },
-      {
-        requestValue: request('erase_preflight'),
-        result: {
-          rows: [{ erasure_receipts_ready: true, erasure_function_ready: 1 }],
-        },
+        result: { rows: [{ erasure_function_ready: 1 }] },
       },
       {
         requestValue: request('verify_erased'),
