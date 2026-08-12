@@ -7,7 +7,7 @@ const CONTRIBUTOR_NAME = 'review.service' as const;
 const EXPORT_SCHEMA_VERSION = 'review.data-rights.v1' as const;
 const EXPORT_PAGE_SIZE = 1_000;
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{12}$/iu;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
 const LOCAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
@@ -275,7 +275,12 @@ function normalizeRequest(request: ReviewDataRightsRequest): {
 
 function normalizeCompletion(
   row: CompletionExportRow,
+  expectedWorkspaceId: string,
 ): ReviewDataRightsJsonValue {
+  const workspaceId = requireUuidV4(row.workspace_id, 'workspace_id');
+  if (workspaceId !== expectedWorkspaceId) {
+    return fail('Review completion workspace does not match requested workspace');
+  }
   const ritualKind = requireString(row.ritual_kind, 'ritual_kind', 32);
   if (
     ritualKind !== 'daily-planning' &&
@@ -310,7 +315,7 @@ function normalizeCompletion(
   );
   return Object.freeze({
     id: requireUuidV4(row.id, 'completion_id'),
-    workspaceId: requireUuidV4(row.workspace_id, 'workspace_id'),
+    workspaceId,
     ritualKind,
     periodStartDate: requireLocalDate(row.period_start_date),
     idempotencyKey: requireUuidV4(row.idempotency_key, 'idempotency_key'),
@@ -420,7 +425,9 @@ export class ReviewDataRightsContributor {
         [],
       );
       const rows = await collectRows(transaction, workspaceId);
-      const reviewCompletions = Object.freeze(rows.map(normalizeCompletion));
+      const reviewCompletions = Object.freeze(
+        rows.map((row) => normalizeCompletion(row, workspaceId)),
+      );
       const data = Object.freeze({ reviewCompletions });
       return {
         contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
