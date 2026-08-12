@@ -118,8 +118,10 @@ class FakeReviewDataRightsClient implements ReviewDataRightsTransactionalSqlClie
       return { rows: rows as Row[] };
     }
     if (text.includes('FROM guided_review.data_rights_erasure_receipt')) {
-      const idempotencyKey = String(values[0]);
-      const receipt = this.receipts.get(idempotencyKey);
+      const [workspaceId, idempotencyKey] = values;
+      const receipt = this.receipts.get(
+        `${String(workspaceId)}:${String(idempotencyKey)}`,
+      );
       return { rows: receipt ? ([receipt] as Row[]) : [] };
     }
     if (text.startsWith('DELETE FROM guided_review.review_completions')) {
@@ -143,7 +145,7 @@ class FakeReviewDataRightsClient implements ReviewDataRightsTransactionalSqlClie
         erasedRecords,
         receiptSha256,
       ] = values;
-      this.receipts.set(String(idempotencyKey), {
+      this.receipts.set(`${String(workspaceId)}:${String(idempotencyKey)}`, {
         idempotency_key: String(idempotencyKey),
         workspace_id: String(workspaceId),
         requested_by_user_id: String(requestedByUserId),
