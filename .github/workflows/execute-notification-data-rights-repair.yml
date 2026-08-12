@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: 423040991a3cb25d2dd192078637a3c704b55a27
+          EXPECTED_PARENT: 09a7b363a1c184ae3d7ee2d82f50499bacc334f5
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -157,13 +157,28 @@ jobs:
           )
           implement = implement[:sort_start] + implement[sort_end + 2:]
 
+          focused = run_step('Verify focused and package evidence')
+          focused_command = (
+              '  src/notification-data-rights.integration.test.ts \\\n'
+              '  --no-file-parallelism\n'
+          )
+          focused_replacement = (
+              '  src/notification-data-rights.integration.test.ts \\\n'
+              '  --no-file-parallelism --coverage.enabled=false\n'
+          )
+          if focused.count(focused_command) != 1:
+              raise SystemExit('unexpected focused verification command')
+          focused = focused.replace(
+              focused_command,
+              focused_replacement,
+              1,
+          )
+
           phases = {
               '01-add-tests.sh': add_tests,
               '02-verify-red.sh': verify_red,
               '03-implement.sh': implement,
-              '04-verify-focused.sh': run_step(
-                  'Verify focused and package evidence'
-              ),
+              '04-verify-focused.sh': focused,
               '05-verify-repository.sh': run_step(
                   'Verify current-main whole-repository gates'
               ),
