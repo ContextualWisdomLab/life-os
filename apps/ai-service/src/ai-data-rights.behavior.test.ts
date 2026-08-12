@@ -187,11 +187,7 @@ describe('AiDataRightsContributor', () => {
 
   it('dispatches preflight, erase, and both verification outcomes', async () => {
     const client = new ScriptedClient([
-      {
-        rows: [
-          { erasure_receipts_ready: true, erasure_function_ready: true },
-        ],
-      },
+      { rows: [{ erasure_function_ready: true }] },
       { rows: [{ erased_records: 3, receipt_sha256: SHA256 }] },
       { rows: [{ record_count: 0 }] },
       { rows: [{ record_count: 2 }] },
@@ -230,27 +226,17 @@ describe('AiDataRightsContributor', () => {
     ]);
   });
 
-  it('reports all unavailable destructive privileges', async () => {
+  it('reports unavailable owner-controlled erasure execution', async () => {
     const contributor = new AiDataRightsContributor(
       new ScriptedClient([
-        {
-          rows: [
-            {
-              erasure_receipts_ready: false,
-              erasure_function_ready: false,
-            },
-          ],
-        },
+        { rows: [{ erasure_function_ready: false }] },
       ]),
     );
     await expect(
       contributor.handle(request('erase_preflight')),
     ).resolves.toMatchObject({
       ready: false,
-      blockers: [
-        'ai_erasure_receipt_privileges_unavailable',
-        'ai_erasure_function_unavailable',
-      ],
+      blockers: ['ai_erasure_function_unavailable'],
     });
   });
 
@@ -365,22 +351,7 @@ describe('AiDataRightsContributor', () => {
     }> = [
       {
         requestValue: request('erase_preflight'),
-        result: {
-          rows: [
-            {
-              erasure_receipts_ready: 'true',
-              erasure_function_ready: true,
-            },
-          ],
-        },
-      },
-      {
-        requestValue: request('erase_preflight'),
-        result: {
-          rows: [
-            { erasure_receipts_ready: true, erasure_function_ready: 1 },
-          ],
-        },
+        result: { rows: [{ erasure_function_ready: 'true' }] },
       },
       {
         requestValue: request('verify_erased'),
