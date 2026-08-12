@@ -45,7 +45,7 @@ jobs:
 
       - name: Reconcile protected main and branch authority
         env:
-          EXPECTED_PARENT: a07c315a4bb5802680eba9a471bd97840e022140
+          EXPECTED_PARENT: 423040991a3cb25d2dd192078637a3c704b55a27
         run: |
           set -Eeuo pipefail
           test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
@@ -110,13 +110,30 @@ jobs:
               "              /set_config\\(\\s*'life_os\\.notification_erasure_workspace'/u,\n"
               "            );"
           )
-          add_tests, replacements = marker_assertion.subn(
+          add_tests, marker_replacements = marker_assertion.subn(
               lambda _match: marker_replacement,
               add_tests,
               count=1,
           )
-          if replacements != 1:
+          if marker_replacements != 1:
               raise SystemExit('unexpected transaction-local marker assertion')
+
+          owner_assertion = re.compile(
+              r"expect\(sql\)\.toContain\(\s*[\"']current_setting\('life_os\.notification_erasure_workspace', true\)[\"']\s*,\s*\);",
+              re.MULTILINE,
+          )
+          owner_replacement = (
+              "expect(sql).toMatch(\n"
+              "              /current_setting\\(\\s*'life_os\\.notification_erasure_workspace',\\s*true\\s*\\)/u,\n"
+              "            );"
+          )
+          add_tests, owner_replacements = owner_assertion.subn(
+              lambda _match: owner_replacement,
+              add_tests,
+              count=1,
+          )
+          if owner_replacements != 1:
+              raise SystemExit('unexpected owner-bound marker assertion')
 
           verify_red = run_step(
               'Verify the regressions fail before implementation'
