@@ -164,7 +164,9 @@ function workflowPathsFromTree(payload) {
   const paths = [];
   for (const entry of payload.tree) {
     if (!entry || entry.type !== 'blob' || typeof entry.path !== 'string') continue;
-    if (entry.path.startsWith('.github/')) requireWorkflowPath(entry.path);
+    if (entry.path.startsWith('.github/workflows/')) {
+      requireWorkflowPath(entry.path);
+    }
     if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path)) paths.push(entry.path);
   }
   return paths;
