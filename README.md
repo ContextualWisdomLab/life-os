@@ -83,13 +83,13 @@ The calendar integration service supports explicit `caldav` and `google` provide
 
 CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the LifeOS provider contract.
 
-`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables Google Calendar synchronization.
+The calendar service now derives workspace authority from a bounded signed server context rather than a client-selected legacy workspace header. `GOOGLE_CALENDAR_ACCESS_TOKEN` remains an operator-supplied development/runtime secret for the current provider slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, selection, and encrypted persistence remain tracked by issue #129 before hosted multi-user Google Calendar operation can be considered complete.
 
 ## Plugin contract
 
 The `@life-os/plugin-sdk` package defines strict versioned manifests, tenant-scoped CloudEvents 1.0 structured JSON envelopes, deterministic canonical serialization, and HMAC-SHA256 delivery-proof helpers. The integration service exposes contract discovery, manifest validation, and event preparation only.
 
-This slice deliberately has no plugin installation, secret persistence, outbound webhook delivery, inbound commands, or direct database access. Those require separately reviewed least-privilege authorization, durable audit, and SSRF-safe delivery boundaries.
+This slice deliberately has no plugin installation, secret persistence, outbound webhook delivery, inbound commands, or direct database access. Those require separately reviewed least-privilege authorization, durable audit, and SSRF-safe delivery boundaries under issue #130.
 
 ## Backup and recovery
 
@@ -109,9 +109,32 @@ This is a public repository. It contains synthetic examples only. Personal goals
 
 The upstream project does not operate every LifeOS deployment. A self-hosting organization controls its deployment data and must establish its own privacy notice, retention policy, security controls, subprocessors, and legal basis. See the [upstream privacy notice](docs/legal/privacy.md) and [upstream project terms](docs/legal/terms.md) for the upstream project boundary.
 
-## Documentation
+## Canonical product documentation
 
-- Product and architecture design: `docs/superpowers/specs/2026-08-02-life-os-design.md`
+The following graph is the whole-product source of truth alongside protected-main code and root `AGENTS.md` / `ARCHITECTURE.md`:
+
+- [Product requirements](docs/PRD.md)
+- [Technical requirements](docs/TRD.md)
+- [Architecture decisions](ARCHITECTURE.md)
+- [ADR index](docs/adr/README.md)
+- [Logical data model / ERD](docs/DATA_MODEL.md)
+- [UML and interaction views](docs/UML.md)
+- [API and event contracts](docs/API_CONTRACTS.md)
+- [Threat model](docs/THREAT_MODEL.md)
+- [Privacy and data lifecycle](docs/PRIVACY_DATA_LIFECYCLE.md)
+- [Test strategy](docs/TEST_STRATEGY.md)
+- [Operability](docs/OPERABILITY.md)
+- [Release, migration, and rollback](docs/RELEASE_AND_MIGRATION.md)
+- [Standards and research traceability](docs/STANDARDS_TRACEABILITY.md)
+- [Requirements/evidence traceability](docs/TRACEABILITY.md)
+- [Documentation fitness assessment](docs/DOCUMENTATION_ASSESSMENT.md)
+- [Vulnerability reporting](SECURITY.md)
+
+Scoped feature designs, plans and runbooks remain useful evidence but do not override this code-current canonical graph.
+
+## Additional documentation
+
+- Product and architecture design history: `docs/superpowers/specs/2026-08-02-life-os-design.md`
 - Foundation implementation plan: `docs/superpowers/plans/2026-08-02-life-os-foundation.md`
 - Gateway service-level objectives: `docs/operations/service-level-objectives.md`
 - Planning-service service-level objectives: `docs/operations/planning-service-level-objectives.md`
@@ -120,7 +143,6 @@ The upstream project does not operate every LifeOS deployment. A self-hosting or
 - [Production Kubernetes deployment runbook](docs/operations/production-deployment.md)
 - [Upstream privacy notice](docs/legal/privacy.md)
 - [Upstream project terms](docs/legal/terms.md)
-- [Vulnerability reporting](SECURITY.md)
 
 ## Contributing
 

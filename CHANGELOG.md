@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- A canonical architecture/governance decision for model-assisted test-time compute and repository development: ADR 0012 requires a strong single-route baseline, explicit stage/decomposition/recursion/role-effort/access-topology evidence, comparable-budget justification for deeper orchestration, `NVIDIA_NIM_API_KEY` through approved OpenCode/contextual-orchestrator boundaries, and strict separation of model execution from deterministic review, merge, and release authority. This documents and reconciles existing protected-main governance/live-conformance behavior rather than claiming a new shipped product capability.
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.
 - An authenticated calendar-connection disconnect application and optional hosted HTTP composition boundary that derives workspace and requesting-user authority only from the signed `life-os.calendar-user.v1` context and returns credential-free local revocation evidence.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
