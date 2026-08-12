@@ -1,104 +1,123 @@
-# LifeOS API and Event Contracts
+# LifeOS API, Event, and Schema Contracts
 
 **Status:** Implemented on active PR
 
-This registry summarizes repository-level API/event invariants. Concrete route schemas remain owned by the implementing service and tests.
+This registry summarizes repository-level contract invariants. Concrete route, event, and migration schemas remain owned by implementing services and tests.
 
 ## Common rules
 
-- Internal IDs are opaque UUIDv4.
+- Internal/public product IDs are opaque UUIDv4.
 - Ownership comes from authenticated/signed context, never arbitrary browser fields.
-- Replayable/stale-sensitive mutations use idempotency and/or strong preconditions.
-- Public failures are bounded and credential-free.
-- Provider responses, plugin metadata and model output are untrusted until validated.
+- Signed service context binds version, exact actor/workspace, method, path, issuance, and one-time evidence where replay matters.
+- Replayable or stale-sensitive mutations use idempotency, fencing, and/or strong preconditions.
+- Public failures are bounded, non-reflective, and credential-free.
+- Provider responses, stored JSON, plugin metadata, and model output remain untrusted until validated.
 - Cross-service contracts never grant direct database authority.
-- Verification evidence is valid only for the exact tree actually inspected.
+- Unknown versions, malformed evidence, corrupt rows, and unavailable authority fail closed.
+- Verification evidence is valid only for the exact tree inspected.
 
 ## Contract registry
 
 | Contract | Owner | Status | Notes |
 | --- | --- | --- | --- |
-| OAuth login/callback/session | identity-service | Implemented on protected main | Google/GitHub, bounded transaction/session lifecycle |
-| Planning Goal/Project/Task | planning-service | Implemented on protected main | tenant-derived authority |
-| Durable Today aggregate | planning-service | Implemented on protected main | PR #127; strong preconditions/idempotency/conflicts |
-| Habit recurrence/completion | habit-service | Implemented on protected main | tenant-scoped replay safety |
-| Review projection | review-service | Implemented on protected main | projection/read authority only |
-| Calendar sync request | calendar integration | Implemented on protected main | PR #139 signed workspace context |
-| Calendar connection registry | calendar integration | Implemented on protected main | PR #150; workspace+user scoped metadata + opaque secret references |
-| Atomic calendar connection revocation | calendar integration | Implemented on protected main | PR #153; exact tenant+user scope and revocation replay |
-| Signed calendar workspace+user context | calendar integration | Implemented on protected main | PR #155 / `life-os.calendar-user.v1` |
-| Complete per-user calendar credential lifecycle | calendar integration | Partial | issue #129; public connection/disconnect composition, OAuth/PKCE, managed secret backend, refresh/provider revoke, discovery/selection remain |
-| Reminder scheduling/delivery | notification-service | Implemented on protected main | bounded claims/retries/outcomes |
-| AI proposal/evidence/decision | AI proposal service | Implemented on protected main | inert proposal + explicit decision |
-| Purpose-bound sensitive access | privacy-service | Implemented on protected main | actor/resource/purpose/lifetime bound |
-| Data-rights request ledger/status lookup | identity-service | Implemented on protected main | #138/#144 |
-| Authenticated public data-rights status | identity-service | Implemented on protected main | PR #146; no-store bounded projection |
-| Tenant export integrity manifest | identity coordinator + contributors | Implemented on protected main | PR #149; section/whole SHA-256 evidence |
-| Complete cross-domain export/erasure | identity coordinator + contributors | Partial | issue #55 |
-| Plugin manifest/event validation | integration-service | Implemented on protected main | versioned SDK/validation |
-| Explicit plugin installation grants | integration-service | Implemented on protected main | PR #151; explicit subset, replay/conflict/revocation |
-| Durable plugin installation persistence | integration-service | Implemented on active PR | PR #156; installation+workspace+installing-user scoped persistence; no credential/delivery authority |
-| Complete plugin secret/outbound delivery runtime | integration-service | Partial | issue #130 |
-| Source/live-base/integration verification evidence | repository workflows | Implemented on protected main | PR #154 / ADR 0010; residual central scanner attribution remains #132 |
+| OAuth login/callback/session | Identity | Implemented on protected main | Google/GitHub, bounded state/redirect/session/auth-age lifecycle |
+| Planning Goal/Project/Task | Planning | Implemented on protected main | signed/request-bound workspace authority through PR #168 and PR #188 |
+| Durable Today aggregate | Planning | Implemented on protected main | PR #127; preconditions/idempotency/conflicts |
+| Authenticated Today composition | Gateway + Planning + Habit | Implemented on protected main | PR #186 and PR #187; Issue #163 completed |
+| Habit recurrence/completion | Habit | Implemented on protected main | signed workspace authority through PR #173 |
+| Review completion/projection | Review | Implemented on protected main | request-bound signed authority through PR #185 |
+| Integration event context | Integration | Implemented on protected main | exact request binding through PR #190 |
+| Calendar sync request | Calendar Integration | Implemented on protected main | PR #139 signed workspace context |
+| Calendar connection metadata | Calendar Integration | Implemented on protected main | PR #150 workspace+user scope, opaque secret references |
+| Calendar local revocation | Calendar Integration | Implemented on protected main | PR #153 and authenticated disconnect PR #157 |
+| Calendar connection read | Calendar Integration | Implemented on protected main | exact lookup PR #176 and authenticated read PR #189 |
+| Calendar credential materialization | Calendar Integration | Implemented on protected main | PR #193; validated handles only |
+| Calendar connection creation | Calendar Integration | Implemented on protected main | PR #197; authenticated secret-first persistence/compensation |
+| Calendar create-evidence compensation hardening | Calendar Integration | Implemented on protected main | PR #201 |
+| Complete hosted calendar credential lifecycle | Calendar Integration | Partial | issue #129 |
+| Reminder scheduling/delivery | Notification | Implemented on protected main | bounded claims/retries/outcomes |
+| AI proposal/evidence/decision | AI Proposal | Implemented on protected main | inert proposal + explicit decision |
+| Purpose-bound sensitive access | Privacy | Implemented on protected main | actor/workspace/resource/purpose/lifetime bound |
+| Data-rights request ledger/status | Identity | Implemented on protected main | durable request/receipt and bounded non-cacheable projection |
+| Tenant export integrity manifest | Identity + contributors | Implemented on protected main | deterministic sections/whole digest |
+| Contributor lifecycle v1 | Contracts | Implemented on protected main | PR #159 |
+| Planning data-rights contributor | Planning | Implemented on protected main | PR #179 and authenticated transport PR #194 |
+| Habit data-rights contributor | Habit | Implemented on protected main | PR #184 and authenticated transport PR #192 |
+| Review data-rights contributor | Review | Implemented on active PR | PR #195 |
+| Notification data-rights contributor | Notification | Implemented on active PR | PR #198 |
+| AI data-rights contributor | AI Proposal | Implemented on active PR | PR #199 |
+| Complete cross-domain export/erasure | Identity + every owner | Partial | issue #55 |
+| Plugin manifest/event validation | Integration | Implemented on protected main | versioned SDK/validation |
+| Plugin installation grants | Integration | Implemented on protected main | PR #151 |
+| Durable plugin installation | Integration | Implemented on protected main | PR #169 and exact evidence PR #175 |
+| Plugin credential binding | Integration | Implemented on protected main | PR #172; opaque secret reference only |
+| Plugin operator request authority | Integration | Implemented on protected main | PR #191 one-time request/replay evidence |
+| Plugin operator HTTP composition | Integration | Implemented on protected main | PR #196 fail-closed composition |
+| Complete plugin secret/outbound runtime | Integration | Partial | issue #130 |
+| Source/live-base/integration verification | Repository workflows | Implemented on protected main | PR #154; residual central taxonomy issue #132 |
+| Exact pinned OpenCode bootstrap allowlist | Repository automation | Implemented on protected main | PR #200 |
 
-## Data-rights status
+## Data-rights contributor v1
 
-**Status:** Implemented on protected main
+**Status:** Partial
 
-PR #146 derives workspace/user scope from the server session and exposes only request ID, request kind, lifecycle status and bounded timestamps. Malformed request IDs map to bounded 400, invalid sessions to 401, absent/cross-tenant requests to indistinguishable 404, dependency failures to sanitized 503, and responses are non-cacheable. This does not complete issue #55.
+PR #159 protects the versioned operation set:
 
-## Export integrity
+- `export` returns bounded deterministic service-owned data, schema version, safe record count, and contributor digest evidence;
+- `erase_preflight` reports explicit blockers without deleting;
+- `erase` binds exact request/workspace/actor/idempotency authority and returns replay-safe owner receipt evidence;
+- `verify_erased` proves the owner no longer retains scoped live records or fails closed.
 
-**Status:** Implemented on protected main
-
-PR #149 binds contributor identity, schema version, safe business record count and bounded normalized JSON into deterministic per-section SHA-256 evidence plus an ordered whole-export digest. Locale-independent UTF-16 property ordering is used for digest stability. Digests are integrity evidence, not access control, confidentiality, provenance or digital signatures.
+Planning and Habit are protected participants. Review, Notification, and AI are active-PR participants. The contract does not imply every owner participates or that whole-product reconciliation/delivery is complete.
 
 ## Calendar connection lifecycle
 
-### Persistence foundation
+### Authority
 
 **Status:** Implemented on protected main
 
-PR #150 persists a LifeOS-owned connection under exact workspace+user scope with bounded provider/account/calendar metadata, normalized scopes, fixed parameterized SQL and opaque secret references. The metadata row is not a credential store.
+`life-os.calendar-user.v1` binds exact workspace and requesting-user UUIDv4 identities under short-lived HMAC evidence distinct from workspace-only synchronization authority. Stale, future, malformed, substituted, or unconfigured evidence fails closed.
 
-### Local connection revocation
-
-**Status:** Implemented on protected main
-
-PR #153 adds atomic tenant+user-scoped connection revocation and exact replay behavior. Revoking the LifeOS connection record does not by itself prove provider-side OAuth revocation or secret destruction; those remain issue #129 lifecycle requirements.
-
-### Hosted user authority
+### Read, disconnect, materialize, create
 
 **Status:** Implemented on protected main
 
-PR #155 introduces a short-lived HMAC context that binds both workspace and user UUIDv4 identities under `life-os.calendar-user.v1`, distinct from workspace-only synchronization context. It rejects identifier substitution, stale/future/malformed evidence and unusable verifier configuration. Public connection/disconnect and managed-credential runtime composition remain later #129 slices.
+- PR #157 exposes authenticated local disconnect without reading provider secret handles.
+- PR #176 prevents alternate/corrupt persistence adapters from returning a different connection/workspace/user record.
+- PR #189 exposes only bounded credential-free active connection state.
+- PR #193 materializes plaintext credential data only inside a validated secret-store port boundary.
+- PR #197 writes secret material first, persists only opaque handles, validates returned durable authority, and compensates reviewed failure paths.
 
-## Plugin installation authority and persistence
+PR #201 protects reverse-order compensation of all newly materialized handles when returned durable create evidence mismatches exact identity/handles. OAuth/PKCE, concrete KMS, refresh, provider-side cleanup, discovery/selection, and scoped synchronization remain **Partial** under #129.
 
-### Installation grants
+## Plugin installation, credentials, and operator composition
+
+### Installation and credential binding
 
 **Status:** Implemented on protected main
 
-PR #151 treats a validated manifest as requested intent, not granted authority. The host grants an explicit tenant-scoped capability subset, accepts exact replay, rejects conflicting reuse, hides cross-tenant/user existence and preserves revocation evidence.
+PR #151 treats a manifest as requested intent. PR #169 persists exact bounded installation authority. PR #172 materializes credentials only through `PluginSecretStore` and persists only an opaque reference. PR #175 rejects mismatched returned installation identity.
 
-### Durable installation persistence
+Exact replay cannot rematerialize or overwrite an existing secret. Conflicting durable winners trigger compensation. Revocation ends durable authority before external cleanup and never restores authority during retry.
 
-**Status:** Implemented on active PR
+### Operator requests
 
-PR #156 persists bounded installation identity, workspace, installing-user, exact manifest/version/digest, granted capabilities and lifecycle evidence in the integration service. Direct reads and revocation operations carry workspace and installing-user authority into fixed parameterized SQL rather than widening by installation ID and filtering afterward. Plaintext plugin credential/KMS material and outbound delivery remain outside this active slice and incomplete under #130.
+**Status:** Implemented on protected main
+
+PR #191 binds installation/workspace/actor, exact method/path, freshness, and one-time evidence to an atomic replay store. PR #196 composes this authority behind a fail-closed HTTP boundary and maps malformed JSON, stale/replayed evidence, absent dependencies, and invalid durable evidence to bounded credential-free problems.
+
+No operator route grants arbitrary SQL, filesystem, subprocess, tool, or network authority. Outbound delivery remains **Partial** under #130.
 
 ## Events
 
-Asynchronous events use an opaque event ID, explicit type/version, validated tenant/actor/correlation/causation context and bounded immutable payload. Consumers are idempotent under replay. Receiving an event never grants producer-database authority.
+Asynchronous events use opaque event IDs, explicit type/version, validated workspace/actor/correlation/causation context, bounded immutable payloads, and idempotent consumers. PR #190 binds protected integration event authority to the exact request. Receiving an event never grants producer-database authority.
 
-## Versioning
+## Versioning and compatibility
 
-Breaking route/event/schema semantics require explicit versioning or a reviewed migration contract. Unknown versions fail closed.
+Breaking route/event/schema semantics require explicit versioning or a reviewed migration contract. Additive optional fields remain bounded and default-safe. Unknown versions fail closed. Migration rollback never fabricates restored external secret/provider state.
 
 ## Verification evidence identity
 
 **Status:** Implemented on protected main
 
-`source_head_sha`, `pr_base_snapshot_sha`, independently resolved `live_base_tip_sha`, separately classified integration/synthetic tree identity, `workflow_checkout_sha`, protected-main identity and release-source identity are separate authorities. Integration success is not exact contributor-source verification.
-
-ADR 0010 is the durable decision. PR #154 merged as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`: LifeOS source jobs explicitly bind contributor head, AppGuardrail SARIF binds the analyzed source ref/SHA, and merge compatibility reconstructs the integration tree from fresh current source and live base. Issue #132 remains open only for residual central reusable SAST/Security scanner checkout and attribution classification; their umbrella green status cannot silently promote one evidence identity into another.
+`source_head_sha`, `pr_base_snapshot_sha`, `live_base_tip_sha`, integration/synthetic tree identity, `workflow_checkout_sha`, `protected_main_sha`, and `release_source_sha` are separate authorities. PR #154 protects source and live-base compatibility separation. Issue #132 remains **Partial** for central reusable scanner attribution; a synthetic merge scan cannot be called exact-source evidence.

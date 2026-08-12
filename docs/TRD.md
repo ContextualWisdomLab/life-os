@@ -2,147 +2,147 @@
 
 **Status:** Implemented on active PR
 
-## Purpose
-
-This document defines repository-wide technical requirements. Owning-service code, migrations, tests, versioned contracts and runbooks remain the implementation authority.
+This TRD defines repository-wide technical requirements. Protected-main code, migrations, tests, workflow policy, and owning-service runbooks remain the implementation authority.
 
 ## Runtime baseline
 
-LifeOS is a TypeScript-first monorepo with a Next.js PWA/BFF, independently bounded services, PostgreSQL service-owned persistence and NATS JetStream where durable asynchronous events are required. Optional external providers include Google/GitHub identity, Google/CalDAV calendar providers, NVIDIA NIM through approved AI boundaries, and versioned plugins.
+LifeOS is a TypeScript-first monorepo with a Next.js PWA/BFF, independently bounded services, service-owned PostgreSQL persistence, and NATS JetStream where durable asynchronous delivery is required. Optional providers include Google/GitHub identity, Google/CalDAV calendar, NVIDIA NIM through reviewed AI boundaries, and versioned plugins.
 
 ## Bounded contexts
 
-- **Web/PWA:** interaction state and explicitly local drafts/cache; never direct DB authority.
-- **Gateway/BFF:** public composition and authenticated context derivation; not a shared domain store.
-- **Identity:** internal users, external identity mappings, sessions, workspace membership/authorization context, authentication provenance, data-rights request/receipt authority and export-integrity composition.
-- **Planning:** Goals, Projects, Tasks, durable Today aggregate and search.
-- **Habit:** recurrence definitions and completion evidence.
-- **Review:** review snapshots/projections; no direct planning mutation.
-- **Calendar integration:** provider adapters, sync state, trusted workspace and workspace+user signed context, and protected-main workspace+user scoped connection persistence/revocation. Complete hosted credential lifecycle remains partial under #129.
-- **Notification:** reminder occurrences, claims, outcomes and delivery recovery.
-- **AI proposal:** proposals, evidence, explicit decisions and deterministic evaluation; no generic planning mutation authority.
+- **Web/PWA:** interaction state, accessibility/localization, and explicitly local drafts/cache; no database authority.
+- **Gateway/BFF:** authenticated public composition and short-lived service-context derivation; no shared domain store.
+- **Identity:** users, provider mappings, sessions, workspace authority, authentication provenance, data-rights request/receipt orchestration, and export-integrity composition.
+- **Planning:** Goals, Projects, Tasks, search, durable Today, and a protected data-rights contributor.
+- **Habit:** recurring definitions/completions and a protected data-rights contributor.
+- **Review:** guided-review persistence/projections; PR #195 is **Implemented on active PR** for its contributor.
+- **Calendar Integration:** synchronization, connection metadata, workspace/user authority, credential ports, read/create/disconnect surfaces; complete hosted provider lifecycle remains **Partial** under #129.
+- **Notification:** reminder occurrences/claims/outcomes; PR #198 is **Implemented on active PR** for its contributor.
+- **AI Proposal:** inert proposals/evidence/decisions/evaluation; PR #199 is **Implemented on active PR** for its contributor.
 - **Privacy:** purpose-bound sensitive-access decisions/grants/events.
-- **Plugin integration:** versioned plugin contracts, validation and protected-main explicit installation-grant authority; PR #156 is active for restart-safe installation persistence. Complete secret/delivery runtime remains partial under #130.
+- **Plugin Integration:** contracts, installation/grant/credential/operator authority; delivery runtime remains **Partial** under #130.
 
-## Data requirements
+## Persistence and data requirements
 
-1. Each service owns persistence, migrations and DB credentials; cross-service table access is prohibited.
-2. Internal durable identifiers are opaque UUIDv4.
-3. Product-owned database objects use descriptive multiword `snake_case`.
-4. Persist instants in UTC and IANA timezone/local-calendar values where civil-time semantics matter.
-5. Immutable audit/decision/completion/receipt evidence rejects mutation; mutable state uses explicit revision/digest/ETag/idempotency/fencing where loss or replay is plausible.
-6. Browser-local state is not durable until the owning service accepts it.
-7. Logical cross-service references do not create physical foreign-key or SQL authority across service-owned schemas.
-8. External provider credentials remain behind least-authority secret boundaries and are not reused as identity or primary-key material.
+1. Each service owns schemas/roles, migrations, repositories, credentials, transaction boundaries, backup semantics, and shutdown behavior.
+2. Cross-service table reads, writes, joins, foreign keys, triggers, and shared mutation roles are prohibited.
+3. Internal durable identifiers are opaque UUIDv4.
+4. Product-owned database objects use descriptive multiword `snake_case`.
+5. Instants use UTC; civil-time behavior also retains explicit IANA timezone/local-calendar evidence.
+6. Immutable audit/decision/completion/receipt evidence rejects mutation. Mutable state uses revision, digest, ETag, idempotency, advisory locking, or fencing where loss/replay is plausible.
+7. Browser-local state is not durable until the owning service accepts it.
+8. External credentials remain behind least-authority secret-store/KMS ports and never become identity or primary-key material.
+9. Persisted external identifiers are bounded metadata; opaque secret references are separate fields with separate authority.
+10. Corrupt or ambiguous persisted evidence fails closed before it can become application authority.
 
 ## Authentication and authorization
 
-- OAuth/OIDC callbacks validate state, provider and redirect boundaries.
+- OAuth callbacks validate state, provider, redirect/origin, and bounded transaction lifetime.
 - Browser sessions are revocable and server-verifiable.
-- Authentication ceremony time is preserved separately from compatible session issuance/rotation time.
-- Client-selected workspace/actor identifiers are never trusted as authority.
-- Signed private context binds exact actor/workspace/method/path and bounded issuance time where service separation requires it.
-- Calendar synchronization uses the trusted signed workspace context implemented on protected main; legacy workspace headers cannot override it.
-- User-sensitive hosted calendar operations use the protected `life-os.calendar-user.v1` context from PR #155, binding workspace and requesting user under a version distinct from workspace-only sync authority.
-- Sensitive operations add purpose/resource/tenant authorization and, for data rights, recent-authentication policy derived from authentication provenance rather than session rotation.
-- Plugin capabilities are host-granted authority; a manifest expresses requested intent only.
+- Authentication ceremony time survives compatible session rotation.
+- Browser-selected workspace, actor, installation, connection, or request identifiers are never ownership authority.
+- Signed private contexts bind exact workspace/actor, method, path, issuance, version, and one-time evidence where destructive replay matters.
+- Planning protected authority comes from PR #168 and exact request binding from PR #188.
+- Habit protected authority comes from PR #173; destructive contributor transport is protected by PR #192.
+- Review exact request-bound authority is protected by PR #185.
+- Calendar user-sensitive operations use `life-os.calendar-user.v1` from PR #155.
+- Integration event authority is exact-request-bound through PR #190.
+- Plugin operator authority is one-time and replay-protected through PR #191 and fail-closed HTTP composition through PR #196.
 
-## HTTP/API requirements
+## HTTP and application boundaries
 
-- Bound bodies and provider responses before retention.
-- Derive ownership from authenticated/signed context.
-- Use replay protection for repeatable mutations.
-- Use explicit stale-write preconditions where silent overwrite is unacceptable.
-- Return bounded credential-free problems.
-- Never expose dependency bodies, credentials, stack traces or internal URLs.
-- Version breaking shared-contract semantics.
-- Sensitive status resources use non-cacheable semantics and omit unrelated tenant/credential/idempotency/digest internals.
+- Bound request bodies and provider/model responses before retention.
+- Derive authority from authenticated or signed context.
+- Reject unsupported media types and malformed JSON with bounded credential-free problems.
+- Use explicit replay and stale-write controls.
+- Do not forward browser cookies or provider secrets to downstream services.
+- Never expose dependency bodies, stack traces, credentials, internal origins, secret handles, or raw tenant payloads in public failures.
+- Version breaking shared-contract semantics; unknown versions fail closed.
+- Sensitive status resources are non-cacheable and omit unrelated authority/digest/idempotency internals.
 
-### Data-rights public status
-
-**Status:** Implemented on protected main
-
-PR #146 exposes the protected request ledger through a browser-facing authenticated resource. The boundary derives workspace and requesting-user scope from validated session introspection, combines request/workspace/user scope without a widening lookup, exposes only bounded public lifecycle fields, makes absent and cross-tenant requests indistinguishable, maps malformed/auth/dependency cases to bounded failures, and applies `Cache-Control: no-store`.
-
-This endpoint is one lifecycle surface and does not imply complete cross-domain export/erasure orchestration.
-
-### Data-rights export integrity
+### Today composition
 
 **Status:** Implemented on protected main
 
-PR #149 requires each contributor export section to provide a versioned schema and safe non-negative business record count. LifeOS normalizes bounded JSON, uses locale-independent UTF-16 property ordering for deterministic hashing, computes a SHA-256 section digest over contributor/schema/count/data, and retains a whole-export digest. Digest evidence is not authorization, confidentiality, provenance or a digital signature.
+PR #186 composes authenticated Planning Today state and PR #187 composes authenticated Habit Today state. The Gateway derives authority from the authenticated session, signs exact downstream requests, validates bounded responses, and does not fabricate success. Issue #163 is completed.
 
-### Calendar connection registry and local revocation
+### Data-rights contributor transport
 
-**Status:** Implemented on protected main
+**Status:** Partial
 
-PR #150 defines the protected service-owned migration/repository for a connection scoped simultaneously to workspace and user, with bounded provider/account/calendar metadata, normalized scopes, opaque external credential references, fixed parameterized SQL and fail-closed duplicate persisted evidence. PR #153 adds an atomic tenant+user-scoped active-to-revoked transition. These foundations do not complete issue #129 or imply provider-side OAuth revocation.
+PR #159 defines `life-os.data-rights-contributor.v1` with explicit export, erase-preflight, erase, and verify-erased operations. Planning production contribution is protected through PR #179 and authenticated request-bound transport through PR #194. Habit production contribution is protected through PR #184 and transport/replay hardening through PR #192.
 
-### Plugin installation authority
+PR #195, PR #198, and PR #199 are **Implemented on active PR** for Review, Notification, and AI contributions. They remain non-shipped until integration. Whole-product completion remains **Partial** under #55.
 
-**Status:** Implemented on protected main
+### Calendar connection lifecycle
 
-PR #151 separates validated manifest intent from host authority. LifeOS grants only an explicit bounded capability subset, accepts exact replay, rejects conflicting installation-ID reuse, hides cross-tenant/user existence and preserves revocation evidence. It does not imply complete persistent secret or outbound-delivery runtime under #130.
+**Status:** Partial
 
-### Plugin installation persistence
+Protected main includes:
 
-**Status:** Implemented on active PR
+- workspace/user scoped metadata persistence from PR #150;
+- atomic local revoke from PR #153;
+- signed user authority from PR #155;
+- authenticated disconnect from PR #157;
+- exact lookup evidence validation from PR #176;
+- authenticated bounded read from PR #189;
+- scoped credential materialization port from PR #193;
+- authenticated secret-first create from PR #197;
+- reverse-order compensation on mismatched returned durable evidence from PR #201.
 
-PR #156 adds a service-owned `plugin_integration.plugin_installation_record` persistence foundation. Application and PostgreSQL read/revocation paths bind installation, workspace and installing-user authority; malformed or corrupt evidence fails closed. It stores installation authority/evidence only and does not add plugin credential plaintext, KMS lifecycle or outbound-delivery authority.
+Concrete encrypted storage, OAuth/PKCE, refresh, provider cleanup, discovery/selection, and scoped synchronization remain **Partial** under #129.
 
-## Event requirements
+### Plugin installation and operator lifecycle
 
-Versioned events carry opaque event ID, explicit type/version, validated actor/workspace/correlation/causation context and immutable payload semantics. Consumers are idempotent under replay. Cross-service events never grant direct database mutation authority.
+**Status:** Partial
 
-## Domain concurrency/idempotency
+Protected main includes explicit host grants (PR #151), durable installation persistence (PR #169), opaque credential binding (PR #172), exact installation-evidence validation (PR #175), one-time operator authority/replay storage (PR #191), and authenticated fail-closed operator HTTP composition (PR #196).
 
-- **Today:** protected-main aggregate uses explicit strong create/update preconditions, idempotency and stale-conflict handling with durable PostgreSQL concurrency evidence.
+The runtime still requires a concrete secret-store/KMS adapter, separately host-authorized delivery origins, SSRF/DNS-rebinding-safe outbound HTTPS, attempt/outcome persistence, retry/dead-letter, revocation fencing, and operator-visible delivery recovery under #130.
+
+## Domain concurrency and idempotency
+
+- **Today:** strong create/update preconditions, ordered locking, exact replay, stale conflict, and explicit reconciliation.
 - **Habit completion:** tenant-scoped replay-safe persistence.
 - **Notification:** expiring/fenced claims and duplicate-delivery refusal.
-- **Calendar:** deterministic provider identity/preconditions, trusted context, protected tenant+user+connection repository invariants from #150 and atomic local revocation from #153.
-- **AI decisions:** bind decision to exact proposal digest/revision, actor/workspace and idempotency identity.
-- **Data rights:** durable request identity and immutable terminal receipts; status lookup is scoped simultaneously by request, workspace and requesting user and fails closed on corruption.
-- **Plugin installation:** protected #151 requires exact replay/conflict/revocation semantics for host-granted authority; active #156 carries the same scope into restart-safe persistence.
+- **Calendar:** exact connection/workspace/user authority, secret-first create compensation, deterministic provider preconditions, and local revoke replay.
+- **AI decisions:** exact proposal digest/revision, actor/workspace, and idempotency binding.
+- **Data rights:** exact request/workspace/actor/contributor/replay identity, immutable terminal evidence, and owner-controlled erasure verification.
+- **Plugin installation/operator:** exact installation/workspace/installer/manifest/grant/secret-binding/request evidence and atomic replay refusal.
 
-## AI / automation requirements
+## AI and repository automation requirements
 
-ADR 0012 is the durable test-time-compute/development authority. Model output is untrusted structured data. Deterministic validators and user/product authorization remain authoritative. Live provider availability is separated from deterministic merge gates. Scheduled autonomous development uses reviewed OpenCode or contextual-orchestrator with `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited as a development-model credential and independent review-agent credentials are not reused.
+ADR 0012 is authoritative. Model output is untrusted structured data. Deterministic validators, authorization, tests, independent review, merge, and release gates remain authoritative.
 
-A strong single-route baseline precedes deeper orchestration. Evaluation records supported dimensions such as workflow stage, reasoning effort, role-specific reasoning effort, decomposition, recursion depth, worker/model selection, verifier topology and access-list/communication topology. Unsupported controls remain explicit rather than fabricated. Deeper orchestration is selected only from retained LifeOS quality/evidence under a documented reasonably comparable budget; latency/tokens/cost are measured but are not the sole or primary optimization objective. Model execution never becomes review, merge or release authority.
+A strong single-route baseline precedes conducted/deeper orchestration. Evaluation records supported workflow stage, reasoning effort, decomposition, recursion depth, role-specific reasoning effort, model/worker selection, verifier topology, and access/communication topology. Unsupported controls remain explicit rather than simulated.
 
-## Security/privacy requirements
+Scheduled development uses reviewed OpenCode or contextual-orchestrator with `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited. PR #200 is **Implemented on protected main** for allowing only the exact reviewed `opencode-ai` lifecycle script needed to materialize the pinned executable. Unrelated lifecycle scripts remain denied.
 
-- Treat external responses, stored JSON, environment values, model output and connector results as untrusted.
+## Security and privacy requirements
+
+- Treat external responses, stored JSON, environment values, model output, and connector results as untrusted.
 - Keep SQL structure static and parameterized.
-- Use least-privilege GitHub/runtime/database permissions and bounded network/file/subprocess behavior.
-- Public artifacts exclude credentials, raw model prompts/responses, hidden reasoning and unbounded tenant data.
-- Sensitive access is purpose/lifetime/resource scoped with audit evidence; blanket masking is not the primary control.
-- Data-rights end-to-end domain participation, durable reconciliation, retention/legal hold and protected export delivery remain partial under #55.
+- Use least-privilege GitHub/runtime/database/network/file/subprocess permissions.
+- No credential, browser session, secret reference, raw prompt/response, hidden reasoning, or unbounded tenant content enters public/CI/release evidence.
+- Sensitive access is tenant/actor/purpose/resource/lifetime/audit bound.
+- No service claims whole-right completion from partial or unknown contributor state.
+- No manifest self-authorizes plugin capability or delivery origin.
+- No local calendar revoke is promoted to provider revoke.
 
-## Web/accessibility/localization
+## Accessibility, localization, and offline behavior
 
-Core journeys remain keyboard operable with visible focus and non-color-only state. Korean/English catalogs remain structurally aligned. Offline/local drafts must never imply durable sync until server acceptance. Stale async responses cannot overwrite newer owned UI state.
+Core journeys remain keyboard-operable with visible focus, semantic names, non-color-only state, and localized Korean/English live feedback. Offline/local drafts remain visibly distinct from durable workspace state. Stale asynchronous responses cannot overwrite newer owned UI state.
 
 ## Observability and operations
 
-Services expose bounded health/readiness appropriate to actual dependencies. Metrics are operator-only in production exposure. Logs are structured, bounded and credential-free. Logical backup/restore proves integrity and unsafe-target refusal; it does not imply PITR. Compose is a self-hosted composition profile and Kubernetes artifacts are a provider-neutral reference rather than managed infrastructure provisioning.
+Services expose bounded health/readiness reflecting actual dependencies. Metrics are operator-only in production exposure. Logs are structured and credential-free. Logical backup/restore proves integrity and unsafe-target refusal but does not claim PITR. Compose is a self-hosted profile; Kubernetes is a provider-neutral reference, not managed surrounding infrastructure.
 
 ## Verification model
 
 **Status:** Accepted architecture
 
-Required evidence classes retain explicit identities:
-
-- `source_head_sha`: exact contributor/source branch head for direct source verification;
-- `pr_base_snapshot_sha`: GitHub PR/event base snapshot, historical once the live base moves;
-- `live_base_tip_sha`: independently resolved current base-ref tip for base-sensitive decisions;
-- `integration_tree_sha` or explicitly synthetic merge identity: separately classified compatibility evidence;
-- `workflow_checkout_sha`: exact tree inspected by one evidence-producing job;
-- `protected_main_sha`: integrated protected-main evidence identity;
-- `release_source_sha`: exact protected source bound to release artifacts.
-
-A green result for one class cannot be promoted to another. SARIF/security evidence must be attributed to the commit/ref actually analyzed. PR #154 is implemented on protected main as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`: LifeOS source jobs and AppGuardrail attribution bind exact source, while the distinct compatibility path reconstructs the integration tree from fresh current source and live base. Issue #132 remains open only for residual central reusable SAST/Security checkout/evidence classification; a synthetic merge scan cannot be relabeled exact-source success.
+`source_head_sha`, `pr_base_snapshot_sha`, independently resolved `live_base_tip_sha`, `integration_tree_sha`/synthetic identity, `workflow_checkout_sha`, `protected_main_sha`, and `release_source_sha` are separate authorities. PR #154 implements exact source and live-base compatibility separation. Issue #132 remains **Partial** for residual central scanner attribution taxonomy.
 
 ## Release requirements
 
-Release requires one unchanged integrated protected head with required CI/security/review, exact configured coverage, package/container build, migration/rollback/recovery, accessibility/localization, SBOM/provenance/reproducibility and operational acceptance. A single merged feature or documentation PR is not release readiness.
+Release requires one unchanged integrated protected head with required CI/security/review, exact configured coverage/docstrings, package/container build, SBOM/provenance/reproducibility, compatibility, migration/rollback/recovery, accessibility/localization, and operational acceptance. A single merged feature, queued job, documentation line, or model result is not release readiness.

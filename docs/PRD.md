@@ -2,84 +2,94 @@
 
 **Status:** Implemented on active PR
 
-This document is the canonical product-level requirements index for LifeOS. Protected-main code, migrations, tests, and current GitHub policy are authoritative for shipped behavior.
+Protected-main code, migrations, tests, and live GitHub policy are authoritative for shipped behavior. This PRD is the canonical product-level index; active pull requests are labeled and never promoted to protected truth.
 
 ## Product definition
 
-LifeOS is a privacy-first, multi-user, server-backed and self-hostable personal operating system that connects Goals, Projects, Tasks, Habits, Today planning, review, calendar/reminders, auditable AI assistance, privacy/data-rights controls, and operator recovery into one user-authoritative workflow.
+LifeOS is a privacy-first, multi-user, server-backed, self-hostable personal operating system connecting Goals, Projects, Tasks, Habits, Today planning, Review, Calendar, reminders, auditable AI proposals, privacy/data-rights controls, plugins, and operator recovery in one user-authoritative workflow.
 
-## Historical decisions
+## Superseded product assumptions
 
-- **Superseded:** login-free browser-only/local-first storage as the primary architecture. Browser-local state remains valid only for explicit drafts/cache/offline UX.
-- **Superseded:** a single Docker application as the durable product architecture. Docker Compose remains a deployment profile; domain services keep independent authority.
-- **Superseded:** UUIDv7 internal identifiers. Protected main uses opaque UUIDv4 internal identifiers.
-
-## Status vocabulary
-
-Canonical requirements use exactly one of: `Implemented on protected main`, `Implemented on active PR`, `Partial`, `Accepted architecture`, `Planned`, `Research only`, `Superseded`, `Out of scope`.
+- Login-free browser-only/local-first storage as the primary architecture is **Superseded**.
+- UUIDv7 internal identifiers are **Superseded** by opaque UUIDv4 product IDs.
+- A single durable application and private-personal-only positioning are **Superseded** by modular service ownership and public multi-user operation.
+- Browser-local state remains supported only as explicit draft/cache/offline state until an owning service accepts it.
 
 ## Primary customer journey
 
-1. Google/GitHub login and personal workspace provisioning.
-2. Goal -> Project -> Task and recurring Habit organization.
-3. Explicit Today planning and completion.
-4. Durable cross-device synchronization without silent stale overwrites.
-5. Daily/weekly review based on durable evidence.
-6. Calendar synchronization and bounded reminders.
-7. Optional AI proposal generation with evidence and explicit accept/reject.
-8. Privacy/data-rights request, status, export and deletion lifecycle.
-9. Backup/recovery and accessible Korean/English PWA operation.
-10. Operator deployment, readiness, observability, migration and release evidence.
+1. Authenticate with Google or GitHub and enter an authorized workspace.
+2. Organize Goals, Projects, Tasks, and recurring Habits.
+3. Create and synchronize an explicit Today plan without silent overwrite.
+4. Complete work and inspect durable guided Review evidence.
+5. Connect one authorized calendar account and run conflict-safe synchronization.
+6. Receive bounded timezone-correct reminders.
+7. Request an inert AI proposal and explicitly accept or reject its evidence.
+8. Request, inspect, export, and delete personal/workspace data through service-owned contributors.
+9. Install explicitly granted plugins without database or arbitrary network authority.
+10. Recover, migrate, deploy, observe, and release from auditable protected evidence.
 
 ## Functional requirements
 
 | ID | Requirement | Status | Evidence / tracking |
 | --- | --- | --- | --- |
-| PRD-ID-001 | Google and GitHub login with revocable server-side sessions and tenant-derived authority. | Implemented on protected main | identity service and OAuth/session tests |
-| PRD-ID-002 | Internal identifiers are opaque UUIDv4; provider IDs remain mapped metadata. | Implemented on protected main | `AGENTS.md`, service validators/migrations |
-| PRD-PLAN-001 | Persist Goals, Projects and Tasks in planning-service-owned PostgreSQL. | Implemented on protected main | planning migrations/repository tests |
-| PRD-PLAN-002 | Explicit durable Today synchronization with strong preconditions, idempotency and stale conflict handling. | Implemented on protected main | PR #127 merged as protected main; browser and PostgreSQL concurrency tests |
-| PRD-HAB-001 | Recurring habits and durable completion history. | Implemented on protected main | habit service PostgreSQL tests |
-| PRD-REV-001 | Guided review without becoming planning mutation authority. | Implemented on protected main | review service boundary/tests |
-| PRD-CAL-001 | Conflict-safe CalDAV/Google calendar synchronization. | Implemented on protected main | calendar adapter tests |
-| PRD-CAL-002 | Derive calendar workspace authority from signed trusted context, not legacy client headers. | Implemented on protected main | PR #139 merged; trusted-context tests |
-| PRD-CAL-003 | Complete per-user encrypted Google/CalDAV credential lifecycle, OAuth/PKCE, refresh/revocation, discovery and calendar selection. | Partial | issue #129 |
-| PRD-CAL-004 | Persist a LifeOS-owned calendar-connection foundation scoped to workspace and user, with bounded provider metadata, normalized scopes and opaque secret handles rather than plaintext provider tokens. | Implemented on protected main | PR #150 merged as `1623df364925f84920c07c112f1ae96777277d20`; does not complete #129 |
-| PRD-CAL-005 | Revoke one owned calendar connection atomically under exact workspace+user scope while preserving a bounded revoked-state result and replay safety. | Implemented on protected main | PR #153 merged as `b13413e571bad82535f63d478e40746d12c3e680`; does not by itself revoke provider-side OAuth credentials |
-| PRD-CAL-006 | Internal hosted calendar operations that require user authority use a short-lived signed context binding both workspace and requesting-user UUIDv4 identities under a version distinct from workspace-only synchronization context. | Implemented on protected main | PR #155 merged as `7b34a5a584b037653d091ea661ae4627bb5dd2ea`; public disconnect/credential lifecycle remains #129 |
-| PRD-NOT-001 | Timezone-correct bounded reminders with replay-safe delivery. | Implemented on protected main | notification persistence/scheduler tests |
-| PRD-AI-001 | AI output is inert proposal evidence until explicit authorized decision. | Implemented on protected main | AI proposal/audit tests |
-| PRD-AI-002 | Deterministic proposal-quality/safety gates remain independent of live provider availability. | Implemented on protected main | evaluator/live-conformance split |
-| PRD-PRIV-001 | Sensitive data access is tenant/purpose/lifetime/audit bound rather than blanket-masked. | Implemented on protected main | privacy-service tests |
-| PRD-PRIV-002 | Data-rights requests preserve recent-auth provenance and durable immutable request/terminal receipts. | Implemented on protected main | PRs #134, #136, #137, #138 and #144 integrated on main |
-| PRD-PRIV-003 | Complete export/deletion orchestration across every owned domain, protected delivery lifecycle, retention/legal-hold handling and reconciliation. | Partial | issue #55 |
-| PRD-PRIV-004 | An authenticated user can query one owned data-rights request through a tenant-and-actor scoped, bounded, non-cacheable public status resource without exposing workspace/user IDs, idempotency material or receipt digests. | Implemented on protected main | PR #146 merged; session-derived scope and bounded 400/401/404/503 behavior |
-| PRD-PRIV-005 | Tenant-export sections carry contributor-defined safe record counts and deterministic per-section SHA-256 integrity evidence, with locale-independent property ordering and a whole-export digest. | Implemented on protected main | PR #149 merged; integrity regression and RFC 8785/FIPS 180-4 doctoring |
-| PRD-INT-001 | Versioned plugin SDK/validation without direct database authority. | Implemented on protected main | plugin SDK/integration-service tests |
-| PRD-INT-002 | Complete plugin runtime installation, encrypted secret storage, SSRF-safe outbound delivery, retries/dead-letter behavior and revocation. | Partial | protected installation authority exists; durable secret/delivery runtime remains issue #130 |
-| PRD-INT-003 | Treat a validated manifest as untrusted intent and grant only explicit tenant-scoped installation capabilities with exact replay/conflict/revocation semantics. | Implemented on protected main | PR #151 merged as `6971c4e11b3204ec41526c7c959a248e54440e1c` |
-| PRD-INT-004 | Persist restart-safe plugin installation authority with service-owned multiword schema/table naming, fixed SQL, explicit lifecycle evidence and workspace+installing-user-scoped lookups at the persistence boundary. | Implemented on active PR | PR #156; no secret/delivery authority implied |
-| PRD-WEB-001 | Responsive installable PWA with keyboard-operable core flows and Korean/English catalogs. | Implemented on protected main | browser/accessibility/localization tests |
-| PRD-OPS-001 | Logical PostgreSQL backup/restore with integrity and unsafe-target refusal. | Implemented on protected main | backup scripts/tests/runbook |
-| PRD-OPS-002 | Provider-neutral production reference deployment and bounded health/readiness/metrics. | Implemented on protected main | infra and observability tests |
-| PRD-GOV-001 | Capability maturity and buyer-gap exhaustion are reported independently. | Implemented on protected main | buyer-gap registry and issue #21 report |
-| PRD-GOV-002 | Required PR verification identifies the commit tree actually checked and does not conflate exact source-head verification, stale PR-base snapshots, independently resolved live-base state or integration compatibility evidence. | Implemented on protected main | PR #154 merged as `2c272a404f8f3a74aa5796a1957d4a6ce0fabe8f`; ADR 0010 defines evidence identities; issue #132 remains only for residual central scanner classification |
+| PRD-ID-001 | Google/GitHub login, revocable server sessions, workspace membership, and preserved authentication-age provenance. | Implemented on protected main | Identity source/migrations/tests |
+| PRD-ID-002 | Internal/public product IDs are opaque UUIDv4; external IDs remain bounded metadata. | Implemented on protected main | `AGENTS.md`, validators, migrations, ADR 0001 |
+| PRD-PLAN-001 | Planning owns durable Goals, Projects, Tasks, search, and Today persistence. | Implemented on protected main | Planning migrations/repositories |
+| PRD-PLAN-002 | Today synchronization uses explicit acceptance, strong preconditions, idempotency, and stale-conflict reconciliation. | Implemented on protected main | PR #127 |
+| PRD-PLAN-003 | Every public Planning route derives signed workspace authority and binds it to the exact method/path/request. | Implemented on protected main | PR #168 and PR #188 |
+| PRD-HAB-001 | Habit owns recurring definitions and replay-safe completion history. | Implemented on protected main | Habit migrations/tests |
+| PRD-HAB-002 | Every public Habit route derives signed workspace authority; trusted contributor transport consumes destructive authority once. | Implemented on protected main | PR #173 and PR #192 |
+| PRD-REV-001 | Review owns guided-review persistence/projections without Planning or Habit mutation authority. | Implemented on protected main | Review service boundaries |
+| PRD-REV-002 | Guided-review routes require request-bound signed workspace authority. | Implemented on protected main | PR #185 |
+| PRD-CAL-001 | Google/CalDAV synchronization is conflict-safe and tenant-scoped. | Implemented on protected main | Calendar provider tests |
+| PRD-CAL-002 | Calendar synchronization uses signed trusted workspace context, not browser-selected ownership. | Implemented on protected main | PR #139 |
+| PRD-CAL-003 | Complete encrypted per-user credential lifecycle, OAuth/PKCE, refresh/revoke, discovery/selection, and scoped sync. | Partial | issue #129 |
+| PRD-CAL-004 | Calendar-owned connection metadata is scoped to exact workspace and user and stores opaque secret references only. | Implemented on protected main | PR #150 |
+| PRD-CAL-005 | Local connection revocation is atomic, replay-safe, and tenant/user scoped. | Implemented on protected main | PR #153 |
+| PRD-CAL-006 | User-sensitive hosted operations use signed `life-os.calendar-user.v1` workspace+user authority. | Implemented on protected main | PR #155 |
+| PRD-CAL-007 | Authenticated disconnect, exact lookup validation, bounded connection read, scoped credential materialization, and authenticated secret-first creation are protected behavior. | Implemented on protected main | PR #157, PR #176, PR #189, PR #193, PR #197 |
+| PRD-CAL-008 | Create-evidence mismatch compensates every newly materialized credential before sanitized failure. | Implemented on protected main | PR #201 |
+| PRD-NOT-001 | Notification owns bounded timezone-correct reminders, claims, outcomes, retries, and recovery evidence. | Implemented on protected main | Notification migrations/scheduler tests |
+| PRD-AI-001 | AI output is inert auditable proposal evidence until explicit authorized accept/reject. | Implemented on protected main | AI proposal/audit service |
+| PRD-AI-002 | Deterministic schema/quality/safety gates remain independent of live model availability. | Implemented on protected main | Proposal evaluator and live-conformance split |
+| PRD-PRIV-001 | Sensitive access is tenant, actor, purpose, resource, lifetime, and audit bound. | Implemented on protected main | Privacy service |
+| PRD-PRIV-002 | Data-rights requests preserve recent-auth provenance, durable request identity, immutable terminal receipts, and bounded status. | Implemented on protected main | PR #146 and predecessor foundations |
+| PRD-PRIV-003 | Complete export/deletion orchestration covers every owning domain, reconciliation, retention/legal hold, backup expiry, protected artifact delivery, and final participant-set completion. | Partial | issue #55 |
+| PRD-PRIV-004 | Export sections carry deterministic bounded data, safe record counts, and integrity evidence. | Implemented on protected main | PR #149 |
+| PRD-PRIV-005 | Independent services use versioned `life-os.data-rights-contributor.v1`, never cross-service SQL. | Implemented on protected main | PR #159 |
+| PRD-PRIV-007 | Planning owns a deterministic PostgreSQL-backed contributor and authenticated request-bound transport. | Implemented on protected main | PR #179 and PR #194 |
+| PRD-PRIV-008 | Habit owns a deterministic PostgreSQL-backed contributor and replay-safe authenticated transport. | Implemented on protected main | PR #184 and PR #192 |
+| PRD-PRIV-009 | Review, Notification, and AI own bounded contributors without widening Identity database authority. | Implemented on active PR | PR #195, PR #198, PR #199 |
+| PRD-INT-001 | Plugin SDK/manifest/event contracts are versioned, bounded, and deny direct database authority. | Implemented on protected main | Plugin SDK/integration tests |
+| PRD-INT-002 | Complete concrete secret/KMS, authorized-origin outbound delivery, retry/dead-letter, revocation fencing, and operator lifecycle. | Partial | issue #130 |
+| PRD-INT-003 | A manifest is intent only; the host grants an explicit tenant/user-scoped capability subset. | Implemented on protected main | PR #151 |
+| PRD-INT-004 | Plugin installation persistence is restart-safe and validates exact opaque installation/workspace/installer evidence. | Implemented on protected main | PR #169 and PR #175 |
+| PRD-INT-005 | Credential binding stores only opaque secret references and compensates conflicting durable winners. | Implemented on protected main | PR #172 |
+| PRD-INT-006 | Operator requests use exact request-bound one-time authority, durable replay protection, and fail-closed HTTP composition. | Implemented on protected main | PR #191 and PR #196 |
+| PRD-WEB-001 | The PWA is responsive, keyboard-operable, installable, and structurally localized in Korean and English. | Implemented on protected main | Browser/accessibility/localization tests |
+| PRD-WEB-002 | Gateway Today composes authenticated Planning and Habit state without fabricated success. | Implemented on protected main | PR #186 and PR #187; Issue #163 completed |
+| PRD-OPS-001 | Logical PostgreSQL backup/restore proves integrity and refuses unsafe targets. | Implemented on protected main | Backup scripts/tests/runbook |
+| PRD-OPS-002 | Deployment/readiness/metrics are provider-neutral and bounded. | Implemented on protected main | Compose/Kubernetes/observability evidence |
+| PRD-GOV-001 | Capability maturity and canonical buyer-gap exhaustion are reported independently. | Implemented on protected main | Commercial Readiness registry |
+| PRD-GOV-002 | Exact source, PR-base snapshot, live base, integration tree, workflow checkout, protected main, and release identities remain distinct. | Implemented on protected main | PR #154 and ADR 0010; issue #132 remains Partial |
+| PRD-GOV-003 | Scheduled model-assisted development uses exact pinned OpenCode and independent deterministic gates. | Implemented on protected main | PR #200 repairs the reviewed bootstrap boundary |
 
 ## Non-functional requirements
 
-- Fail closed on malformed ownership, UUIDs, signatures, digests, timestamps and untrusted provider data.
-- Parameterize dynamic SQL and keep service-owned database authority explicit.
-- Use idempotency and version/precondition controls wherever replay or stale overwrite can cause loss.
-- Public errors/logs/metrics/artifacts exclude credentials, hidden reasoning and unbounded tenant content.
-- Integrity digests are evidence, not authorization, confidentiality, provenance or digital signatures.
+- Fail closed on malformed ownership, UUIDs, signatures, digests, timestamps, cursors, provider evidence, and persisted rows.
+- Parameterize dynamic data and keep SQL structures fixed within service-owned schemas.
+- Use idempotency, fencing, and version/precondition controls where replay or stale overwrite can cause loss.
+- Bound request/response bodies, provider/model outputs, logs, errors, metrics, and retained evidence.
+- Credentials, cookies, secret references, raw model prompts/responses, and hidden reasoning never enter public artifacts.
+- Integrity digests are evidence, not authorization, confidentiality, provenance, or digital signatures.
 - Core customer journeys require realistic PostgreSQL and browser evidence, not mock-only success.
-- Product-owned production packages maintain exact coverage gates where configured and beginner-readable public documentation.
-- Verification evidence remains bound to the exact commit tree it inspected rather than being promoted across source, integration, base or release identities.
+- Product-owned production packages maintain exact configured coverage and beginner-readable public docstrings.
+- Pending, skipped, cancelled, absent, stale, predecessor, synthetic-only, or rate-limited evidence is never passing.
 
 ## Non-goals
 
-LifeOS does not claim medical diagnosis/treatment, autonomous consequential employment/credit/legal decisions, silent AI mutation of user data, provider availability guarantees, cross-service direct database access, certification without independent evidence, or unmeasured public SLA/RPO/RTO values.
+LifeOS does not claim medical diagnosis/treatment, autonomous consequential employment/credit/legal decisions, silent AI mutation, provider availability guarantees, cross-service SQL access, certification without independent evidence, arbitrary plugin code execution, or unmeasured public SLA/RPO/RTO values.
 
 ## Release outcome
 
-A stable release requires one exact protected integrated head where product journey, tenant/privacy boundaries, required CI/security/review, coverage, packaging, SBOM/provenance, migration/rollback, backup/restore, accessibility/localization, deployment and operational acceptance pass together.
+A stable release requires one unchanged integrated protected head where product journeys, tenant/privacy boundaries, required CI/security/review, coverage/docstrings, packaging, SBOM/provenance/reproducibility, migration/rollback/recovery, accessibility/localization, deployment, and operational acceptance pass together.
