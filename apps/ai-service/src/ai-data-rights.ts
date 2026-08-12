@@ -31,6 +31,7 @@ export type AiDataRightsJsonValue =
   | readonly AiDataRightsJsonValue[]
   | { readonly [key: string]: AiDataRightsJsonValue };
 
+/** Shared validated authority fields carried by every AI data-rights request. */
 interface AiDataRightsRequestBase {
   readonly contractVersion: typeof AI_DATA_RIGHTS_CONTRACT_VERSION;
   readonly workspaceId: string;
@@ -103,6 +104,7 @@ interface NormalizedRequestBase {
   readonly requestId: string;
 }
 
+/** Stable ordering discriminator for exported proposal and decision evidence. */
 type EvidenceKind = 'decision' | 'proposal';
 
 /** Opaque keyset position for the next deterministic export page. */
