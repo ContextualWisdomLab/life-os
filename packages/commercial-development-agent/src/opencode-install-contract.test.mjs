@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const WORKSPACE_PATH = resolve(import.meta.dirname, '../../../pnpm-workspace.yaml');
+const WORKSPACE_PATH = resolve(
+  import.meta.dirname,
+  '../../../pnpm-workspace.yaml',
+);
 const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
 
 const workspace = readFileSync(WORKSPACE_PATH, 'utf8');
@@ -37,9 +40,9 @@ function parseTopLevelYamlSequence(document, key) {
 describe('OpenCode installation boundary', () => {
   it('allows only the reviewed exact OpenCode dependency to run install lifecycle scripts', () => {
     expect(packageJson.devDependencies['opencode-ai']).toBe('1.18.9');
-    expect(parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies')).toEqual([
-      'opencode-ai',
-    ]);
+    expect(
+      parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies'),
+    ).toEqual(['opencode-ai']);
     expect(workspace).not.toContain('dangerouslyAllowAllBuilds');
   });
 });
