@@ -266,7 +266,9 @@ function requireJsonValue(value: unknown): NotificationDataRightsJsonValue {
 
 /** Computes deterministic SHA-256 evidence over canonical bounded JSON. */
 function digest(value: unknown): string {
-  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+  return createHash('sha256')
+    .update(canonicalJson(value), 'utf8')
+    .digest('hex');
 }
 
 /** Requires exactly one PostgreSQL row and rejects missing or duplicate evidence. */
@@ -346,7 +348,10 @@ export class NotificationDataRightsContributor {
     const request = normalizeRequest(untrustedRequest);
     switch (request.operation) {
       case 'export':
-        return await this.exportWorkspace(request.workspaceId, request.requestId);
+        return await this.exportWorkspace(
+          request.workspaceId,
+          request.requestId,
+        );
       case 'erase_preflight':
         return await this.preflightErase(request.requestId);
       case 'erase':
