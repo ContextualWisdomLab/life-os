@@ -189,10 +189,13 @@ async function commandSnapshot(options) {
  * read-only; if the persisted snapshot reports any active orphan workflow identities,
  * the command throws only after writing that evidence so operators retain the receipt.
  */
-async function commandWorkflowRegistry(options) {
+export async function commandWorkflowRegistry(
+  options,
+  client = githubClientFromEnvironment(),
+) {
   requireOptions(options, ['repository', 'output', 'commit']);
   const snapshot = await collectWorkflowRegistrySnapshot(
-    githubClientFromEnvironment(),
+    client,
     options.repository,
     options.commit,
     { generatedAt: options.generatedAt ?? new Date().toISOString() },
