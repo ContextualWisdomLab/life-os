@@ -79,9 +79,10 @@ Protected-main foundations are:
 - authenticated credential-free connection read lifecycle from PR #189;
 - scoped credential materialization port from PR #193;
 - authenticated connection creation with secret-first persistence and compensation boundaries from PR #197;
-- returned durable create-evidence validation and reverse-order secret compensation from PR #201.
+- returned durable create-evidence validation and reverse-order secret compensation from PR #201;
+- Calendar-owned AES-256-GCM encrypted self-hosted file credential storage from PR #203, using opaque UUIDv4-backed handles and no plaintext database persistence.
 
-Issue #129 remains **Partial** because protected main still lacks the complete concrete encrypted secret-store/KMS production adapter, Google OAuth state/PKCE/callback, refresh fencing, provider-side revoke/delete recovery, calendar discovery/selection, scoped sync composition, and retirement of the process-global development token path. Connection rows store only bounded metadata and opaque secret references; local revocation is not provider credential revocation.
+Issue #129 remains **Partial** because protected main still lacks complete Google OAuth state/PKCE/callback, refresh fencing, provider-side revoke/delete recovery, calendar discovery/selection, scoped synchronization composition, end-to-end KMS/runtime composition, and retirement of the process-global development token path. PR #203 protects one concrete self-hosted encrypted store, not the complete provider credential lifecycle. Connection rows store only bounded metadata and opaque secret references; local revocation is not provider credential revocation.
 
 ## 5. Plugin integration boundary
 
@@ -96,7 +97,9 @@ Protected main includes:
 - request-bound one-time operator authority and durable replay protection from PR #191;
 - fail-closed authenticated operator HTTP composition from PR #196.
 
-Issue #130 remains **Partial**. Protected main does not yet contain a concrete KMS adapter, host-authorized delivery-origin registry, SSRF/DNS-rebinding-safe outbound HTTPS runtime, delivery attempt/outcome persistence, retry/dead-letter worker, or complete operator-facing delivery lifecycle. Manifests and stored installations never self-authorize network capabilities.
+PR #205 is **Implemented on active PR** for a host-owned exact HTTPS delivery-origin grant scoped to installation, workspace, granting user, and opaque UUIDv4 grant identity. It does not perform outbound HTTP and does not yet provide durable PostgreSQL grant persistence, connect-time DNS/IP enforcement, redirect/proxy controls, delivery outcomes, retry/dead-letter handling, or operator recovery.
+
+Issue #130 remains **Partial**. Protected main does not yet contain a concrete plugin KMS adapter, host-authorized delivery-origin registry, SSRF/DNS-rebinding-safe outbound HTTPS runtime, delivery attempt/outcome persistence, retry/dead-letter worker, or complete operator-facing delivery lifecycle. Active PR #205 is non-shipped authority evidence only. Manifests and stored installations never self-authorize network capabilities.
 
 ## 6. AI proposal boundary
 
@@ -121,7 +124,7 @@ ADR 0011 is authoritative:
 - revocation, replay, conflict, compensation, and recovery fail closed;
 - owning services retain migrations, repositories, and API authority.
 
-The protected Calendar and Plugin Integration lines above are executable evidence of this decision. Neither closes its parent buyer gap.
+The protected Calendar and Plugin Integration lines above are executable evidence of this decision. Neither closes its parent buyer gap, and active PR #205 does not become protected authority until integration.
 
 ## 9. Model-assisted development and automation
 
@@ -143,7 +146,9 @@ ADR 0010 keeps these identities separate:
 - `protected_main_sha`;
 - `release_source_sha`.
 
-PR #154 is protected-main evidence for exact-source jobs, independently reconstructed live-base compatibility, and explicit AppGuardrail source attribution. Issue #132 remains **Partial** only for central reusable SAST/Security checkout and evidence taxonomy. A green status for one identity never transfers to another.
+PR #154 is **Implemented on protected main** for exact-source jobs, independently reconstructed live-base compatibility, and explicit AppGuardrail source attribution. Issue #132 remains **Partial** only for central reusable SAST/Security checkout and evidence taxonomy. A green status for one identity never transfers to another.
+
+PR #204 is **Implemented on active PR** for a read-only detector that binds the complete Actions workflow registry to one exact protected-default-branch Git tree and reports active orphan workflow identities. It does not authorize workflow-state mutation and is not passing merge evidence until its exact-head required checks, including a genuine Strix run, pass.
 
 PR #190 protects exact request-bound integration event authority. PR #191 and PR #196 protect the plugin operator request/replay/HTTP line. These product authorities are independent from merge authority.
 
