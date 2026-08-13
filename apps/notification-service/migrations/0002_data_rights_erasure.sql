@@ -1,5 +1,11 @@
 BEGIN;
 
+ALTER SCHEMA notification_service OWNER TO CURRENT_USER;
+ALTER TABLE notification_service.reminder_occurrences OWNER TO CURRENT_USER;
+ALTER TABLE notification_service.reminder_outcomes OWNER TO CURRENT_USER;
+ALTER TABLE notification_service.inbox_messages OWNER TO CURRENT_USER;
+ALTER FUNCTION notification_service.reject_reminder_outcome_mutation() OWNER TO CURRENT_USER;
+
 CREATE TABLE notification_service.data_rights_erasure_receipts (
   workspace_id uuid NOT NULL,
   idempotency_key uuid NOT NULL,
