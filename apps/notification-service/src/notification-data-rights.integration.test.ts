@@ -173,9 +173,9 @@ describeWithPostgres('Notification data-rights PostgreSQL integration', () => {
       },
     ]);
     expect(await workspaceRecordCount(administrativePool, workspaceId)).toBe(0);
-    expect(await workspaceRecordCount(administrativePool, otherWorkspaceId)).toBe(
-      3,
-    );
+    expect(
+      await workspaceRecordCount(administrativePool, otherWorkspaceId),
+    ).toBe(3);
 
     const replay = await administrativePool.query(
       'SELECT * FROM notification_service.erase_workspace_data($1, $2, $3, $4)',
@@ -196,9 +196,9 @@ describeWithPostgres('Notification data-rights PostgreSQL integration', () => {
         [other.outcomeId],
       ),
     ).rejects.toMatchObject({ code: '55000' });
-    expect(await workspaceRecordCount(administrativePool, otherWorkspaceId)).toBe(
-      3,
-    );
+    expect(
+      await workspaceRecordCount(administrativePool, otherWorkspaceId),
+    ).toBe(3);
   });
 
   it('rejects non-v4 erasure authority before changing tenant data', async () => {
@@ -219,51 +219,48 @@ describeWithPostgres('Notification data-rights PostgreSQL integration', () => {
     expect(await workspaceRecordCount(administrativePool, workspaceId)).toBe(3);
   });
 
-  it(
-    'keeps the SECURITY DEFINER erasure function unavailable to an ungranted runtime role',
-    async () => {
-      const workspaceId = randomUUID();
-      await seedWorkspace(administrativePool, workspaceId);
+  it('keeps the SECURITY DEFINER erasure function unavailable to an ungranted runtime role', async () => {
+    const workspaceId = randomUUID();
+    await seedWorkspace(administrativePool, workspaceId);
 
+    await administrativePool.query(
+      `DO $$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM pg_catalog.pg_roles
+           WHERE rolname = 'notification_data_rights_ungranted_test'
+         ) THEN
+           DROP OWNED BY notification_data_rights_ungranted_test;
+           DROP ROLE notification_data_rights_ungranted_test;
+         END IF;
+       END
+       $$`,
+    );
+    await administrativePool.query(
+      'CREATE ROLE notification_data_rights_ungranted_test NOLOGIN',
+    );
+    try {
       await administrativePool.query(
-        `DO $$
-         BEGIN
-           IF EXISTS (
-             SELECT 1 FROM pg_catalog.pg_roles
-             WHERE rolname = 'notification_data_rights_ungranted_test'
-           ) THEN
-             DROP OWNED BY notification_data_rights_ungranted_test;
-             DROP ROLE notification_data_rights_ungranted_test;
-           END IF;
-         END
-         $$`,
+        'GRANT USAGE ON SCHEMA notification_service TO notification_data_rights_ungranted_test',
       );
       await administrativePool.query(
-        'CREATE ROLE notification_data_rights_ungranted_test NOLOGIN',
+        'SET ROLE notification_data_rights_ungranted_test',
       );
-      try {
-        await administrativePool.query(
-          'GRANT USAGE ON SCHEMA notification_service TO notification_data_rights_ungranted_test',
-        );
-        await administrativePool.query(
-          'SET ROLE notification_data_rights_ungranted_test',
-        );
-        await expect(
-          administrativePool.query(
-            'SELECT * FROM notification_service.erase_workspace_data($1, $2, $3, $4)',
-            [workspaceId, randomUUID(), randomUUID(), randomUUID()],
-          ),
-        ).rejects.toMatchObject({ code: '42501' });
-      } finally {
-        await administrativePool.query('RESET ROLE');
-        await administrativePool.query(
-          'DROP OWNED BY notification_data_rights_ungranted_test',
-        );
-        await administrativePool.query(
-          'DROP ROLE IF EXISTS notification_data_rights_ungranted_test',
-        );
-      }
-      expect(await workspaceRecordCount(administrativePool, workspaceId)).toBe(3);
-    },
-  );
+      await expect(
+        administrativePool.query(
+          'SELECT * FROM notification_service.erase_workspace_data($1, $2, $3, $4)',
+          [workspaceId, randomUUID(), randomUUID(), randomUUID()],
+        ),
+      ).rejects.toMatchObject({ code: '42501' });
+    } finally {
+      await administrativePool.query('RESET ROLE');
+      await administrativePool.query(
+        'DROP OWNED BY notification_data_rights_ungranted_test',
+      );
+      await administrativePool.query(
+        'DROP ROLE IF EXISTS notification_data_rights_ungranted_test',
+      );
+    }
+    expect(await workspaceRecordCount(administrativePool, workspaceId)).toBe(3);
+  });
 });
