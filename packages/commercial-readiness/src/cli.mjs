@@ -17,6 +17,7 @@ import {
   validateCommercialReadinessPolicy,
   validateGitHubSnapshot,
 } from './schema.mjs';
+import { collectWorkflowRegistrySnapshot } from './workflow-registry.mjs';
 
 const COMMANDS = Object.freeze({
   snapshot: {
@@ -27,6 +28,10 @@ const COMMANDS = Object.freeze({
       'commit',
       'generatedAt',
     ]),
+    booleans: new Set(),
+  },
+  'workflow-registry': {
+    values: new Set(['repository', 'output', 'commit', 'generatedAt']),
     booleans: new Set(),
   },
   audit: {
@@ -176,6 +181,36 @@ async function commandSnapshot(options) {
   );
 }
 
+/**
+ * Collects read-only Actions workflow-registry evidence for one exact repository
+ * commit and persists the complete bounded snapshot as JSON at the required output.
+ *
+ * `repository`, `output`, and `commit` are required command options. Collection is
+ * read-only; if the persisted snapshot reports any active orphan workflow identities,
+ * the command throws only after writing that evidence so operators retain the receipt.
+ */
+export async function commandWorkflowRegistry(
+  options,
+  client = githubClientFromEnvironment(),
+) {
+  requireOptions(options, ['repository', 'output', 'commit']);
+  const snapshot = await collectWorkflowRegistrySnapshot(
+    client,
+    options.repository,
+    options.commit,
+    { generatedAt: options.generatedAt ?? new Date().toISOString() },
+  );
+  await writeJson(options.output, snapshot);
+  console.log(
+    `workflow registry: ${snapshot.workflow_count} identity record(s), ${snapshot.active_orphans.length} active orphan(s)`,
+  );
+  if (snapshot.active_orphans.length > 0) {
+    throw new Error(
+      `Workflow registry contains ${snapshot.active_orphans.length} active orphan identity record(s)`,
+    );
+  }
+}
+
 async function commandAudit(options) {
   requireOptions(options, [
     'manifest',
@@ -289,6 +324,9 @@ async function commandDrain(options) {
 async function main(argv = process.argv.slice(2)) {
   const { command, options } = parseArguments(argv);
   if (command === 'snapshot') return await commandSnapshot(options);
+  if (command === 'workflow-registry') {
+    return await commandWorkflowRegistry(options);
+  }
   if (command === 'audit') return await commandAudit(options);
   if (command === 'publish') return await commandPublish(options);
   if (command === 'drain') return await commandDrain(options);
