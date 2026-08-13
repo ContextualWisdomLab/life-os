@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAiRuntime, type AiPool } from './ai-runtime';
-import type {
-  ProposalAuditSqlQueryResult,
-} from './postgres-proposal-audit-repository';
+import type { ProposalAuditSqlQueryResult } from './postgres-proposal-audit-repository';
 
 const DATABASE_URL = ['postgresql:', '', 'db', 'life_os'].join('/');
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -30,9 +28,8 @@ function inertPool(): AiPool {
 
 describe('AI data-rights runtime composition', () => {
   it('exposes a service-owned contributor through the production runtime', async () => {
-    const runtime = createAiRuntime(
-      { AI_DATABASE_URL: DATABASE_URL },
-      () => inertPool(),
+    const runtime = createAiRuntime({ AI_DATABASE_URL: DATABASE_URL }, () =>
+      inertPool(),
     );
 
     try {
