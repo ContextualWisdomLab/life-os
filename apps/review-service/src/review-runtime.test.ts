@@ -1,5 +1,6 @@
 import type { PoolConfig } from 'pg';
 import { describe, expect, it } from 'vitest';
+import type { ReviewDataRightsSqlClient } from './review-data-rights';
 import {
   createReviewPoolConfiguration,
   createReviewRuntime,
@@ -18,6 +19,12 @@ class FakeReviewPool implements ReviewPool {
 
   async query<Row>(): Promise<{ rows: Row[] }> {
     return { rows: [] };
+  }
+
+  async transaction<T>(
+    operation: (client: ReviewDataRightsSqlClient) => Promise<T>,
+  ): Promise<T> {
+    return await operation(this);
   }
 
   async end(): Promise<void> {
@@ -72,7 +79,7 @@ describe('Review runtime', () => {
     ).toThrowError('Review database idle timeout is invalid');
   });
 
-  it('passes validated configuration to the pool and closes it once', async () => {
+  it('passes validated configuration, composes data rights, and closes once', async () => {
     const pool = new FakeReviewPool();
     let capturedConfiguration: PoolConfig | undefined;
     const runtime = createReviewRuntime(
@@ -88,6 +95,7 @@ describe('Review runtime', () => {
       application_name: 'life-os-review-service',
       max: 10,
     });
+    expect(runtime.dataRightsContributor).toBeDefined();
     await runtime.onApplicationShutdown();
     await runtime.close();
     expect(pool.endCalls).toBe(1);
