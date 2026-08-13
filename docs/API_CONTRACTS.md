@@ -43,7 +43,7 @@ This registry summarizes repository-level contract invariants. Concrete route, e
 | Contributor lifecycle v1 | Contracts | Implemented on protected main | PR #159 |
 | Planning data-rights contributor | Planning | Implemented on protected main | PR #179 and authenticated transport PR #194 |
 | Habit data-rights contributor | Habit | Implemented on protected main | PR #184 and authenticated transport PR #192 |
-| Review data-rights contributor | Review | Implemented on active PR | PR #195 |
+| Review data-rights contributor | Review | Implemented on protected main | PR #195 |
 | Notification data-rights contributor | Notification | Implemented on active PR | PR #198 |
 | AI data-rights contributor | AI Proposal | Implemented on active PR | PR #199 |
 | Complete cross-domain export/erasure | Identity + every owner | Partial | issue #55 |
@@ -53,9 +53,11 @@ This registry summarizes repository-level contract invariants. Concrete route, e
 | Plugin credential binding | Integration | Implemented on protected main | PR #172; opaque secret reference only |
 | Plugin operator request authority | Integration | Implemented on protected main | PR #191 one-time request/replay evidence |
 | Plugin operator HTTP composition | Integration | Implemented on protected main | PR #196 fail-closed composition |
+| Plugin delivery-origin grant authority | Integration | Implemented on active PR | PR #205; host-owned exact HTTPS origin grant only, with no outbound HTTP or durable grant adapter claim |
 | Complete plugin secret/outbound runtime | Integration | Partial | issue #130 |
 | Source/live-base/integration verification | Repository workflows | Implemented on protected main | PR #154; residual central taxonomy issue #132 |
 | Exact pinned OpenCode bootstrap allowlist | Repository automation | Implemented on protected main | PR #200 |
+| Actions workflow-registry orphan detector | Repository automation | Implemented on active PR | PR #204; read-only exact-tree/registry evidence and no workflow-mutation authority |
 
 ## Data-rights contributor v1
 
@@ -68,7 +70,7 @@ PR #159 protects the versioned operation set:
 - `erase` binds exact request/workspace/actor/idempotency authority and returns replay-safe owner receipt evidence;
 - `verify_erased` proves the owner no longer retains scoped live records or fails closed.
 
-Planning and Habit are protected participants. Review, Notification, and AI are active-PR participants. The contract does not imply every owner participates or that whole-product reconciliation/delivery is complete.
+Planning, Habit, and Review are protected participants. Notification and AI are active-PR participants. The contract does not imply every owner participates or that whole-product reconciliation/delivery is complete.
 
 ## Calendar connection lifecycle
 
@@ -108,6 +110,12 @@ PR #191 binds installation/workspace/actor, exact method/path, freshness, and on
 
 No operator route grants arbitrary SQL, filesystem, subprocess, tool, or network authority. Outbound delivery remains **Partial** under #130.
 
+### Delivery-origin authority
+
+**Status:** Implemented on active PR
+
+PR #205 adds a host-owned authority record for one exact normalized HTTPS origin scoped to opaque UUIDv4 grant, installation, workspace, and granting-user identities. A plugin manifest still expresses intent only and cannot self-authorize a destination. This active slice performs no outbound HTTP and does not yet provide DNS/IP rebinding resistance, connect-time address enforcement, redirect/proxy policy, durable PostgreSQL grant storage, delivery outcomes, retry/dead-letter handling, or operator recovery. Those remain **Partial** under #130.
+
 ## Events
 
 Asynchronous events use opaque event IDs, explicit type/version, validated workspace/actor/correlation/causation context, bounded immutable payloads, and idempotent consumers. PR #190 binds protected integration event authority to the exact request. Receiving an event never grants producer-database authority.
@@ -118,6 +126,8 @@ Breaking route/event/schema semantics require explicit versioning or a reviewed 
 
 ## Verification evidence identity
 
-**Status:** Implemented on protected main
+**Status:** Implemented on active PR
 
 `source_head_sha`, `pr_base_snapshot_sha`, `live_base_tip_sha`, integration/synthetic tree identity, `workflow_checkout_sha`, `protected_main_sha`, and `release_source_sha` are separate authorities. PR #154 protects source and live-base compatibility separation. Issue #132 remains **Partial** for central reusable scanner attribution; a synthetic merge scan cannot be called exact-source evidence.
+
+PR #204 is an active, read-only extension that compares one exact protected-default-branch Git tree with the complete Actions workflow registry so deleted workflow files cannot silently leave active orphan identities. Its evidence is not protected truth until integration and it does not authorize workflow-state mutation.
