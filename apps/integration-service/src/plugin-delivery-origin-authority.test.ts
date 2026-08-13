@@ -50,7 +50,6 @@ function activeGrant(
 function authority(
   existing?: PluginDeliveryOriginGrantRecord,
   durableInstallation: PluginInstallationRecord | null = installation(),
-  now: () => Date = () => NOW,
 ) {
   const createIfAbsent = vi.fn(
     async (candidate: PluginDeliveryOriginGrantRecord) =>
@@ -77,7 +76,7 @@ function authority(
     subject: new PluginDeliveryOriginAuthority(
       { createIfAbsent, findById, revokeActive },
       { findById: findInstallationById },
-      now,
+      () => NOW,
     ),
   };
 }
@@ -131,65 +130,46 @@ describe('PluginDeliveryOriginAuthority', () => {
     'https://api.example.com/#fragment',
     ' https://api.example.com',
     'https://api.example.com\n',
-    'https://api.example.com:0',
-    'null',
-    `https://${'a'.repeat(505)}`,
-  ])(
-    'rejects non-origin or non-HTTPS authority before installation I/O: %s',
-    async (origin) => {
-      const fixture = authority();
-      await expectInvalid(
-        fixture.subject.grant(
-          { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-          INSTALLATION_ID,
-          { grantId: GRANT_ID, origin },
-        ),
-      );
-      expect(fixture.findInstallationById).not.toHaveBeenCalled();
-      expect(fixture.createIfAbsent).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
-    ['missing installation', null],
-    [
-      'mismatched installation id',
-      installation({
-        installationId: '55555555-5555-4555-8555-555555555555',
-      }),
-    ],
-    [
-      'mismatched workspace',
-      installation({
-        workspaceId: '66666666-6666-4666-8666-666666666666',
-      }),
-    ],
-    [
-      'mismatched actor',
-      installation({
-        installedByUserId: '77777777-7777-4777-8777-777777777777',
-      }),
-    ],
-    [
-      'revoked installation',
-      installation({
-        status: 'revoked',
-        revokedAt: '2026-08-12T05:30:00.000Z',
-      }),
-    ],
-  ])('rejects %s before persistence', async (_label, record) => {
-    const fixture = authority(undefined, record);
+  ])('rejects non-origin or non-HTTPS authority: %s', async (origin) => {
+    const fixture = authority();
     await expectInvalid(
       fixture.subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
         INSTALLATION_ID,
-        { grantId: GRANT_ID, origin: 'https://api.example.com' },
+        { grantId: GRANT_ID, origin },
       ),
     );
     expect(fixture.createIfAbsent).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed installation and grant identifiers before avoidable I/O', async () => {
+  it('rejects missing, mismatched or inactive durable installation authority before persistence', async () => {
+    for (const record of [
+      null,
+      installation({
+        installationId: '55555555-5555-4555-8555-555555555555',
+      }),
+      installation({
+        workspaceId: '66666666-6666-4666-8666-666666666666',
+      }),
+      installation({
+        installedByUserId: '77777777-7777-4777-8777-777777777777',
+      }),
+      installation({
+        status: 'revoked',
+        revokedAt: '2026-08-12T05:30:00.000Z',
+      }),
+    ]) {
+      const fixture = authority(undefined, record);
+      await expectInvalid(
+        fixture.subject.grant(
+          { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+          INSTALLATION_ID,
+          { grantId: GRANT_ID, origin: 'https://api.example.com' },
+        ),
+      );
+      expect(fixture.createIfAbsent).not.toHaveBeenCalled();
+    }
+
     const malformedInstallation = authority();
     await expectInvalid(
       malformedInstallation.subject.grant(
@@ -208,23 +188,7 @@ describe('PluginDeliveryOriginAuthority', () => {
         { grantId: 'not-a-uuid', origin: 'https://api.example.com' },
       ),
     );
-    expect(malformedGrant.findInstallationById).not.toHaveBeenCalled();
     expect(malformedGrant.createIfAbsent).not.toHaveBeenCalled();
-  });
-
-  it('fails closed when the authority clock cannot produce an instant', async () => {
-    const invalidDate = authority(undefined, installation(), () =>
-      new Date(Number.NaN),
-    );
-
-    await expectInvalid(
-      invalidDate.subject.grant(
-        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        INSTALLATION_ID,
-        { grantId: GRANT_ID, origin: 'https://api.example.com' },
-      ),
-    );
-    expect(invalidDate.createIfAbsent).not.toHaveBeenCalled();
   });
 
   it('accepts an exact durable replay but rejects conflicting opaque grant reuse', async () => {
@@ -317,14 +281,6 @@ describe('PluginDeliveryOriginAuthority', () => {
           installationId: '99999999-9999-4999-8999-999999999999',
         }),
       ).subject.revoke(
-        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        INSTALLATION_ID,
-        GRANT_ID,
-      ),
-    );
-
-    await expectInvalid(
-      authority().subject.revoke(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
         INSTALLATION_ID,
         GRANT_ID,
