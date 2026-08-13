@@ -133,14 +133,10 @@ describe('NotificationDataRightsContributor', () => {
 
   it('uses codepoint-stable canonical JSON for reproducible export evidence', async () => {
     const first = new NotificationDataRightsContributor(
-      new ScriptedClient([
-        exportResult([{ a: 'lower', Z: 'upper' }], [], []),
-      ]),
+      new ScriptedClient([exportResult([{ a: 'lower', Z: 'upper' }], [], [])]),
     );
     const second = new NotificationDataRightsContributor(
-      new ScriptedClient([
-        exportResult([{ Z: 'upper', a: 'lower' }], [], []),
-      ]),
+      new ScriptedClient([exportResult([{ Z: 'upper', a: 'lower' }], [], [])]),
     );
 
     const firstResponse = await first.handle(request('export'));
@@ -225,9 +221,7 @@ describe('NotificationDataRightsContributor', () => {
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]?.text).toContain('has_function_privilege');
     expect(client.calls[0]?.text).not.toContain('has_table_privilege');
-    expect(client.calls[0]?.text).not.toContain(
-      'data_rights_erasure_receipts',
-    );
+    expect(client.calls[0]?.text).not.toContain('data_rights_erasure_receipts');
   });
 
   it('rejects malformed request envelopes before persistence access', async () => {
