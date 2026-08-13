@@ -62,7 +62,7 @@ Protected main now requires signed tenant authority on Planning through PR #168 
 
 Gateway Today composition is real protected behavior: PR #186 composes authenticated Planning state and PR #187 composes authenticated Habit state. Issue #163 is completed; the earlier PR #164 fail-closed placeholder removal remains historical safety evidence, not the current end state.
 
-Durable Today uses explicit local-to-workspace acceptance, strong create/update preconditions, idempotency, and stale-conflict reconciliation. No browser draft is presented as durable before server acceptance.
+Durable Today synchronization is protected-main behavior. Durable Today uses explicit local-to-workspace acceptance, strong create/update preconditions, idempotency, and stale-conflict reconciliation. No browser draft is presented as durable before server acceptance.
 
 ## 4. Calendar integration boundary
 
@@ -81,6 +81,8 @@ Protected-main foundations are:
 - authenticated connection creation with secret-first persistence and compensation boundaries from PR #197;
 - returned durable create-evidence validation and reverse-order secret compensation from PR #201;
 - Calendar-owned AES-256-GCM encrypted self-hosted file credential storage from PR #203, using opaque UUIDv4-backed handles and no plaintext database persistence.
+
+PR #150 added workspace-and-user scoped connection persistence with opaque secret references. PR #153 added atomic local connection revocation; neither grants provider-side credential revocation authority.
 
 Issue #129 remains **Partial** because protected main still lacks complete Google OAuth state/PKCE/callback, refresh fencing, provider-side revoke/delete recovery, calendar discovery/selection, scoped synchronization composition, end-to-end KMS/runtime composition, and retirement of the process-global development token path. PR #203 protects one concrete self-hosted encrypted store, not the complete provider credential lifecycle. Connection rows store only bounded metadata and opaque secret references; local revocation is not provider credential revocation.
 
@@ -147,6 +149,8 @@ ADR 0010 keeps these identities separate:
 - `release_source_sha`.
 
 PR #154 is **Implemented on protected main** for exact-source jobs, independently reconstructed live-base compatibility, and explicit AppGuardrail source attribution. Issue #132 remains **Partial** only for central reusable SAST/Security checkout and evidence taxonomy. A green status for one identity never transfers to another.
+
+Old PR #147 is **Superseded** as verification authority; the protected PR #154 identity model above is the current canonical line.
 
 PR #204 is **Implemented on active PR** for a read-only detector that binds the complete Actions workflow registry to one exact protected-default-branch Git tree and reports active orphan workflow identities. It does not authorize workflow-state mutation and is not passing merge evidence until its exact-head required checks, including a genuine Strix run, pass.
 
