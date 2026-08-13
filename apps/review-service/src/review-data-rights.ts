@@ -25,8 +25,7 @@ export interface ReviewDataRightsSqlClient {
 }
 
 /** Transaction-capable Review SQL boundary required by destructive erasure. */
-export interface ReviewDataRightsTransactionalSqlClient
-  extends ReviewDataRightsSqlClient {
+export interface ReviewDataRightsTransactionalSqlClient extends ReviewDataRightsSqlClient {
   transaction<T>(
     operation: (client: ReviewDataRightsSqlClient) => Promise<T>,
   ): Promise<T>;
@@ -280,7 +279,9 @@ function normalizeCompletion(
 ): ReviewDataRightsJsonValue {
   const workspaceId = requireUuidV4(row.workspace_id, 'workspace_id');
   if (workspaceId !== expectedWorkspaceId) {
-    return fail('Review completion workspace does not match requested workspace');
+    return fail(
+      'Review completion workspace does not match requested workspace',
+    );
   }
   const ritualKind = requireString(row.ritual_kind, 'ritual_kind', 32);
   if (
