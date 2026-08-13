@@ -148,4 +148,4 @@ test('fails closed on pagination truncation, tree truncation, and branch movemen
     collectWorkflowRegistrySnapshot(movedClient, 'ContextualWisdomLab/life-os', SHA),
     /moved/i,
   );
-}
+});
