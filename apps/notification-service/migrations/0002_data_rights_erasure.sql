@@ -85,6 +85,9 @@ BEGIN
 END;
 $$;
 
+COMMENT ON FUNCTION notification_service.reject_reminder_outcome_mutation() IS
+  'SECURITY DEFINER boundary that enforces reminder-outcome immutability; DELETE is allowed only for the same backend, transaction, and workspace authorized by the owner-controlled erasure procedure.';
+
 REVOKE ALL ON FUNCTION notification_service.reject_reminder_outcome_mutation() FROM PUBLIC;
 
 CREATE FUNCTION notification_service.erase_workspace_data(
