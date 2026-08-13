@@ -40,7 +40,7 @@ flowchart LR
 
 ## 2. Identity, workspace, and data-rights authority
 
-Identity owns internal user identity, external provider mappings, workspace membership, sessions, authentication provenance, whole-request data-rights identity, and durable aggregate request/receipt evidence. Authentication-ceremony time remains separate from compatible session issuance and rotation.
+Identity owns internal user identity, external provider mappings, workspace membership, sessions, authentication provenance, whole-request data-rights identity, and durable aggregate request/receipt evidence. Authentication-ceremony time is distinct from compatible session issuance and rotation.
 
 Protected main includes:
 
@@ -50,7 +50,7 @@ Protected main includes:
 - deterministic contributor export integrity evidence;
 - the versioned `life-os.data-rights-contributor.v1` contract from PR #159.
 
-Planning is a protected contributor through PR #179 and its request-bound authenticated transport through PR #194. Habit is a protected contributor through PR #184 and its replay-safe authenticated transport through PR #192. Review contribution is **Implemented on active PR** in PR #195, Notification contribution is **Implemented on active PR** in PR #198, and AI contribution is **Implemented on active PR** in PR #199.
+Planning is a protected contributor through PR #179 and its request-bound authenticated transport through PR #194. Habit is a protected contributor through PR #184 and its replay-safe authenticated transport through PR #192. Review contribution is **Implemented on protected main** in PR #195, Notification contribution is **Implemented on active PR** in PR #198, and AI contribution is **Implemented on active PR** in PR #199.
 
 Issue #55 remains **Partial**. Active contributors do not become shipped truth, and even their future integration will not by itself finish Identity-owned data, Calendar, Privacy, Plugin Integration, durable reconciliation, retention/legal-hold/backup-expiry, protected export delivery, or final participant-set completion.
 
