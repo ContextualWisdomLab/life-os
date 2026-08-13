@@ -61,6 +61,16 @@ export interface PluginDeliveryOriginGrantStore {
   ): Promise<PluginDeliveryOriginGrantRecord | undefined>;
 }
 
+/** Read-only service-owned authority needed to validate a plugin installation. */
+export interface PluginInstallationAuthorityReader {
+  /** Reads one installation only inside exact authenticated workspace/user scope. */
+  findById(
+    installationId: string,
+    workspaceId: string,
+    installedByUserId: string,
+  ): Promise<PluginInstallationRecord | undefined>;
+}
+
 /** Host input for one exact delivery-origin grant. */
 export interface GrantPluginDeliveryOriginInput {
   readonly grantId: string;
@@ -181,9 +191,11 @@ function requireRecord(
 
 function requireActiveInstallation(
   context: PluginInstallationContext,
+  installationId: string,
   installation: PluginInstallationRecord,
 ): PluginInstallationRecord {
   if (
+    installation.installationId !== installationId ||
     installation.installationId !==
       requireUuidV4(installation.installationId) ||
     installation.workspaceId !== context.workspaceId ||
@@ -220,21 +232,32 @@ function sameActiveGrant(
  * redirect, proxy, timeout, byte-limit or connect-time egress enforcement.
  */
 export class PluginDeliveryOriginAuthority {
-  /** Creates the authority boundary over one service-owned persistence port. */
+  /** Creates the authority boundary over service-owned persistence ports. */
   constructor(
     private readonly store: PluginDeliveryOriginGrantStore,
+    private readonly installations: PluginInstallationAuthorityReader,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  /** Creates an origin grant or returns its exact active durable replay. */
+  /** Creates an origin grant only after resolving durable installation authority. */
   async grant(
     trustedContext: PluginInstallationContext,
-    installationEvidence: PluginInstallationRecord,
+    installationIdInput: string,
     input: GrantPluginDeliveryOriginInput,
   ): Promise<PluginDeliveryOriginGrantRecord> {
     const context = requireContext(trustedContext);
+    const installationId = requireUuidV4(installationIdInput);
+    const installationEvidence = await this.installations.findById(
+      installationId,
+      context.workspaceId,
+      context.actorUserId,
+    );
+    if (!installationEvidence) {
+      return invalid();
+    }
     const installation = requireActiveInstallation(
       context,
+      installationId,
       installationEvidence,
     );
     const candidate = freezeRecord({

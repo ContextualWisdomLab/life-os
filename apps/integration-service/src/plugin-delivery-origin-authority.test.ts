@@ -47,7 +47,10 @@ function activeGrant(
   });
 }
 
-function authority(existing?: PluginDeliveryOriginGrantRecord) {
+function authority(
+  existing?: PluginDeliveryOriginGrantRecord,
+  durableInstallation: PluginInstallationRecord | null = installation(),
+) {
   const createIfAbsent = vi.fn(
     async (candidate: PluginDeliveryOriginGrantRecord) =>
       existing ?? candidate,
@@ -62,12 +65,17 @@ function authority(existing?: PluginDeliveryOriginGrantRecord) {
         })
       : undefined,
   );
+  const findInstallationById = vi.fn(async () =>
+    durableInstallation === null ? undefined : durableInstallation,
+  );
   return {
     createIfAbsent,
     findById,
     revokeActive,
+    findInstallationById,
     subject: new PluginDeliveryOriginAuthority(
       { createIfAbsent, findById, revokeActive },
+      { findById: findInstallationById },
       () => NOW,
     ),
   };
@@ -80,13 +88,13 @@ async function expectInvalid(operation: Promise<unknown>): Promise<void> {
 }
 
 describe('PluginDeliveryOriginAuthority', () => {
-  it('persists only host-owned normalized HTTPS origin authority', async () => {
+  it('resolves installation authority from host-owned persistence before granting an origin', async () => {
     const fixture = authority();
 
     await expect(
       fixture.subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        INSTALLATION_ID,
         {
           grantId: GRANT_ID,
           origin: 'https://API.Example.com:443',
@@ -94,13 +102,18 @@ describe('PluginDeliveryOriginAuthority', () => {
       ),
     ).resolves.toEqual(activeGrant());
 
+    expect(fixture.findInstallationById).toHaveBeenCalledWith(
+      INSTALLATION_ID,
+      WORKSPACE_ID,
+      USER_ID,
+    );
     expect(fixture.createIfAbsent).toHaveBeenCalledWith(activeGrant());
 
     const explicitPort = authority();
     await expect(
       explicitPort.subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        INSTALLATION_ID,
         {
           grantId: GRANT_ID,
           origin: 'https://API.Example.com:8443',
@@ -122,53 +135,67 @@ describe('PluginDeliveryOriginAuthority', () => {
     await expectInvalid(
       fixture.subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        INSTALLATION_ID,
         { grantId: GRANT_ID, origin },
       ),
     );
     expect(fixture.createIfAbsent).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed or inactive installation authority before persistence', async () => {
+  it('rejects missing, mismatched or inactive durable installation authority before persistence', async () => {
     for (const record of [
+      null,
       installation({
-        workspaceId: '55555555-5555-4555-8555-555555555555',
+        installationId: '55555555-5555-4555-8555-555555555555',
       }),
       installation({
-        installedByUserId: '66666666-6666-4666-8666-666666666666',
+        workspaceId: '66666666-6666-4666-8666-666666666666',
+      }),
+      installation({
+        installedByUserId: '77777777-7777-4777-8777-777777777777',
       }),
       installation({
         status: 'revoked',
         revokedAt: '2026-08-12T05:30:00.000Z',
       }),
     ]) {
-      const fixture = authority();
+      const fixture = authority(undefined, record);
       await expectInvalid(
         fixture.subject.grant(
           { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-          record,
+          INSTALLATION_ID,
           { grantId: GRANT_ID, origin: 'https://api.example.com' },
         ),
       );
       expect(fixture.createIfAbsent).not.toHaveBeenCalled();
     }
 
-    const malformed = authority();
+    const malformedInstallation = authority();
     await expectInvalid(
-      malformed.subject.grant(
+      malformedInstallation.subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        'not-a-uuid',
+        { grantId: GRANT_ID, origin: 'https://api.example.com' },
+      ),
+    );
+    expect(malformedInstallation.findInstallationById).not.toHaveBeenCalled();
+
+    const malformedGrant = authority();
+    await expectInvalid(
+      malformedGrant.subject.grant(
+        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+        INSTALLATION_ID,
         { grantId: 'not-a-uuid', origin: 'https://api.example.com' },
       ),
     );
-    expect(malformed.createIfAbsent).not.toHaveBeenCalled();
+    expect(malformedGrant.createIfAbsent).not.toHaveBeenCalled();
   });
 
   it('accepts an exact durable replay but rejects conflicting opaque grant reuse', async () => {
     await expect(
       authority(activeGrant()).subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        INSTALLATION_ID,
         { grantId: GRANT_ID, origin: 'https://api.example.com' },
       ),
     ).resolves.toEqual(activeGrant());
@@ -178,7 +205,7 @@ describe('PluginDeliveryOriginAuthority', () => {
         activeGrant({ origin: 'https://other.example.com' }),
       ).subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        INSTALLATION_ID,
         { grantId: GRANT_ID, origin: 'https://api.example.com' },
       ),
     );
@@ -191,7 +218,7 @@ describe('PluginDeliveryOriginAuthority', () => {
         }),
       ).subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
-        installation(),
+        INSTALLATION_ID,
         { grantId: GRANT_ID, origin: 'https://api.example.com' },
       ),
     );
@@ -217,7 +244,7 @@ describe('PluginDeliveryOriginAuthority', () => {
     await expect(
       authority(
         activeGrant({
-          workspaceId: '77777777-7777-4777-8777-777777777777',
+          workspaceId: '88888888-8888-4888-8888-888888888888',
         }),
       ).subject.getGrant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
@@ -251,7 +278,7 @@ describe('PluginDeliveryOriginAuthority', () => {
     await expectInvalid(
       authority(
         activeGrant({
-          installationId: '88888888-8888-4888-8888-888888888888',
+          installationId: '99999999-9999-4999-8999-999999999999',
         }),
       ).subject.revoke(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
