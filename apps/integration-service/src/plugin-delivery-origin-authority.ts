@@ -243,7 +243,7 @@ export class PluginDeliveryOriginAuthority {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  /** Creates an origin grant only after resolving durable installation authority. */
+  /** Creates an origin grant only after validating actor input and durable installation authority. */
   async grant(
     trustedContext: PluginInstallationContext,
     installationIdInput: string,
@@ -251,6 +251,8 @@ export class PluginDeliveryOriginAuthority {
   ): Promise<PluginDeliveryOriginGrantRecord> {
     const context = requireContext(trustedContext);
     const installationId = requireUuidV4(installationIdInput);
+    const grantId = requireUuidV4(input.grantId);
+    const origin = normalizeOrigin(input.origin);
     const installationEvidence = await this.installations.findById(
       installationId,
       context.workspaceId,
@@ -266,11 +268,11 @@ export class PluginDeliveryOriginAuthority {
     );
     const candidate = freezeRecord({
       authorityVersion: AUTHORITY_VERSION,
-      grantId: requireUuidV4(input.grantId),
+      grantId,
       installationId: installation.installationId,
       workspaceId: context.workspaceId,
       grantedByUserId: context.actorUserId,
-      origin: normalizeOrigin(input.origin),
+      origin,
       status: 'active',
       grantedAt: currentInstant(this.now),
       revokedAt: null,
