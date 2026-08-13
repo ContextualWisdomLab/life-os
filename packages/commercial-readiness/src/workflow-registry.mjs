@@ -14,6 +14,10 @@ function requireRepository(value) {
   if (typeof value !== 'string' || !REPOSITORY_PATTERN.test(value)) {
     return invalid('Workflow registry repository is invalid');
   }
+  const [owner, repository] = value.split('/');
+  if (owner === '.' || owner === '..' || repository === '.' || repository === '..') {
+    return invalid('Workflow registry repository is invalid');
+  }
   return value;
 }
 
@@ -93,6 +97,8 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
 
   const presentPaths = new Set();
   for (const value of treePaths) {
+    if (typeof value !== 'string') return invalid('Workflow registry path is invalid');
+    if (!value.startsWith('.github/workflows/')) continue;
     const path = requireWorkflowPath(value);
     if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(path)) presentPaths.add(path);
   }
@@ -174,6 +180,13 @@ async function collectWorkflowRegistry(client, repository) {
   return invalid('GitHub workflow registry pagination exceeded the page limit');
 }
 
+/**
+ * Extracts validated repository-owned workflow YAML paths from one complete Git tree.
+ *
+ * Returns exact case-sensitive `.github/workflows/*.yml|yaml` blob paths. Malformed,
+ * truncated, or unsafe workflow-shaped tree evidence fails closed; unrelated tree
+ * entries are ignored.
+ */
 function workflowPathsFromTree(payload) {
   if (!payload || payload.truncated !== false || !Array.isArray(payload.tree)) {
     return invalid('GitHub workflow tree was truncated or invalid');
@@ -189,6 +202,12 @@ function workflowPathsFromTree(payload) {
   return paths;
 }
 
+/**
+ * Reads and validates the exact commit SHA currently named by a default branch.
+ *
+ * Returns a normalized 40-character hexadecimal SHA. Missing or malformed GitHub
+ * branch evidence fails closed through the shared SHA validator.
+ */
 async function readDefaultBranchHead(client, repository, defaultBranch) {
   const payload = await client.requestJson(
     `/repos/${repository}/branches/${encodeURIComponent(defaultBranch)}`,
@@ -196,6 +215,12 @@ async function readDefaultBranchHead(client, repository, defaultBranch) {
   return requireSha(payload?.commit?.sha);
 }
 
+/**
+ * Reads the Git tree SHA bound to an exact commit and verifies commit identity first.
+ *
+ * Returns a normalized 40-character hexadecimal tree SHA. Malformed responses or a
+ * response whose commit SHA differs from the requested immutable commit fail closed.
+ */
 async function readCommitTreeSha(client, repository, commitSha) {
   const payload = await client.requestJson(
     `/repos/${repository}/git/commits/${commitSha}`,
@@ -230,6 +255,9 @@ export async function collectWorkflowRegistrySnapshot(
     typeof defaultBranch !== 'string' ||
     defaultBranch.length === 0 ||
     defaultBranch.length > 255 ||
+    defaultBranch === '.' ||
+    defaultBranch === '..' ||
+    defaultBranch.includes('/') ||
     CONTROL_OR_ESCAPE_PATTERN.test(defaultBranch)
   ) {
     return invalid('GitHub default branch is invalid');
