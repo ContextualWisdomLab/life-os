@@ -76,7 +76,9 @@ describe('Notification data-rights erasure database contract', () => {
     expect(sql).toContain('pg_backend_pid()');
     expect(sql).toContain('pg_current_xact_id()');
     expect(sql).not.toContain('DISABLE TRIGGER');
-    expect(sql).not.toContain('ENABLE TRIGGER reminder_outcomes_row_mutation_guard');
+    expect(sql).not.toContain(
+      'ENABLE TRIGGER reminder_outcomes_row_mutation_guard',
+    );
     expect(inboxDelete).toBeGreaterThan(-1);
     expect(authorizationInsert).toBeGreaterThan(inboxDelete);
     expect(outcomeDelete).toBeGreaterThan(authorizationInsert);
