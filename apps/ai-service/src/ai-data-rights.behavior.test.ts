@@ -146,11 +146,12 @@ describe('AiDataRightsContributor', () => {
     expect(client.calls[0]?.text).not.toContain('idempotency_key');
   });
 
-  it('paginates large valid workspaces with an opaque deterministic keyset cursor', async () => {
+  it('paginates a same-time decision-to-proposal boundary with an opaque deterministic keyset cursor', async () => {
     const firstPage = Array.from({ length: 1_001 }, (_, index) =>
       evidence(
         { proposalId: uuid(index + 1), request: { index } },
         index + 1,
+        index < 1_000 ? 'decision' : 'proposal',
       ),
     );
     const finalRecord = evidence(
@@ -179,7 +180,7 @@ describe('AiDataRightsContributor', () => {
     expect(client.calls[1]?.values).toEqual([
       WORKSPACE_ID,
       EVIDENCE_TIME,
-      'proposal',
+      'decision',
       uuid(1_000),
       1_001,
     ]);
@@ -279,7 +280,7 @@ describe('AiDataRightsContributor', () => {
 
   it('sanitizes database failures', async () => {
     const contributor = new AiDataRightsContributor(
-      new ScriptedClient([new Error('postgresql://admin:secret@db')]),
+      new ScriptedClient([new Error('database adapter private failure detail')]),
     );
     const failure = contributor.handle(request('export'));
     await expect(failure).rejects.toBeInstanceOf(AiDataRightsError);
@@ -292,6 +293,7 @@ describe('AiDataRightsContributor', () => {
       { rows: [{}, {}] },
       { rows: new Array(1) },
       { rows: [{ evidence_records: {} }] },
+      exportResult(new Array(1_001)),
       exportResult(Array.from({ length: 1_002 }, () => null)),
     ] as ProposalAuditSqlQueryResult<unknown>[]) {
       await expectDataRightsFailure(
