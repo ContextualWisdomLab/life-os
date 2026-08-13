@@ -111,6 +111,50 @@ describe('PostgresCalendarConnectionRepository', () => {
     expect(JSON.stringify(client.calls[0]?.values)).not.toContain('refresh_token');
   });
 
+  it('compensates the exact attempted row when create evidence is invalid', async () => {
+    const module = await repositoryModule();
+    const Repository = module.PostgresCalendarConnectionRepository as new (
+      client: RecordingSqlClient,
+    ) => { createConnection(input: unknown): Promise<unknown> };
+    const PersistenceError = module.CalendarConnectionPersistenceError as new () => Error;
+    expect(typeof Repository).toBe('function');
+    expect(typeof PersistenceError).toBe('function');
+    const client = new RecordingSqlClient([
+      {
+        rows: [
+          storedRow({
+            user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          }),
+        ],
+        rowCount: 1,
+      },
+      { rows: [], rowCount: 1 },
+    ]);
+    const repository = new Repository(client);
+
+    await expect(repository.createConnection(createInput())).rejects.toBeInstanceOf(
+      PersistenceError,
+    );
+
+    expect(client.calls).toHaveLength(2);
+    expect(client.calls[1]?.text).toContain(
+      'DELETE FROM calendar_integration.calendar_connection_record',
+    );
+    expect(client.calls[1]?.text).toContain('connection_id = $1::uuid');
+    expect(client.calls[1]?.text).toContain('workspace_id = $2::uuid');
+    expect(client.calls[1]?.text).toContain('user_id = $3::uuid');
+    expect(client.calls[1]?.text).toContain('access_secret_handle = $4');
+    expect(client.calls[1]?.text).toContain('refresh_secret_handle IS NOT DISTINCT FROM $5');
+    expect(client.calls[1]?.values).toEqual([
+      CONNECTION_ID,
+      WORKSPACE_ID,
+      USER_ID,
+      'kms://calendar/access/connection-1111',
+      'kms://calendar/refresh/connection-1111',
+      '2026-08-10T01:00:00.000Z',
+    ]);
+  });
+
   it('normalizes scopes and permits an access-only credential handle', async () => {
     const module = await repositoryModule();
     const Repository = module.PostgresCalendarConnectionRepository as new (
