@@ -181,6 +181,14 @@ async function commandSnapshot(options) {
   );
 }
 
+/**
+ * Collects read-only Actions workflow-registry evidence for one exact repository
+ * commit and persists the complete bounded snapshot as JSON at the required output.
+ *
+ * `repository`, `output`, and `commit` are required command options. Collection is
+ * read-only; if the persisted snapshot reports any active orphan workflow identities,
+ * the command throws only after writing that evidence so operators retain the receipt.
+ */
 async function commandWorkflowRegistry(options) {
   requireOptions(options, ['repository', 'output', 'commit']);
   const snapshot = await collectWorkflowRegistrySnapshot(
