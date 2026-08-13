@@ -56,6 +56,18 @@ jobs:
             --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --output "$EVIDENCE_DIR/github-snapshot.json"
 
+      - name: Detect active orphan Actions workflow identities
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node packages/commercial-readiness/src/cli.mjs workflow-registry \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --output "$EVIDENCE_DIR/workflow-registry.json"
+
       - name: Audit capability maturity and canonical buyer gaps
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -83,6 +95,7 @@ jobs:
             --output "$EVIDENCE_DIR/pr-drain-dry-run.json"
 
       - name: Upload commercial readiness evidence
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: commercial-readiness-evidence-${{ github.run_id }}
