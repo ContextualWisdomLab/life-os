@@ -343,6 +343,16 @@ function validateLookupInput(
   });
 }
 
+function scopesEqual(
+  actual: readonly string[],
+  expected: readonly string[],
+): boolean {
+  return (
+    actual.length === expected.length &&
+    actual.every((scope, index) => scope === expected[index])
+  );
+}
+
 /**
  * PostgreSQL-backed registry for tenant/user-scoped calendar connection
  * metadata and opaque external secret handles.
@@ -351,7 +361,42 @@ export class PostgresCalendarConnectionRepository {
   /** Creates the registry over a least-authority fixed-query SQL client. */
   constructor(private readonly client: CalendarConnectionSqlClient) {}
 
-  /** Creates one active connection without persisting plaintext credentials. */
+  /** Deletes only the exact unaccepted row created by this request. */
+  private async compensateInvalidCreate(
+    safe: CreateCalendarConnection,
+  ): Promise<void> {
+    try {
+      const result = await this.client.query(
+        `DELETE FROM calendar_integration.calendar_connection_record
+         WHERE connection_id = $1::uuid
+           AND workspace_id = $2::uuid
+           AND user_id = $3::uuid
+           AND access_secret_handle = $4
+           AND refresh_secret_handle IS NOT DISTINCT FROM $5
+           AND created_at = $6::timestamptz
+           AND connection_status = 'active'`,
+        [
+          safe.connectionId,
+          safe.workspaceId,
+          safe.userId,
+          safe.accessSecretHandle,
+          safe.refreshSecretHandle,
+          safe.createdAt,
+        ],
+      );
+      if (result.rowCount !== 1) {
+        return invalidPersistence();
+      }
+    } catch {
+      return invalidPersistence();
+    }
+  }
+
+  /**
+   * Creates one active connection without persisting plaintext credentials.
+   * Positive but invalid INSERT evidence is compensated by deleting only the
+   * exact unaccepted row before the adapter reports a persistence failure.
+   */
   async createConnection(
     input: CreateCalendarConnection,
   ): Promise<CalendarConnectionRecord> {
@@ -395,24 +440,42 @@ export class PostgresCalendarConnectionRepository {
         safe.createdAt,
       ],
     );
-    const row = oneOrUndefined(result.rows);
-    if (!row) {
+
+    if (result.rows.length === 0 && result.rowCount === 0) {
       throw new CalendarConnectionConflictError();
     }
-    const connection = parseStoredConnection(row);
-    if (
-      connection.connectionId !== safe.connectionId ||
-      connection.workspaceId !== safe.workspaceId ||
-      connection.userId !== safe.userId ||
-      connection.providerCode !== safe.providerCode ||
-      connection.providerAccountSubject !== safe.providerAccountSubject ||
-      connection.accessSecretHandle !== safe.accessSecretHandle ||
-      connection.refreshSecretHandle !== safe.refreshSecretHandle ||
-      connection.selectedCalendarIdentifier !== safe.selectedCalendarIdentifier
-    ) {
+    if (result.rows.length !== 1 || result.rowCount !== 1) {
+      if (result.rows.length > 0 || result.rowCount === 1) {
+        await this.compensateInvalidCreate(safe);
+      }
       return invalidPersistence();
     }
-    return connection;
+
+    try {
+      const connection = parseStoredConnection(result.rows[0]);
+      if (
+        connection.connectionId !== safe.connectionId ||
+        connection.workspaceId !== safe.workspaceId ||
+        connection.userId !== safe.userId ||
+        connection.providerCode !== safe.providerCode ||
+        connection.providerAccountSubject !== safe.providerAccountSubject ||
+        !scopesEqual(connection.scopeValues, safe.scopeValues) ||
+        connection.accessSecretHandle !== safe.accessSecretHandle ||
+        connection.refreshSecretHandle !== safe.refreshSecretHandle ||
+        connection.tokenExpiresAt !== safe.tokenExpiresAt ||
+        connection.selectedCalendarIdentifier !== safe.selectedCalendarIdentifier ||
+        connection.status !== 'active' ||
+        connection.createdAt !== safe.createdAt ||
+        connection.updatedAt !== safe.createdAt ||
+        connection.revokedAt !== null
+      ) {
+        return invalidPersistence();
+      }
+      return connection;
+    } catch {
+      await this.compensateInvalidCreate(safe);
+      return invalidPersistence();
+    }
   }
 
   /** Returns an active connection only through tenant/user/connection scope. */
