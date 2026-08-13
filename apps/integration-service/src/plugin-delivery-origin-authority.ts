@@ -154,36 +154,40 @@ function freezeRecord(
   return Object.freeze({ ...record });
 }
 
-function requireRecord(
-  record: PluginDeliveryOriginGrantRecord,
-): PluginDeliveryOriginGrantRecord {
-  if (record.authorityVersion !== AUTHORITY_VERSION) {
+function requireRecord(record: unknown): PluginDeliveryOriginGrantRecord {
+  if (record === null || typeof record !== 'object') {
     return invalid();
   }
-  const origin = normalizeOrigin(record.origin);
-  const grantedAt = requireInstant(record.grantedAt);
+  const candidate = record as PluginDeliveryOriginGrantRecord;
+  if (candidate.authorityVersion !== AUTHORITY_VERSION) {
+    return invalid();
+  }
+  const origin = normalizeOrigin(candidate.origin);
+  const grantedAt = requireInstant(candidate.grantedAt);
   const revokedAt =
-    record.revokedAt === null ? null : requireInstant(record.revokedAt);
+    candidate.revokedAt === null
+      ? null
+      : requireInstant(candidate.revokedAt);
   if (
-    origin !== record.origin ||
-    (record.status === 'active' && revokedAt !== null) ||
-    (record.status === 'revoked' && revokedAt === null) ||
+    origin !== candidate.origin ||
+    (candidate.status === 'active' && revokedAt !== null) ||
+    (candidate.status === 'revoked' && revokedAt === null) ||
     (revokedAt !== null &&
       new Date(revokedAt).getTime() < new Date(grantedAt).getTime())
   ) {
     return invalid();
   }
-  if (record.status !== 'active' && record.status !== 'revoked') {
+  if (candidate.status !== 'active' && candidate.status !== 'revoked') {
     return invalid();
   }
   return freezeRecord({
     authorityVersion: AUTHORITY_VERSION,
-    grantId: requireUuidV4(record.grantId),
-    installationId: requireUuidV4(record.installationId),
-    workspaceId: requireUuidV4(record.workspaceId),
-    grantedByUserId: requireUuidV4(record.grantedByUserId),
+    grantId: requireUuidV4(candidate.grantId),
+    installationId: requireUuidV4(candidate.installationId),
+    workspaceId: requireUuidV4(candidate.workspaceId),
+    grantedByUserId: requireUuidV4(candidate.grantedByUserId),
     origin,
-    status: record.status,
+    status: candidate.status,
     grantedAt,
     revokedAt,
   });
