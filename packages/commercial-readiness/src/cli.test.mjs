@@ -31,6 +31,31 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses the read-only workflow registry evidence command', () => {
+    assert.deepEqual(
+      parseArguments([
+        'workflow-registry',
+        '--repository',
+        'ContextualWisdomLab/life-os',
+        '--commit',
+        'b'.repeat(40),
+        '--generated-at',
+        '2026-08-13T11:30:00.000Z',
+        '--output',
+        'out/workflow-registry.json',
+      ]),
+      {
+        command: 'workflow-registry',
+        options: {
+          repository: 'ContextualWisdomLab/life-os',
+          commit: 'b'.repeat(40),
+          generatedAt: '2026-08-13T11:30:00.000Z',
+          output: 'out/workflow-registry.json',
+        },
+      },
+    );
+  });
+
   it('rejects unknown commands, duplicate options, missing values, and positional arguments', () => {
     for (const argv of [
       ['unknown'],
