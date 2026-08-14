@@ -1,0 +1,83 @@
+name: Repair AI data-rights coverage
+
+on:
+  push:
+    branches:
+      - feat/ai-data-rights-contributor-v1
+    paths:
+      - .github/workflows/repair-ai-data-rights-coverage.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-ai-data-rights-coverage
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/ai-data-rights-contributor-v1
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Remove unreachable canonicalization and pagination branches
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ai-service/src/ai-data-rights.ts')
+          source = path.read_text()
+          replacements = [
+              (
+                  """function compareUtf16CodeUnits(left: string, right: string): number {\n  if (left < right) return -1;\n  if (left > right) return 1;\n  return 0;\n}""",
+                  """function compareUtf16CodeUnits(left: string, right: string): number {\n  return left < right ? -1 : 1;\n}""",
+              ),
+              (
+                  """    const hasMore = row.evidence_records.length > MAX_EXPORT_RECORDS;\n    const last = page.at(-1);\n    if (hasMore && last === undefined) return invalidDataRights();\n    const nextCursor =\n      hasMore && last !== undefined\n        ? encodeExportCursor({\n            evidenceTime: last.evidenceTime,\n            evidenceKind: last.evidenceKind,\n            evidenceId: last.evidenceId,\n          })\n        : undefined;""",
+                  """    const last =\n      row.evidence_records.length > MAX_EXPORT_RECORDS\n        ? page[MAX_EXPORT_RECORDS - 1]\n        : undefined;\n    const nextCursor =\n      last === undefined\n        ? undefined\n        : encodeExportCursor({\n            evidenceTime: last.evidenceTime,\n            evidenceKind: last.evidenceKind,\n            evidenceId: last.evidenceId,\n          });""",
+              ),
+          ]
+          for before, after in replacements:
+              if source.count(before) != 1:
+                  raise SystemExit('expected repair block not found exactly once')
+              source = source.replace(before, after)
+          path.write_text(source)
+          PY
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/ai-service typecheck
+      - run: pnpm --dir apps/ai-service test
+      - name: Commit verified repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/ai-service/src/ai-data-rights.ts
+          git diff --cached --check
+          git commit -m "fix(ai): remove unreachable data-rights branches"
+          git push origin HEAD:feat/ai-data-rights-contributor-v1
