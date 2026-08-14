@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import type {
   PluginInstallationContext,
   PluginInstallationRecord,
@@ -131,11 +132,16 @@ function normalizeOrigin(value: unknown): string {
   } catch {
     return invalid();
   }
+  const hostname =
+    parsed.hostname.startsWith('[') && parsed.hostname.endsWith(']')
+      ? parsed.hostname.slice(1, -1)
+      : parsed.hostname;
   if (
     parsed.protocol !== 'https:' ||
     parsed.username !== '' ||
     parsed.password !== '' ||
-    parsed.hostname === '' ||
+    hostname === '' ||
+    isIP(hostname) !== 0 ||
     parsed.pathname !== '/' ||
     parsed.search !== '' ||
     parsed.hash !== '' ||
