@@ -556,9 +556,10 @@ export class AiDataRightsContributor {
       return invalidDataRights();
     }
 
-    const page = row.evidence_records
-      .slice(0, MAX_EXPORT_RECORDS)
-      .map((record) => requireExportEvidenceRecord(record));
+    const page = Array.from(
+      row.evidence_records.slice(0, MAX_EXPORT_RECORDS),
+      (record) => requireExportEvidenceRecord(record),
+    );
     const proposals: AiDataRightsJsonValue[] = [];
     const decisions: AiDataRightsJsonValue[] = [];
     for (const record of page) {
