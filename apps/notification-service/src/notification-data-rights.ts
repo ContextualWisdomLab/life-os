@@ -200,6 +200,11 @@ function requireSha256(value: unknown): string {
   return value;
 }
 
+/** Compares canonical object keys by UTF-16 code units without locale collation. */
+function compareCanonicalKeys(left: string, right: string): number {
+  return Number(left > right) - Number(left < right);
+}
+
 /** Converts untrusted JSON evidence to deterministic canonical JSON while enforcing bounds. */
 function canonicalJson(value: unknown, depth = 0): string {
   if (depth > MAX_JSON_DEPTH) {
@@ -238,15 +243,7 @@ function canonicalJson(value: unknown, depth = 0): string {
     if (entries.length > MAX_JSON_CONTAINER_ITEMS) {
       return invalidDataRights();
     }
-    entries.sort(([left], [right]) => {
-      if (left < right) {
-        return -1;
-      }
-      if (left > right) {
-        return 1;
-      }
-      return 0;
-    });
+    entries.sort(([left], [right]) => compareCanonicalKeys(left, right));
     const serialized = entries.map(([key, entry]) => {
       if (Buffer.byteLength(key, 'utf8') > MAX_JSON_KEY_BYTES) {
         return invalidDataRights();
