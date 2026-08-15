@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch --entryFile server",
-    "lint": "tsc --noEmit && prettier --single-quote --write src/ai-data-rights-migration.test.ts src/ai-data-rights.behavior.test.ts src/ai-data-rights.test.ts src/ai-data-rights.ts && git diff --no-ext-diff -- src/ai-data-rights-migration.test.ts src/ai-data-rights.behavior.test.ts src/ai-data-rights.test.ts src/ai-data-rights.ts && exit 1",
+    "lint": "tsc --noEmit && prettier --single-quote --check src/ai-data-rights-migration.test.ts src/ai-data-rights.behavior.test.ts src/ai-data-rights.test.ts src/ai-data-rights.ts",
     "test": "vitest run --no-file-parallelism --coverage",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",

@@ -307,7 +307,8 @@ function exactlyOne<Row>(result: ProposalAuditSqlQueryResult<Row>): Row {
 /** Decodes and validates one bounded opaque export cursor. */
 function decodeExportCursor(value: unknown): ExportCursor {
   if (typeof value !== 'string') return invalidDataRights();
-  if (!value || value.length > MAX_EXPORT_CURSOR_BYTES) return invalidDataRights();
+  if (!value || value.length > MAX_EXPORT_CURSOR_BYTES)
+    return invalidDataRights();
   if (!BASE64URL_PATTERN.test(value)) return invalidDataRights();
 
   let decoded: string;
@@ -334,7 +335,10 @@ function decodeExportCursor(value: unknown): ExportCursor {
     'evidenceId',
   ]);
   if (record.version !== EXPORT_CURSOR_VERSION) return invalidDataRights();
-  if (record.evidenceKind !== 'decision' && record.evidenceKind !== 'proposal') {
+  if (
+    record.evidenceKind !== 'decision' &&
+    record.evidenceKind !== 'proposal'
+  ) {
     return invalidDataRights();
   }
   return Object.freeze({
@@ -366,7 +370,10 @@ function requireExportEvidenceRecord(value: unknown): ExportEvidenceRecord {
     'evidenceId',
     'data',
   ]);
-  if (record.evidenceKind !== 'decision' && record.evidenceKind !== 'proposal') {
+  if (
+    record.evidenceKind !== 'decision' &&
+    record.evidenceKind !== 'proposal'
+  ) {
     return invalidDataRights();
   }
   return Object.freeze({
@@ -601,7 +608,9 @@ export class AiDataRightsContributor {
   }
 
   /** Checks owner-controlled erasure privileges without mutating tenant data. */
-  private async preflightErase(requestId: string): Promise<AiDataRightsResponse> {
+  private async preflightErase(
+    requestId: string,
+  ): Promise<AiDataRightsResponse> {
     const row = exactlyOne(
       await this.query<PrivilegeRow>(
         `SELECT COALESCE(has_function_privilege(

@@ -149,15 +149,7 @@ async function seedWorkspace(
        decided_at,
        recorded_at
      ) VALUES ($1, $2, $3, $4, $5, 'accepted', 'confirmed', $6, $7, $7)`,
-    [
-      decisionId,
-      workspaceId,
-      proposalId,
-      digest,
-      USER_ID,
-      idempotencyKey,
-      now,
-    ],
+    [decisionId, workspaceId, proposalId, digest, USER_ID, idempotencyKey, now],
   );
 }
 

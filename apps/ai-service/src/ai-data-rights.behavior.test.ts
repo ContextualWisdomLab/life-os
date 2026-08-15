@@ -21,7 +21,9 @@ class ScriptedClient implements ProposalAuditSqlClient {
   }> = [];
 
   constructor(
-    private readonly script: Array<ProposalAuditSqlQueryResult<unknown> | Error>,
+    private readonly script: Array<
+      ProposalAuditSqlQueryResult<unknown> | Error
+    >,
   ) {}
 
   async query<Row>(
@@ -195,16 +197,16 @@ describe('AiDataRightsContributor', () => {
     ]);
     const contributor = new AiDataRightsContributor(client);
 
-    await expect(contributor.handle(request('erase_preflight'))).resolves.toEqual(
-      {
-        contractVersion: 'life-os.data-rights-contributor.v1',
-        contributor: 'ai.service',
-        operation: 'erase_preflight',
-        requestId: REQUEST_ID,
-        ready: true,
-        blockers: [],
-      },
-    );
+    await expect(
+      contributor.handle(request('erase_preflight')),
+    ).resolves.toEqual({
+      contractVersion: 'life-os.data-rights-contributor.v1',
+      contributor: 'ai.service',
+      operation: 'erase_preflight',
+      requestId: REQUEST_ID,
+      ready: true,
+      blockers: [],
+    });
     await expect(contributor.handle(request('erase'))).resolves.toEqual({
       contractVersion: 'life-os.data-rights-contributor.v1',
       contributor: 'ai.service',
@@ -229,9 +231,7 @@ describe('AiDataRightsContributor', () => {
 
   it('reports unavailable owner-controlled erasure execution', async () => {
     const contributor = new AiDataRightsContributor(
-      new ScriptedClient([
-        { rows: [{ erasure_function_ready: false }] },
-      ]),
+      new ScriptedClient([{ rows: [{ erasure_function_ready: false }] }]),
     );
     await expect(
       contributor.handle(request('erase_preflight')),
@@ -280,11 +280,15 @@ describe('AiDataRightsContributor', () => {
 
   it('sanitizes database failures', async () => {
     const contributor = new AiDataRightsContributor(
-      new ScriptedClient([new Error('database adapter private failure detail')]),
+      new ScriptedClient([
+        new Error('database adapter private failure detail'),
+      ]),
     );
     const failure = contributor.handle(request('export'));
     await expect(failure).rejects.toBeInstanceOf(AiDataRightsError);
-    await expect(failure).rejects.toThrowError('AI data-rights operation failed');
+    await expect(failure).rejects.toThrowError(
+      'AI data-rights operation failed',
+    );
   });
 
   it('rejects missing duplicate sparse and malformed aggregate evidence', async () => {
