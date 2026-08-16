@@ -208,7 +208,16 @@ export const CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA = deepFreeze({
   },
 });
 
-/** Builds one immutable no-tools OpenAI-compatible structured-output request. */
+/**
+ * Builds one immutable no-tools adaptive orchestration request.
+ *
+ * `auto` delegates model/provider choice, workflow depth, verification,
+ * fallback, and known-price optimization to contextual-orchestrator. Trace
+ * disclosure stays private by default, and provider-native `response_format`
+ * is deliberately omitted because the gateway proxies that feature to one
+ * worker instead of applying adaptive orchestration. LifeOS still validates
+ * every returned proposal through its strict local domain contract.
+ */
 function requestBody(input: ProposalRequest): string {
   return JSON.stringify({
     model: 'contextual-orchestrator',
