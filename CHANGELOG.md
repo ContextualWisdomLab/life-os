@@ -4,6 +4,10 @@ All notable changes to LifeOS are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Production contextual-orchestrator proposal requests now explicitly use adaptive `auto` mode and avoid provider-native structured-output passthrough, allowing the orchestration plane to meet the quality requirement and then minimize known cost while LifeOS retains strict fail-closed proposal validation.
+
 ### Added
 
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.

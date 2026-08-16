@@ -212,6 +212,8 @@ export const CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA = deepFreeze({
 function requestBody(input: ProposalRequest): string {
   return JSON.stringify({
     model: 'contextual-orchestrator',
+    orchestration_mode: 'auto',
+    include_orchestration_trace: false,
     temperature: 0,
     stream: false,
     messages: [
@@ -221,14 +223,6 @@ function requestBody(input: ProposalRequest): string {
       },
       { role: 'user', content: JSON.stringify(input) },
     ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'life_os_inert_proposal_draft',
-        strict: true,
-        schema: CONTEXTUAL_ORCHESTRATOR_PROPOSAL_SCHEMA,
-      },
-    },
   });
 }
 
