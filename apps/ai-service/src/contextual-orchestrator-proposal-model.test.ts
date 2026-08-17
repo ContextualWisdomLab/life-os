@@ -129,7 +129,7 @@ describe('contextual orchestrator configuration', () => {
 });
 
 describe('ContextualOrchestratorProposalModel', () => {
-  it('sends a no-tools schema-constrained request and returns untrusted output', async () => {
+  it('sends a no-tools adaptive request and returns untrusted output', async () => {
     const draft = {
       summary: 'Prioritize launch readiness.',
       rationale: ['The checklist is the active critical path.'],
@@ -166,6 +166,8 @@ describe('ContextualOrchestratorProposalModel', () => {
 
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(body.model).toBe('contextual-orchestrator');
+    expect(body.orchestration_mode).toBe('auto');
+    expect(body.include_orchestration_trace).toBe(false);
     expect(body.tools).toBeUndefined();
     expect(body.stream).toBe(false);
     expect(body.temperature).toBe(0);
@@ -179,24 +181,7 @@ describe('ContextualOrchestratorProposalModel', () => {
       content: JSON.stringify(request),
     });
 
-    const responseFormat = body.response_format as Record<string, unknown>;
-    expect(responseFormat.type).toBe('json_schema');
-    const jsonSchema = responseFormat.json_schema as Record<string, unknown>;
-    expect(jsonSchema.name).toBe('life_os_inert_proposal_draft');
-    expect(jsonSchema.strict).toBe(true);
-    const schema = jsonSchema.schema as Record<string, unknown>;
-    expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
-    expect(schema.additionalProperties).toBe(false);
-    expect(schema.required).toEqual(['summary', 'rationale', 'operations']);
-    const properties = schema.properties as Record<string, unknown>;
-    const operations = properties.operations as Record<string, unknown>;
-    const operationItem = operations.items as Record<string, unknown>;
-    expect(operationItem.oneOf).toHaveLength(3);
-    for (const variant of operationItem.oneOf as Array<
-      Record<string, unknown>
-    >) {
-      expect(variant.additionalProperties).toBe(false);
-    }
+    expect(body.response_format).toBeUndefined();
   });
 
   it('accepts one valid completion at the exact response-byte limit', async () => {
