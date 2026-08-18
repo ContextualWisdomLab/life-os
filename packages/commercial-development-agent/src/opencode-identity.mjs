@@ -12,7 +12,9 @@ export const MINIMUM_REVIEWED_OPENCODE_BINARY_BYTES = 1_024;
 export class OpenCodeIdentityError extends Error {
   /** Creates one credential-free OpenCode identity failure. */
   constructor() {
-    super('Installed OpenCode version does not match the reviewed package pin.');
+    super(
+      'Installed OpenCode version does not match the reviewed package pin.',
+    );
     this.name = 'OpenCodeIdentityError';
   }
 }

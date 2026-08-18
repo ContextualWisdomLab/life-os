@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -96,9 +102,9 @@ describe('reviewed OpenCode CLI identity', () => {
       ),
     });
     try {
-      expect(
-        resolveReviewedOpenCodeExecutable(join(root, 'opencode-ai')),
-      ).toBe(realpathSync(join(root, 'opencode-ai/bin/opencode.exe')));
+      expect(resolveReviewedOpenCodeExecutable(join(root, 'opencode-ai'))).toBe(
+        realpathSync(join(root, 'opencode-ai/bin/opencode.exe')),
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -112,11 +118,21 @@ describe('reviewed OpenCode CLI identity', () => {
         3,
       ),
     });
+    const missingExe = fakePackage({
+      'opencode-ai/package.json': '{}',
+      'opencode-linux-x64/bin/opencode': Buffer.alloc(
+        MINIMUM_REVIEWED_OPENCODE_BINARY_BYTES,
+        4,
+      ),
+    });
     const missingRoot = fakePackage({});
     try {
+      expect(resolveReviewedOpenCodeExecutable(join(root, 'opencode-ai'))).toBe(
+        realpathSync(join(root, 'opencode-linux-x64/bin/opencode')),
+      );
       expect(
-        resolveReviewedOpenCodeExecutable(join(root, 'opencode-ai')),
-      ).toBe(realpathSync(join(root, 'opencode-linux-x64/bin/opencode')));
+        resolveReviewedOpenCodeExecutable(join(missingExe, 'opencode-ai')),
+      ).toBe(realpathSync(join(missingExe, 'opencode-linux-x64/bin/opencode')));
       expect(() =>
         resolveReviewedOpenCodeExecutable(join(missingRoot, 'missing')),
       ).toThrow(OpenCodeIdentityError);
@@ -138,6 +154,7 @@ describe('reviewed OpenCode CLI identity', () => {
       ).toThrow(OpenCodeIdentityError);
     } finally {
       rmSync(root, { recursive: true, force: true });
+      rmSync(missingExe, { recursive: true, force: true });
       rmSync(missingRoot, { recursive: true, force: true });
     }
   });
@@ -170,6 +187,24 @@ describe('reviewed OpenCode CLI identity', () => {
       version: '1.18.9',
     });
     expect(calls).toEqual([['--version'], ['--help'], ['run', '--help']]);
+    expect(
+      verifyReviewedOpenCodeCliIdentity({
+        executable: '/tmp/opencode',
+        expectedVersion: '1.18.9',
+        spawn: (_executable, argv) => {
+          if (argv[0] === '--version') {
+            return { status: 0, stdout: '1.18.9', stderr: '' };
+          }
+          if (argv[0] === '--help') {
+            return { status: 0, stdout: '--pure\n' };
+          }
+          return { status: 0, stdout: '', stderr: 'run help' };
+        },
+      }),
+    ).toEqual({
+      executable: '/tmp/opencode',
+      version: '1.18.9',
+    });
 
     expect(() =>
       verifyReviewedOpenCodeCliIdentity({

@@ -345,7 +345,7 @@ describe('OpenCode commercial development workflow contract', () => {
 
   it('renders provider configuration safely and freezes the model writer before evidence', () => {
     const workspace = step('Prepare disposable model workspace');
-    expect(workspace).toContain("'\$schema': 'https://opencode.ai/config.json'");
+    expect(workspace).toContain("'$schema': 'https://opencode.ai/config.json'");
     expect(workspace).toContain('MODEL_HOME="$model_home"');
     expect(workspace).toContain('json.dumps(config');
     expect(workspace).not.toContain('"$schema":');
