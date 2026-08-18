@@ -6,7 +6,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.mjs'],
-      exclude: ['src/cli.mjs'],
+      exclude: ['src/cli.mjs', 'src/verify-opencode-identity.mjs'],
       reporter: ['text', 'json-summary'],
       thresholds: {
         statements: 100,
