@@ -138,3 +138,47 @@ jobs:
           else
             echo 'selected=false' >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Create the isolated UUIDv4 feature branch
+        id: branch
+        if: steps.selection.outputs.selected == 'true' && steps.github_evidence.outputs.open_pull_requests == '0'
+        env:
+          CONFIGURED_MODEL: ${{ vars.OPENCODE_NVIDIA_MODEL }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import uuid
+          from datetime import datetime, timezone
+
+          run_id = str(uuid.uuid4())
+          configured = os.environ.get('CONFIGURED_MODEL', '').strip()
+          provider_model = configured or 'meta/llama-3.3-70b-instruct'
+          model_label = provider_model if provider_model.startswith('nvidia/') else f'nvidia/{provider_model}'
+          run = {
+              'schema': 'life-os.opencode-commercial-development-run.v1',
+              'run_id': run_id,
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'base_sha': os.environ['BASE_SHA'],
+              'started_at': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+              'model_label': model_label,
+              'reasoning_effort': 'high',
+              'recursive_depth': 1,
+              'decomposition_steps': 8,
+              'roles': ['planner', 'worker', 'verifier', 'synthesizer'],
+          }
+          receipt_dir = os.environ['RECEIPT_DIR']
+          run_path = os.path.join(receipt_dir, 'run.json')
+          with open(run_path, 'w', encoding='utf-8') as output:
+              json.dump(run, output, indent=2, ensure_ascii=False)
+              output.write('\n')
+          os.chmod(run_path, 0o600)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'run_id={run_id}\n')
+              output.write(f'model_label={model_label}\n')
+          PY
+          run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
+          branch_name="automation/opencode-commercial-${run_id}"
+          echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
+          git switch --create "$branch_name"
