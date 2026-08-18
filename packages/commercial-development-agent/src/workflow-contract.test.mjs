@@ -149,3 +149,34 @@ describe('OpenCode commercial development workflow contract', () => {
     );
     expect(workflow).not.toMatch(/curl[^\n]*\|\s*(?:sh|bash)/iu);
   });
+
+  it('keeps the real NVIDIA credential in a loopback bridge, not the model environment', () => {
+    expect(workflow).not.toContain('COPILOT_GITHUB_TOKEN');
+    expect(
+      workflow.match(/\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu),
+    ).toHaveLength(1);
+
+    const bridge = step('Start loopback NVIDIA credential bridge');
+    expect(bridge).toContain('${{ secrets.NVIDIA_NIM_API_KEY }}');
+    expect(bridge).toContain('127.0.0.1');
+    expect(bridge).toContain('integrate.api.nvidia.com');
+    expect(bridge).toContain('/v1/chat/completions');
+    expect(bridge).toContain('MAX_REQUEST_BYTES');
+    expect(bridge).toContain('MAX_RESPONSE_BYTES');
+    expect(bridge).toContain('UPSTREAM_TIMEOUT_SECONDS');
+    expect(bridge).toContain('--preserve-env=NVIDIA_NIM_API_KEY');
+    expect(bridge).toContain('-u opencode_bridge');
+    expect(bridge).not.toContain('echo "$NVIDIA_NIM_API_KEY"');
+
+    const model = step('Run one bounded OpenCode implementation');
+    expect(model).toContain('sudo -u opencode_model env -i');
+    expect(model).toContain('NVIDIA_API_KEY=local-loopback-placeholder');
+    expect(model).toContain('opencode run --pure --auto');
+    expect(model).toContain('timeout --signal=TERM --kill-after=30s 90m');
+    expect(model).not.toContain('NVIDIA_NIM_API_KEY');
+    expect(model).not.toContain('${{ secrets.');
+    expect(model).not.toContain('github.token');
+    expect(model).not.toContain('GITHUB_TOKEN');
+    expect(model).not.toContain('GH_TOKEN');
+  });
+});
