@@ -182,3 +182,15 @@ jobs:
           branch_name="automation/opencode-commercial-${run_id}"
           echo "branch_name=$branch_name" >> "$GITHUB_OUTPUT"
           git switch --create "$branch_name"
+
+      - name: Build the policy-isolated prompt
+        if: steps.branch.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          node packages/commercial-development-agent/src/cli.mjs prompt \
+            --policy "$GITHUB_WORKSPACE/$POLICY_PATH" \
+            --run "$RECEIPT_DIR/run.json" \
+            --issue "$RECEIPT_DIR/selected-issue.json" \
+            --output "$RECEIPT_DIR/prompt.json"
+          jq -r '.text' "$RECEIPT_DIR/prompt.json" > "$RECEIPT_DIR/prompt.txt"
+          chmod 0600 "$RECEIPT_DIR/prompt.json" "$RECEIPT_DIR/prompt.txt"
