@@ -206,4 +206,363 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(model).toContain('OPENCODE_DISABLE_MODELS_FETCH=true');
     expect(model).toContain('OPENCODE_DISABLE_PROJECT_CONFIG=true');
   });
+
+  linuxX64Test(
+    'registers a NVIDIA model absent from the bundled OpenCode catalog without discovery',
+    () => {
+      const temporaryRoot = mkdtempSync(
+        join(tmpdir(), 'life-os-opencode-catalog-'),
+      );
+      try {
+        const modelId = 'cwl/contract-probe-model-v1';
+        const modelLabel = `nvidia/${modelId}`;
+        const loopbackProbeValue = modelLabel;
+        expect(loopbackProbeValue).not.toHaveLength(0);
+        const opencodePackage = realpathSync(
+          resolve(import.meta.dirname, '../node_modules/opencode-ai'),
+        );
+        const executable = resolve(
+          dirname(opencodePackage),
+          'opencode-linux-x64/bin/opencode',
+        );
+        const directories = Object.fromEntries(
+          ['home', 'cache', 'config', 'data', 'state'].map((name) => {
+            const path = resolve(temporaryRoot, name);
+            mkdirSync(path, { mode: 0o700 });
+            return [name, path];
+          }),
+        );
+        const config = JSON.stringify({
+          enabled_providers: ['nvidia'],
+          model: modelLabel,
+          small_model: modelLabel,
+          provider: {
+            nvidia: {
+              whitelist: [modelId],
+              models: { [modelId]: { name: modelId } },
+              options: {
+                baseURL: 'http://127.0.0.1:8765/v1',
+                apiKey: loopbackProbeValue,
+              },
+            },
+          },
+        });
+        const configPath = resolve(directories.home, 'opencode.json');
+        writeFileSync(configPath, config, { mode: 0o600 });
+
+        const result = spawnSync(executable, ['models', 'nvidia'], {
+          cwd: resolve(import.meta.dirname, '../../..'),
+          encoding: 'utf8',
+          timeout: 30_000,
+          env: {
+            HOME: directories.home,
+            PATH: process.env.PATH ?? '/usr/bin:/bin',
+            XDG_CACHE_HOME: directories.cache,
+            XDG_CONFIG_HOME: directories.config,
+            XDG_DATA_HOME: directories.data,
+            XDG_STATE_HOME: directories.state,
+            OPENCODE_CONFIG: configPath,
+            OPENCODE_DISABLE_AUTOUPDATE: 'true',
+            OPENCODE_DISABLE_MODELS_FETCH: 'true',
+            OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
+            NVIDIA_API_KEY: loopbackProbeValue,
+          },
+        });
+
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout.trim()).toBe(modelLabel);
+      } finally {
+        rmSync(temporaryRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('isolates model writes from git, trusted policy, and trusted verifier authority', () => {
+    const workspace = step('Prepare disposable model workspace');
+    expect(workspace).toContain('MODEL_WORKSPACE');
+    expect(workspace).toContain("--exclude='.git'");
+    expect(workspace).toContain("--exclude='node_modules'");
+    expect(workspace).toContain('test ! -e "$model_workspace/.git"');
+    expect(workspace).toContain('chmod 0700 "$GITHUB_WORKSPACE"');
+    expect(workspace).toContain('opencode_model');
+    expect(workspace).toContain('iptables');
+    expect(workspace).toContain('127.0.0.1');
+
+    const model = step('Run one bounded OpenCode implementation');
+    expect(model).toContain('cd "$1"');
+    expect(model).toContain('_ "$MODEL_WORKSPACE"');
+    expect(model).toContain('OPENCODE_CONFIG="$MODEL_HOME/opencode.json"');
+    expect(workspace).toContain("'external_directory': 'deny'");
+    expect(workspace).toContain("'webfetch': 'deny'");
+    expect(workspace).toContain("'websearch': 'deny'");
+
+    const capture = step('Capture candidate through trusted boundary');
+    expect(capture).toContain('packages/commercial-development-agent');
+    expect(capture).toContain('--policy "$GITHUB_WORKSPACE/$POLICY_PATH"');
+    expect(capture).toContain('stat.S_ISREG');
+    expect(capture).toContain('object_type_rejected');
+    expect(capture).toContain(
+      'node packages/commercial-development-agent/src/cli.mjs validate-diff',
+    );
+    expect(capture).not.toContain(
+      'pnpm --filter @life-os/commercial-development-agent exec commercial-development-agent validate-diff',
+    );
+  });
+
+  it('restores every tracked path and preloads an immutable Corepack cache before denying network', () => {
+    const workspace = step('Prepare disposable model workspace');
+    const model = step('Run one bounded OpenCode implementation');
+    const verification = step('Verify the accepted repository change');
+    const cleanup = step('Remove private agent material');
+
+    expect(workspace).toContain('git -C "$GITHUB_WORKSPACE" ls-files -z |');
+    expect(workspace).toContain('rsync -a --from0 --files-from=-');
+
+    const cacheInstall = workspace.indexOf(
+      'corepack install --global "$package_manager"',
+    );
+    const networkDeny = workspace.indexOf(
+      'iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -j REJECT',
+    );
+    expect(cacheInstall).toBeGreaterThanOrEqual(0);
+    expect(networkDeny).toBeGreaterThan(cacheInstall);
+    expect(workspace).toContain(
+      'chmod -R u=rwX,go=rX "$trusted_corepack_home"',
+    );
+    expect(workspace).not.toMatch(/chown[^\n]*trusted_corepack_home/u);
+
+    expect(workspace).toContain('COREPACK_HOME="$trusted_corepack_home"');
+    for (const isolatedStep of [model, verification]) {
+      expect(isolatedStep).toContain('COREPACK_HOME="$TRUSTED_COREPACK_HOME"');
+      expect(isolatedStep).toContain('COREPACK_ENABLE_NETWORK=0');
+    }
+    expect(workspace).toContain('COREPACK_ENABLE_NETWORK=0');
+    expect(cleanup).toContain('TRUSTED_COREPACK_HOME');
+
+    const capture = step('Capture candidate through trusted boundary');
+    expect(capture).toContain('paths = sorted(tracked | candidate_paths)');
+  });
+
+  it('renders provider configuration safely and freezes the model writer before evidence', () => {
+    const workspace = step('Prepare disposable model workspace');
+    expect(workspace).toContain("'\$schema': 'https://opencode.ai/config.json'");
+    expect(workspace).toContain('MODEL_HOME="$model_home"');
+    expect(workspace).toContain('json.dumps(config');
+    expect(workspace).not.toContain('"$schema":');
+
+    const model = step('Run one bounded OpenCode implementation');
+    expect(model).toContain('pkill --signal TERM --euid opencode_model');
+    expect(model).toContain('pgrep --euid opencode_model');
+    expect(model).toContain('model_process_cleanup_failed');
+    expect(model).toContain('pkill --signal TERM --euid opencode_bridge');
+    expect(model).toContain('127.0.0.0/8');
+  });
+
+  it('runs generated code verification without credentials or outbound network', () => {
+    const verification = step('Verify the accepted repository change');
+    expect(verification).toContain('sudo -u opencode_model env -i');
+    expect(verification).toContain('cd "$1"');
+    expect(verification).toContain('_ "$MODEL_WORKSPACE"');
+    expect(verification).toContain('AI_DATABASE_URL="$AI_DATABASE_URL"');
+    expect(verification).not.toContain('NVIDIA_API_KEY');
+    expect(verification).not.toContain('GH_TOKEN');
+    expect(verification).not.toContain('GITHUB_TOKEN');
+    expect(verification).not.toContain('docker compose');
+
+    const compose = step(
+      'Validate Compose configuration through trusted boundary',
+    );
+    expect(compose).toContain('docker compose');
+    expect(compose).toContain('--file "$MODEL_WORKSPACE/compose.yaml"');
+    expect(compose).toContain('--project-directory "$MODEL_WORKSPACE"');
+    expect(compose).toContain('config --quiet');
+    expect(compose).not.toContain('sudo -u opencode_model');
+    expect(compose).not.toContain('${{ secrets.');
+  });
+
+  it('boots and probes Compose services in credential-free pull-request CI', () => {
+    const runtimeJob = ciJob('compose_runtime');
+    const validateJob = ciJob('validate');
+    expect(validateJob).toContain('needs: compose_runtime');
+    expect(runtimeJob).not.toContain('secrets.');
+    expect(runtimeJob).not.toContain('GH_TOKEN');
+    expect(runtimeJob).not.toContain('GITHUB_TOKEN');
+    expect(runtimeJob).not.toMatch(/permissions:\s*\n\s+[^\n]+:\s*write/u);
+
+    const runtime = namedStep(
+      runtimeJob,
+      'Start and probe Compose infrastructure',
+    );
+    expect(runtime).toContain(
+      'docker compose up --detach --wait --wait-timeout 90',
+    );
+    expect(runtime).toContain(
+      "docker compose exec --no-TTY postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1'",
+    );
+    expect(runtime).toContain('http://127.0.0.1:8222/jsz');
+    expect(runtime).toContain('jq -e \'(.streams | type) == "number"');
+    expect(runtime).toContain(
+      'docker compose logs --no-color --timestamps --tail 200 postgres nats',
+    );
+    expect(runtime).toContain('docker compose down --volumes --remove-orphans');
+    expect(compose).toMatch(
+      /image: postgres:17\.10-alpine@sha256:[a-f0-9]{64}/u,
+    );
+    expect(compose).toMatch(/image: nats:2\.11\.6-alpine@sha256:[a-f0-9]{64}/u);
+    expect(compose).toContain("'127.0.0.1:5432:5432'");
+    expect(compose).toContain("'127.0.0.1:4222:4222'");
+    expect(compose).toContain("'127.0.0.1:8222:8222'");
+    expect(compose).not.toContain("- '5432:5432'");
+    expect(compose).not.toContain("- '4222:4222'");
+    expect(compose).not.toContain("- '8222:8222'");
+  });
+
+  it('materializes and stages only the accepted evidence projection', () => {
+    const materialize = step(
+      'Materialize verified candidate through trusted boundary',
+    );
+    expect(materialize).toContain("receipt_dir / 'diff.json'");
+    expect(materialize).toContain("os.environ['MODEL_WORKSPACE']");
+    expect(materialize).toContain('post_verification_candidate_changed');
+    expect(materialize).toContain("item['content'].encode('utf-8')");
+    expect(materialize).toContain('os.replace');
+    expect(materialize).not.toContain('rsync -rt --delete');
+
+    const ancestorPreflight = materialize.indexOf(
+      'reject_symlinked_ancestors(target_path)',
+    );
+    expect(ancestorPreflight).toBeGreaterThanOrEqual(0);
+    expect(ancestorPreflight).toBeLessThan(
+      materialize.indexOf("if item['status'] == 'D':"),
+    );
+    expect(ancestorPreflight).toBeLessThan(
+      materialize.indexOf('parent.mkdir(parents=True, exist_ok=True)'),
+    );
+    expect(materialize).toContain('if cursor == root:');
+    expect(materialize).toContain('if root not in cursor.parents:');
+
+    const mutation = step('Commit, push, and open one draft pull request');
+    expect(mutation).toContain(
+      '--pathspec-from-file="$RECEIPT_DIR/changed-paths.z"',
+    );
+    expect(mutation).toContain('--pathspec-file-nul');
+    expect(mutation).not.toMatch(/git add -A\s*$/mu);
+  });
+
+  it('rechecks the live repository lease immediately before both remote writes', () => {
+    const mutation = step('Commit, push, and open one draft pull request');
+    expect(mutation).toContain('assert_live_lease()');
+    expect(mutation.match(/^\s*assert_live_lease$/gmu)).toHaveLength(2);
+    expect(mutation.match(/git ls-remote/gu)).toHaveLength(2);
+    expect(mutation.match(/timeout 30s git ls-remote/gu)).toHaveLength(2);
+    expect(mutation).toContain('pulls?state=open&per_page=1');
+    expect(mutation).toContain('selected_issue_digest');
+    expect(mutation).toContain('issues/${issue_number}');
+    expect(mutation).toContain('remote_branch_created=true');
+    expect(mutation).toContain('push origin --delete "$branch"');
+    expect(mutation).toContain('[ "$remote_sha" != "$local_sha" ]');
+  });
+
+  it('keeps deterministic selection, branch, subprocess, and exact-base gates outside the model', () => {
+    expect(
+      workflow.indexOf('Run deterministic commercial readiness audit'),
+    ).toBeLessThan(workflow.indexOf('Run one bounded OpenCode implementation'));
+    expect(step('Select one eligible issue')).toContain(
+      'packages/commercial-development-agent/src/cli.mjs select',
+    );
+
+    const branch = step('Create the isolated UUIDv4 feature branch');
+    expect(branch).toContain('uuid.uuid4()');
+    expect(branch).toContain('branch_name="automation/opencode-commercial-');
+    expect(branch).toContain('git switch --create "$branch_name"');
+    expect(branch).not.toContain('steps.branch.outputs.branch_name');
+
+    const capture = step('Capture candidate through trusted boundary');
+    expect(capture).toContain('timeout=30');
+    expect(capture).toContain("'ls-remote'");
+    expect(capture).toContain("'refs/heads/main'");
+
+    const base = step('Recheck the exact main base before remote mutation');
+    expect(base).toContain('timeout 30s git ls-remote origin refs/heads/main');
+    expect(base).toContain('base_changed');
+  });
+
+  it('allows one credentialed draft-PR mutation step but no merge or release authority', () => {
+    const mutation = step('Commit, push, and open one draft pull request');
+    expect(mutation).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(mutation).toContain('git commit');
+    expect(mutation).toContain('push origin "HEAD:${branch}"');
+    expect(mutation).toContain('gh pr create');
+    expect(mutation).toContain('--draft');
+    expect(mutation).not.toContain('gh pr merge');
+    expect(mutation).not.toContain('--admin');
+    expect(mutation).not.toContain('gh release');
+    expect(mutation).not.toContain('git tag');
+    expect(workflow).not.toContain('deployments: write');
+    expect(workflow).not.toContain('environments: write');
+    expect(workflow).not.toContain('actions: write');
+  });
+
+  it('marks bridge and provider validations skipped until their prerequisites run', () => {
+    const receipt = step('Compose credential-free development receipt');
+
+    expect(receipt).toContain(
+      'MODEL_CATALOG_OUTCOME: ${{ steps.model_catalog.outcome }}',
+    );
+    expect(receipt).toContain(
+      `{'name': 'model_catalog', 'status': 'skipped' if not selected or open_prs != '0' else 'passed' if model_catalog_outcome == 'success' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'credential_bridge', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if bridge_reason == 'completed' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      `{'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'}`,
+    );
+    expect(receipt).toContain(
+      "status, reason = 'failed', 'invalid_configuration'",
+    );
+  });
+
+  it('retains only credential-free receipts and removes model/bridge material', () => {
+    const upload = step('Upload credential-free development receipt');
+    expect(upload).toContain(
+      'path: ${{ runner.temp }}/commercial-development/receipt.json',
+    );
+    expect(upload).toContain('if-no-files-found: error');
+    expect(upload).toContain('retention-days: 7');
+    for (const prohibited of [
+      'prompt.json',
+      'opencode.log',
+      'verification.log',
+      'opencode.json',
+      'diff.json',
+      'changed-paths.z',
+      'nim-bridge.py',
+    ]) {
+      expect(upload).not.toContain(prohibited);
+    }
+
+    const cleanup = step('Remove private agent material');
+    expect(cleanup).toContain('if: always()');
+    expect(cleanup).toContain('pkill --signal TERM --euid opencode_bridge');
+    expect(cleanup).toContain('pkill --signal TERM --euid opencode_model');
+    expect(cleanup).toContain('MODEL_NETWORK_PHASE');
+    expect(cleanup).toContain('iptables -D');
+    expect(cleanup).toContain('MODEL_WORKSPACE');
+    for (const file of [
+      'prompt.json',
+      'prompt.txt',
+      'opencode.log',
+      'issues.json',
+      'pulls.json',
+      'diff.json',
+      'receipt-input.json',
+      'nim-bridge.py',
+    ]) {
+      expect(cleanup).toContain(file);
+    }
+  });
 });
