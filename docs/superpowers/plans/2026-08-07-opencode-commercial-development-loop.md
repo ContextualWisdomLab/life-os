@@ -208,7 +208,7 @@ On the feature branch only, a temporary bootstrap workflow:
 1. resolves the current official OpenCode npm package once;
 2. adds it with an exact version;
 3. updates `pnpm-lock.yaml`;
-4. verifies the installed `opencode --version` and `opencode run --help` contract;
+4. verifies the installed `opencode --version` and `opencode run --help` contract through an isolated spawn that cannot lose `--version` to `hideBin`;
 5. runs all package tests;
 6. commits the exact lock evidence;
 7. removes itself before merge.
