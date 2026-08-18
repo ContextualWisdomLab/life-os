@@ -179,4 +179,31 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(model).not.toContain('GITHUB_TOKEN');
     expect(model).not.toContain('GH_TOKEN');
   });
+
+  it('uses one offline explicit NVIDIA model catalog instead of provider model discovery', () => {
+    const workspace = step('Prepare disposable model workspace');
+    expect(workspace).toContain("'enabled_providers': ['nvidia']");
+    expect(workspace).toContain("'model': model_label");
+    expect(workspace).toContain("'small_model': model_label");
+    expect(workspace).toContain("'whitelist': [model_id]");
+    expect(workspace).toContain("'models': {model_id: {'name': model_id}}");
+    expect(workspace).toContain("model_workspace_path / 'AGENTS.md'");
+    expect(workspace).toContain("model_workspace_path / 'CLAUDE.md'");
+    expect(workspace).toContain("'instructions': instruction_paths");
+    expect(workspace).toContain("model_label.partition('/')");
+    expect(workspace).toContain("provider_id != 'nvidia'");
+
+    const catalog = step('Validate the explicit OpenCode model catalog');
+    expect(catalog).toContain('sudo -u opencode_model env -i');
+    expect(catalog).toContain('OPENCODE_DISABLE_MODELS_FETCH=true');
+    expect(catalog).toContain('OPENCODE_DISABLE_PROJECT_CONFIG=true');
+    expect(catalog).toContain('opencode models nvidia');
+    expect(catalog).toContain('test "$catalog" = "$2"');
+    expect(catalog).not.toContain('NVIDIA_NIM_API_KEY');
+    expect(catalog).not.toContain('/v1/models');
+
+    const model = step('Run one bounded OpenCode implementation');
+    expect(model).toContain('OPENCODE_DISABLE_MODELS_FETCH=true');
+    expect(model).toContain('OPENCODE_DISABLE_PROJECT_CONFIG=true');
+  });
 });
