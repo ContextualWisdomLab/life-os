@@ -80,3 +80,61 @@ jobs:
           echo "RECEIPT_DIR=$receipt_dir" >> "$GITHUB_ENV"
           base_sha="$(git rev-parse HEAD)"
           echo "BASE_SHA=$base_sha" >> "$GITHUB_ENV"
+
+      - name: Run deterministic commercial readiness audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          node packages/commercial-readiness/src/cli.mjs snapshot \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --commit "$BASE_SHA" \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --output "$RECEIPT_DIR/github-snapshot.json"
+          node packages/commercial-readiness/src/cli.mjs audit \
+            --manifest product/capabilities.json \
+            --snapshot "$RECEIPT_DIR/github-snapshot.json" \
+            --policy product/commercial-readiness-policy.json \
+            --root . \
+            --output-json "$RECEIPT_DIR/commercial-readiness.json" \
+            --output-markdown "$RECEIPT_DIR/commercial-readiness.md"
+          chmod 0600 "$RECEIPT_DIR"/*
+
+      - name: Collect bounded GitHub issue and pull request evidence
+        id: github_evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null) | {number, url: .html_url, title, body: (.body // ""), state}' \
+            | jq -s '.' \
+            > "$RECEIPT_DIR/issues.json"
+          gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" \
+            --jq '.[] | {number, url: .html_url, title, body: (.body // ""), state}' \
+            | jq -s '.' \
+            > "$RECEIPT_DIR/pulls.json"
+          chmod 0600 "$RECEIPT_DIR/issues.json" "$RECEIPT_DIR/pulls.json"
+          open_count="$(jq 'length' "$RECEIPT_DIR/pulls.json")"
+          echo "open_pull_requests=$open_count" >> "$GITHUB_OUTPUT"
+
+      - name: Select one eligible issue
+        id: selection
+        run: |
+          set -Eeuo pipefail
+          node packages/commercial-development-agent/src/cli.mjs select \
+            --policy "$GITHUB_WORKSPACE/$POLICY_PATH" \
+            --issues "$RECEIPT_DIR/issues.json" \
+            --pulls "$RECEIPT_DIR/pulls.json" \
+            --output "$RECEIPT_DIR/selected-issue.json"
+          if [ "$(jq -r 'type' "$RECEIPT_DIR/selected-issue.json")" = 'object' ]; then
+            echo 'selected=true' >> "$GITHUB_OUTPUT"
+            echo "issue_number=$(jq -r '.number' "$RECEIPT_DIR/selected-issue.json")" >> "$GITHUB_OUTPUT"
+          else
+            echo 'selected=false' >> "$GITHUB_OUTPUT"
+          fi
