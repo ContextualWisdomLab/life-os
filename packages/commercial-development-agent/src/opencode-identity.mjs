@@ -137,7 +137,7 @@ export function verifyReviewedOpenCodeCliIdentity({
   const isolated = env ?? createIsolatedOpenCodeEnvironment();
   const versionResult = inquire(spawn, executable, ['--version'], isolated);
   const version = readOpenCodeVersionLine(versionResult.stdout);
-  if (versionResult.status !== 0 || !version.includes(expectedVersion)) {
+  if (versionResult.status !== 0 || version !== expectedVersion) {
     return invalid();
   }
 
