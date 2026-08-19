@@ -136,12 +136,17 @@ describe('OpenCode commercial development workflow contract', () => {
     );
     expect(workflow).not.toContain('__PINNED_BY_BOOTSTRAP__');
     expect(step('Verify the exact OpenCode installation')).toContain(
-      'opencode --version',
+      'packages/commercial-development-agent/src/verify-opencode-identity.mjs',
     );
     expect(step('Verify the exact OpenCode installation')).toContain(
-      'opencode run --help',
+      'unset NODE_OPTIONS',
     );
-    expect(step('Verify the exact OpenCode installation')).toContain('--pure');
+    expect(step('Verify the exact OpenCode installation')).not.toContain(
+      'exec opencode --version',
+    );
+    expect(step('Verify the exact OpenCode installation')).not.toContain(
+      'exec opencode --help',
+    );
     expect(workflow).not.toMatch(/curl[^\n]*\|\s*(?:sh|bash)/iu);
   });
 

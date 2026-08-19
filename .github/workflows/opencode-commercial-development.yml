@@ -69,17 +69,8 @@ jobs:
       - name: Verify the exact OpenCode installation
         run: |
           set -Eeuo pipefail
-          version="$(pnpm --filter @life-os/commercial-development-agent exec opencode --version | head -n 1 | tr -d '\r')"
-          case "$version" in
-            *"$OPENCODE_PACKAGE_VERSION"*) ;;
-            *)
-              echo '::error::Installed OpenCode version does not match the reviewed package pin.'
-              exit 1
-              ;;
-          esac
-          help="$(pnpm --filter @life-os/commercial-development-agent exec opencode --help)"
-          grep -F -- '--pure' <<<"$help" > /dev/null
-          pnpm --filter @life-os/commercial-development-agent exec opencode run --help > /dev/null
+          unset NODE_OPTIONS
+          node packages/commercial-development-agent/src/verify-opencode-identity.mjs
 
       - name: Prepare private evidence directory
         run: |
@@ -345,7 +336,7 @@ jobs:
             OPENCODE_DISABLE_MODELS_FETCH=true \
             OPENCODE_DISABLE_PROJECT_CONFIG=true \
             NVIDIA_API_KEY=local-loopback-placeholder \
-            bash -c 'cd "$1" && catalog="$(pnpm --filter @life-os/commercial-development-agent exec opencode models nvidia)" && test "$catalog" = "$2"' \
+            bash -c 'cd "$1" && catalog="$(pnpm --filter @life-os/commercial-development-agent exec -- opencode models nvidia)" && test "$catalog" = "$2"' \
               _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL"
 
       - name: Start loopback NVIDIA credential bridge
@@ -497,7 +488,7 @@ jobs:
             OPENCODE_DISABLE_MODELS_FETCH=true \
             OPENCODE_DISABLE_PROJECT_CONFIG=true \
             NVIDIA_API_KEY=local-loopback-placeholder \
-            bash -c 'cd "$1" && timeout --signal=TERM --kill-after=30s 90m pnpm --filter @life-os/commercial-development-agent exec opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
+            bash -c 'cd "$1" && timeout --signal=TERM --kill-after=30s 90m pnpm --filter @life-os/commercial-development-agent exec -- opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
               _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL" \
             > "$RECEIPT_DIR/opencode.log" 2>&1
           status=$?
