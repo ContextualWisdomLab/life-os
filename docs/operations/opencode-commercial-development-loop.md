@@ -138,7 +138,7 @@ Never force-push an automation branch. If `main` advances, abandon the branch an
 1. Create a feature branch.
 2. Resolve the current official `opencode-ai` version once.
 3. Add it with an exact version and update `pnpm-lock.yaml`.
-4. Verify the reviewed CLI identity with `packages/commercial-development-agent/src/verify-opencode-identity.mjs`, which spawns the installed binary without `NODE_OPTIONS`, requires the exact `opencode --version` pin, and reads `--pure` from `opencode --help` on stderr.
+4. Verify the reviewed CLI identity with `packages/commercial-development-agent/src/verify-opencode-identity.mjs`, which spawns the installed binary without `NODE_OPTIONS`, requires the exact `opencode --version` pin, and reads `--pure` from the combined stdout and stderr of `opencode --help`.
 5. Run package and workflow-contract tests, including the offline one-model catalog preflight and Compose authority separation.
 6. Inspect the lockfile and transitive dependency change.
 7. Remove the temporary write-capable bootstrap workflow.
