@@ -20,6 +20,31 @@
       "gap_id": "plugins.runtime-delivery",
       "issue_number": 130,
       "capability_ids": ["integrations.plugin-surface"]
+    },
+    {
+      "gap_id": "product.complete-workspace-journey",
+      "issue_number": 209,
+      "capability_ids": [
+        "planning.durable-data",
+        "habit.recurring-core",
+        "review.guided-loop",
+        "today.action-loop",
+        "onboarding.first-run",
+        "capture.search",
+        "accessibility.localization",
+        "mobile.pwa"
+      ]
+    },
+    {
+      "gap_id": "release.reproducible-candidate",
+      "issue_number": 210,
+      "capability_ids": [
+        "platform.msa-foundation",
+        "security.appguardrail-gate",
+        "automation.commercial-readiness-loop",
+        "accessibility.localization",
+        "mobile.pwa"
+      ]
     }
   ]
 }
