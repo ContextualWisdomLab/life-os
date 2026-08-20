@@ -7,7 +7,7 @@
 
 International Organization for Standardization, & International Electrotechnical Commission. (2023). *Systems and software engineering—Systems and software Quality Requirements and Evaluation (SQuaRE)—Product quality model (ISO/IEC 25010:2023).* https://www.iso.org/standard/78176.html
 
-International Organization for Standardization, & International Electrotechnical Commission. (2025). *Information technology—Web Content Accessibility Guidelines (WCAG) 2.2 (ISO/IEC 40500:2025).* https://www.iso.org/standard/91083.html
+International Organization for Standardization, & International Electrotechnical Commission. (2025). *Information technology—Web Content Accessibility Guidelines (WCAG) 2.2 (ISO/IEC 40500:2025).* https://www.iso.org/standard/91029.html
 
 National Institute of Standards and Technology. (2025). *Digital identity guidelines (NIST Special Publication 800-63-4).* U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-63-4
 
