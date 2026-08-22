@@ -200,7 +200,7 @@ describe('production Kubernetes reference contract', () => {
       'IDENTITY_DATABASE_URL',
       'PLANNING_DATABASE_URL',
       'HABIT_DATABASE_URL',
-      'AI_DATABASE_URL',
+      'AI_MIGRATION_DATABASE_URL',
       'REVIEW_DATABASE_URL',
     ];
     for (const variable of databaseVariables) {

@@ -1,8 +1,9 @@
 # AI proposal-audit migrations
 
-Apply AI service SQL files in lexical order to the PostgreSQL database owned by the AI service before starting the corresponding application version.
+Apply AI service SQL files in lexical order to the PostgreSQL database owned by the AI service before starting the corresponding application version. Production migration execution uses a dedicated database authority rather than the application runtime role.
 
 - `0001_proposal_audit.sql` creates immutable tenant-scoped proposal evidence and append-only accept/reject decision events.
+- `0002_data_rights_erasure.sql` transfers legacy AI schema/audit object ownership to the migration authority, adds replay-safe erasure evidence, and keeps destructive erasure behind an owner-controlled function.
 
 ## Production runtime
 
@@ -13,6 +14,14 @@ The production module requires `AI_DATABASE_URL` and accepts bounded optional po
 - `AI_DATABASE_IDLE_TIMEOUT_MS`: integer from 1000 through 300000; default `30000`
 
 The node-postgres pool identifies itself as `life-os-ai-service`, records idle-client failures through a credential-free listener, and is closed exactly once after successful cleanup through the NestJS application-shutdown lifecycle. Concurrent shutdown calls share one attempt; a failed attempt remains visible and permits a later retry. Startup fails closed when the URL is missing, oversized, malformed, or not PostgreSQL.
+
+## Migration authority
+
+Production forward migration requires `AI_MIGRATION_DATABASE_URL` for a migration-only PostgreSQL role and `AI_DATABASE_RUNTIME_ROLE` for the lower-privilege application role name. The migration runner rejects a missing or malformed runtime role, rejects a migration connection whose `current_user` equals the configured runtime role, and fails if that runtime role does not already exist.
+
+The dedicated migration role must have the authority required to create and own the `ai` schema objects and, for an upgrade from the historical shared-role deployment, to take ownership of the existing `ai` schema, proposal tables, and append-only trigger function. That ownership transfer is intentionally fail-closed: an operator must grant the migration authority needed for the transition rather than let the application runtime remain an owner.
+
+After all AI migrations complete, the reviewed runner removes runtime `CREATE` authority on the `ai` schema, grants only schema `USAGE`, `SELECT`/`INSERT` on the proposal and decision tables, and `EXECUTE` on `ai.erase_workspace_data(uuid, uuid, uuid, uuid)`. The runtime receives no direct privileges on erasure authorization or receipt tables and no `UPDATE`, `DELETE`, or `TRUNCATE` privilege on the append-only audit tables. `AI_DATABASE_URL` remains an application credential and is not supplied to the production migration step.
 
 ## Proposal model runtime
 
@@ -69,9 +78,9 @@ Decision commands are idempotent by `(workspace_id, proposal_id, idempotency_key
 
 ## Runtime privileges
 
-The application runtime role should receive only `SELECT` and `INSERT` on `ai.proposal_audit_records` and `ai.proposal_decision_events`, plus sequence privileges if a future migration introduces sequences. Do not grant `UPDATE`, `DELETE`, or `TRUNCATE` on either table.
+The application runtime role receives only `USAGE` on the `ai` schema, `SELECT` and `INSERT` on `ai.proposal_audit_records` and `ai.proposal_decision_events`, and explicit `EXECUTE` on the reviewed erasure function. Do not grant `CREATE` on the schema or `UPDATE`, `DELETE`, or `TRUNCATE` on either audit table. The runtime role must not own the schema, audit tables, trigger function, erasure authorization table, erasure receipt table, or erasure function.
 
-Database triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` even for overly broad roles. A separately authorized, audited data-rights erasure migration is required before production account deletion is enabled; application code must not bypass the append-only audit ledger.
+Database triggers reject ordinary `UPDATE`, `DELETE`, and `TRUNCATE`. Data-rights erasure is authorized only through the migration-owned `SECURITY DEFINER` function, which creates transaction-local authorization for the append-only delete path and returns bounded receipt evidence. Runtime ownership is treated as a deployment error because table or schema ownership would allow bypass of ordinary grants.
 
 ## Integration-test safety
 
@@ -79,7 +88,7 @@ Destructive schema setup is permitted only through `AI_TEST_DATABASE_URL`. The U
 
 ## Validation evidence
 
-CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, unsigned ownership rejection, method/path replay rejection, explicit model selection, bounded external transport, sanitized failures, and the absence of proposal execution routes. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
+CI supplies separate application and disposable-test variables, applies the migration to an ephemeral PostgreSQL service, and verifies restart durability, deterministic reads, tenant isolation, exact decision replay, stale-digest rejection, conflicting replay rejection, append-only enforcement, bounded runtime configuration, retryable exactly-once successful shutdown, idle-client error handling, unsigned ownership rejection, method/path replay rejection, explicit model selection, bounded external transport, sanitized failures, and the absence of proposal execution routes. The infrastructure contract additionally verifies that production migration authority is separate from AI runtime authority. All SQL values are parameterized and stored JSON is treated as untrusted evidence on read.
 
 ## Secret rotation and rollback
 
@@ -87,7 +96,7 @@ LifeOS supports one active signing key and one bounded previous verification key
 
 The contextual-orchestrator token has a separate lifecycle from gateway signing keys. Revoke and replace it at the orchestrator boundary. To stop external generation, explicitly redeploy with `AI_PROPOSAL_MODEL=rule-based`; existing audit records retain their original model identifiers and content digests.
 
-The database migration is forward-only in automated environments. An operator-approved rollback must export and verify proposal and decision evidence before dropping `ai.proposal_decision_events`, `ai.proposal_audit_records`, `ai.reject_proposal_audit_mutation()`, and the `ai` schema. Do not roll back after recording production decisions unless legal, retention, and audit requirements have been reviewed and documented.
+The database migration is forward-only in automated environments. An operator-approved rollback must export and verify proposal and decision evidence before dropping `ai.data_rights_erasure_authorizations`, `ai.data_rights_erasure_receipts`, `ai.erase_workspace_data(uuid, uuid, uuid, uuid)`, `ai.proposal_decision_events`, `ai.proposal_audit_records`, `ai.reject_proposal_audit_mutation()`, and the `ai` schema. Do not roll back after recording production decisions unless legal, retention, and audit requirements have been reviewed and documented. Restoring the historical shared runtime/migration owner is not an acceptable rollback; rollback must preserve the distinct migration authority or disable AI runtime access until least privilege is restored.
 
 ## Deferred work
 

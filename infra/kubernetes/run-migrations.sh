@@ -24,7 +24,7 @@ migration_roots=(
   'identity|IDENTITY_DATABASE_URL|apps/identity-service/migrations'
   'planning|PLANNING_DATABASE_URL|apps/planning-service/migrations'
   'habit|HABIT_DATABASE_URL|apps/habit-service/migrations'
-  'ai|AI_DATABASE_URL|apps/ai-service/migrations'
+  'ai|AI_MIGRATION_DATABASE_URL|apps/ai-service/migrations'
   'review|REVIEW_DATABASE_URL|apps/review-service/migrations'
 )
 
@@ -37,10 +37,10 @@ append_migration_command() {
   local migration_sha="$6"
 
   cat >>"${command_file}" <<SQL
-\\set service_name '${service_name}'
-\\set migration_name '${migration_name}'
-\\set migration_sequence '${migration_sequence}'
-\\set migration_sha256 '${migration_sha}'
+\set service_name '${service_name}'
+\set migration_name '${migration_name}'
+\set migration_sequence '${migration_sequence}'
+\set migration_sha256 '${migration_sha}'
 SELECT
   EXISTS (
     SELECT 1
@@ -74,24 +74,24 @@ SELECT
     ),
     -1
   ) AS latest_migration_sequence
-\\gset
-\\if :migration_exists
-  \\if :migration_digest_matches
-    \\if :migration_is_applied
-      \\echo migration_status=already_applied service=:service_name migration=:migration_name
-    \\else
-      \\echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
-      \\quit 1
-    \\endif
-  \\else
-    \\echo migration_error=migration_digest_changed service=:service_name migration=:migration_name
-    \\quit 1
-  \\endif
-\\else
+\gset
+\if :migration_exists
+  \if :migration_digest_matches
+    \if :migration_is_applied
+      \echo migration_status=already_applied service=:service_name migration=:migration_name
+    \else
+      \echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
+      \quit 1
+    \endif
+  \else
+    \echo migration_error=migration_digest_changed service=:service_name migration=:migration_name
+    \quit 1
+  \endif
+\else
   SELECT (:'migration_sequence')::integer > :latest_migration_sequence
     AS migration_sequence_is_forward
-  \\gset
-  \\if :migration_sequence_is_forward
+  \gset
+  \if :migration_sequence_is_forward
     INSERT INTO ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
       service_name,
       migration_name,
@@ -105,8 +105,8 @@ SELECT
       :'migration_sha256',
       'applying'
     );
-    \\echo migration_status=applying service=:service_name migration=:migration_name
-    \\i ${migration_file}
+    \echo migration_status=applying service=:service_name migration=:migration_name
+    \i ${migration_file}
     UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
     SET migration_status = 'applied',
         applied_at = clock_timestamp()
@@ -114,12 +114,36 @@ SELECT
       AND migration_name = :'migration_name'
       AND migration_sha256 = :'migration_sha256'
       AND migration_status = 'applying';
-    \\echo migration_status=applied service=:service_name migration=:migration_name
-  \\else
-    \\echo migration_error=migration_sequence_not_forward service=:service_name migration=:migration_name latest=:latest_migration_sequence
-    \\quit 1
-  \\endif
-\\endif
+    \echo migration_status=applied service=:service_name migration=:migration_name
+  \else
+    \echo migration_error=migration_sequence_not_forward service=:service_name migration=:migration_name latest=:latest_migration_sequence
+    \quit 1
+  \endif
+\endif
+SQL
+}
+
+append_ai_runtime_privileges() {
+  local command_file="$1"
+  cat >>"${command_file}" <<'SQL'
+REVOKE CREATE ON SCHEMA ai FROM :"service_runtime_role";
+GRANT USAGE ON SCHEMA ai TO :"service_runtime_role";
+REVOKE ALL ON TABLE
+  ai.data_rights_erasure_authorizations,
+  ai.data_rights_erasure_receipts
+FROM :"service_runtime_role";
+REVOKE ALL PRIVILEGES ON TABLE
+  ai.proposal_audit_records,
+  ai.proposal_decision_events
+FROM :"service_runtime_role";
+GRANT SELECT, INSERT ON TABLE
+  ai.proposal_audit_records,
+  ai.proposal_decision_events
+TO :"service_runtime_role";
+REVOKE ALL ON FUNCTION ai.reject_proposal_audit_mutation()
+FROM :"service_runtime_role";
+GRANT EXECUTE ON FUNCTION ai.erase_workspace_data(uuid, uuid, uuid, uuid)
+TO :"service_runtime_role";
 SQL
 }
 
@@ -128,7 +152,7 @@ apply_service_migrations() {
   local database_url_name="$2"
   local migration_directory="$3"
   local migration_file migration_name migration_sequence migration_sha
-  local workspace command_file service_file
+  local workspace command_file service_file service_runtime_role=''
   local -a migration_files=()
 
   [[ "${service_name}" =~ ^[a-z][a-z0-9_]*$ ]] || fail 'service_name_invalid'
@@ -138,6 +162,13 @@ apply_service_migrations() {
 
   ((${#migration_files[@]} > 0)) || return 0
   [[ -n "${!database_url_name:-}" ]] || fail "${database_url_name}_required"
+
+  if [[ "${service_name}" == 'ai' ]]; then
+    service_runtime_role="${AI_DATABASE_RUNTIME_ROLE:-}"
+    [[ -n "${service_runtime_role}" ]] || fail 'AI_DATABASE_RUNTIME_ROLE_required'
+    [[ "${service_runtime_role}" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] ||
+      fail 'AI_DATABASE_RUNTIME_ROLE_invalid'
+  fi
 
   workspace="$(mktemp -d)"
   command_file="${workspace}/migration_commands.psql"
@@ -152,7 +183,34 @@ apply_service_migrations() {
   unset "${database_url_name}"
 
   cat >"${command_file}" <<SQL
-\\set ON_ERROR_STOP on
+\set ON_ERROR_STOP on
+\set service_name '${service_name}'
+SQL
+
+  if [[ "${service_name}" == 'ai' ]]; then
+    cat >>"${command_file}" <<SQL
+\set service_runtime_role '${service_runtime_role}'
+SELECT
+  current_user = :'service_runtime_role' AS migration_role_matches_runtime_role,
+  EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname = :'service_runtime_role'
+  ) AS service_runtime_role_exists
+\gset
+\if :migration_role_matches_runtime_role
+  \echo migration_error=migration_role_matches_runtime_role service=:service_name
+  \quit 1
+\endif
+\if :service_runtime_role_exists
+\else
+  \echo migration_error=runtime_role_not_found service=:service_name
+  \quit 1
+\endif
+SQL
+  fi
+
+  cat >>"${command_file}" <<SQL
 SELECT pg_advisory_lock(hashtextextended('life-os-migrations:${service_name}', 0));
 CREATE SCHEMA IF NOT EXISTS ${MIGRATION_SCHEMA};
 CREATE TABLE IF NOT EXISTS ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
@@ -208,6 +266,10 @@ SQL
       "${migration_sequence}" \
       "${migration_sha}"
   done
+
+  if [[ "${service_name}" == 'ai' ]]; then
+    append_ai_runtime_privileges "${command_file}"
+  fi
 
   cat >>"${command_file}" <<SQL
 SELECT pg_advisory_unlock(hashtextextended('life-os-migrations:${service_name}', 0));

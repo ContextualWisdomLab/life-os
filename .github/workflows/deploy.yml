@@ -133,7 +133,8 @@ jobs:
           IDENTITY_DATABASE_URL: ${{ secrets.IDENTITY_DATABASE_URL }}
           PLANNING_DATABASE_URL: ${{ secrets.PLANNING_DATABASE_URL }}
           HABIT_DATABASE_URL: ${{ secrets.HABIT_DATABASE_URL }}
-          AI_DATABASE_URL: ${{ secrets.AI_DATABASE_URL }}
+          AI_MIGRATION_DATABASE_URL: ${{ secrets.AI_MIGRATION_DATABASE_URL }}
+          AI_DATABASE_RUNTIME_ROLE: ${{ vars.AI_DATABASE_RUNTIME_ROLE }}
           REVIEW_DATABASE_URL: ${{ secrets.REVIEW_DATABASE_URL }}
         shell: bash
         run: |
