@@ -26,6 +26,7 @@ migration_roots=(
   'habit|HABIT_DATABASE_URL|apps/habit-service/migrations'
   'ai|AI_DATABASE_URL|apps/ai-service/migrations'
   'review|REVIEW_DATABASE_URL|apps/review-service/migrations'
+  'notification|NOTIFICATION_MIGRATION_DATABASE_URL|apps/notification-service/migrations|NOTIFICATION_DATABASE_RUNTIME_ROLE'
 )
 
 append_migration_command() {
@@ -127,6 +128,8 @@ apply_service_migrations() {
   local service_name="$1"
   local database_url_name="$2"
   local migration_directory="$3"
+  local runtime_role_name="${4:-}"
+  local service_runtime_role=''
   local migration_file migration_name migration_sequence migration_sha
   local workspace command_file service_file
   local -a migration_files=()
@@ -138,6 +141,13 @@ apply_service_migrations() {
 
   ((${#migration_files[@]} > 0)) || return 0
   [[ -n "${!database_url_name:-}" ]] || fail "${database_url_name}_required"
+
+  if [[ -n "${runtime_role_name}" ]]; then
+    [[ -n "${!runtime_role_name:-}" ]] || fail "${runtime_role_name}_required"
+    service_runtime_role="${!runtime_role_name}"
+    [[ "${service_runtime_role}" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] ||
+      fail "${runtime_role_name}_invalid"
+  fi
 
   workspace="$(mktemp -d)"
   command_file="${workspace}/migration_commands.psql"
@@ -184,6 +194,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_service_sequence_unique
   ON ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (service_name, migration_sequence);
 SQL
 
+  if [[ -n "${service_runtime_role}" ]]; then
+    cat >>"${command_file}" <<SQL
+\\set service_name '${service_name}'
+\\set service_runtime_role '${service_runtime_role}'
+SELECT
+  current_user = :'service_runtime_role' AS migration_role_matches_runtime_role,
+  EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_roles
+    WHERE rolname = :'service_runtime_role'
+  ) AS service_runtime_role_exists
+\\gset
+\\if :migration_role_matches_runtime_role
+  \\echo migration_error=migration_role_matches_runtime_role service=:service_name
+  \\quit 1
+\\endif
+\\if :service_runtime_role_exists
+\\else
+  \\echo migration_error=service_runtime_role_missing service=:service_name
+  \\quit 1
+\\endif
+SQL
+  fi
+
   for migration_file in "${migration_files[@]}"; do
     migration_name="$(basename "${migration_file}")"
     [[ "${migration_name}" =~ ^[0-9]{4}_[a-z0-9_]+\.sql$ ]] || {
@@ -209,6 +243,29 @@ SQL
       "${migration_sha}"
   done
 
+  if [[ "${service_name}" == 'notification' ]]; then
+    [[ -n "${service_runtime_role}" ]] || {
+      rm -rf "${workspace}"
+      fail 'NOTIFICATION_DATABASE_RUNTIME_ROLE_required'
+    }
+    cat >>"${command_file}" <<'SQL'
+GRANT USAGE ON SCHEMA notification_service TO :"service_runtime_role";
+GRANT SELECT, INSERT, UPDATE ON TABLE
+  notification_service.reminder_occurrences,
+  notification_service.inbox_messages
+TO :"service_runtime_role";
+GRANT SELECT, INSERT ON TABLE
+  notification_service.reminder_outcomes
+TO :"service_runtime_role";
+REVOKE ALL PRIVILEGES ON TABLE
+  notification_service.data_rights_erasure_receipts,
+  notification_service.data_rights_erasure_authorizations
+FROM :"service_runtime_role";
+GRANT EXECUTE ON FUNCTION notification_service.erase_workspace_data(uuid, uuid, uuid, uuid)
+TO :"service_runtime_role";
+SQL
+  fi
+
   cat >>"${command_file}" <<SQL
 SELECT pg_advisory_unlock(hashtextextended('life-os-migrations:${service_name}', 0));
 SQL
@@ -225,11 +282,12 @@ SQL
 }
 
 for migration_root in "${migration_roots[@]}"; do
-  IFS='|' read -r service_name database_url_name migration_directory <<<"${migration_root}"
+  IFS='|' read -r service_name database_url_name migration_directory runtime_role_name <<<"${migration_root}"
   apply_service_migrations \
     "${service_name}" \
     "${database_url_name}" \
-    "${migration_directory}"
+    "${migration_directory}" \
+    "${runtime_role_name:-}"
 done
 
 printf 'migration_status=completed\n'
