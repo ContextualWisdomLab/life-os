@@ -66,6 +66,8 @@ sequenceDiagram
 
 The signed private context uses one active HMAC key and at most one previous verification-only key. Key identifiers, method, path, workspace, actor, and issuance time are integrity protected. Browser credentials and provider keys never reach the AI service.
 
+Production contextual-orchestrator proposal requests send `orchestration_mode: auto` and omit provider-native `response_format`. That gateway passthrough would pin a single worker instead of adaptive orchestration. LifeOS remains the fail-closed parser and domain validator. Explicit route and conduct profiles stay on the live-conformance harness.
+
 ## 3. Test-time compute and live conformance
 
 The deterministic proposal evaluator is authoritative for proposal validity, operation conformance, grounding, benign utility, forbidden-text leakage, and prompt-injection resistance. Live provider execution is governance evidence and is not a pull-request availability gate.
