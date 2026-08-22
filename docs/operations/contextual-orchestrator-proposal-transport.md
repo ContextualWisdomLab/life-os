@@ -60,7 +60,8 @@ LifeOS sends:
 - temperature `0`
 - streaming disabled
 - no tools or function definitions
-- a strict JSON Schema response format
+- explicit `orchestration_mode: auto` with trace disclosure disabled
+- no provider-native `response_format`, because that gateway passthrough would pin the request to one worker instead of adaptive orchestration
 
 The model may propose only:
 
@@ -68,7 +69,7 @@ The model may propose only:
 - `prioritize_item`
 - `schedule_item`
 
-Every output still passes the independent `ProposalService` validator. Unknown properties, empty or oversized text, unsupported operation kinds, malformed UUIDv4 targets, excessive arrays, invalid timestamps, and invalid identifiers fail closed. A successful proposal always carries `requiresConfirmation: true` and is persisted before return.
+The fixed system instruction requires one JSON object, and every output still passes the independent `ProposalService` validator. Removing provider-native structured-output passthrough does not relax the LifeOS trust boundary; malformed or unsupported output fails closed after adaptive orchestration. Unknown properties, empty or oversized text, unsupported operation kinds, malformed UUIDv4 targets, excessive arrays, invalid timestamps, and invalid identifiers fail closed. A successful proposal always carries `requiresConfirmation: true` and is persisted before return.
 
 ## Resource bounds
 
