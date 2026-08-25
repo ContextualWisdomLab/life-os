@@ -34,12 +34,6 @@ The repository already contained provider authorization and token-exchange build
 - Revocation is idempotent and does not disclose whether a supplied token existed.
 - Browser delivery uses `Secure`, `HttpOnly`, and an explicit `SameSite` policy. Production deployments must never place session tokens in URLs, logs, local storage, analytics payloads, or application telemetry.
 
-## Standards basis
-
-- RFC 7636, *Proof Key for Code Exchange by OAuth Public Clients*: https://www.rfc-editor.org/rfc/rfc7636
-- RFC 9700 / BCP 240, *Best Current Practice for OAuth 2.0 Security*: https://www.rfc-editor.org/rfc/rfc9700
-- GitHub OAuth authorization flow: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
-
 ## Consequences
 
 - Stolen database rows do not directly reveal usable `state` or session bearer values.
@@ -48,3 +42,11 @@ The repository already contained provider authorization and token-exchange build
 - Existing callers must supply the initiating browser-session identifier and the exact redirect URI when creating and consuming transactions.
 - Existing sessions are backfilled to their owners' personal workspaces by migration `0003_oauth_binding_and_session_rotation.sql`.
 - Provider callback adapters remain responsible for network exchange, provider response validation, ID-token validation for Google, and profile retrieval; this ADR supplies the transaction and session primitives they must use.
+
+## References
+
+GitHub. (n.d.). *Authorizing OAuth apps*. https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+
+Lodderstedt, T., Bradley, J., Labunets, A., & Fett, D. (2025). *Best current practice for OAuth 2.0 security* (RFC 9700; BCP 240) [Published Best Current Practice]. RFC Editor. https://doi.org/10.17487/RFC9700
+
+Sakimura, N., Bradley, J., & Agarwal, N. (2015). *Proof key for code exchange by OAuth public clients* (RFC 7636) [Published Standards Track RFC]. RFC Editor. https://doi.org/10.17487/RFC7636
