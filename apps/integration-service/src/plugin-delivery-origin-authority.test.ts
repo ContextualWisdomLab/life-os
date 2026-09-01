@@ -150,6 +150,22 @@ describe('PluginDeliveryOriginAuthority', () => {
     },
   );
 
+  it.each([null, undefined, 'not-an-object', 42])(
+    'rejects non-object grant input before any I/O: %j',
+    async (input) => {
+      const fixture = authority();
+      await expectInvalid(
+        fixture.subject.grant(
+          { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+          INSTALLATION_ID,
+          input as never,
+        ),
+      );
+      expect(fixture.findInstallationById).not.toHaveBeenCalled();
+      expect(fixture.createIfAbsent).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['missing installation', null],
     [
