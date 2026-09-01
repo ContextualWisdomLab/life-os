@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { Pool, type PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const SEMANTIC_NAMING_MIGRATION = '0007_identity_database_semantic_names.sql';
-const TEMPORARY_DATABASE_NAME = 'life_os_identity_semantic_names_test';
-const TEMPORARY_DATABASE_LOCK_KEY = 74_211_347;
+const TEMPORARY_DATABASE_PREFIX = 'life_os_identity_semantic_names_';
+const TEMPORARY_DATABASE_PATTERN =
+  /^life_os_identity_semantic_names_[0-9a-f]{32}$/u;
+const TEST_DATABASE_PATTERN = /^[a-z0-9_]*_test$/u;
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 
 async function readMigration(fileName: string): Promise<string> {
@@ -26,7 +29,19 @@ async function migrationFilesBeforeSemanticNaming(): Promise<string[]> {
 
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
-    throw new Error('IDENTITY_DATABASE_URL is required for PostgreSQL integration tests');
+    throw new Error(
+      'IDENTITY_DATABASE_URL is required for PostgreSQL integration tests',
+    );
+  }
+  const parsedUrl = new URL(DATABASE_URL);
+  const databaseName = decodeURIComponent(parsedUrl.pathname.slice(1));
+  if (
+    !LOOPBACK_HOSTS.has(parsedUrl.hostname) ||
+    !TEST_DATABASE_PATTERN.test(databaseName)
+  ) {
+    throw new Error(
+      'Identity semantic naming integration test requires a loopback test database',
+    );
   }
   return DATABASE_URL;
 }
@@ -37,27 +52,38 @@ function databaseUrl(sourceUrl: string, databaseName: string): string {
   return parsedUrl.toString();
 }
 
+function createTemporaryDatabaseName(): string {
+  return `${TEMPORARY_DATABASE_PREFIX}${randomUUID().replaceAll('-', '')}`;
+}
+
+function requireTemporaryDatabaseIdentifier(databaseName: string): string {
+  if (!TEMPORARY_DATABASE_PATTERN.test(databaseName)) {
+    throw new Error('Temporary identity database name is invalid');
+  }
+  // PostgreSQL does not parameterize identifiers; the strict generated allowlist
+  // makes this quoted identifier independent of repository or environment input.
+  return `"${databaseName}"`;
+}
+
 async function withLegacyIdentityDatabase(
   execute: (databasePool: Pool) => Promise<void>,
 ): Promise<void> {
   const sourceUrl = requireDatabaseUrl();
-  const adminPool = new Pool({ connectionString: databaseUrl(sourceUrl, 'postgres') });
-  let adminClient: PoolClient | undefined;
+  const temporaryDatabaseName = createTemporaryDatabaseName();
+  const temporaryDatabaseIdentifier = requireTemporaryDatabaseIdentifier(
+    temporaryDatabaseName,
+  );
+  const adminPool = new Pool({
+    connectionString: databaseUrl(sourceUrl, 'postgres'),
+  });
   let databasePool: Pool | undefined;
-  let lockHeld = false;
   let databaseCreated = false;
 
   try {
-    adminClient = await adminPool.connect();
-    await adminClient.query('SELECT pg_advisory_lock($1::bigint)', [
-      TEMPORARY_DATABASE_LOCK_KEY,
-    ]);
-    lockHeld = true;
-    await adminClient.query(`DROP DATABASE IF EXISTS ${TEMPORARY_DATABASE_NAME}`);
-    await adminClient.query(`CREATE DATABASE ${TEMPORARY_DATABASE_NAME}`);
+    await adminPool.query(`CREATE DATABASE ${temporaryDatabaseIdentifier}`);
     databaseCreated = true;
     databasePool = new Pool({
-      connectionString: databaseUrl(sourceUrl, TEMPORARY_DATABASE_NAME),
+      connectionString: databaseUrl(sourceUrl, temporaryDatabaseName),
     });
 
     for (const migrationFile of await migrationFilesBeforeSemanticNaming()) {
@@ -69,19 +95,10 @@ async function withLegacyIdentityDatabase(
       await databasePool?.end();
     } finally {
       try {
-        if (lockHeld && adminClient) {
-          try {
-            if (databaseCreated) {
-              await adminClient.query(`DROP DATABASE IF EXISTS ${TEMPORARY_DATABASE_NAME}`);
-            }
-          } finally {
-            await adminClient.query('SELECT pg_advisory_unlock($1::bigint)', [
-              TEMPORARY_DATABASE_LOCK_KEY,
-            ]);
-          }
+        if (databaseCreated) {
+          await adminPool.query(`DROP DATABASE ${temporaryDatabaseIdentifier}`);
         }
       } finally {
-        adminClient?.release();
         await adminPool.end();
       }
     }
@@ -224,7 +241,16 @@ describeWithDatabase('identity database semantic naming migration', () => {
             'authentication_sessions',
             'oauth_transactions',
           ],
-          ['id', 'name', 'provider', 'kind'],
+          [
+            'id',
+            'name',
+            'provider',
+            'kind',
+            'user_id',
+            'workspace_id',
+            'owner_user_id',
+            'rotated_from_id',
+          ],
         ],
       );
       expect(genericColumns.rows).toEqual([]);
