@@ -18,30 +18,32 @@ function ciStep(name) {
 }
 
 describe('Compose runtime provisioning workflow', () => {
-  it('waits only for long-running dependencies before starting the one-shot provisioner', () => {
+  it('waits for long-running dependencies before running the one-shot provisioner synchronously', () => {
     const runtime = ciStep('Start and probe Compose infrastructure');
 
-    expect(runtime).toContain(
-      'docker compose up --detach --wait --wait-timeout 90 postgres nats',
-    );
+    const dependencyCommand =
+      'docker compose up --detach --wait --wait-timeout 90 postgres nats';
+    const provisionerCommand =
+      'docker compose run --rm --no-deps notification-db-provision';
+    const databaseProbe = 'docker compose exec --no-TTY postgres psql';
+
+    expect(runtime).toContain(dependencyCommand);
     expect(runtime).not.toContain(
       'docker compose up --detach --wait --wait-timeout 90\n',
     );
-
-    const dependencyReady = runtime.indexOf(
-      'docker compose up --detach --wait --wait-timeout 90 postgres nats',
+    expect(runtime).toContain(provisionerCommand);
+    expect(runtime.indexOf(provisionerCommand)).toBeGreaterThan(
+      runtime.indexOf(dependencyCommand),
     );
-    const provisionerStart = runtime.indexOf(
+    expect(runtime.indexOf(databaseProbe)).toBeGreaterThan(
+      runtime.indexOf(provisionerCommand),
+    );
+    expect(runtime).not.toContain(
       'docker compose up --detach --no-deps notification-db-provision',
     );
-    const provisionerInspect = runtime.indexOf(
+    expect(runtime).not.toContain(
       'docker compose ps --all --quiet notification-db-provision',
     );
-
-    expect(provisionerStart).toBeGreaterThan(dependencyReady);
-    expect(provisionerInspect).toBeGreaterThan(provisionerStart);
-    expect(runtime).toContain("= 'exited'");
-    expect(runtime).toContain("= '0'");
     expect(runtime).toContain('docker compose down --volumes --remove-orphans');
   });
 });
