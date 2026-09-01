@@ -423,56 +423,53 @@ export class PlanningDataRightsContributor {
         'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',
         [],
       );
-      const [goals, projects, tasks, todayAggregates, todayIdempotency] =
-        await Promise.all([
-          collectExportRows<PlanningGoalExportRow>(
-            transaction,
-            `SELECT id, title, created_at
-             FROM planning.goals
-             WHERE workspace_id = $1
-             ORDER BY created_at ASC, id ASC
-             LIMIT $2 OFFSET $3`,
-            workspaceId,
-          ),
-          collectExportRows<PlanningProjectExportRow>(
-            transaction,
-            `SELECT id, goal_id, title, created_at
-             FROM planning.projects
-             WHERE workspace_id = $1
-             ORDER BY created_at ASC, id ASC
-             LIMIT $2 OFFSET $3`,
-            workspaceId,
-          ),
-          collectExportRows<PlanningTaskExportRow>(
-            transaction,
-            `SELECT id, project_id, title, status, completed_at, created_at
-             FROM planning.tasks
-             WHERE workspace_id = $1
-             ORDER BY created_at ASC, id ASC
-             LIMIT $2 OFFSET $3`,
-            workspaceId,
-          ),
-          collectExportRows<TodayAggregateExportRow>(
-            transaction,
-            `SELECT local_date::text, aggregate_id, revision_number::text,
-                    revision_token, payload_json, created_at, updated_at
-             FROM planning.today_aggregates
-             WHERE workspace_id = $1
-             ORDER BY local_date ASC, aggregate_id ASC
-             LIMIT $2 OFFSET $3`,
-            workspaceId,
-          ),
-          collectExportRows<TodayIdempotencyExportRow>(
-            transaction,
-            `SELECT idempotency_key, request_digest, result_kind, aggregate_id,
-                    revision_token, payload_json, created_at
-             FROM planning.today_idempotency_records
-             WHERE workspace_id = $1
-             ORDER BY created_at ASC, idempotency_key ASC
-             LIMIT $2 OFFSET $3`,
-            workspaceId,
-          ),
-        ]);
+      const goals = await collectExportRows<PlanningGoalExportRow>(
+        transaction,
+        `SELECT id, title, created_at
+         FROM planning.goals
+         WHERE workspace_id = $1
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2 OFFSET $3`,
+        workspaceId,
+      );
+      const projects = await collectExportRows<PlanningProjectExportRow>(
+        transaction,
+        `SELECT id, goal_id, title, created_at
+         FROM planning.projects
+         WHERE workspace_id = $1
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2 OFFSET $3`,
+        workspaceId,
+      );
+      const tasks = await collectExportRows<PlanningTaskExportRow>(
+        transaction,
+        `SELECT id, project_id, title, status, completed_at, created_at
+         FROM planning.tasks
+         WHERE workspace_id = $1
+         ORDER BY created_at ASC, id ASC
+         LIMIT $2 OFFSET $3`,
+        workspaceId,
+      );
+      const todayAggregates = await collectExportRows<TodayAggregateExportRow>(
+        transaction,
+        `SELECT local_date::text, aggregate_id, revision_number::text,
+                revision_token, payload_json, created_at, updated_at
+         FROM planning.today_aggregates
+         WHERE workspace_id = $1
+         ORDER BY local_date ASC, aggregate_id ASC
+         LIMIT $2 OFFSET $3`,
+        workspaceId,
+      );
+      const todayIdempotency = await collectExportRows<TodayIdempotencyExportRow>(
+        transaction,
+        `SELECT idempotency_key, request_digest, result_kind, aggregate_id,
+                revision_token, payload_json, created_at
+         FROM planning.today_idempotency_records
+         WHERE workspace_id = $1
+         ORDER BY created_at ASC, idempotency_key ASC
+         LIMIT $2 OFFSET $3`,
+        workspaceId,
+      );
 
       const data: DataRightsJsonObject = Object.freeze({
         goals: normalizeExportRows(goals, (row) => ({
