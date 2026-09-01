@@ -91,13 +91,13 @@ export interface GitHubAuthorizationCodeAuthenticator {
   ): Promise<ProviderIdentityProfile>;
 }
 
-/** Credential-free audit event emitted for every callback outcome. */
+/** Credential-free retained audit contract emitted for every callback outcome. */
 export interface OAuthCallbackAuditEvent {
-  identityProvider: IdentityProvider;
-  callbackOutcome: 'success' | 'failure';
+  provider: IdentityProvider;
+  outcome: 'success' | 'failure';
   correlationId: string;
-  userAccountId?: string;
-  identityWorkspaceId?: string;
+  userId?: string;
+  workspaceId?: string;
 }
 
 /** Required audit boundary for callback completion. */
@@ -255,12 +255,11 @@ export class OAuthCallbackApplication {
         this.currentTime(),
       );
       await this.auditWithoutThrowing({
-        identityProvider,
-        callbackOutcome: 'success',
+        provider: identityProvider,
+        outcome: 'success',
         correlationId,
-        userAccountId: provisionedAccount.userAccount.userAccountId,
-        identityWorkspaceId:
-          provisionedAccount.identityWorkspace.identityWorkspaceId,
+        userId: provisionedAccount.userAccount.userAccountId,
+        workspaceId: provisionedAccount.identityWorkspace.identityWorkspaceId,
       });
       issuedSessionToken = undefined;
       return {
@@ -273,13 +272,13 @@ export class OAuthCallbackApplication {
         await this.revokeWithoutThrowing(issuedSessionToken);
       }
       await this.auditWithoutThrowing({
-        identityProvider,
-        callbackOutcome: 'failure',
+        provider: identityProvider,
+        outcome: 'failure',
         correlationId,
         ...(provisionedAccount
           ? {
-              userAccountId: provisionedAccount.userAccount.userAccountId,
-              identityWorkspaceId:
+              userId: provisionedAccount.userAccount.userAccountId,
+              workspaceId:
                 provisionedAccount.identityWorkspace.identityWorkspaceId,
             }
           : {}),
