@@ -483,3 +483,336 @@ export async function handlePlanningGoalListRequest(
     return unavailableGoalListing();
   }
 }
+
+const MAXIMUM_PROJECTS = 100;
+
+/** Browser-safe projection of one durable Project below a Goal. */
+export interface PlanningProjectView {
+  id: string;
+  goalId: string;
+  title: string;
+  createdAt: string;
+}
+
+/** Rejects malformed Project requests without consulting Identity or Planning. */
+function invalidProjectRequest(): Response {
+  return problemResponse(
+    400,
+    'Project request is invalid',
+    'invalid_project_request',
+  );
+}
+
+/** Hides Project creation configuration, network, and malformed dependency failures. */
+function unavailableProjectCreation(): Response {
+  return problemResponse(
+    503,
+    'Project creation is unavailable',
+    'project_creation_unavailable',
+  );
+}
+
+/** Hides Project listing configuration, network, and malformed dependency failures. */
+function unavailableProjectListing(): Response {
+  return problemResponse(
+    503,
+    'Project listing is unavailable',
+    'project_listing_unavailable',
+  );
+}
+
+/** Requires the exact first-party Project route and forbids query-shaped authority. */
+function requireProjectRoute(
+  request: Request,
+  goalId: string,
+  method: 'GET' | 'POST',
+): void {
+  const url = new URL(request.url);
+  if (
+    request.method !== method ||
+    url.pathname !== `/api/planning/goals/${goalId}/projects` ||
+    url.search
+  ) {
+    throw new Error('Project route is invalid');
+  }
+}
+
+/** Accepts exactly one bounded Project title and no browser-selected ownership fields. */
+async function parseBrowserProjectRequest(request: Request): Promise<string> {
+  const value = await readBoundedJson(request, MAXIMUM_REQUEST_BYTES);
+  if (!isPlainObject(value) || Object.keys(value).length !== 1) {
+    throw new Error('Project request is invalid');
+  }
+  return requireGoalTitle(value.title);
+}
+
+/** Validates one exact Project record against server-derived workspace and parent scope. */
+function parseProjectRecord(
+  value: unknown,
+  expectedWorkspaceId: string,
+  expectedGoalId: string,
+): PlanningProjectView {
+  if (!isPlainObject(value)) {
+    throw new Error('Project response is invalid');
+  }
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== 5 ||
+    keys[0] !== 'createdAt' ||
+    keys[1] !== 'goalId' ||
+    keys[2] !== 'id' ||
+    keys[3] !== 'title' ||
+    keys[4] !== 'workspaceId'
+  ) {
+    throw new Error('Project response is invalid');
+  }
+  const workspaceId = requireUuid(value.workspaceId);
+  const goalId = requireUuid(value.goalId);
+  if (workspaceId !== expectedWorkspaceId || goalId !== expectedGoalId) {
+    throw new Error('Project response ownership is invalid');
+  }
+  return Object.freeze({
+    id: requireUuid(value.id),
+    goalId,
+    title: requireGoalTitle(value.title),
+    createdAt: requireTimestamp(value.createdAt),
+  });
+}
+
+/** Validates Project creation evidence against ownership, parent, and submitted title. */
+function parseCreatedProject(
+  value: unknown,
+  expectedWorkspaceId: string,
+  expectedGoalId: string,
+  expectedTitle: string,
+): PlanningProjectView {
+  const project = parseProjectRecord(
+    value,
+    expectedWorkspaceId,
+    expectedGoalId,
+  );
+  if (project.title !== expectedTitle) {
+    throw new Error('Project response title is invalid');
+  }
+  return project;
+}
+
+/** Validates one bounded, identity-unique Project collection before browser exposure. */
+function parseProjectCollection(
+  value: unknown,
+  expectedWorkspaceId: string,
+  expectedGoalId: string,
+): PlanningProjectView[] {
+  if (!Array.isArray(value) || value.length > MAXIMUM_PROJECTS) {
+    throw new Error('Project collection is invalid');
+  }
+  const projects = value.map((project) =>
+    parseProjectRecord(project, expectedWorkspaceId, expectedGoalId),
+  );
+  const projectIds = new Set(projects.map((project) => project.id));
+  if (projectIds.size !== projects.length) {
+    throw new Error('Project collection contains duplicate identities');
+  }
+  return projects;
+}
+
+/**
+ * Creates one durable Project through the authenticated first-party boundary.
+ * The parent Goal identifier is route-bound and validated as UUIDv4 before any
+ * dependency call; browser cookies terminate at Identity, while Planning receives
+ * only the exact method/path-bound workspace signature and bounded title.
+ */
+export async function handlePlanningProjectCreateRequest(
+  request: Request,
+  goalId: string,
+  environment: WebEnvironment,
+  fetcher: PlanningGoalFetch = fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<Response> {
+  let safeGoalId: string;
+  let title: string;
+  let cookie: string | undefined;
+  try {
+    safeGoalId = requireUuid(goalId);
+    requireProjectRoute(request, safeGoalId, 'POST');
+    title = await parseBrowserProjectRequest(request);
+    cookie = requireCookieHeader(request);
+  } catch {
+    return invalidProjectRequest();
+  }
+
+  try {
+    const identityOrigin = requireServiceOrigin(
+      environment.IDENTITY_SERVICE_ORIGIN,
+    );
+    const planningOrigin = requireServiceOrigin(
+      environment.PLANNING_SERVICE_ORIGIN,
+    );
+    const contextSecret = requireGatewaySecret(
+      environment.PLANNING_GATEWAY_CONTEXT_SECRET,
+    );
+    const correlationId = randomUUID();
+    const identityResponse = await fetcher(
+      new URL('/v1/session', identityOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({
+          cookie,
+          'x-correlation-id': correlationId,
+        }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
+    if (identityResponse.status === 401) {
+      return problemResponse(
+        401,
+        'Authentication is required',
+        'authentication_required',
+      );
+    }
+    if (identityResponse.status !== 200) {
+      return unavailableProjectCreation();
+    }
+    const workspaceId = parseSessionWorkspace(
+      await readBoundedJson(identityResponse, MAXIMUM_RESPONSE_BYTES),
+    );
+    const planningPath = `/v1/goals/${safeGoalId}/projects`;
+    const contextHeaders = createPlanningContextHeaders(
+      workspaceId,
+      contextSecret,
+      nowSeconds,
+      { method: 'POST', path: planningPath },
+    );
+    const planningResponse = await fetcher(
+      new URL(planningPath, planningOrigin),
+      {
+        method: 'POST',
+        headers: requestHeaders({
+          ...contextHeaders,
+          'content-type': 'application/json',
+          'x-correlation-id': correlationId,
+        }),
+        body: JSON.stringify({ title }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
+    if (planningResponse.status === 400) {
+      return invalidProjectRequest();
+    }
+    if (planningResponse.status !== 201) {
+      return unavailableProjectCreation();
+    }
+    const project = parseCreatedProject(
+      await readBoundedJson(planningResponse, MAXIMUM_RESPONSE_BYTES),
+      workspaceId,
+      safeGoalId,
+      title,
+    );
+    return Response.json(project, {
+      status: 201,
+      headers: { 'cache-control': 'no-store' },
+    });
+  } catch {
+    return unavailableProjectCreation();
+  }
+}
+
+/**
+ * Lists durable Projects below one authenticated Goal without exposing workspace
+ * authority. The exact parent Goal is bound into the Planning signature, and every
+ * returned record must match both the server-derived workspace and requested parent.
+ */
+export async function handlePlanningProjectListRequest(
+  request: Request,
+  goalId: string,
+  environment: WebEnvironment,
+  fetcher: PlanningGoalFetch = fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<Response> {
+  let safeGoalId: string;
+  let cookie: string | undefined;
+  try {
+    safeGoalId = requireUuid(goalId);
+    requireProjectRoute(request, safeGoalId, 'GET');
+    cookie = requireCookieHeader(request);
+  } catch {
+    return invalidProjectRequest();
+  }
+
+  try {
+    const identityOrigin = requireServiceOrigin(
+      environment.IDENTITY_SERVICE_ORIGIN,
+    );
+    const planningOrigin = requireServiceOrigin(
+      environment.PLANNING_SERVICE_ORIGIN,
+    );
+    const contextSecret = requireGatewaySecret(
+      environment.PLANNING_GATEWAY_CONTEXT_SECRET,
+    );
+    const correlationId = randomUUID();
+    const identityResponse = await fetcher(
+      new URL('/v1/session', identityOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({
+          cookie,
+          'x-correlation-id': correlationId,
+        }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
+    if (identityResponse.status === 401) {
+      return problemResponse(
+        401,
+        'Authentication is required',
+        'authentication_required',
+      );
+    }
+    if (identityResponse.status !== 200) {
+      return unavailableProjectListing();
+    }
+    const workspaceId = parseSessionWorkspace(
+      await readBoundedJson(identityResponse, MAXIMUM_RESPONSE_BYTES),
+    );
+    const planningPath = `/v1/goals/${safeGoalId}/projects`;
+    const contextHeaders = createPlanningContextHeaders(
+      workspaceId,
+      contextSecret,
+      nowSeconds,
+      { method: 'GET', path: planningPath },
+    );
+    const planningResponse = await fetcher(
+      new URL(planningPath, planningOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({
+          ...contextHeaders,
+          'x-correlation-id': correlationId,
+        }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
+    if (planningResponse.status !== 200) {
+      return unavailableProjectListing();
+    }
+    const projects = parseProjectCollection(
+      await readBoundedJson(planningResponse, MAXIMUM_RESPONSE_BYTES),
+      workspaceId,
+      safeGoalId,
+    );
+    return Response.json(projects, {
+      status: 200,
+      headers: { 'cache-control': 'no-store' },
+    });
+  } catch {
+    return unavailableProjectListing();
+  }
+}
