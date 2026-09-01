@@ -17,6 +17,7 @@ import {
   validateCommercialReadinessPolicy,
   validateGitHubSnapshot,
 } from './schema.mjs';
+import { verifyReleaseEvidenceSignatures } from './release-signature-verification.mjs';
 import { collectWorkflowRegistrySnapshot } from './workflow-registry.mjs';
 
 const COMMANDS = Object.freeze({
@@ -32,6 +33,10 @@ const COMMANDS = Object.freeze({
   },
   'workflow-registry': {
     values: new Set(['repository', 'output', 'commit', 'generatedAt']),
+    booleans: new Set(),
+  },
+  'verify-release': {
+    values: new Set(['index', 'artifacts', 'trustedKeys']),
     booleans: new Set(),
   },
   audit: {
@@ -67,6 +72,9 @@ const FLAG_TO_KEY = Object.freeze({
   '--output-json': 'outputJson',
   '--output-markdown': 'outputMarkdown',
   '--report': 'report',
+  '--index': 'index',
+  '--artifacts': 'artifacts',
+  '--trusted-keys': 'trustedKeys',
   '--dry-run': 'dryRun',
   '--merge': 'merge',
 });
@@ -211,6 +219,29 @@ export async function commandWorkflowRegistry(
   }
 }
 
+/**
+ * Verifies one operator-supplied release-evidence directory against explicit trusted keys.
+ *
+ * The command reads only two bounded regular JSON inputs, passes the artifact directory
+ * unchanged to the cryptographic verifier, and prints only the verified release version
+ * and source commit. It does not discover trust roots, fetch remote keys, or emit artifact
+ * names/signature material on success.
+ */
+export async function commandVerifyRelease(options, dependencies = {}) {
+  requireOptions(options, ['index', 'artifacts', 'trustedKeys']);
+  const readJson = dependencies.readJsonFile ?? readJsonFile;
+  const verify =
+    dependencies.verifyReleaseEvidenceSignatures ?? verifyReleaseEvidenceSignatures;
+  const log = dependencies.log ?? console.log;
+  const [index, trustedKeys] = await Promise.all([
+    readJson(options.index, 1024 * 1024),
+    readJson(options.trustedKeys, 256 * 1024),
+  ]);
+  const verified = await verify(index, options.artifacts, trustedKeys);
+  log(`release verified: ${verified.version} @ ${verified.source_commit}`);
+  return verified;
+}
+
 async function commandAudit(options) {
   requireOptions(options, [
     'manifest',
@@ -327,6 +358,7 @@ async function main(argv = process.argv.slice(2)) {
   if (command === 'workflow-registry') {
     return await commandWorkflowRegistry(options);
   }
+  if (command === 'verify-release') return await commandVerifyRelease(options);
   if (command === 'audit') return await commandAudit(options);
   if (command === 'publish') return await commandPublish(options);
   if (command === 'drain') return await commandDrain(options);
