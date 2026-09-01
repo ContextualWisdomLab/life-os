@@ -127,6 +127,8 @@ describe('PluginDeliveryOriginAuthority', () => {
     'http://api.example.com',
     'https://user:password@api.example.com',
     'https://api.example.com/path',
+    'https://api.example.com/.',
+    'https://api.example.com/a/..',
     'https://api.example.com/?query=1',
     'https://api.example.com/#fragment',
     ' https://api.example.com',
