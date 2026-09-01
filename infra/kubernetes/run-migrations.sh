@@ -68,12 +68,12 @@ SELECT
   ) AS migration_is_applied,
   COALESCE(
     (
-      SELECT MAX(migration_sequence)
+      SELECT MAX(migration_name COLLATE "C")
       FROM ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
       WHERE service_name = :'service_name'
     ),
-    -1
-  ) AS latest_migration_sequence
+    ''
+  ) AS latest_migration_name
 \\gset
 \\if :migration_exists
   \\if :migration_digest_matches
@@ -88,10 +88,10 @@ SELECT
     \\quit 1
   \\endif
 \\else
-  SELECT (:'migration_sequence')::integer > :latest_migration_sequence
-    AS migration_sequence_is_forward
+  SELECT (:'migration_name' COLLATE "C") > (:'latest_migration_name' COLLATE "C")
+    AS migration_name_is_forward
   \\gset
-  \\if :migration_sequence_is_forward
+  \\if :migration_name_is_forward
     INSERT INTO ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
       service_name,
       migration_name,
@@ -116,7 +116,7 @@ SELECT
       AND migration_status = 'applying';
     \\echo migration_status=applied service=:service_name migration=:migration_name
   \\else
-    \\echo migration_error=migration_sequence_not_forward service=:service_name migration=:migration_name latest=:latest_migration_sequence
+    \\echo migration_error=migration_name_not_forward service=:service_name migration=:migration_name latest=:latest_migration_name
     \\quit 1
   \\endif
 \\endif
@@ -180,8 +180,9 @@ SET migration_sequence = substring(migration_name FROM '^[0-9]{4}')::integer
 WHERE migration_sequence IS NULL;
 ALTER TABLE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
   ALTER COLUMN migration_sequence SET NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_service_sequence_unique
-  ON ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (service_name, migration_sequence);
+DROP INDEX IF EXISTS ${MIGRATION_SCHEMA}.schema_migrations_service_sequence_unique;
+CREATE INDEX IF NOT EXISTS schema_migrations_service_order
+  ON ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (service_name, migration_name);
 SQL
 
   for migration_file in "${migration_files[@]}"; do
