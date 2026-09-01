@@ -17,6 +17,9 @@ jobs:
   compose_runtime:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      POSTGRES_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      NOTIFICATION_RUNTIME_DATABASE_PASSWORD: notification-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout exact contributor head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -33,7 +36,7 @@ jobs:
             trap - EXIT
             if [ "$status" -ne 0 ]; then
               docker compose ps --all || true
-              docker compose logs --no-color --timestamps --tail 200 postgres nats || true
+              docker compose logs --no-color --timestamps --tail 200 postgres nats notification-db-provision || true
             fi
             docker compose down --volumes --remove-orphans || true
             exit "$status"
@@ -41,6 +44,10 @@ jobs:
           trap cleanup EXIT
 
           docker compose up --detach --wait --wait-timeout 90
+          provisioner_id="$(docker compose ps --all --quiet notification-db-provision)"
+          test -n "$provisioner_id"
+          test "$(docker inspect --format '{{.State.Status}}' "$provisioner_id")" = 'exited'
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$provisioner_id")" = '0'
           docker compose exec --no-TTY postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1' |
             grep -Fx 1
           curl --fail --silent --show-error --max-time 5 \
@@ -103,6 +110,8 @@ jobs:
       HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
       PRIVACY_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      POSTGRES_PASSWORD: ci-${{ github.run_id }}-${{ github.run_attempt }}
+      NOTIFICATION_RUNTIME_DATABASE_PASSWORD: notification-ci-${{ github.run_id }}-${{ github.run_attempt }}
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
