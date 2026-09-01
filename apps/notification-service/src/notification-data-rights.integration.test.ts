@@ -201,6 +201,99 @@ describeWithPostgres('Notification data-rights PostgreSQL integration', () => {
     ).toBe(3);
   });
 
+  it('prevents same-workspace writes from surviving an erasure and its exact replay', async () => {
+    const workspaceId = randomUUID();
+    const requestedByUserId = randomUUID();
+    const requestId = randomUUID();
+    const idempotencyKey = randomUUID();
+    const lateReminderId = randomUUID();
+    await seedWorkspace(administrativePool, workspaceId);
+
+    const erasureClient = await administrativePool.connect();
+    const writerClient = await administrativePool.connect();
+    let erasureCommitted = false;
+    try {
+      await erasureClient.query('BEGIN');
+      const first = await erasureClient.query<{
+        result_erased_records: number;
+        result_receipt_sha256: string;
+      }>(
+        'SELECT * FROM notification_service.erase_workspace_data($1, $2, $3, $4)',
+        [workspaceId, requestedByUserId, requestId, idempotencyKey],
+      );
+
+      await writerClient.query("SET statement_timeout = '250ms'");
+      await expect(
+        writerClient.query(
+          `INSERT INTO notification_service.reminder_occurrences (
+             reminder_id,
+             workspace_id,
+             reminder_title,
+             due_instant,
+             time_zone,
+             daily_delivery_limit,
+             delivery_attempt_count,
+             occurrence_status
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            lateReminderId,
+            workspaceId,
+            'Concurrent erasure reminder',
+            '2026-08-12T01:00:00.000Z',
+            'UTC',
+            3,
+            0,
+            'pending',
+          ],
+        ),
+      ).rejects.toMatchObject({ code: '57014' });
+
+      await erasureClient.query('COMMIT');
+      erasureCommitted = true;
+      await writerClient.query('SET statement_timeout = 0');
+
+      await expect(
+        writerClient.query(
+          `INSERT INTO notification_service.reminder_occurrences (
+             reminder_id,
+             workspace_id,
+             reminder_title,
+             due_instant,
+             time_zone,
+             daily_delivery_limit,
+             delivery_attempt_count,
+             occurrence_status
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            lateReminderId,
+            workspaceId,
+            'Concurrent erasure reminder',
+            '2026-08-12T01:00:00.000Z',
+            'UTC',
+            3,
+            0,
+            'pending',
+          ],
+        ),
+      ).rejects.toMatchObject({ code: '55000' });
+      expect(await workspaceRecordCount(administrativePool, workspaceId)).toBe(0);
+
+      const replay = await administrativePool.query(
+        'SELECT * FROM notification_service.erase_workspace_data($1, $2, $3, $4)',
+        [workspaceId, requestedByUserId, requestId, idempotencyKey],
+      );
+      expect(replay.rows).toEqual(first.rows);
+      expect(await workspaceRecordCount(administrativePool, workspaceId)).toBe(0);
+    } finally {
+      if (!erasureCommitted) {
+        await erasureClient.query('ROLLBACK').catch(() => undefined);
+      }
+      await writerClient.query('SET statement_timeout = 0').catch(() => undefined);
+      erasureClient.release();
+      writerClient.release();
+    }
+  });
+
   it('rejects non-v4 erasure authority before changing tenant data', async () => {
     const workspaceId = randomUUID();
     await seedWorkspace(administrativePool, workspaceId);
