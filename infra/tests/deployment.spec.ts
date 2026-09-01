@@ -197,7 +197,7 @@ describe('production Kubernetes reference contract', () => {
     expect(identityMigrationNames.at(-1)).toBe(
       '0007_identity_database_semantic_names.sql',
     );
-    expect(migrationRunner).toContain('MAX(migration_name)');
+    expect(migrationRunner).toContain('MAX(migration_name COLLATE "C")');
     expect(migrationRunner).toContain('migration_name_is_forward');
     expect(migrationRunner).toContain(
       'DROP INDEX IF EXISTS life_os_deployment.schema_migrations_service_sequence_unique',
