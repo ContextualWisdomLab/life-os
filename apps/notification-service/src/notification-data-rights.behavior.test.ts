@@ -174,7 +174,16 @@ describe('NotificationDataRightsContributor', () => {
 
   it('dispatches every contributor lifecycle operation with tenant-scoped parameters', async () => {
     const client = new ScriptedClient([
-      { rows: [{ erasure_function_ready: true }] },
+      {
+        rows: [
+          {
+            erasure_function_ready: true,
+            replay_select_ready: true,
+            replay_insert_ready: true,
+            replay_delete_ready: true,
+          },
+        ],
+      },
       { rows: [{ erased_records: 3, receipt_sha256: SHA256 }] },
       { rows: [{ record_count: 0 }] },
       { rows: [{ record_count: 2 }] },
@@ -222,9 +231,18 @@ describe('NotificationDataRightsContributor', () => {
     expect(client.calls[2]?.values).toEqual([WORKSPACE_ID]);
   });
 
-  it('requires only function execution authority for erasure preflight', async () => {
+  it('reports missing function authority without direct receipt-table access', async () => {
     const client = new ScriptedClient([
-      { rows: [{ erasure_function_ready: false }] },
+      {
+        rows: [
+          {
+            erasure_function_ready: false,
+            replay_select_ready: true,
+            replay_insert_ready: true,
+            replay_delete_ready: true,
+          },
+        ],
+      },
     ]);
     const contributor = new NotificationDataRightsContributor(client);
 
@@ -240,7 +258,10 @@ describe('NotificationDataRightsContributor', () => {
     });
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]?.text).toContain('has_function_privilege');
-    expect(client.calls[0]?.text).not.toContain('has_table_privilege');
+    expect(client.calls[0]?.text).toContain('has_table_privilege');
+    expect(client.calls[0]?.text).toContain(
+      'data_rights_authority_replay_records',
+    );
     expect(client.calls[0]?.text).not.toContain(
       'data_rights_erasure_receipts',
     );
