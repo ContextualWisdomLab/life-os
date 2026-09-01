@@ -48,34 +48,47 @@ describe('Notification database migration authority contract', () => {
     expect(migrationStep).not.toContain('NOTIFICATION_DATABASE_URL:');
   });
 
-  it('documents separate local migration and runtime identities', () => {
+  it('documents a local migration authority that is distinct from the Notification runtime', () => {
     expect(environmentExample).toContain(
-      'NOTIFICATION_MIGRATION_DATABASE_URL=postgresql://lifeos_migrator:lifeos@postgres:5432/lifeos',
+      'NOTIFICATION_MIGRATION_DATABASE_URL=postgresql://lifeos:replace-with-local-postgres-password@postgres:5432/lifeos',
     );
     expect(environmentExample).toContain(
-      'NOTIFICATION_DATABASE_RUNTIME_ROLE=lifeos',
+      'NOTIFICATION_DATABASE_RUNTIME_ROLE=lifeos_notification',
     );
     expect(environmentExample).toContain(
-      'NOTIFICATION_DATABASE_URL=postgresql://lifeos:lifeos@postgres:5432/lifeos',
+      'NOTIFICATION_DATABASE_URL=postgresql://lifeos_notification:replace-with-distinct-local-runtime-password@postgres:5432/lifeos',
+    );
+    expect(environmentExample).toContain(
+      'NOTIFICATION_RUNTIME_DATABASE_PASSWORD=replace-with-distinct-local-runtime-password',
     );
   });
 
-  it('provisions the documented local migration identity on fresh Compose volumes', () => {
+  it('provisions a least-privilege Notification runtime on fresh and existing Compose volumes without committed credentials', () => {
+    expect(composeConfiguration).toContain('notification-db-provision:');
     expect(composeConfiguration).toContain(
-      './infra/postgres/init/001_notification_migrator.sql:/docker-entrypoint-initdb.d/001_notification_migrator.sql:ro',
+      './infra/postgres/provision/notification-runtime.psql:/provision/notification-runtime.psql:ro',
     );
+    expect(composeConfiguration).toContain(
+      'NOTIFICATION_RUNTIME_DATABASE_PASSWORD: ${NOTIFICATION_RUNTIME_DATABASE_PASSWORD:?Set NOTIFICATION_RUNTIME_DATABASE_PASSWORD}',
+    );
+    expect(composeConfiguration).not.toContain(
+      '/docker-entrypoint-initdb.d/001_notification_migrator.sql',
+    );
+    expect(composeConfiguration).not.toContain('POSTGRES_PASSWORD: lifeos');
+
     const localProvisioning = read(
-      'infra/postgres/init/001_notification_migrator.sql',
+      'infra/postgres/provision/notification-runtime.psql',
     );
-    expect(localProvisioning).toContain('CREATE ROLE lifeos_migrator');
+    expect(localProvisioning).toContain('CREATE ROLE lifeos_notification');
     expect(localProvisioning).toContain('LOGIN');
     expect(localProvisioning).toContain('NOSUPERUSER');
     expect(localProvisioning).toContain('NOCREATEDB');
     expect(localProvisioning).toContain('NOCREATEROLE');
     expect(localProvisioning).toContain('NOINHERIT');
     expect(localProvisioning).toContain(
-      'GRANT CONNECT, CREATE ON DATABASE lifeos TO lifeos_migrator',
+      "\\getenv runtime_password NOTIFICATION_RUNTIME_DATABASE_PASSWORD",
     );
+    expect(localProvisioning).not.toMatch(/PASSWORD\s+'[^']+'/u);
   });
 
   it('transfers legacy Notification object ownership to the migration authority', () => {
