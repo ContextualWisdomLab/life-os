@@ -142,16 +142,34 @@ function requireFormatEvidence(record, evidenceType) {
   return Object.freeze({});
 }
 
+function requireSignatureSubject(record, evidenceType) {
+  const hasSubjectArtifactName = Object.hasOwn(record, 'subject_artifact_name');
+  const hasSubjectSha256 = Object.hasOwn(record, 'subject_sha256');
+  if (evidenceType === 'signature') {
+    if (!hasSubjectArtifactName || !hasSubjectSha256) return invalid();
+    return Object.freeze({
+      subject_artifact_name: requireArtifactName(record.subject_artifact_name),
+      subject_sha256: requireDigest(record.subject_sha256),
+    });
+  }
+  if (hasSubjectArtifactName || hasSubjectSha256) return invalid();
+  return Object.freeze({});
+}
+
 function requireArtifact(value, sourceCommit) {
   const record = requirePlainObject(value);
   const evidenceType = requireEvidenceType(record.evidence_type);
   const hasSpecVersion = Object.hasOwn(record, 'spec_version');
   const hasPredicateType = Object.hasOwn(record, 'predicate_type');
+  const hasSubjectArtifactName = Object.hasOwn(record, 'subject_artifact_name');
+  const hasSubjectSha256 = Object.hasOwn(record, 'subject_sha256');
   requireExactKeys(record, [
     'artifact_name',
     'evidence_type',
     ...(hasSpecVersion ? ['spec_version'] : []),
     ...(hasPredicateType ? ['predicate_type'] : []),
+    ...(hasSubjectArtifactName ? ['subject_artifact_name'] : []),
+    ...(hasSubjectSha256 ? ['subject_sha256'] : []),
     'sha256',
     'size_bytes',
     'source_commit',
@@ -159,10 +177,12 @@ function requireArtifact(value, sourceCommit) {
   const artifactSourceCommit = requireSourceCommit(record.source_commit);
   if (artifactSourceCommit !== sourceCommit) return invalid();
   const formatEvidence = requireFormatEvidence(record, evidenceType);
+  const signatureSubject = requireSignatureSubject(record, evidenceType);
   return Object.freeze({
     artifact_name: requireArtifactName(record.artifact_name),
     evidence_type: evidenceType,
     ...formatEvidence,
+    ...signatureSubject,
     sha256: requireDigest(record.sha256),
     size_bytes: requireSize(record.size_bytes),
     source_commit: artifactSourceCommit,
@@ -174,15 +194,26 @@ function requireArtifacts(value, sourceCommit) {
     return invalid();
   }
   const artifacts = value.map((artifact) => requireArtifact(artifact, sourceCommit));
-  const names = new Set();
+  const byName = new Map();
   const evidenceTypes = new Set();
   for (const artifact of artifacts) {
-    if (names.has(artifact.artifact_name)) return invalid();
-    names.add(artifact.artifact_name);
+    if (byName.has(artifact.artifact_name)) return invalid();
+    byName.set(artifact.artifact_name, artifact);
     evidenceTypes.add(artifact.evidence_type);
   }
-  for (const requiredType of ['sbom', 'provenance', 'checksum']) {
+  for (const requiredType of ['sbom', 'provenance', 'checksum', 'signature']) {
     if (!evidenceTypes.has(requiredType)) return invalid();
+  }
+  for (const artifact of artifacts) {
+    if (artifact.evidence_type !== 'signature') continue;
+    const subject = byName.get(artifact.subject_artifact_name);
+    if (
+      !subject ||
+      subject.evidence_type === 'signature' ||
+      subject.sha256 !== artifact.subject_sha256
+    ) {
+      return invalid();
+    }
   }
   return Object.freeze(artifacts);
 }
@@ -193,9 +224,11 @@ function requireArtifacts(value, sourceCommit) {
  * The contract binds every retained artifact to one exact source commit, keeps
  * unresolved P0 buyer gaps explicit, and prevents a `stable` channel assertion
  * while any P0 gap remains. SPDX `specVersion` and the SLSA in-toto provenance
- * predicate URI identify the expected evidence formats; successful validation
- * does not claim certification, SLSA level, accessibility conformance, or
- * release readiness by itself.
+ * predicate URI identify the expected evidence formats. Signature evidence must
+ * identify an exact retained subject artifact and its SHA-256 digest, preventing
+ * an unrelated signature file from satisfying the index structurally. Successful
+ * validation does not cryptographically verify the signature or claim
+ * certification, SLSA level, accessibility conformance, or release readiness.
  *
  * @param {unknown} value Untrusted machine-readable release evidence.
  * @returns {Readonly<object>} A deeply frozen, bounded release evidence index.
