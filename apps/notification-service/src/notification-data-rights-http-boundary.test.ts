@@ -2,6 +2,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION } from './notification-data-rights';
+import type { NotificationDataRightsAuthorityReplayGuardPort } from './notification-data-rights-authority-replay';
 import {
   parseTrustedNotificationDataRightsRequest,
   toNotificationDataRightsHttpException,
@@ -41,7 +42,8 @@ function signature(
 ): string {
   const idempotencyKey =
     request.operation === 'erase' ? String(request.idempotencyKey) : '-';
-  const cursor = request.operation === 'export' ? String(request.cursor ?? '-') : '-';
+  const cursor =
+    request.operation === 'export' ? String(request.cursor ?? '-') : '-';
   return createHmac('sha256', SECRET)
     .update(
       [
@@ -73,9 +75,25 @@ async function rejectedStatus(operation: Promise<unknown>): Promise<number> {
   throw new Error('Expected Notification data-rights transport to reject');
 }
 
+/** Creates a replay guard that accepts once and records only credential-free evidence. */
+function oneShotReplayGuard(
+  recorded: unknown[],
+): NotificationDataRightsAuthorityReplayGuardPort {
+  let accepted = false;
+  return {
+    async consume(evidence): Promise<boolean> {
+      recorded.push(evidence);
+      if (accepted) return false;
+      accepted = true;
+      return true;
+    },
+  };
+}
+
 describe('Notification data-rights HTTP authority', () => {
   it('accepts a fresh export bound to tenant, actor, cursor, method, and path', async () => {
     const issuedAt = String(NOW_SECONDS);
+    const replayEvidence: unknown[] = [];
     await expect(
       parseTrustedNotificationDataRightsRequest(
         exportRequest,
@@ -83,8 +101,10 @@ describe('Notification data-rights HTTP authority', () => {
         SECRET,
         { method: 'POST', path: CONTRIBUTOR_PATH },
         NOW_SECONDS,
+        oneShotReplayGuard(replayEvidence),
       ),
     ).resolves.toEqual(exportRequest);
+    expect(replayEvidence).toEqual([]);
   });
 
   it('fails closed if an export cursor changes after Identity signs the request', async () => {
@@ -118,7 +138,7 @@ describe('Notification data-rights HTTP authority', () => {
     expect(status).toBe(401);
   });
 
-  it('accepts destructive idempotency only when the signed key matches the request', async () => {
+  it('consumes destructive signed authority once while preserving domain idempotency identity', async () => {
     const request = Object.freeze({
       contractVersion: NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION,
       operation: 'erase' as const,
@@ -128,26 +148,93 @@ describe('Notification data-rights HTTP authority', () => {
       idempotencyKey: IDEMPOTENCY_KEY,
     });
     const issuedAt = String(NOW_SECONDS);
+    const signed = signature(request, issuedAt);
+    const replayEvidence: unknown[] = [];
+    const replayGuard = oneShotReplayGuard(replayEvidence);
+
     await expect(
       parseTrustedNotificationDataRightsRequest(
         request,
-        { issuedAt, signature: signature(request, issuedAt) },
+        { issuedAt, signature: signed },
         SECRET,
         { method: 'POST', path: CONTRIBUTOR_PATH },
         NOW_SECONDS,
+        replayGuard,
       ),
     ).resolves.toEqual(request);
+    expect(replayEvidence).toEqual([
+      {
+        evidenceDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        expiresAt: new Date((NOW_SECONDS + 60) * 1_000).toISOString(),
+      },
+    ]);
+    expect(JSON.stringify(replayEvidence)).not.toContain(signed);
 
-    const status = await rejectedStatus(
+    const replayStatus = await rejectedStatus(
       parseTrustedNotificationDataRightsRequest(
-        { ...request, idempotencyKey: REQUEST_ID },
-        { issuedAt, signature: signature(request, issuedAt) },
+        request,
+        { issuedAt, signature: signed },
         SECRET,
         { method: 'POST', path: CONTRIBUTOR_PATH },
         NOW_SECONDS,
+        replayGuard,
       ),
     );
-    expect(status).toBe(401);
+    expect(replayStatus).toBe(401);
+
+    const tamperedStatus = await rejectedStatus(
+      parseTrustedNotificationDataRightsRequest(
+        { ...request, idempotencyKey: REQUEST_ID },
+        { issuedAt, signature: signed },
+        SECRET,
+        { method: 'POST', path: CONTRIBUTOR_PATH },
+        NOW_SECONDS,
+        replayGuard,
+      ),
+    );
+    expect(tamperedStatus).toBe(401);
+  });
+
+  it('fails closed when destructive replay authority is unavailable or errors', async () => {
+    const request = Object.freeze({
+      contractVersion: NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION,
+      operation: 'erase' as const,
+      workspaceId: WORKSPACE_ID,
+      requestedByUserId: USER_ID,
+      requestId: REQUEST_ID,
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+    const issuedAt = String(NOW_SECONDS);
+    const signed = signature(request, issuedAt);
+    expect(
+      await rejectedStatus(
+        parseTrustedNotificationDataRightsRequest(
+          request,
+          { issuedAt, signature: signed },
+          SECRET,
+          { method: 'POST', path: CONTRIBUTOR_PATH },
+          NOW_SECONDS,
+        ),
+      ),
+    ).toBe(503);
+
+    const unavailableGuard: NotificationDataRightsAuthorityReplayGuardPort = {
+      async consume(): Promise<boolean> {
+        throw new Error('database topology must not escape');
+      },
+    };
+    expect(
+      await rejectedStatus(
+        parseTrustedNotificationDataRightsRequest(
+          request,
+          { issuedAt, signature: signed },
+          SECRET,
+          { method: 'POST', path: CONTRIBUTOR_PATH },
+          NOW_SECONDS,
+          unavailableGuard,
+        ),
+      ),
+    ).toBe(503);
   });
 
   it.each([
