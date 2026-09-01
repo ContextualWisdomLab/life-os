@@ -94,16 +94,16 @@ function account(provider: IdentityProvider = 'github'): ProvisionedAccount {
 
 function accountRow(value: ProvisionedAccount = account()): Record<string, unknown> {
   return {
-    user_id: value.user.id,
+    user_account_id: value.user.id,
     display_name: value.user.displayName,
     user_created_at: new Date(value.user.createdAt),
     external_identity_id: value.externalIdentity.id,
-    external_identity_user_id: value.externalIdentity.userId,
-    provider: value.externalIdentity.provider,
+    external_identity_user_account_id: value.externalIdentity.userId,
+    identity_provider: value.externalIdentity.provider,
     provider_subject: value.externalIdentity.providerSubject,
     external_identity_created_at: new Date(value.externalIdentity.createdAt),
-    workspace_id: value.workspace.id,
-    workspace_owner_user_id: value.workspace.ownerUserId,
+    identity_workspace_id: value.workspace.id,
+    workspace_owner_user_account_id: value.workspace.ownerUserId,
     workspace_name: value.workspace.name,
     workspace_kind: value.workspace.kind,
     workspace_created_at: new Date(value.workspace.createdAt),
@@ -124,7 +124,8 @@ describe('PostgresIdentityRepository', () => {
     ).resolves.toEqual(account());
 
     expect(database.calls).toHaveLength(1);
-    expect(database.calls[0]?.text).toContain('LEFT JOIN identity.workspaces');
+    expect(database.calls[0]?.text).toContain('LEFT JOIN identity.identity_workspaces');
+    expect(database.calls[0]?.text).toContain('JOIN identity.user_accounts');
     expect(database.calls[0]?.values).toEqual(['github', 'provider-subject-123']);
     expect(database.calls[0]?.text).not.toContain('provider-subject-123');
   });
@@ -145,14 +146,20 @@ describe('PostgresIdentityRepository', () => {
     expect(transaction.calls[0]?.text).toBe('BEGIN');
     expect(transaction.calls[1]?.text).toContain('pg_advisory_xact_lock');
     expect(transaction.calls[1]?.values).toEqual(['github:provider-subject-123']);
-    expect(transaction.calls.some((call) => call.text.includes('INSERT INTO identity.users'))).toBe(
-      true,
-    );
     expect(
-      transaction.calls.some((call) => call.text.includes('INSERT INTO identity.external_identities')),
+      transaction.calls.some((call) =>
+        call.text.includes('INSERT INTO identity.user_accounts'),
+      ),
     ).toBe(true);
     expect(
-      transaction.calls.some((call) => call.text.includes('INSERT INTO identity.workspaces')),
+      transaction.calls.some((call) =>
+        call.text.includes('INSERT INTO identity.external_identities'),
+      ),
+    ).toBe(true);
+    expect(
+      transaction.calls.some((call) =>
+        call.text.includes('INSERT INTO identity.identity_workspaces'),
+      ),
     ).toBe(true);
     expect(transaction.calls.at(-1)?.text).toBe('COMMIT');
     expect(transaction.released).toBe(true);
@@ -167,6 +174,7 @@ describe('PostgresIdentityRepository', () => {
       'provider-subject-123',
       CREATED_AT,
     ]);
+    expect(externalIdentityInsert?.text).toContain('identity_provider');
     expect(externalIdentityInsert?.text).not.toContain('provider-subject-123');
   });
 
@@ -217,7 +225,9 @@ describe('PostgresIdentityRepository', () => {
 
     expect(transaction.calls.some((call) => call.text === 'ROLLBACK')).toBe(true);
     expect(
-      transaction.calls.some((call) => call.text.includes('INSERT INTO identity.workspaces')),
+      transaction.calls.some((call) =>
+        call.text.includes('INSERT INTO identity.identity_workspaces'),
+      ),
     ).toBe(false);
     expect(transaction.released).toBe(true);
   });
@@ -225,7 +235,7 @@ describe('PostgresIdentityRepository', () => {
   it('fails closed when persisted ownership or identifiers are malformed', async () => {
     const malformed = {
       ...accountRow(),
-      workspace_owner_user_id: '44444444-4444-4444-8444-444444444444',
+      workspace_owner_user_account_id: '44444444-4444-4444-8444-444444444444',
     };
     const transaction = new RecordingTransaction(() => emptyResult());
     const repository = new PostgresIdentityRepository(
