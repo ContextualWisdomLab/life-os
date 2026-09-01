@@ -7,12 +7,17 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "lint": "tsc --noEmit && prettier --single-quote --check package.json tsconfig.json vitest.config.ts \"src/**/*.ts\" ../../CHANGELOG.md ../../docs/operations/notification-persistence.md ../../docs/superpowers/specs/2026-08-04-notification-postgres-inbox-design.md \"../../docs/superpowers/plans/2026-08-04-*.md\"",
+    "start": "node dist/server.js",
     "test": "vitest run --no-file-parallelism --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
-    "pg": "^8.22.0"
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "pg": "^8.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
