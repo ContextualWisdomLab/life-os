@@ -7,6 +7,7 @@ const OCI_DIGEST = `sha256:${'b'.repeat(64)}`;
 const SBOM_DIGEST = `sha256:${'c'.repeat(64)}`;
 const PROVENANCE_DIGEST = `sha256:${'d'.repeat(64)}`;
 const CHECKSUM_DIGEST = `sha256:${'e'.repeat(64)}`;
+const SIGNATURE_DIGEST = `sha256:${'f'.repeat(64)}`;
 
 function releaseIndex(overrides = {}) {
   return {
@@ -47,6 +48,15 @@ function releaseIndex(overrides = {}) {
         size_bytes: 512,
         source_commit: SOURCE_COMMIT,
       },
+      {
+        artifact_name: 'life-os.intoto.jsonl.sig',
+        evidence_type: 'signature',
+        subject_artifact_name: 'life-os.intoto.jsonl',
+        subject_sha256: PROVENANCE_DIGEST,
+        sha256: SIGNATURE_DIGEST,
+        size_bytes: 256,
+        source_commit: SOURCE_COMMIT,
+      },
     ],
     ...overrides,
   };
@@ -58,7 +68,7 @@ describe('validateReleaseEvidenceIndex', () => {
     assert.equal(value.schema_version, 'life-os.release-evidence.v1');
     assert.equal(value.channel, 'rc');
     assert.deepEqual(value.open_p0_buyer_gaps, [209, 210]);
-    assert.equal(value.artifacts.length, 4);
+    assert.equal(value.artifacts.length, 5);
     assert.ok(Object.isFrozen(value));
     assert.ok(Object.isFrozen(value.artifacts));
     assert.ok(value.artifacts.every(Object.isFrozen));
@@ -79,7 +89,7 @@ describe('validateReleaseEvidenceIndex', () => {
 
   it('binds every artifact to the exact source commit and rejects duplicate names', () => {
     const mismatched = releaseIndex();
-    mismatched.artifacts[0] = { ...mismatched.artifacts[0], source_commit: 'f'.repeat(40) };
+    mismatched.artifacts[0] = { ...mismatched.artifacts[0], source_commit: '0'.repeat(40) };
     assert.throws(() => validateReleaseEvidenceIndex(mismatched));
 
     const duplicate = releaseIndex();
@@ -90,8 +100,8 @@ describe('validateReleaseEvidenceIndex', () => {
     assert.throws(() => validateReleaseEvidenceIndex(duplicate));
   });
 
-  it('requires explicit SPDX, SLSA provenance, and checksum evidence without treating format identity as certification', () => {
-    for (const evidenceType of ['sbom', 'provenance', 'checksum']) {
+  it('requires explicit SPDX, SLSA provenance, checksum, and bound signature evidence without treating format identity as certification', () => {
+    for (const evidenceType of ['sbom', 'provenance', 'checksum', 'signature']) {
       const missing = releaseIndex({
         artifacts: releaseIndex().artifacts.filter(
           (artifact) => artifact.evidence_type !== evidenceType,
@@ -110,6 +120,30 @@ describe('validateReleaseEvidenceIndex', () => {
       predicate_type: 'https://slsa.dev/spec/v1.2/provenance',
     };
     assert.throws(() => validateReleaseEvidenceIndex(wrongSlsaPredicate));
+
+    const missingSubject = releaseIndex();
+    missingSubject.artifacts[4] = {
+      artifact_name: 'life-os.intoto.jsonl.sig',
+      evidence_type: 'signature',
+      sha256: SIGNATURE_DIGEST,
+      size_bytes: 256,
+      source_commit: SOURCE_COMMIT,
+    };
+    assert.throws(() => validateReleaseEvidenceIndex(missingSubject));
+
+    const wrongSubjectDigest = releaseIndex();
+    wrongSubjectDigest.artifacts[4] = {
+      ...wrongSubjectDigest.artifacts[4],
+      subject_sha256: OCI_DIGEST,
+    };
+    assert.throws(() => validateReleaseEvidenceIndex(wrongSubjectDigest));
+
+    const missingSubjectArtifact = releaseIndex();
+    missingSubjectArtifact.artifacts[4] = {
+      ...missingSubjectArtifact.artifacts[4],
+      subject_artifact_name: 'missing.intoto.jsonl',
+    };
+    assert.throws(() => validateReleaseEvidenceIndex(missingSubjectArtifact));
   });
 
   it('rejects malformed identities, timestamps, semver/channel mismatches, and unbounded collections', () => {
@@ -137,6 +171,8 @@ describe('validateReleaseEvidenceIndex', () => {
       { size_bytes: Number.MAX_SAFE_INTEGER + 1 },
       { evidence_type: 'container', spec_version: '3.0.1' },
       { evidence_type: 'container', predicate_type: 'https://slsa.dev/provenance/v1' },
+      { subject_artifact_name: 'life-os-web.oci.json' },
+      { subject_sha256: OCI_DIGEST },
       { unexpected: true },
     ];
     for (const mutation of mutations) {
