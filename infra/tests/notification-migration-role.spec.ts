@@ -13,6 +13,7 @@ describe('Notification database migration authority contract', () => {
   const migrationRunner = read('infra/kubernetes/run-migrations.sh');
   const deploymentWorkflow = read('.github/workflows/deploy.yml');
   const environmentExample = read('.env.example');
+  const composeConfiguration = read('compose.yaml');
   const erasureMigration = read(
     'apps/notification-service/migrations/0002_data_rights_erasure.sql',
   );
@@ -56,6 +57,24 @@ describe('Notification database migration authority contract', () => {
     );
     expect(environmentExample).toContain(
       'NOTIFICATION_DATABASE_URL=postgresql://lifeos:lifeos@postgres:5432/lifeos',
+    );
+  });
+
+  it('provisions the documented local migration identity on fresh Compose volumes', () => {
+    expect(composeConfiguration).toContain(
+      './infra/postgres/init/001_notification_migrator.sql:/docker-entrypoint-initdb.d/001_notification_migrator.sql:ro',
+    );
+    const localProvisioning = read(
+      'infra/postgres/init/001_notification_migrator.sql',
+    );
+    expect(localProvisioning).toContain('CREATE ROLE lifeos_migrator');
+    expect(localProvisioning).toContain('LOGIN');
+    expect(localProvisioning).toContain('NOSUPERUSER');
+    expect(localProvisioning).toContain('NOCREATEDB');
+    expect(localProvisioning).toContain('NOCREATEROLE');
+    expect(localProvisioning).toContain('NOINHERIT');
+    expect(localProvisioning).toContain(
+      'GRANT CONNECT, CREATE ON DATABASE lifeos TO lifeos_migrator',
     );
   });
 
