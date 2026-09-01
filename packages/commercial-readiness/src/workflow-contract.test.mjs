@@ -95,6 +95,24 @@ describe('commercial readiness workflow contract', () => {
     );
   });
 
+  it('runs one-shot Notification provisioning outside the Compose health wait', async () => {
+    const workflow = await repositoryFile('.github/workflows/ci.yml');
+    const composeJob = yamlJobBlock(workflow, 'compose_runtime');
+
+    assert.match(
+      composeJob,
+      /docker compose up --detach --wait --wait-timeout 90 postgres nats/u,
+    );
+    assert.match(
+      composeJob,
+      /docker compose run --rm --no-deps notification-db-provision/u,
+    );
+    assert.doesNotMatch(
+      composeJob,
+      /docker compose up --detach --wait --wait-timeout 90\s*$/mu,
+    );
+  });
+
   it('requires all review and security gates before merge mode can execute', async () => {
     const policy = JSON.parse(
       await repositoryFile('product/commercial-readiness-policy.json'),
