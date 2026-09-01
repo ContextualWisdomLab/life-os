@@ -41,6 +41,10 @@ flowchart LR
 - Cross-service writes require an explicit API, event, saga, or plugin contract; shared-table coupling is prohibited.
 - Public errors, metrics, logs, artifacts, and review evidence exclude credentials and unbounded tenant data.
 
+### Calendar hosted authorization boundary
+
+Calendar connection ownership is the pair of the authenticated LifeOS workspace and requesting user, not a deployment-wide provider credential. The Calendar bounded context may retain explicit standalone provider adapters, but the hosted multi-user bootstrap must fail closed rather than use `GOOGLE_CALENDAR_ACCESS_TOKEN` as Google request authority. Hosted Google synchronization becomes available only when the active user-owned connection is revalidated, its opaque secret handle is materialized inside the Calendar service, and the resulting provider client remains scoped to that connection and selected calendar. The existing encrypted secret-store and materialization primitives are foundations for that composition; they do not by themselves complete OAuth state/PKCE, refresh, revocation, provider cleanup, calendar discovery, or scoped synchronization.
+
 ## 2. AI proposal safety boundary
 
 AI output is an inert proposal, not an execution command. The AI service can generate, persist, retrieve, and record explicit decisions about proposals, but it has no planning mutation repository or generic command bus.
