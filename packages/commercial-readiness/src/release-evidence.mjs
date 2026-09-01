@@ -136,9 +136,7 @@ function requireFormatEvidence(record, evidenceType) {
     ) {
       return invalid();
     }
-    return Object.freeze({
-      predicate_type: SLSA_PROVENANCE_PREDICATE_TYPE,
-    });
+    return Object.freeze({ predicate_type: SLSA_PROVENANCE_PREDICATE_TYPE });
   }
   if (hasSpecVersion || hasPredicateType) return invalid();
   return Object.freeze({});
@@ -149,18 +147,15 @@ function requireArtifact(value, sourceCommit) {
   const evidenceType = requireEvidenceType(record.evidence_type);
   const hasSpecVersion = Object.hasOwn(record, 'spec_version');
   const hasPredicateType = Object.hasOwn(record, 'predicate_type');
-  requireExactKeys(
-    record,
-    [
-      'artifact_name',
-      'evidence_type',
-      ...(hasSpecVersion ? ['spec_version'] : []),
-      ...(hasPredicateType ? ['predicate_type'] : []),
-      'sha256',
-      'size_bytes',
-      'source_commit',
-    ],
-  );
+  requireExactKeys(record, [
+    'artifact_name',
+    'evidence_type',
+    ...(hasSpecVersion ? ['spec_version'] : []),
+    ...(hasPredicateType ? ['predicate_type'] : []),
+    'sha256',
+    'size_bytes',
+    'source_commit',
+  ]);
   const artifactSourceCommit = requireSourceCommit(record.source_commit);
   if (artifactSourceCommit !== sourceCommit) return invalid();
   const formatEvidence = requireFormatEvidence(record, evidenceType);

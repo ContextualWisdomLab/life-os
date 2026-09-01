@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { validateReleaseEvidenceIndex } from './schema.mjs';
+import { validateReleaseEvidenceIndex } from './release-evidence.mjs';
 
 const SOURCE_COMMIT = 'a'.repeat(40);
 const OCI_DIGEST = `sha256:${'b'.repeat(64)}`;
@@ -72,21 +72,14 @@ describe('validateReleaseEvidenceIndex', () => {
     );
     assert.doesNotThrow(() =>
       validateReleaseEvidenceIndex(
-        releaseIndex({
-          channel: 'stable',
-          version: '1.0.0',
-          open_p0_buyer_gaps: [],
-        }),
+        releaseIndex({ channel: 'stable', version: '1.0.0', open_p0_buyer_gaps: [] }),
       ),
     );
   });
 
   it('binds every artifact to the exact source commit and rejects duplicate names', () => {
     const mismatched = releaseIndex();
-    mismatched.artifacts[0] = {
-      ...mismatched.artifacts[0],
-      source_commit: 'f'.repeat(40),
-    };
+    mismatched.artifacts[0] = { ...mismatched.artifacts[0], source_commit: 'f'.repeat(40) };
     assert.throws(() => validateReleaseEvidenceIndex(mismatched));
 
     const duplicate = releaseIndex();
@@ -108,10 +101,7 @@ describe('validateReleaseEvidenceIndex', () => {
     }
 
     const wrongSpdx = releaseIndex();
-    wrongSpdx.artifacts[1] = {
-      ...wrongSpdx.artifacts[1],
-      spec_version: '3.0.0',
-    };
+    wrongSpdx.artifacts[1] = { ...wrongSpdx.artifacts[1], spec_version: '3.0.0' };
     assert.throws(() => validateReleaseEvidenceIndex(wrongSpdx));
 
     const wrongSlsaPredicate = releaseIndex();
@@ -135,9 +125,7 @@ describe('validateReleaseEvidenceIndex', () => {
       releaseIndex({ artifacts: [] }),
       releaseIndex({ artifacts: Array.from({ length: 129 }, () => releaseIndex().artifacts[0]) }),
     ];
-    for (const value of invalid) {
-      assert.throws(() => validateReleaseEvidenceIndex(value));
-    }
+    for (const value of invalid) assert.throws(() => validateReleaseEvidenceIndex(value));
   });
 
   it('rejects unsafe artifact names, invalid digests, sizes, unknown fields, and misplaced format metadata', () => {
