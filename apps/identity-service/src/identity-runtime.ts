@@ -77,7 +77,7 @@ function defaultAuditWriter(auditLine: string): void {
   process.stdout.write(`${auditLine}\n`);
 }
 
-/** Writes a projected credential-free callback audit event as one JSON line. */
+/** Writes the stable credential-free callback audit contract as one JSON line. */
 export class JsonLineOAuthCallbackAuditSink implements OAuthCallbackAuditSink {
   constructor(
     private readonly auditWriter: OAuthCallbackAuditWriter = defaultAuditWriter,
@@ -92,15 +92,11 @@ export class JsonLineOAuthCallbackAuditSink implements OAuthCallbackAuditSink {
     const auditLine = JSON.stringify({
       eventType: 'identity.oauth_callback',
       occurredAt: occurredAt.toISOString(),
-      identityProvider: auditEvent.identityProvider,
-      callbackOutcome: auditEvent.callbackOutcome,
+      provider: auditEvent.provider,
+      outcome: auditEvent.outcome,
       correlationId: auditEvent.correlationId,
-      ...(auditEvent.userAccountId
-        ? { userAccountId: auditEvent.userAccountId }
-        : {}),
-      ...(auditEvent.identityWorkspaceId
-        ? { identityWorkspaceId: auditEvent.identityWorkspaceId }
-        : {}),
+      ...(auditEvent.userId ? { userId: auditEvent.userId } : {}),
+      ...(auditEvent.workspaceId ? { workspaceId: auditEvent.workspaceId } : {}),
     });
     await this.auditWriter(auditLine);
   }
