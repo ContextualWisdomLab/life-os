@@ -47,6 +47,18 @@ function exportRequest(cursor?: string): Record<string, unknown> {
   };
 }
 
+function encodedCursor(evidenceTime: string): string {
+  return Buffer.from(
+    JSON.stringify({
+      version: 'notification.data-rights.cursor.v1',
+      evidenceTime,
+      evidenceKind: 'reminder_occurrence',
+      evidenceId: '11111111-1111-4111-8111-111111111111',
+    }),
+    'utf8',
+  ).toString('base64url');
+}
+
 function reminderEvidence(index: number): Record<string, unknown> {
   const evidenceId = `11111111-1111-4111-8111-${index
     .toString(16)
@@ -151,4 +163,21 @@ describe('Notification data-rights export pagination', () => {
     ).rejects.toThrow('Notification data-rights operation failed');
     expect(client.calls).toEqual([]);
   });
+
+  it.each([
+    '2026-02-30T00:00:00Z',
+    '2026-04-31T00:00:00Z',
+    '2026-01-01T24:00:00Z',
+  ])(
+    'rejects impossible cursor instant %s before persistence access',
+    async (evidenceTime) => {
+      const client = new ScriptedClient([]);
+      const contributor = new NotificationDataRightsContributor(client);
+
+      await expect(
+        contributor.handle(exportRequest(encodedCursor(evidenceTime))),
+      ).rejects.toThrow('Notification data-rights operation failed');
+      expect(client.calls).toEqual([]);
+    },
+  );
 });
