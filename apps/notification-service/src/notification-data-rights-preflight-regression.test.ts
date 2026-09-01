@@ -47,6 +47,10 @@ describe('Notification erasure preflight privilege completeness', () => {
       replay_select_ready: true,
       replay_insert_ready: false,
       replay_delete_ready: true,
+      notification_schema_usage_ready: true,
+      reminder_occurrences_select_ready: true,
+      reminder_outcomes_select_ready: true,
+      inbox_messages_select_ready: true,
     });
     const contributor = new NotificationDataRightsContributor(client);
 
