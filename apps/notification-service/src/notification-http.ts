@@ -13,7 +13,7 @@ import {
   type NotificationRuntime,
 } from './notification-runtime';
 
-const DEFAULT_NOTIFICATION_HOST = '0.0.0.0';
+const DEFAULT_NOTIFICATION_HOST = '127.0.0.1';
 const DEFAULT_NOTIFICATION_PORT = 4300;
 const CONTRIBUTOR_PATH = '/v1/internal/data-rights/contributor';
 const MAXIMUM_REQUEST_BYTES = 64 * 1024;
