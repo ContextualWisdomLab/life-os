@@ -252,7 +252,7 @@ function compareCanonicalKeys(left: string, right: string): number {
   return Number(left > right) - Number(left < right);
 }
 
-/** Requires one canonical UTC instant suitable for PostgreSQL keyset comparison. */
+/** Requires one real UTC calendar instant suitable for PostgreSQL keyset comparison. */
 function requireIsoInstant(value: unknown): string {
   if (typeof value !== 'string') {
     return invalidDataRights();
@@ -260,7 +260,24 @@ function requireIsoInstant(value: unknown): string {
   if (!ISO_INSTANT_PATTERN.test(value)) {
     return invalidDataRights();
   }
-  if (!Number.isFinite(Date.parse(value))) {
+
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const hour = Number(value.slice(11, 13));
+  const minute = Number(value.slice(14, 16));
+  const second = Number(value.slice(17, 19));
+  const normalized = new Date(0);
+  normalized.setUTCFullYear(year, month - 1, day);
+  normalized.setUTCHours(hour, minute, second, 0);
+  if (
+    normalized.getUTCFullYear() !== year ||
+    normalized.getUTCMonth() !== month - 1 ||
+    normalized.getUTCDate() !== day ||
+    normalized.getUTCHours() !== hour ||
+    normalized.getUTCMinutes() !== minute ||
+    normalized.getUTCSeconds() !== second
+  ) {
     return invalidDataRights();
   }
   return value;
