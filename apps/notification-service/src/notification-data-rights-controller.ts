@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   Body,
   Controller,
@@ -23,6 +24,11 @@ export interface NotificationDataRightsHttpRequestIdentity {
   readonly originalUrl?: unknown;
 }
 
+/** Derives the credential-free durable claim key from one already-verified HMAC signature. */
+function authorityClaimDigest(signature: string): string {
+  return createHash('sha256').update(signature, 'ascii').digest('hex');
+}
+
 /** Private authenticated HTTP controller for Notification-owned data-rights operations. */
 @Controller('internal/data-rights')
 export class NotificationDataRightsController {
@@ -37,6 +43,8 @@ export class NotificationDataRightsController {
    * to the Notification-owned contributor. No caller-supplied tenant or actor
    * reaches persistence unless it is covered by the exact short-lived HMAC;
    * destructive authority must also win the durable one-time replay guard.
+   * A failed erasure releases only its credential-free claim so the same still-
+   * valid authorized request may safely retry the contributor's idempotent erase.
    */
   @Post('contributor')
   async contribute(
@@ -56,6 +64,15 @@ export class NotificationDataRightsController {
     try {
       return await this.runtime.dataRightsContributor.handle(trusted);
     } catch (error) {
+      if (trusted.operation === 'erase' && typeof signature === 'string') {
+        try {
+          await this.runtime.dataRightsAuthorityReplayGuard.release(
+            authorityClaimDigest(signature),
+          );
+        } catch {
+          // Fail closed: retaining a claim is safer than admitting a duplicate erase.
+        }
+      }
       throw toNotificationDataRightsHttpException(error);
     }
   }
