@@ -123,16 +123,17 @@ describe('commercial readiness workflow contract', () => {
     ];
     for (const path of hostedRunnerWorkflows) {
       const workflow = await repositoryFile(path);
-      assert.match(
-        workflow,
-        /runs-on:\s*ubuntu-24\.04/u,
-        `${path} must use the explicit supported GitHub-hosted runner image`,
+      const runners = [...workflow.matchAll(/^\s+runs-on:\s*(\S+)\s*$/gmu)].map(
+        ([, runner]) => runner,
       );
-      assert.doesNotMatch(
-        workflow,
-        /runs-on:\s*ubuntu-latest/u,
-        `${path} must not float on ubuntu-latest`,
-      );
+      assert.ok(runners.length > 0, `${path} must define a hosted runner`);
+      for (const runner of runners) {
+        assert.equal(
+          runner,
+          'ubuntu-24.04',
+          `${path} must use ubuntu-24.04 for every hosted runner job`,
+        );
+      }
     }
   });
 
