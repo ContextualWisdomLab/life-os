@@ -7,9 +7,9 @@ import {
 } from './postgres-identity-repository';
 import type { SqlQueryResult } from './postgres-security-repositories';
 
-const USER_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ACCOUNT_ID = '11111111-1111-4111-8111-111111111111';
 const EXTERNAL_IDENTITY_ID = '22222222-2222-4222-8222-222222222222';
-const WORKSPACE_ID = '33333333-3333-4333-8333-333333333333';
+const IDENTITY_WORKSPACE_ID = '33333333-3333-4333-8333-333333333333';
 const CREATED_AT = '2026-08-03T03:00:00.000Z';
 
 interface QueryCall {
@@ -18,8 +18,8 @@ interface QueryCall {
 }
 
 type QueryHandler = (
-  text: string,
-  values: readonly unknown[],
+  queryText: string,
+  queryValues: readonly unknown[],
 ) => SqlQueryResult<unknown> | Promise<SqlQueryResult<unknown>>;
 
 function emptyResult(rowCount = 0): SqlQueryResult<unknown> {
@@ -27,17 +27,17 @@ function emptyResult(rowCount = 0): SqlQueryResult<unknown> {
 }
 
 class RecordingTransaction implements SqlTransaction {
-  readonly calls: QueryCall[] = [];
+  readonly queryCalls: QueryCall[] = [];
   released = false;
 
-  constructor(private readonly handler: QueryHandler) {}
+  constructor(private readonly queryHandler: QueryHandler) {}
 
   async query<Row>(
-    text: string,
-    values: readonly unknown[] = [],
+    queryText: string,
+    queryValues: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    this.calls.push({ text, values });
-    return (await this.handler(text, values)) as SqlQueryResult<Row>;
+    this.queryCalls.push({ text: queryText, values: queryValues });
+    return (await this.queryHandler(queryText, queryValues)) as SqlQueryResult<Row>;
   }
 
   release(): void {
@@ -46,130 +46,155 @@ class RecordingTransaction implements SqlTransaction {
 }
 
 class RecordingDatabase implements TransactionalSqlClient {
-  readonly calls: QueryCall[] = [];
+  readonly queryCalls: QueryCall[] = [];
   connectCalls = 0;
 
   constructor(
-    readonly transaction: RecordingTransaction,
-    private readonly handler: QueryHandler = () => emptyResult(),
+    readonly recordingTransaction: RecordingTransaction,
+    private readonly queryHandler: QueryHandler = () => emptyResult(),
   ) {}
 
   async query<Row>(
-    text: string,
-    values: readonly unknown[] = [],
+    queryText: string,
+    queryValues: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    this.calls.push({ text, values });
-    return (await this.handler(text, values)) as SqlQueryResult<Row>;
+    this.queryCalls.push({ text: queryText, values: queryValues });
+    return (await this.queryHandler(queryText, queryValues)) as SqlQueryResult<Row>;
   }
 
   async connect(): Promise<SqlTransaction> {
     this.connectCalls += 1;
-    return this.transaction;
+    return this.recordingTransaction;
   }
 }
 
-function account(provider: IdentityProvider = 'github'): ProvisionedAccount {
+function accountFixture(
+  identityProvider: IdentityProvider = 'github',
+): ProvisionedAccount {
   return {
-    user: {
-      id: USER_ID,
+    userAccount: {
+      userAccountId: USER_ACCOUNT_ID,
       displayName: 'Example User',
       createdAt: CREATED_AT,
     },
     externalIdentity: {
-      id: EXTERNAL_IDENTITY_ID,
-      userId: USER_ID,
-      provider,
+      externalIdentityId: EXTERNAL_IDENTITY_ID,
+      userAccountId: USER_ACCOUNT_ID,
+      identityProvider,
       providerSubject: 'provider-subject-123',
       createdAt: CREATED_AT,
     },
-    workspace: {
-      id: WORKSPACE_ID,
-      ownerUserId: USER_ID,
-      name: "Example User's workspace",
-      kind: 'personal',
+    identityWorkspace: {
+      identityWorkspaceId: IDENTITY_WORKSPACE_ID,
+      ownerUserAccountId: USER_ACCOUNT_ID,
+      workspaceName: "Example User's workspace",
+      workspaceKind: 'personal',
       createdAt: CREATED_AT,
     },
   };
 }
 
-function accountRow(value: ProvisionedAccount = account()): Record<string, unknown> {
+function accountRow(
+  provisionedAccount: ProvisionedAccount = accountFixture(),
+): Record<string, unknown> {
   return {
-    user_account_id: value.user.id,
-    display_name: value.user.displayName,
-    user_created_at: new Date(value.user.createdAt),
-    external_identity_id: value.externalIdentity.id,
-    external_identity_user_account_id: value.externalIdentity.userId,
-    identity_provider: value.externalIdentity.provider,
-    provider_subject: value.externalIdentity.providerSubject,
-    external_identity_created_at: new Date(value.externalIdentity.createdAt),
-    identity_workspace_id: value.workspace.id,
-    workspace_owner_user_account_id: value.workspace.ownerUserId,
-    workspace_name: value.workspace.name,
-    workspace_kind: value.workspace.kind,
-    workspace_created_at: new Date(value.workspace.createdAt),
+    user_account_id: provisionedAccount.userAccount.userAccountId,
+    display_name: provisionedAccount.userAccount.displayName,
+    user_created_at: new Date(provisionedAccount.userAccount.createdAt),
+    external_identity_id: provisionedAccount.externalIdentity.externalIdentityId,
+    external_identity_user_account_id:
+      provisionedAccount.externalIdentity.userAccountId,
+    identity_provider: provisionedAccount.externalIdentity.identityProvider,
+    provider_subject: provisionedAccount.externalIdentity.providerSubject,
+    external_identity_created_at: new Date(
+      provisionedAccount.externalIdentity.createdAt,
+    ),
+    identity_workspace_id:
+      provisionedAccount.identityWorkspace.identityWorkspaceId,
+    workspace_owner_user_account_id:
+      provisionedAccount.identityWorkspace.ownerUserAccountId,
+    workspace_name: provisionedAccount.identityWorkspace.workspaceName,
+    workspace_kind: provisionedAccount.identityWorkspace.workspaceKind,
+    workspace_created_at: new Date(provisionedAccount.identityWorkspace.createdAt),
   };
 }
 
 describe('PostgresIdentityRepository', () => {
   it('loads and validates a complete tenant-safe identity aggregate', async () => {
-    const transaction = new RecordingTransaction(() => emptyResult());
-    const database = new RecordingDatabase(transaction, () => ({
+    const recordingTransaction = new RecordingTransaction(() => emptyResult());
+    const recordingDatabase = new RecordingDatabase(recordingTransaction, () => ({
       rows: [accountRow()],
       rowCount: 1,
     }));
-    const repository = new PostgresIdentityRepository(database);
+    const identityRepository = new PostgresIdentityRepository(recordingDatabase);
 
     await expect(
-      repository.findByExternalIdentity('github', 'provider-subject-123'),
-    ).resolves.toEqual(account());
+      identityRepository.findByExternalIdentity('github', 'provider-subject-123'),
+    ).resolves.toEqual(accountFixture());
 
-    expect(database.calls).toHaveLength(1);
-    expect(database.calls[0]?.text).toContain('LEFT JOIN identity.identity_workspaces');
-    expect(database.calls[0]?.text).toContain('JOIN identity.user_accounts');
-    expect(database.calls[0]?.values).toEqual(['github', 'provider-subject-123']);
-    expect(database.calls[0]?.text).not.toContain('provider-subject-123');
+    expect(recordingDatabase.queryCalls).toHaveLength(1);
+    expect(recordingDatabase.queryCalls[0]?.text).toContain(
+      'LEFT JOIN identity.identity_workspaces',
+    );
+    expect(recordingDatabase.queryCalls[0]?.text).toContain(
+      'JOIN identity.user_accounts',
+    );
+    expect(recordingDatabase.queryCalls[0]?.values).toEqual([
+      'github',
+      'provider-subject-123',
+    ]);
+    expect(recordingDatabase.queryCalls[0]?.text).not.toContain(
+      'provider-subject-123',
+    );
   });
 
   it('serializes first-sign-in provisioning and inserts one complete account', async () => {
-    const transaction = new RecordingTransaction((text) => {
-      if (text.includes('FROM identity.external_identities')) {
+    const recordingTransaction = new RecordingTransaction((queryText) => {
+      if (queryText.includes('FROM identity.external_identities')) {
         return emptyResult();
       }
       return emptyResult(1);
     });
-    const database = new RecordingDatabase(transaction);
-    const repository = new PostgresIdentityRepository(database);
+    const recordingDatabase = new RecordingDatabase(recordingTransaction);
+    const identityRepository = new PostgresIdentityRepository(recordingDatabase);
 
-    await expect(repository.save(account())).resolves.toEqual(account());
+    await expect(identityRepository.save(accountFixture())).resolves.toEqual(
+      accountFixture(),
+    );
 
-    expect(database.connectCalls).toBe(1);
-    expect(transaction.calls[0]?.text).toBe('BEGIN');
-    expect(transaction.calls[1]?.text).toContain('pg_advisory_xact_lock');
-    expect(transaction.calls[1]?.values).toEqual(['github:provider-subject-123']);
+    expect(recordingDatabase.connectCalls).toBe(1);
+    expect(recordingTransaction.queryCalls[0]?.text).toBe('BEGIN');
+    expect(recordingTransaction.queryCalls[1]?.text).toContain(
+      'pg_advisory_xact_lock',
+    );
+    expect(recordingTransaction.queryCalls[1]?.values).toEqual([
+      'github:provider-subject-123',
+    ]);
     expect(
-      transaction.calls.some((call) =>
-        call.text.includes('INSERT INTO identity.user_accounts'),
+      recordingTransaction.queryCalls.some((queryCall) =>
+        queryCall.text.includes('INSERT INTO identity.user_accounts'),
       ),
     ).toBe(true);
     expect(
-      transaction.calls.some((call) =>
-        call.text.includes('INSERT INTO identity.external_identities'),
+      recordingTransaction.queryCalls.some((queryCall) =>
+        queryCall.text.includes('INSERT INTO identity.external_identities'),
       ),
     ).toBe(true);
     expect(
-      transaction.calls.some((call) =>
-        call.text.includes('INSERT INTO identity.identity_workspaces'),
+      recordingTransaction.queryCalls.some((queryCall) =>
+        queryCall.text.includes('INSERT INTO identity.identity_workspaces'),
       ),
     ).toBe(true);
-    expect(transaction.calls.at(-1)?.text).toBe('COMMIT');
-    expect(transaction.released).toBe(true);
+    expect(recordingTransaction.queryCalls.at(-1)?.text).toBe('COMMIT');
+    expect(recordingTransaction.released).toBe(true);
 
-    const externalIdentityInsert = transaction.calls.find((call) =>
-      call.text.includes('INSERT INTO identity.external_identities'),
+    const externalIdentityInsert = recordingTransaction.queryCalls.find(
+      (queryCall) =>
+        queryCall.text.includes('INSERT INTO identity.external_identities'),
     );
     expect(externalIdentityInsert?.values).toEqual([
       EXTERNAL_IDENTITY_ID,
-      USER_ID,
+      USER_ACCOUNT_ID,
       'github',
       'provider-subject-123',
       CREATED_AT,
@@ -179,71 +204,93 @@ describe('PostgresIdentityRepository', () => {
   });
 
   it('returns the transaction winner when another callback provisioned first', async () => {
-    const existing = account('google');
-    const proposed = {
-      ...existing,
-      user: { ...existing.user, id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
-      externalIdentity: {
-        ...existing.externalIdentity,
-        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    const existingAccount = accountFixture('google');
+    const proposedAccount = {
+      ...existingAccount,
+      userAccount: {
+        ...existingAccount.userAccount,
+        userAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
-      workspace: {
-        ...existing.workspace,
-        id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-        ownerUserId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      externalIdentity: {
+        ...existingAccount.externalIdentity,
+        externalIdentityId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        userAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
+      identityWorkspace: {
+        ...existingAccount.identityWorkspace,
+        identityWorkspaceId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        ownerUserAccountId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
     } satisfies ProvisionedAccount;
-    const transaction = new RecordingTransaction((text) => {
-      if (text.includes('FROM identity.external_identities')) {
-        return { rows: [accountRow(existing)], rowCount: 1 };
+    const recordingTransaction = new RecordingTransaction((queryText) => {
+      if (queryText.includes('FROM identity.external_identities')) {
+        return { rows: [accountRow(existingAccount)], rowCount: 1 };
       }
       return emptyResult();
     });
-    const repository = new PostgresIdentityRepository(new RecordingDatabase(transaction));
+    const identityRepository = new PostgresIdentityRepository(
+      new RecordingDatabase(recordingTransaction),
+    );
 
-    await expect(repository.save(proposed)).resolves.toEqual(existing);
+    await expect(identityRepository.save(proposedAccount)).resolves.toEqual(
+      existingAccount,
+    );
 
-    expect(transaction.calls.some((call) => call.text.includes('INSERT INTO'))).toBe(false);
-    expect(transaction.calls.at(-1)?.text).toBe('COMMIT');
-    expect(transaction.released).toBe(true);
+    expect(
+      recordingTransaction.queryCalls.some((queryCall) =>
+        queryCall.text.includes('INSERT INTO'),
+      ),
+    ).toBe(false);
+    expect(recordingTransaction.queryCalls.at(-1)?.text).toBe('COMMIT');
+    expect(recordingTransaction.released).toBe(true);
   });
 
   it('rolls back all rows and releases the connection when provisioning fails', async () => {
-    const transaction = new RecordingTransaction((text) => {
-      if (text.includes('FROM identity.external_identities')) {
+    const recordingTransaction = new RecordingTransaction((queryText) => {
+      if (queryText.includes('FROM identity.external_identities')) {
         return emptyResult();
       }
-      if (text.includes('INSERT INTO identity.external_identities')) {
+      if (queryText.includes('INSERT INTO identity.external_identities')) {
         throw new Error('database write failed');
       }
       return emptyResult(1);
     });
-    const repository = new PostgresIdentityRepository(new RecordingDatabase(transaction));
+    const identityRepository = new PostgresIdentityRepository(
+      new RecordingDatabase(recordingTransaction),
+    );
 
-    await expect(repository.save(account())).rejects.toThrowError('database write failed');
+    await expect(identityRepository.save(accountFixture())).rejects.toThrowError(
+      'database write failed',
+    );
 
-    expect(transaction.calls.some((call) => call.text === 'ROLLBACK')).toBe(true);
     expect(
-      transaction.calls.some((call) =>
-        call.text.includes('INSERT INTO identity.identity_workspaces'),
+      recordingTransaction.queryCalls.some(
+        (queryCall) => queryCall.text === 'ROLLBACK',
+      ),
+    ).toBe(true);
+    expect(
+      recordingTransaction.queryCalls.some((queryCall) =>
+        queryCall.text.includes('INSERT INTO identity.identity_workspaces'),
       ),
     ).toBe(false);
-    expect(transaction.released).toBe(true);
+    expect(recordingTransaction.released).toBe(true);
   });
 
   it('fails closed when persisted ownership or identifiers are malformed', async () => {
-    const malformed = {
+    const malformedAccountRow = {
       ...accountRow(),
       workspace_owner_user_account_id: '44444444-4444-4444-8444-444444444444',
     };
-    const transaction = new RecordingTransaction(() => emptyResult());
-    const repository = new PostgresIdentityRepository(
-      new RecordingDatabase(transaction, () => ({ rows: [malformed], rowCount: 1 })),
+    const recordingTransaction = new RecordingTransaction(() => emptyResult());
+    const identityRepository = new PostgresIdentityRepository(
+      new RecordingDatabase(recordingTransaction, () => ({
+        rows: [malformedAccountRow],
+        rowCount: 1,
+      })),
     );
 
     await expect(
-      repository.findByExternalIdentity('github', 'provider-subject-123'),
+      identityRepository.findByExternalIdentity('github', 'provider-subject-123'),
     ).rejects.toThrowError('Stored identity account is invalid');
   });
 });
