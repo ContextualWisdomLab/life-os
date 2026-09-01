@@ -147,6 +147,9 @@ interface ExportEvidenceRecord {
 /** Privilege evidence required before destructive Notification erasure. */
 interface PrivilegeRow {
   erasure_function_ready: unknown;
+  replay_select_ready: unknown;
+  replay_insert_ready: unknown;
+  replay_delete_ready: unknown;
 }
 
 /** Aggregate count returned by post-erasure verification. */
@@ -676,24 +679,46 @@ export class NotificationDataRightsContributor {
     };
   }
 
-  /** Checks owner-controlled erasure function authority without requiring direct receipt-table access. */
+  /** Verifies every database privilege consumed by the authenticated destructive erase path. */
   private async preflightErase(
     requestId: string,
   ): Promise<NotificationDataRightsResponse> {
     const row = exactlyOne(
       await this.query<PrivilegeRow>(
-        `SELECT COALESCE(has_function_privilege(
-           current_user,
-           to_regprocedure('notification_service.erase_workspace_data(uuid,uuid,uuid,uuid)'),
-           'EXECUTE'
-         ), false) AS erasure_function_ready`,
+        `SELECT
+           COALESCE(has_function_privilege(
+             current_user,
+             to_regprocedure('notification_service.erase_workspace_data(uuid,uuid,uuid,uuid)'),
+             'EXECUTE'
+           ), false) AS erasure_function_ready,
+           COALESCE(has_table_privilege(
+             current_user,
+             to_regclass('notification_service.data_rights_authority_replay_records'),
+             'SELECT'
+           ), false) AS replay_select_ready,
+           COALESCE(has_table_privilege(
+             current_user,
+             to_regclass('notification_service.data_rights_authority_replay_records'),
+             'INSERT'
+           ), false) AS replay_insert_ready,
+           COALESCE(has_table_privilege(
+             current_user,
+             to_regclass('notification_service.data_rights_authority_replay_records'),
+             'DELETE'
+           ), false) AS replay_delete_ready`,
         [],
       ),
     );
     const functionReady = requireBoolean(row.erasure_function_ready);
+    const replaySelectReady = requireBoolean(row.replay_select_ready);
+    const replayInsertReady = requireBoolean(row.replay_insert_ready);
+    const replayDeleteReady = requireBoolean(row.replay_delete_ready);
     const blockers: string[] = [];
     if (!functionReady) {
       blockers.push('notification_erasure_function_unavailable');
+    }
+    if (!replaySelectReady || !replayInsertReady || !replayDeleteReady) {
+      blockers.push('notification_data_rights_replay_store_unavailable');
     }
     return {
       contractVersion: NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION,
