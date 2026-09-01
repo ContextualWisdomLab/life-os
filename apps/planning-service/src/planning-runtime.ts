@@ -92,6 +92,15 @@ class ConnectionSqlClient implements PlanningSqlClient {
     );
     return result;
   }
+
+  /**
+   * Waits until every query already admitted to this transaction connection has
+   * settled. Individual query failures still reach their original callers; the
+   * tail intentionally remains usable so COMMIT/ROLLBACK never races queued work.
+   */
+  async drain(): Promise<void> {
+    await this.queryTail;
+  }
 }
 
 class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
@@ -108,14 +117,17 @@ class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
     operation: (client: PlanningSqlClient) => Promise<Result>,
   ): Promise<Result> {
     const connection = await this.pool.connect();
+    const transactionClient = new ConnectionSqlClient(connection);
     let destroyConnection = false;
     try {
       await connection.query('BEGIN');
-      const result = await operation(new ConnectionSqlClient(connection));
+      const result = await operation(transactionClient);
+      await transactionClient.drain();
       await connection.query('COMMIT');
       return result;
     } catch (error) {
       try {
+        await transactionClient.drain();
         await connection.query('ROLLBACK');
       } catch {
         destroyConnection = true;
