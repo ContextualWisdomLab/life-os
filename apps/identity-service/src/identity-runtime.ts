@@ -31,147 +31,169 @@ const KEY_VERSION_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,31}$/;
 const ENCODED_KEY_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
-export type OAuthCallbackAuditWriter = (line: string) => void | Promise<void>;
+export type OAuthCallbackAuditWriter = (
+  auditLine: string,
+) => void | Promise<void>;
 
 class NodePostgresSqlTransaction implements SqlTransaction {
-  constructor(private readonly client: PoolClient) {}
+  constructor(private readonly databaseClient: PoolClient) {}
 
   async query<Row>(
-    text: string,
-    values: readonly unknown[] = [],
+    queryText: string,
+    queryValues: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    const result = await this.client.query(text, [...values]);
+    const queryResult = await this.databaseClient.query(queryText, [...queryValues]);
     return {
-      rows: result.rows as Row[],
-      rowCount: result.rowCount,
+      rows: queryResult.rows as Row[],
+      rowCount: queryResult.rowCount,
     };
   }
 
   release(): void {
-    this.client.release();
+    this.databaseClient.release();
   }
 }
 
 class NodePostgresSqlClient implements TransactionalSqlClient {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly databasePool: Pool) {}
 
   async query<Row>(
-    text: string,
-    values: readonly unknown[] = [],
+    queryText: string,
+    queryValues: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    const result = await this.pool.query(text, [...values]);
+    const queryResult = await this.databasePool.query(queryText, [...queryValues]);
     return {
-      rows: result.rows as Row[],
-      rowCount: result.rowCount,
+      rows: queryResult.rows as Row[],
+      rowCount: queryResult.rowCount,
     };
   }
 
   async connect(): Promise<SqlTransaction> {
-    return new NodePostgresSqlTransaction(await this.pool.connect());
+    return new NodePostgresSqlTransaction(await this.databasePool.connect());
   }
 }
 
-function defaultAuditWriter(line: string): void {
-  process.stdout.write(`${line}\n`);
+function defaultAuditWriter(auditLine: string): void {
+  process.stdout.write(`${auditLine}\n`);
 }
 
 /** Writes a projected credential-free callback audit event as one JSON line. */
 export class JsonLineOAuthCallbackAuditSink implements OAuthCallbackAuditSink {
   constructor(
-    private readonly writer: OAuthCallbackAuditWriter = defaultAuditWriter,
-    private readonly now: () => Date = () => new Date(),
+    private readonly auditWriter: OAuthCallbackAuditWriter = defaultAuditWriter,
+    private readonly currentTime: () => Date = () => new Date(),
   ) {}
 
-  async record(event: OAuthCallbackAuditEvent): Promise<void> {
-    const occurredAt = this.now();
+  async record(auditEvent: OAuthCallbackAuditEvent): Promise<void> {
+    const occurredAt = this.currentTime();
     if (!Number.isFinite(occurredAt.getTime())) {
       throw new Error('OAuth callback audit clock is invalid');
     }
-    const line = JSON.stringify({
+    const auditLine = JSON.stringify({
       eventType: 'identity.oauth_callback',
       occurredAt: occurredAt.toISOString(),
-      provider: event.provider,
-      outcome: event.outcome,
-      correlationId: event.correlationId,
-      ...(event.userId ? { userId: event.userId } : {}),
-      ...(event.workspaceId ? { workspaceId: event.workspaceId } : {}),
+      identityProvider: auditEvent.identityProvider,
+      callbackOutcome: auditEvent.callbackOutcome,
+      correlationId: auditEvent.correlationId,
+      ...(auditEvent.userAccountId
+        ? { userAccountId: auditEvent.userAccountId }
+        : {}),
+      ...(auditEvent.identityWorkspaceId
+        ? { identityWorkspaceId: auditEvent.identityWorkspaceId }
+        : {}),
     });
-    await this.writer(line);
+    await this.auditWriter(auditLine);
   }
 }
 
 function requireConfiguration(
   environment: RuntimeEnvironment,
-  name: string,
+  configurationName: string,
 ): string {
-  const value = environment[name]?.trim();
-  if (!value || value.length > MAXIMUM_CONFIGURATION_LENGTH) {
-    throw new Error(`Required identity configuration is missing: ${name}`);
+  const configurationValue = environment[configurationName]?.trim();
+  if (
+    !configurationValue ||
+    configurationValue.length > MAXIMUM_CONFIGURATION_LENGTH
+  ) {
+    throw new Error(
+      `Required identity configuration is missing: ${configurationName}`,
+    );
   }
-  return value;
+  return configurationValue;
 }
 
-function requireDatabaseUrl(value: string): string {
-  const parsed = new URL(value);
-  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+function requireDatabaseUrl(databaseUrlValue: string): string {
+  const parsedDatabaseUrl = new URL(databaseUrlValue);
+  if (
+    parsedDatabaseUrl.protocol !== 'postgres:' &&
+    parsedDatabaseUrl.protocol !== 'postgresql:'
+  ) {
     throw new Error('Identity database URL must use PostgreSQL');
   }
-  return value;
+  return databaseUrlValue;
 }
 
 function requireBoundedInteger(
-  value: string | undefined,
+  inputValue: string | undefined,
   defaultValue: number,
-  minimum: number,
-  maximum: number,
-  message: string,
+  minimumValue: number,
+  maximumValue: number,
+  errorMessage: string,
 ): number {
-  if (value === undefined || value.trim() === '') {
+  if (inputValue === undefined || inputValue.trim() === '') {
     return defaultValue;
   }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
-    throw new Error(message);
+  const parsedValue = Number(inputValue);
+  if (
+    !Number.isSafeInteger(parsedValue) ||
+    parsedValue < minimumValue ||
+    parsedValue > maximumValue
+  ) {
+    throw new Error(errorMessage);
   }
-  return parsed;
+  return parsedValue;
 }
 
-function decodeSecretKey(encoded: unknown): Buffer {
+function decodeSecretKey(encodedKey: unknown): Buffer {
   if (
-    typeof encoded !== 'string' ||
-    !ENCODED_KEY_PATTERN.test(encoded) ||
-    encoded.length > 128
+    typeof encodedKey !== 'string' ||
+    !ENCODED_KEY_PATTERN.test(encodedKey) ||
+    encodedKey.length > 128
   ) {
     throw new Error('OAuth encryption keys are invalid');
   }
-  const key = Buffer.from(encoded, 'base64');
-  if (key.length !== 32) {
+  const decodedKey = Buffer.from(encodedKey, 'base64');
+  if (decodedKey.length !== 32) {
     throw new Error('OAuth encryption keys must decode to 32 bytes');
   }
-  return key;
+  return decodedKey;
 }
 
-function parseSecretKeys(value: string): Readonly<Record<string, Buffer>> {
-  let parsed: unknown;
+function parseSecretKeys(encodedKeysValue: string): Readonly<Record<string, Buffer>> {
+  let parsedKeyMap: unknown;
   try {
-    parsed = JSON.parse(value);
+    parsedKeyMap = JSON.parse(encodedKeysValue);
   } catch {
     throw new Error('OAuth encryption key configuration is invalid');
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (
+    !parsedKeyMap ||
+    typeof parsedKeyMap !== 'object' ||
+    Array.isArray(parsedKeyMap)
+  ) {
     throw new Error('OAuth encryption key configuration is invalid');
   }
-  const entries = Object.entries(parsed);
-  if (entries.length === 0 || entries.length > MAXIMUM_KEY_VERSIONS) {
+  const keyEntries = Object.entries(parsedKeyMap);
+  if (keyEntries.length === 0 || keyEntries.length > MAXIMUM_KEY_VERSIONS) {
     throw new Error('OAuth encryption key configuration is invalid');
   }
   return Object.freeze(
     Object.fromEntries(
-      entries.map(([version, encoded]) => {
-        if (!KEY_VERSION_PATTERN.test(version)) {
+      keyEntries.map(([keyVersion, encodedKey]) => {
+        if (!KEY_VERSION_PATTERN.test(keyVersion)) {
           throw new Error('OAuth encryption key version is invalid');
         }
-        return [version, decodeSecretKey(encoded)];
+        return [keyVersion, decodeSecretKey(encodedKey)];
       }),
     ),
   );
@@ -209,22 +231,22 @@ function createPoolConfiguration(environment: RuntimeEnvironment): PoolConfig {
 
 /** Production identity runtime and its bounded application surfaces. */
 export class IdentityRuntime implements OnApplicationShutdown {
-  private closed = false;
+  private isClosed = false;
 
   constructor(
-    private readonly pool: Pool,
-    readonly application: OAuthHttpApplication,
+    private readonly databasePool: Pool,
+    readonly oauthHttpApplication: OAuthHttpApplication,
     readonly callbackApplication: OAuthCallbackApplication,
     readonly dataRightsStatusApplication: AuthenticatedDataRightsStatusApplication,
   ) {}
 
   /** Closes the shared identity PostgreSQL pool exactly once. */
   async close(): Promise<void> {
-    if (this.closed) {
+    if (this.isClosed) {
       return;
     }
-    this.closed = true;
-    await this.pool.end();
+    this.isClosed = true;
+    await this.databasePool.end();
   }
 
   /** Releases runtime resources during Nest application shutdown. */
@@ -244,12 +266,12 @@ export function createIdentityRuntime(
   if (!KEY_VERSION_PATTERN.test(currentKeyVersion)) {
     throw new Error('OAuth encryption key version is invalid');
   }
-  const keys = parseSecretKeys(
+  const encryptionKeys = parseSecretKeys(
     requireConfiguration(environment, 'IDENTITY_OAUTH_KEYS'),
   );
   const secretBox = new AesGcmSecretBox({
     currentKeyVersion,
-    keys,
+    keys: encryptionKeys,
   });
   const googleClientId = requireConfiguration(
     environment,
@@ -284,40 +306,46 @@ export function createIdentityRuntime(
     'Identity provider request timeout is invalid',
   );
 
-  const pool = new Pool(createPoolConfiguration(environment));
-  const sqlClient = new NodePostgresSqlClient(pool);
-  const transactions = new OAuthTransactionService(
+  const databasePool = new Pool(createPoolConfiguration(environment));
+  const sqlClient = new NodePostgresSqlClient(databasePool);
+  const transactionService = new OAuthTransactionService(
     new PostgresOAuthTransactionRepository(sqlClient, secretBox),
   );
-  const sessions = new SessionService(new PostgresSessionRepository(sqlClient));
-  const identities = new IdentityService(
+  const sessionService = new SessionService(
+    new PostgresSessionRepository(sqlClient),
+  );
+  const identityService = new IdentityService(
     new PostgresIdentityRepository(sqlClient),
   );
-  const application = new OAuthHttpApplication(transactions, sessions, {
-    providers: {
-      google: {
-        clientId: googleClientId,
-        redirectUri: googleRedirectUri,
+  const oauthHttpApplication = new OAuthHttpApplication(
+    transactionService,
+    sessionService,
+    {
+      providers: {
+        google: {
+          clientId: googleClientId,
+          redirectUri: googleRedirectUri,
+        },
+        github: {
+          clientId: githubClientId,
+          redirectUri: githubRedirectUri,
+        },
       },
-      github: {
-        clientId: githubClientId,
-        redirectUri: githubRedirectUri,
-      },
+      webOrigin,
     },
-    webOrigin,
-  });
+  );
   const dataRightsStatusApplication =
     new AuthenticatedDataRightsStatusApplication(
-      application,
+      oauthHttpApplication,
       new PostgresDataRightsRequestLedger(sqlClient),
     );
   const providerHttpClient = new BoundedOAuthProviderHttpClient({
     timeoutMs: providerRequestTimeoutMs,
   });
   const callbackApplication = new OAuthCallbackApplication(
-    transactions,
-    identities,
-    sessions,
+    transactionService,
+    identityService,
+    sessionService,
     {
       google: new GoogleOidcClient({
         clientId: googleClientId,
@@ -336,8 +364,8 @@ export function createIdentityRuntime(
     { webOrigin },
   );
   return new IdentityRuntime(
-    pool,
-    application,
+    databasePool,
+    oauthHttpApplication,
     callbackApplication,
     dataRightsStatusApplication,
   );
