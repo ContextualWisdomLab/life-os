@@ -9,6 +9,7 @@ const UUID_V4_PATTERN =
 const ISO_INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CONTROL_OR_SEPARATOR_PATTERN = /[\p{Cc}\p{Z}]/u;
+/** Pre-filters an HTTPS authority with no path except one optional trailing slash before URL parsing. */
 const AUTHORITY_ONLY_HTTPS_ORIGIN_PATTERN = /^https:\/\/[^/?#\\]+\/?$/iu;
 const MAXIMUM_ORIGIN_LENGTH = 512;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-origin.v1' as const;
