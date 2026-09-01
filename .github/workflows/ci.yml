@@ -43,9 +43,21 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker compose up --detach --wait --wait-timeout 90
+          docker compose up --detach --wait --wait-timeout 90 postgres nats
+          docker compose up --detach --no-deps notification-db-provision
           provisioner_id="$(docker compose ps --all --quiet notification-db-provision)"
           test -n "$provisioner_id"
+          for attempt in $(seq 1 30); do
+            provisioner_status="$(docker inspect --format '{{.State.Status}}' "$provisioner_id")"
+            if [ "$provisioner_status" = 'exited' ]; then
+              break
+            fi
+            if [ "$provisioner_status" != 'created' ] && [ "$provisioner_status" != 'running' ]; then
+              echo "::error::Notification database provisioner entered unexpected state: $provisioner_status"
+              exit 1
+            fi
+            sleep 1
+          done
           test "$(docker inspect --format '{{.State.Status}}' "$provisioner_id")" = 'exited'
           test "$(docker inspect --format '{{.State.ExitCode}}' "$provisioner_id")" = '0'
           docker compose exec --no-TTY postgres psql -U lifeos -d lifeos -v ON_ERROR_STOP=1 -tAc 'SELECT 1' |
