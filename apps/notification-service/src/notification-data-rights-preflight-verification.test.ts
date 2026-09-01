@@ -85,6 +85,6 @@ describe('Notification erasure verification preflight', () => {
 
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]).toContain('has_schema_privilege');
-    expect(client.calls[0]).toContain('notification_service');
+    expect(client.calls[0]).toContain("to_regnamespace('notification_service')");
   });
 });
