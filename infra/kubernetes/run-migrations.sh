@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
+export LC_ALL=C
 
 readonly REQUIRED_CONFIRMATION='apply-forward-only'
 readonly MIGRATION_SCHEMA='life_os_deployment'
@@ -181,8 +182,6 @@ WHERE migration_sequence IS NULL;
 ALTER TABLE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
   ALTER COLUMN migration_sequence SET NOT NULL;
 DROP INDEX IF EXISTS ${MIGRATION_SCHEMA}.schema_migrations_service_sequence_unique;
-CREATE INDEX IF NOT EXISTS schema_migrations_service_order
-  ON ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (service_name, migration_name);
 SQL
 
   for migration_file in "${migration_files[@]}"; do
