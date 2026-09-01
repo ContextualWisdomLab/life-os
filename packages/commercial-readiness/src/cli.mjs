@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { constants as fileConstants } from 'node:fs';
+import { lstat, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { evaluateCapabilities } from './audit.mjs';
@@ -121,18 +122,49 @@ function requireOptions(options, names) {
   }
 }
 
+/**
+ * Reads one bounded regular JSON file through a single no-follow file descriptor.
+ *
+ * Opening and then inspecting the same descriptor closes the lstat/read race that
+ * would otherwise let a symlink replacement redirect policy, release evidence, or
+ * trust-root input after validation. Parser errors remain generic and no file content
+ * is reflected in the failure.
+ */
 export async function readJsonFile(path, maxBytes = 1024 * 1024) {
-  const metadata = await lstat(path);
-  if (metadata.isSymbolicLink() || !metadata.isFile()) {
-    throw new Error('JSON input must be a regular file');
-  }
-  if (metadata.size > maxBytes)
-    throw new Error('JSON input exceeded the size limit');
+  let handle;
   try {
-    return JSON.parse(await readFile(path, 'utf8'));
+    handle = await open(path, fileConstants.O_RDONLY | fileConstants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new Error('JSON input must be a regular file');
+    if (metadata.size > maxBytes)
+      throw new Error('JSON input exceeded the size limit');
+
+    const bytes = Buffer.allocUnsafe(metadata.size);
+    let position = 0;
+    while (position < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, position, bytes.length - position, position);
+      if (bytesRead <= 0) throw new Error('JSON input could not be read completely');
+      position += bytesRead;
+    }
+    try {
+      return JSON.parse(bytes.toString('utf8'));
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error('JSON input was invalid');
+      throw error;
+    }
   } catch (error) {
-    if (error instanceof SyntaxError) throw new Error('JSON input was invalid');
+    if (error && typeof error === 'object' && error.code === 'ELOOP') {
+      throw new Error('JSON input must be a regular file');
+    }
     throw error;
+  } finally {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // A completed read is not made less trustworthy by a later descriptor-close failure.
+      }
+    }
   }
 }
 
