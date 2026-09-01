@@ -150,6 +150,7 @@ interface PrivilegeRow {
   replay_select_ready: unknown;
   replay_insert_ready: unknown;
   replay_delete_ready: unknown;
+  notification_schema_usage_ready: unknown;
   reminder_occurrences_select_ready: unknown;
   reminder_outcomes_select_ready: unknown;
   inbox_messages_select_ready: unknown;
@@ -709,6 +710,11 @@ export class NotificationDataRightsContributor {
              to_regclass('notification_service.data_rights_authority_replay_records'),
              'DELETE'
            ), false) AS replay_delete_ready,
+           COALESCE(has_schema_privilege(
+             current_user,
+             'notification_service',
+             'USAGE'
+           ), false) AS notification_schema_usage_ready,
            COALESCE(has_table_privilege(
              current_user,
              to_regclass('notification_service.reminder_occurrences'),
@@ -731,6 +737,9 @@ export class NotificationDataRightsContributor {
     const replaySelectReady = requireBoolean(row.replay_select_ready);
     const replayInsertReady = requireBoolean(row.replay_insert_ready);
     const replayDeleteReady = requireBoolean(row.replay_delete_ready);
+    const notificationSchemaUsageReady = requireBoolean(
+      row.notification_schema_usage_ready,
+    );
     const reminderOccurrencesSelectReady = requireBoolean(
       row.reminder_occurrences_select_ready,
     );
@@ -748,6 +757,7 @@ export class NotificationDataRightsContributor {
       blockers.push('notification_data_rights_replay_store_unavailable');
     }
     if (
+      !notificationSchemaUsageReady ||
       !reminderOccurrencesSelectReady ||
       !reminderOutcomesSelectReady ||
       !inboxMessagesSelectReady
