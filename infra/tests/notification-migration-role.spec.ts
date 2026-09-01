@@ -85,6 +85,15 @@ describe('Notification database migration authority contract', () => {
     expect(localProvisioning).toContain(
       '\\getenv runtime_role NOTIFICATION_DATABASE_RUNTIME_ROLE',
     );
+    const collisionGuard = localProvisioning.indexOf(
+      "SELECT current_user = :'runtime_role' AS runtime_role_matches_admin",
+    );
+    const roleMutation = localProvisioning.indexOf('ALTER ROLE :"runtime_role"');
+    expect(collisionGuard).toBeGreaterThanOrEqual(0);
+    expect(localProvisioning).toContain(
+      'provision_error=notification_runtime_role_matches_admin',
+    );
+    expect(collisionGuard).toBeLessThan(roleMutation);
     expect(localProvisioning).toContain("rolname = :'runtime_role'");
     expect(localProvisioning).toContain('ALTER ROLE :"runtime_role"');
     expect(localProvisioning).toContain('TO :"runtime_role"');
