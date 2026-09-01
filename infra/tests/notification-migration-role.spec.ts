@@ -25,7 +25,10 @@ describe('Notification database migration authority contract', () => {
       'GRANT USAGE ON SCHEMA notification_service TO :"service_runtime_role"',
     );
     expect(migrationRunner).toContain(
-      'REVOKE ALL PRIVILEGES ON TABLE\n  notification_service.data_rights_erasure_receipts,\n  notification_service.data_rights_erasure_authorizations,\n  notification_service.data_rights_workspace_erasures\nFROM :"service_runtime_role";',
+      'REVOKE ALL PRIVILEGES ON TABLE\n  notification_service.data_rights_erasure_receipts,\n  notification_service.data_rights_erasure_authorizations,\n  notification_service.data_rights_workspace_erasures,\n  notification_service.data_rights_authority_replay_records\nFROM :"service_runtime_role";',
+    );
+    expect(migrationRunner).toContain(
+      'GRANT SELECT, INSERT, DELETE ON TABLE\n  notification_service.data_rights_authority_replay_records\nTO :"service_runtime_role";',
     );
     expect(migrationRunner).toContain(
       'GRANT EXECUTE ON FUNCTION notification_service.erase_workspace_data(uuid, uuid, uuid, uuid)',
