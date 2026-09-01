@@ -17,16 +17,16 @@ export interface TransactionalSqlClient extends SqlClient {
 }
 
 interface IdentityAccountRow {
-  user_id: unknown;
+  user_account_id: unknown;
   display_name: unknown;
   user_created_at: unknown;
   external_identity_id: unknown;
-  external_identity_user_id: unknown;
-  provider: unknown;
+  external_identity_user_account_id: unknown;
+  identity_provider: unknown;
   provider_subject: unknown;
   external_identity_created_at: unknown;
-  workspace_id: unknown;
-  workspace_owner_user_id: unknown;
+  identity_workspace_id: unknown;
+  workspace_owner_user_account_id: unknown;
   workspace_name: unknown;
   workspace_kind: unknown;
   workspace_created_at: unknown;
@@ -40,11 +40,11 @@ function requireString(value: unknown, message = INVALID_STORED_ACCOUNT): string
 }
 
 function requireUuidV4(value: unknown, message = INVALID_STORED_ACCOUNT): string {
-  const id = requireString(value, message);
-  if (!UUID_V4_PATTERN.test(id)) {
+  const opaqueIdentifier = requireString(value, message);
+  if (!UUID_V4_PATTERN.test(opaqueIdentifier)) {
     throw new Error(message);
   }
-  return id;
+  return opaqueIdentifier;
 }
 
 function requireProvider(value: unknown): IdentityProvider {
@@ -63,10 +63,17 @@ function toIsoString(value: unknown): string {
 }
 
 function mapAccountRow(row: IdentityAccountRow): ProvisionedAccount {
-  const userId = requireUuidV4(row.user_id);
-  const externalIdentityUserId = requireUuidV4(row.external_identity_user_id);
-  const workspaceOwnerUserId = requireUuidV4(row.workspace_owner_user_id);
-  if (externalIdentityUserId !== userId || workspaceOwnerUserId !== userId) {
+  const userAccountId = requireUuidV4(row.user_account_id);
+  const externalIdentityUserAccountId = requireUuidV4(
+    row.external_identity_user_account_id,
+  );
+  const workspaceOwnerUserAccountId = requireUuidV4(
+    row.workspace_owner_user_account_id,
+  );
+  if (
+    externalIdentityUserAccountId !== userAccountId ||
+    workspaceOwnerUserAccountId !== userAccountId
+  ) {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
   if (row.workspace_kind !== 'personal') {
@@ -75,20 +82,20 @@ function mapAccountRow(row: IdentityAccountRow): ProvisionedAccount {
 
   return {
     user: {
-      id: userId,
+      id: userAccountId,
       displayName: requireString(row.display_name),
       createdAt: toIsoString(row.user_created_at),
     },
     externalIdentity: {
       id: requireUuidV4(row.external_identity_id),
-      userId: externalIdentityUserId,
-      provider: requireProvider(row.provider),
+      userId: externalIdentityUserAccountId,
+      provider: requireProvider(row.identity_provider),
       providerSubject: requireString(row.provider_subject),
       createdAt: toIsoString(row.external_identity_created_at),
     },
     workspace: {
-      id: requireUuidV4(row.workspace_id),
-      ownerUserId: workspaceOwnerUserId,
+      id: requireUuidV4(row.identity_workspace_id),
+      ownerUserId: workspaceOwnerUserAccountId,
       name: requireString(row.workspace_name),
       kind: 'personal',
       createdAt: toIsoString(row.workspace_created_at),
@@ -98,16 +105,16 @@ function mapAccountRow(row: IdentityAccountRow): ProvisionedAccount {
 
 function validateProposedAccount(account: ProvisionedAccount): ProvisionedAccount {
   return mapAccountRow({
-    user_id: account.user.id,
+    user_account_id: account.user.id,
     display_name: account.user.displayName,
     user_created_at: account.user.createdAt,
     external_identity_id: account.externalIdentity.id,
-    external_identity_user_id: account.externalIdentity.userId,
-    provider: account.externalIdentity.provider,
+    external_identity_user_account_id: account.externalIdentity.userId,
+    identity_provider: account.externalIdentity.provider,
     provider_subject: account.externalIdentity.providerSubject,
     external_identity_created_at: account.externalIdentity.createdAt,
-    workspace_id: account.workspace.id,
-    workspace_owner_user_id: account.workspace.ownerUserId,
+    identity_workspace_id: account.workspace.id,
+    workspace_owner_user_account_id: account.workspace.ownerUserId,
     workspace_name: account.workspace.name,
     workspace_kind: account.workspace.kind,
     workspace_created_at: account.workspace.createdAt,
@@ -119,38 +126,38 @@ async function findAccount(
   provider: IdentityProvider,
   providerSubject: string,
 ): Promise<ProvisionedAccount | undefined> {
-  const result = await client.query<IdentityAccountRow>(
+  const queryResult = await client.query<IdentityAccountRow>(
     `SELECT
-       users.id AS user_id,
-       users.display_name,
-       users.created_at AS user_created_at,
-       external_identities.id AS external_identity_id,
-       external_identities.user_id AS external_identity_user_id,
-       external_identities.provider,
+       user_accounts.user_account_id,
+       user_accounts.display_name,
+       user_accounts.created_at AS user_created_at,
+       external_identities.external_identity_id,
+       external_identities.user_account_id AS external_identity_user_account_id,
+       external_identities.identity_provider,
        external_identities.provider_subject,
        external_identities.created_at AS external_identity_created_at,
-       workspaces.id AS workspace_id,
-       workspaces.owner_user_id AS workspace_owner_user_id,
-       workspaces.name AS workspace_name,
-       workspaces.kind AS workspace_kind,
-       workspaces.created_at AS workspace_created_at
+       identity_workspaces.identity_workspace_id,
+       identity_workspaces.owner_user_account_id AS workspace_owner_user_account_id,
+       identity_workspaces.workspace_name,
+       identity_workspaces.workspace_kind,
+       identity_workspaces.created_at AS workspace_created_at
      FROM identity.external_identities
-     JOIN identity.users
-       ON identity.users.id = identity.external_identities.user_id
-     LEFT JOIN identity.workspaces
-       ON identity.workspaces.owner_user_id = identity.users.id
-      AND identity.workspaces.kind = 'personal'
-     WHERE identity.external_identities.provider = $1
+     JOIN identity.user_accounts
+       ON identity.user_accounts.user_account_id = external_identities.user_account_id
+     LEFT JOIN identity.identity_workspaces
+       ON identity.identity_workspaces.owner_user_account_id = user_accounts.user_account_id
+      AND identity.identity_workspaces.workspace_kind = 'personal'
+     WHERE identity.external_identities.identity_provider = $1
        AND identity.external_identities.provider_subject = $2
      LIMIT 2`,
     [provider, providerSubject],
   );
 
-  if (result.rows.length > 1) {
+  if (queryResult.rows.length > 1) {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
-  const row = result.rows[0];
-  return row ? mapAccountRow(row) : undefined;
+  const accountRow = queryResult.rows[0];
+  return accountRow ? mapAccountRow(accountRow) : undefined;
 }
 
 export class PostgresIdentityRepository implements IdentityRepository {
@@ -188,15 +195,15 @@ export class PostgresIdentityRepository implements IdentityRepository {
       }
 
       await connection.query(
-        `INSERT INTO identity.users (id, display_name, created_at)
+        `INSERT INTO identity.user_accounts (user_account_id, display_name, created_at)
          VALUES ($1, $2, $3)`,
         [account.user.id, account.user.displayName, account.user.createdAt],
       );
       await connection.query(
         `INSERT INTO identity.external_identities (
-           id,
-           user_id,
-           provider,
+           external_identity_id,
+           user_account_id,
+           identity_provider,
            provider_subject,
            created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
@@ -209,11 +216,11 @@ export class PostgresIdentityRepository implements IdentityRepository {
         ],
       );
       await connection.query(
-        `INSERT INTO identity.workspaces (
-           id,
-           owner_user_id,
-           name,
-           kind,
+        `INSERT INTO identity.identity_workspaces (
+           identity_workspace_id,
+           owner_user_account_id,
+           workspace_name,
+           workspace_kind,
            created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
         [
