@@ -7,6 +7,7 @@ import type { NotificationRuntime } from './notification-runtime';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
+const IDEMPOTENCY_KEY = '44444444-4444-4444-8444-444444444444';
 const SECRET = randomBytes(32).toString('base64url');
 const PATH = '/v1/internal/data-rights/contributor';
 const ORIGINAL_SECRET = process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET;
@@ -19,23 +20,39 @@ const body = Object.freeze({
   requestId: REQUEST_ID,
 });
 
+const eraseBody = Object.freeze({
+  contractVersion: 'life-os.data-rights-contributor.v1',
+  operation: 'erase' as const,
+  workspaceId: WORKSPACE_ID,
+  requestedByUserId: USER_ID,
+  requestId: REQUEST_ID,
+  idempotencyKey: IDEMPOTENCY_KEY,
+});
+
 /** Signs the exact controller request contract so tests exercise production authority verification. */
-function signature(issuedAt: string): string {
+function signature(
+  request: Readonly<Record<string, unknown>>,
+  issuedAt: string,
+): string {
+  const idempotencyKey =
+    request.operation === 'erase' ? String(request.idempotencyKey) : '-';
+  const cursor = request.operation === 'export' ? String(request.cursor ?? '-') : '-';
   return createHmac('sha256', SECRET)
     .update(
       [
-        'life-os.notification-data-rights-context.v1',
-        body.contractVersion,
-        body.workspaceId,
-        body.requestedByUserId,
-        body.requestId,
-        body.operation,
-        '-',
-        '-',
+        String(request.contractVersion),
+        String(request.workspaceId),
+        String(request.requestedByUserId),
+        String(request.requestId),
+        String(request.operation),
+        idempotencyKey,
+        cursor,
         issuedAt,
         'POST',
         PATH,
-      ].join('\n'),
+      ]
+        .toSpliced(0, 0, 'life-os.notification-data-rights-context.v1')
+        .join('\n'),
       'utf8',
     )
     .digest('base64url');
@@ -78,7 +95,7 @@ describe('NotificationDataRightsController', () => {
     await expect(
       controller.contribute(
         issuedAt,
-        signature(issuedAt),
+        signature(body, issuedAt),
         { method: 'POST', originalUrl: PATH },
         body,
       ),
@@ -95,7 +112,7 @@ describe('NotificationDataRightsController', () => {
     await expect(
       controller.contribute(
         issuedAt,
-        signature(issuedAt),
+        signature(body, issuedAt),
         { method: 'POST', originalUrl: '/v1/internal/data-rights/other' },
         body,
       ),
@@ -118,7 +135,7 @@ describe('NotificationDataRightsController', () => {
     try {
       await controller.contribute(
         issuedAt,
-        signature(issuedAt),
+        signature(body, issuedAt),
         { method: 'POST', originalUrl: PATH },
         body,
       );
@@ -127,5 +144,62 @@ describe('NotificationDataRightsController', () => {
     }
     expect(caught).toMatchObject({ status: 503 });
     expect(JSON.stringify(caught)).not.toContain('password');
+  });
+
+  it('releases a claimed erase signature after a transient contributor failure so the exact retry can succeed', async () => {
+    process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET = SECRET;
+    let fail = true;
+    const claims = new Set<string>();
+    const replayGuard = {
+      async consume({ evidenceDigest }: { readonly evidenceDigest: string }): Promise<boolean> {
+        if (claims.has(evidenceDigest)) return false;
+        claims.add(evidenceDigest);
+        return true;
+      },
+      async release(evidenceDigest: string): Promise<void> {
+        claims.delete(evidenceDigest);
+      },
+    };
+    const controller = new NotificationDataRightsController({
+      dataRightsAuthorityReplayGuard: replayGuard,
+      dataRightsContributor: {
+        async handle(): Promise<NotificationDataRightsResponse> {
+          if (fail) {
+            fail = false;
+            throw new Error('temporary database failure');
+          }
+          return {
+            contractVersion: 'life-os.data-rights-contributor.v1',
+            contributor: 'notification.service',
+            operation: 'erase',
+            requestId: REQUEST_ID,
+            erasedRecords: 1,
+            receiptSha256: 'a'.repeat(64),
+          };
+        },
+      },
+    } as unknown as NotificationRuntime);
+    const issuedAt = String(Math.floor(Date.now() / 1000));
+    const signed = signature(eraseBody, issuedAt);
+
+    await expect(
+      controller.contribute(
+        issuedAt,
+        signed,
+        { method: 'POST', originalUrl: PATH },
+        eraseBody,
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(claims.size).toBe(0);
+
+    await expect(
+      controller.contribute(
+        issuedAt,
+        signed,
+        { method: 'POST', originalUrl: PATH },
+        eraseBody,
+      ),
+    ).resolves.toMatchObject({ operation: 'erase', erasedRecords: 1 });
+    expect(claims.size).toBe(1);
   });
 });
