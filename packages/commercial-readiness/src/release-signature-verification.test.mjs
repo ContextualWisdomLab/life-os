@@ -35,7 +35,12 @@ function signatureMessage(subjectArtifactName, subjectSha256) {
   );
 }
 
-async function createFixture({ mutateEnvelope, trustedKeyId = KEY_ID, trustedPublicKey } = {}) {
+async function createFixture({
+  mutateEnvelope,
+  trustedKeyId = KEY_ID,
+  trustedPublicKey,
+  sbomBytes: suppliedSbomBytes,
+} = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'life-os-release-signature-'));
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   const subjectArtifactName = 'life-os-web.tar';
@@ -57,7 +62,7 @@ async function createFixture({ mutateEnvelope, trustedKeyId = KEY_ID, trustedPub
   const signatureArtifactName = 'life-os-web.tar.sig.json';
   const signatureArtifactBytes = Buffer.from(`${JSON.stringify(envelope)}\n`, 'utf8');
 
-  const sbomBytes = Buffer.from('{}\n', 'utf8');
+  const sbomBytes = suppliedSbomBytes ?? Buffer.from('{}\n', 'utf8');
   const provenanceBytes = Buffer.from('{}\n', 'utf8');
   const checksumBytes = Buffer.from(`${subjectSha256}  ${subjectArtifactName}\n`, 'utf8');
   await Promise.all([
@@ -100,6 +105,8 @@ async function createFixture({ mutateEnvelope, trustedKeyId = KEY_ID, trustedPub
   return {
     directory,
     index,
+    subjectArtifactName,
+    subjectBytes,
     trustedPublicKeys: {
       [trustedKeyId]: trustedPublicKey ?? publicKey.export({ type: 'spki', format: 'pem' }),
     },
@@ -197,6 +204,43 @@ test('rejects malformed trusted-key maps and non-canonical signature envelopes',
       await assert.rejects(
         verifyReleaseEvidenceSignatures(index, directory, trustedPublicKeys),
         ReleaseSignatureVerificationError,
+      );
+    },
+  );
+});
+
+test('rejects a signed subject that changes after the initial artifact pass', async () => {
+  const slowSbomBytes = Buffer.alloc(64 * 1024 * 1024, 0x20);
+  await withFixture(
+    { sbomBytes: slowSbomBytes },
+    async ({ directory, index, subjectArtifactName, subjectBytes, trustedPublicKeys }) => {
+      let mutationError;
+      const mutation = new Promise((resolve) => {
+        setTimeout(async () => {
+          try {
+            await writeFile(
+              join(directory, subjectArtifactName),
+              Buffer.alloc(subjectBytes.length, 0x78),
+            );
+          } catch (error) {
+            mutationError = error;
+          } finally {
+            resolve();
+          }
+        }, 20);
+      });
+
+      let verificationError;
+      try {
+        await verifyReleaseEvidenceSignatures(index, directory, trustedPublicKeys);
+      } catch (error) {
+        verificationError = error;
+      }
+      await mutation;
+      if (mutationError) throw mutationError;
+      assert.ok(
+        verificationError instanceof ReleaseSignatureVerificationError,
+        'signature verification must revalidate retained subject bytes after signature checks',
       );
     },
   );
