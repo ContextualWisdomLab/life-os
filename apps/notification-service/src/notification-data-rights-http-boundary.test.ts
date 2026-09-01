@@ -87,6 +87,9 @@ function oneShotReplayGuard(
       accepted = true;
       return true;
     },
+    async release(): Promise<void> {
+      accepted = false;
+    },
   };
 }
 
@@ -220,6 +223,9 @@ describe('Notification data-rights HTTP authority', () => {
 
     const unavailableGuard: NotificationDataRightsAuthorityReplayGuardPort = {
       async consume(): Promise<boolean> {
+        throw new Error('database topology must not escape');
+      },
+      async release(): Promise<void> {
         throw new Error('database topology must not escape');
       },
     };
