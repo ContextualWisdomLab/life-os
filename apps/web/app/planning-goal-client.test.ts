@@ -3,11 +3,13 @@ import { describe, it } from 'node:test';
 import { createPlanningContextHeaders } from './planning-search-client';
 import {
   handlePlanningGoalCreateRequest,
+  handlePlanningGoalListRequest,
   type PlanningGoalFetch,
 } from './planning-goal-client';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const GOAL_ID = '22222222-2222-4222-8222-222222222222';
+const SECOND_GOAL_ID = '55555555-5555-4555-8555-555555555555';
 const CONTEXT_SECRET = 'planning-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_788_220_800;
 
@@ -45,6 +47,28 @@ function goalResponse(
   );
 }
 
+function goalListResponse(value?: unknown): Response {
+  return new Response(
+    JSON.stringify(
+      value ?? [
+        {
+          id: GOAL_ID,
+          workspaceId: WORKSPACE_ID,
+          title: 'Publish the first LifeOS release candidate',
+          createdAt: '2026-09-01T02:00:00.000Z',
+        },
+        {
+          id: SECOND_GOAL_ID,
+          workspaceId: WORKSPACE_ID,
+          title: 'Complete the first-party workspace',
+          createdAt: '2026-09-01T03:00:00.000Z',
+        },
+      ],
+    ),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  );
+}
+
 function createRequest(body: unknown): Request {
   return new Request('https://life-os.example/api/planning/goals', {
     method: 'POST',
@@ -53,6 +77,12 @@ function createRequest(body: unknown): Request {
       'content-type': 'application/json',
     },
     body: JSON.stringify(body),
+  });
+}
+
+function listRequest(): Request {
+  return new Request('https://life-os.example/api/planning/goals', {
+    headers: { cookie: 'life_os_session=opaque_session_value' },
   });
 }
 
@@ -200,6 +230,90 @@ describe('authenticated planning goal creation BFF', () => {
         title: 'Goal creation is unavailable',
         status: 503,
         code: 'goal_creation_unavailable',
+      });
+    }
+  });
+});
+
+describe('authenticated planning goal listing BFF', () => {
+  it('lists only browser-safe goals under the server-derived workspace', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const response = await handlePlanningGoalListRequest(
+      listRequest(),
+      environment,
+      async (input, init) => {
+        calls.push({ url: String(input), init });
+        return calls.length === 1 ? sessionResponse() : goalListResponse();
+      },
+      NOW_SECONDS,
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), [
+      {
+        id: GOAL_ID,
+        title: 'Publish the first LifeOS release candidate',
+        createdAt: '2026-09-01T02:00:00.000Z',
+      },
+      {
+        id: SECOND_GOAL_ID,
+        title: 'Complete the first-party workspace',
+        createdAt: '2026-09-01T03:00:00.000Z',
+      },
+    ]);
+    assert.equal(calls[1]?.url, 'http://planning-service:4102/v1/goals');
+    assert.equal(calls[1]?.init?.method, 'GET');
+    const planningHeaders = new Headers(calls[1]?.init?.headers);
+    const expected = createPlanningContextHeaders(
+      WORKSPACE_ID,
+      CONTEXT_SECRET,
+      NOW_SECONDS,
+      { method: 'GET', path: '/v1/goals' },
+    );
+    assert.equal(
+      planningHeaders.get('x-life-os-context-signature'),
+      expected['x-life-os-context-signature'],
+    );
+    assert.equal(planningHeaders.get('cookie'), null);
+  });
+
+  it('rejects cross-workspace, oversized, and malformed goal collections', async () => {
+    const invalidCollections = [
+      [
+        {
+          id: GOAL_ID,
+          workspaceId: SECOND_GOAL_ID,
+          title: 'Wrong workspace',
+          createdAt: '2026-09-01T02:00:00.000Z',
+        },
+      ],
+      Array.from({ length: 101 }, (_, index) => ({
+        id: `${String(index).padStart(8, '0')}-1111-4111-8111-111111111111`,
+        workspaceId: WORKSPACE_ID,
+        title: `Goal ${index}`,
+        createdAt: '2026-09-01T02:00:00.000Z',
+      })),
+      { goals: [] },
+    ];
+
+    for (const collection of invalidCollections) {
+      let calls = 0;
+      const response = await handlePlanningGoalListRequest(
+        listRequest(),
+        environment,
+        async () => {
+          calls += 1;
+          return calls === 1 ? sessionResponse() : goalListResponse(collection);
+        },
+        NOW_SECONDS,
+      );
+      assert.equal(response.status, 503);
+      assert.equal(calls, 2);
+      assert.deepEqual(await response.json(), {
+        type: 'about:blank',
+        title: 'Goal listing is unavailable',
+        status: 503,
+        code: 'goal_listing_unavailable',
       });
     }
   });
