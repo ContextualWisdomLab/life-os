@@ -114,10 +114,12 @@ describe('commercial readiness workflow contract', () => {
     }
 
     const hostedRunnerWorkflows = [
-      '.github/workflows/ci.yml',
+      '.github/workflows/ai-proposal-live-conformance.yml',
       '.github/workflows/appguardrail.yml',
+      '.github/workflows/ci.yml',
       '.github/workflows/commercial-readiness.yml',
       '.github/workflows/deploy.yml',
+      '.github/workflows/opencode-commercial-development.yml',
     ];
     for (const path of hostedRunnerWorkflows) {
       const workflow = await repositoryFile(path);
