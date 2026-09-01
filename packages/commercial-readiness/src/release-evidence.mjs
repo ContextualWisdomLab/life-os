@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto';
+import { constants as fileConstants } from 'node:fs';
+import { open } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+
 const RELEASE_SCHEMA_VERSION = 'life-os.release-evidence.v1';
 const SOURCE_COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/u;
@@ -7,6 +12,7 @@ const RC_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-
 const NIGHTLY_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-nightly\.\d{8}\.(0|[1-9]\d*)$/u;
 const MAXIMUM_P0_GAPS = 64;
 const MAXIMUM_ARTIFACTS = 128;
+const VERIFY_BUFFER_BYTES = 64 * 1024;
 const SPDX_SPEC_VERSION = '3.0.1';
 const SLSA_PROVENANCE_PREDICATE_TYPE = 'https://slsa.dev/provenance/v1';
 const EVIDENCE_TYPES = new Set([
@@ -218,6 +224,45 @@ function requireArtifacts(value, sourceCommit) {
   return Object.freeze(artifacts);
 }
 
+async function verifyArtifactBytes(directory, artifact) {
+  let handle;
+  try {
+    handle = await open(
+      join(directory, artifact.artifact_name),
+      fileConstants.O_RDONLY | fileConstants.O_NOFOLLOW,
+    );
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.size !== artifact.size_bytes) return invalid();
+
+    const digest = createHash('sha256');
+    const buffer = Buffer.allocUnsafe(VERIFY_BUFFER_BYTES);
+    let position = 0;
+    while (position < metadata.size) {
+      const { bytesRead } = await handle.read(
+        buffer,
+        0,
+        Math.min(buffer.byteLength, metadata.size - position),
+        position,
+      );
+      if (bytesRead <= 0) return invalid();
+      digest.update(buffer.subarray(0, bytesRead));
+      position += bytesRead;
+    }
+    if (`sha256:${digest.digest('hex')}` !== artifact.sha256) return invalid();
+  } catch (error) {
+    if (error instanceof ReleaseEvidenceValidationError) throw error;
+    return invalid();
+  } finally {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // The evidence boundary already fails closed if file verification failed.
+      }
+    }
+  }
+}
+
 /**
  * Validates one immutable index for release-candidate evidence.
  *
@@ -257,4 +302,37 @@ export function validateReleaseEvidenceIndex(value) {
     open_p0_buyer_gaps: requireOpenP0BuyerGaps(record.open_p0_buyer_gaps, channel),
     artifacts: requireArtifacts(record.artifacts, sourceCommit),
   });
+}
+
+/**
+ * Verifies that every indexed release artifact is the exact regular file claimed.
+ *
+ * The verifier first applies the structural release contract, then opens each
+ * artifact without following a final symlink, streams its bytes through SHA-256,
+ * and compares both byte count and digest with the immutable index. It reads only
+ * artifact names already accepted by the no-path-separator contract and emits the
+ * same payload-free failure for missing, replaced, symlinked, non-regular, short,
+ * oversized, or digest-mismatched files. It does not interpret SBOM/provenance
+ * content or cryptographically validate detached signatures; those are separate
+ * release gates.
+ *
+ * @param {unknown} value Untrusted release-evidence index.
+ * @param {string} artifactDirectory Directory containing the indexed artifact files.
+ * @returns {Promise<Readonly<object>>} The validated index after all local bytes match.
+ * @throws {ReleaseEvidenceValidationError} When index or file evidence is invalid.
+ */
+export async function verifyReleaseEvidenceDirectory(value, artifactDirectory) {
+  const index = validateReleaseEvidenceIndex(value);
+  if (
+    typeof artifactDirectory !== 'string' ||
+    artifactDirectory.length === 0 ||
+    artifactDirectory.includes('\0')
+  ) {
+    return invalid();
+  }
+  const directory = resolve(artifactDirectory);
+  for (const artifact of index.artifacts) {
+    await verifyArtifactBytes(directory, artifact);
+  }
+  return index;
 }
