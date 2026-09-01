@@ -13,6 +13,7 @@ const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 const IDEMPOTENCY_KEY = '44444444-4444-4444-8444-444444444444';
 const SHA256 = 'a'.repeat(64);
+const EVIDENCE_TIME = '2026-08-12T00:00:00.000000Z';
 const CODEPOINT_CANONICAL_DIGEST =
   '3ab3b13cd6c0ab42b9cbed3c685c5b4d0b065f94b5e147b267a3ab4e00f0d356';
 
@@ -44,6 +45,7 @@ class ScriptedClient implements NotificationSqlClient {
 
 function request(
   operation: 'export' | 'erase_preflight' | 'erase' | 'verify_erased',
+  overrides: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return {
     contractVersion: 'life-os.data-rights-contributor.v1',
@@ -52,23 +54,33 @@ function request(
     requestedByUserId: USER_ID,
     requestId: REQUEST_ID,
     ...(operation === 'erase' ? { idempotencyKey: IDEMPOTENCY_KEY } : {}),
+    ...overrides,
+  };
+}
+
+function uuid(index: number): string {
+  return `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+}
+
+function evidence(
+  data: unknown,
+  index = 1,
+  kind: 'inbox_message' | 'reminder_occurrence' | 'reminder_outcome' =
+    'reminder_occurrence',
+  evidenceTime = EVIDENCE_TIME,
+): Record<string, unknown> {
+  return {
+    evidenceTime,
+    evidenceKind: kind,
+    evidenceId: uuid(index),
+    data,
   };
 }
 
 function exportResult(
-  reminderOccurrences: unknown = [],
-  reminderOutcomes: unknown = [],
-  inboxMessages: unknown = [],
+  evidenceRecords: unknown,
 ): NotificationSqlQueryResult<unknown> {
-  return {
-    rows: [
-      {
-        reminder_occurrences: reminderOccurrences,
-        reminder_outcomes: reminderOutcomes,
-        inbox_messages: inboxMessages,
-      },
-    ],
-  };
+  return { rows: [{ evidence_records: evidenceRecords }] };
 }
 
 async function expectDataRightsFailure(
@@ -84,21 +96,19 @@ describe('NotificationDataRightsContributor', () => {
   it('exports bounded deterministic tenant evidence without secret hash columns', async () => {
     const nullPrototype = Object.assign(Object.create(null), { zeta: 'z' });
     const client = new ScriptedClient([
-      exportResult(
-        [
-          {
-            zeta: 'last',
-            alpha: null,
-            enabled: true,
-            disabled: false,
-            count: 1,
-            nested: ['value'],
-            nullPrototype,
-          },
-        ],
-        [],
-        [],
-      ),
+      exportResult([
+        evidence({
+          zeta: 'last',
+          alpha: null,
+          enabled: true,
+          disabled: false,
+          count: 1,
+          nested: ['value'],
+          nullPrototype,
+        }),
+        evidence({ outcomeId: uuid(2) }, 2, 'reminder_outcome'),
+        evidence({ messageId: uuid(3) }, 3, 'inbox_message'),
+      ]),
     ]);
     const contributor = new NotificationDataRightsContributor(client);
 
@@ -110,22 +120,28 @@ describe('NotificationDataRightsContributor', () => {
       operation: 'export',
       requestId: REQUEST_ID,
       schemaVersion: 'notification.data-rights.v1',
-      recordCount: 1,
+      recordCount: 3,
     });
     if (response.operation !== 'export') {
       throw new Error('Expected export response');
     }
     expect(response.sha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(response.nextCursor).toBeUndefined();
+    expect(response.data).toMatchObject({
+      reminderOccurrences: [expect.any(Object)],
+      reminderOutcomes: [{ outcomeId: uuid(2) }],
+      inboxMessages: [{ messageId: uuid(3) }],
+    });
     expect(client.calls).toHaveLength(1);
-    expect(client.calls[0]?.values).toEqual([WORKSPACE_ID, 1_001]);
+    expect(client.calls[0]?.values).toEqual([
+      WORKSPACE_ID,
+      null,
+      null,
+      null,
+      1_001,
+    ]);
     expect(client.calls[0]?.text).toContain(
-      'ORDER BY created_at ASC, reminder_id ASC',
-    );
-    expect(client.calls[0]?.text).toContain(
-      'ORDER BY occurred_at ASC, outcome_id ASC',
-    );
-    expect(client.calls[0]?.text).toContain(
-      'ORDER BY delivered_at ASC, message_id ASC',
+      'ORDER BY evidence_time ASC, evidence_kind ASC, evidence_id ASC',
     );
     expect(client.calls[0]?.text).not.toContain('claim_key_hash');
     expect(client.calls[0]?.text).not.toContain('idempotency_key_hash');
@@ -133,10 +149,14 @@ describe('NotificationDataRightsContributor', () => {
 
   it('uses codepoint-stable canonical JSON for reproducible export evidence', async () => {
     const first = new NotificationDataRightsContributor(
-      new ScriptedClient([exportResult([{ a: 'lower', Z: 'upper' }], [], [])]),
+      new ScriptedClient([
+        exportResult([evidence({ a: 'lower', Z: 'upper' })]),
+      ]),
     );
     const second = new NotificationDataRightsContributor(
-      new ScriptedClient([exportResult([{ Z: 'upper', a: 'lower' }], [], [])]),
+      new ScriptedClient([
+        exportResult([evidence({ Z: 'upper', a: 'lower' })]),
+      ]),
     );
 
     const firstResponse = await first.handle(request('export'));
@@ -221,16 +241,26 @@ describe('NotificationDataRightsContributor', () => {
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]?.text).toContain('has_function_privilege');
     expect(client.calls[0]?.text).not.toContain('has_table_privilege');
-    expect(client.calls[0]?.text).not.toContain('data_rights_erasure_receipts');
+    expect(client.calls[0]?.text).not.toContain(
+      'data_rights_erasure_receipts',
+    );
   });
 
-  it('rejects malformed request envelopes before persistence access', async () => {
+  it('rejects malformed request envelopes and cursors before persistence access', async () => {
     const client = new ScriptedClient([]);
     const contributor = new NotificationDataRightsContributor(client);
     const nullPrototypeRequest = Object.assign(
       Object.create(null),
       request('export'),
     );
+    const cursor = (value: unknown): string =>
+      Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+    const cursorBase = {
+      version: 'notification.data-rights.cursor.v1',
+      evidenceTime: EVIDENCE_TIME,
+      evidenceKind: 'reminder_occurrence',
+      evidenceId: uuid(1),
+    };
     const malformed = [
       undefined,
       null,
@@ -241,6 +271,35 @@ describe('NotificationDataRightsContributor', () => {
       { ...request('export'), extra: true },
       { ...request('export'), workspaceId: 42 },
       { ...request('export'), workspaceId: 'not-a-uuid' },
+      { ...request('export'), cursor: 42 },
+      { ...request('export'), cursor: '' },
+      { ...request('export'), cursor: 'a'.repeat(513) },
+      { ...request('export'), cursor: '***' },
+      { ...request('export'), cursor: 'eA' },
+      { ...request('export'), cursor: cursor({ ...cursorBase, version: 'wrong' }) },
+      {
+        ...request('export'),
+        cursor: cursor({ ...cursorBase, evidenceKind: 'unknown' }),
+      },
+      {
+        ...request('export'),
+        cursor: cursor({ ...cursorBase, evidenceTime: 'not-an-instant' }),
+      },
+      {
+        ...request('export'),
+        cursor: cursor({
+          ...cursorBase,
+          evidenceTime: '2026-99-99T00:00:00Z',
+        }),
+      },
+      {
+        ...request('export'),
+        cursor: cursor({ ...cursorBase, evidenceId: 'not-a-uuid' }),
+      },
+      {
+        ...request('export'),
+        cursor: cursor({ ...cursorBase, extra: true }),
+      },
       { ...request('erase'), idempotencyKey: 'not-a-uuid' },
     ];
 
@@ -270,11 +329,14 @@ describe('NotificationDataRightsContributor', () => {
     expect(failure.message).toBe('Notification data-rights operation failed');
   });
 
-  it('rejects missing, duplicate, or sparse SQL result evidence', async () => {
+  it('rejects missing, duplicate, sparse, and malformed SQL result evidence', async () => {
     const cases: NotificationSqlQueryResult<unknown>[] = [
       { rows: [] },
       { rows: [{}, {}] },
       { rows: new Array(1) },
+      { rows: [{ evidence_records: {} }] },
+      exportResult(new Array(1_001)),
+      exportResult(Array.from({ length: 1_002 }, () => null)),
     ];
     for (const result of cases) {
       const contributor = new NotificationDataRightsContributor(
@@ -284,27 +346,22 @@ describe('NotificationDataRightsContributor', () => {
     }
   });
 
-  it('requires all three export aggregates to be arrays', async () => {
-    const cases = [
-      exportResult({}, [], []),
-      exportResult([], {}, []),
-      exportResult([], [], {}),
+  it('rejects malformed cross-table evidence identities', async () => {
+    const malformed = [
+      { ...evidence({}), evidenceKind: 'unknown' },
+      { ...evidence({}), evidenceTime: 'not-an-instant' },
+      { ...evidence({}), evidenceTime: '2026-99-99T00:00:00Z' },
+      { ...evidence({}), evidenceId: 'not-a-uuid' },
+      { ...evidence({}), extra: true },
     ];
-    for (const result of cases) {
-      const contributor = new NotificationDataRightsContributor(
-        new ScriptedClient([result]),
+    for (const value of malformed) {
+      await expectDataRightsFailure(
+        new NotificationDataRightsContributor(
+          new ScriptedClient([exportResult([value])]),
+        ),
+        request('export'),
       );
-      await expectDataRightsFailure(contributor, request('export'));
     }
-  });
-
-  it('fails closed when a bounded export exceeds its total record ceiling', async () => {
-    const contributor = new NotificationDataRightsContributor(
-      new ScriptedClient([
-        exportResult(Array.from({ length: 1_001 }, () => null)),
-      ]),
-    );
-    await expectDataRightsFailure(contributor, request('export'));
   });
 
   it('rejects malformed or unbounded JSON returned by PostgreSQL', async () => {
@@ -317,20 +374,23 @@ describe('NotificationDataRightsContributor', () => {
     );
     const nullPrototype = Object.assign(Object.create(null), { safe: 'value' });
     const invalidValues: unknown[] = [
-      [{ value: Number.POSITIVE_INFINITY }],
-      ['x'.repeat(64 * 1024 + 1)],
-      [Array.from({ length: 2_001 }, () => null)],
-      [tooManyObjectEntries],
-      [{ ['k'.repeat(257)]: null }],
-      [new Date(0)],
-      [undefined],
-      [tooDeep],
+      { value: Number.POSITIVE_INFINITY },
+      'x'.repeat(64 * 1024 + 1),
+      Array.from({ length: 2_001 }, () => null),
+      tooManyObjectEntries,
+      { ['k'.repeat(257)]: null },
+      new Date(0),
+      undefined,
+      tooDeep,
     ];
 
-    for (const reminderOccurrences of invalidValues) {
+    for (const data of invalidValues) {
       const contributor = new NotificationDataRightsContributor(
         new ScriptedClient([
-          exportResult(reminderOccurrences, [nullPrototype], []),
+          exportResult([
+            evidence(data),
+            evidence(nullPrototype, 2, 'reminder_outcome'),
+          ]),
         ]),
       );
       await expectDataRightsFailure(contributor, request('export'));

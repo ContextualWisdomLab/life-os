@@ -8,7 +8,9 @@ export const NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION =
   'life-os.data-rights-contributor.v1' as const;
 const CONTRIBUTOR_NAME = 'notification.service' as const;
 const EXPORT_SCHEMA_VERSION = 'notification.data-rights.v1' as const;
+const EXPORT_CURSOR_VERSION = 'notification.data-rights.cursor.v1' as const;
 const MAX_EXPORT_RECORDS = 1_000;
+const MAX_EXPORT_CURSOR_BYTES = 512;
 const MAX_JSON_DEPTH = 16;
 const MAX_JSON_CONTAINER_ITEMS = 2_000;
 const MAX_JSON_STRING_BYTES = 64 * 1024;
@@ -16,6 +18,9 @@ const MAX_JSON_KEY_BYTES = 256;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u;
+const ISO_INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/u;
 
 /** JSON-safe value returned by the Notification-owned contributor. */
 export type NotificationDataRightsJsonValue =
@@ -26,15 +31,33 @@ export type NotificationDataRightsJsonValue =
   | readonly NotificationDataRightsJsonValue[]
   | { readonly [key: string]: NotificationDataRightsJsonValue };
 
+/** Shared validated authority fields carried by every Notification data-rights request. */
+interface NotificationDataRightsRequestBase {
+  readonly contractVersion: typeof NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION;
+  readonly workspaceId: string;
+  readonly requestedByUserId: string;
+  readonly requestId: string;
+}
+
 /** Versioned request accepted by the Notification-owned contributor. */
-export type NotificationDataRightsRequest = Readonly<{
-  contractVersion: typeof NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION;
-  operation: 'export' | 'erase_preflight' | 'erase' | 'verify_erased';
-  workspaceId: string;
-  requestedByUserId: string;
-  requestId: string;
-  idempotencyKey?: string;
-}>;
+export type NotificationDataRightsRequest =
+  | Readonly<
+      NotificationDataRightsRequestBase & {
+        readonly operation: 'export';
+        readonly cursor?: string;
+      }
+    >
+  | Readonly<
+      NotificationDataRightsRequestBase & {
+        readonly operation: 'erase_preflight' | 'verify_erased';
+      }
+    >
+  | Readonly<
+      NotificationDataRightsRequestBase & {
+        readonly operation: 'erase';
+        readonly idempotencyKey: string;
+      }
+    >;
 
 /** Successful response emitted by the Notification-owned contributor. */
 export type NotificationDataRightsResponse =
@@ -47,6 +70,7 @@ export type NotificationDataRightsResponse =
       recordCount: number;
       sha256: string;
       data: NotificationDataRightsJsonValue;
+      nextCursor?: string;
     }>
   | Readonly<{
       contractVersion: typeof NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION;
@@ -80,10 +104,27 @@ interface NormalizedRequestBase {
   readonly requestId: string;
 }
 
+/** Stable ordering discriminator for exported Notification evidence. */
+type EvidenceKind =
+  | 'inbox_message'
+  | 'reminder_occurrence'
+  | 'reminder_outcome';
+
+/** Opaque keyset position for the next deterministic export page. */
+interface ExportCursor {
+  readonly evidenceTime: string;
+  readonly evidenceKind: EvidenceKind;
+  readonly evidenceId: string;
+}
+
 /** Canonical request after every untrusted field is validated. */
 type NormalizedRequest =
   | (NormalizedRequestBase & {
-      readonly operation: 'export' | 'erase_preflight' | 'verify_erased';
+      readonly operation: 'export';
+      readonly cursor: ExportCursor | undefined;
+    })
+  | (NormalizedRequestBase & {
+      readonly operation: 'erase_preflight' | 'verify_erased';
     })
   | (NormalizedRequestBase & {
       readonly operation: 'erase';
@@ -92,9 +133,15 @@ type NormalizedRequest =
 
 /** Aggregate row returned by the bounded one-statement export query. */
 interface ExportRow {
-  reminder_occurrences: unknown;
-  reminder_outcomes: unknown;
-  inbox_messages: unknown;
+  evidence_records: unknown;
+}
+
+/** Untrusted wrapper returned by the cross-table export query. */
+interface ExportEvidenceRecord {
+  readonly evidenceTime: string;
+  readonly evidenceKind: EvidenceKind;
+  readonly evidenceId: string;
+  readonly data: NotificationDataRightsJsonValue;
 }
 
 /** Privilege evidence required before destructive Notification erasure. */
@@ -205,6 +252,20 @@ function compareCanonicalKeys(left: string, right: string): number {
   return Number(left > right) - Number(left < right);
 }
 
+/** Requires one canonical UTC instant suitable for PostgreSQL keyset comparison. */
+function requireIsoInstant(value: unknown): string {
+  if (typeof value !== 'string') {
+    return invalidDataRights();
+  }
+  if (!ISO_INSTANT_PATTERN.test(value)) {
+    return invalidDataRights();
+  }
+  if (!Number.isFinite(Date.parse(value))) {
+    return invalidDataRights();
+  }
+  return value;
+}
+
 /** Converts untrusted JSON evidence to deterministic canonical JSON while enforcing bounds. */
 function canonicalJson(value: unknown, depth = 0): string {
   if (depth > MAX_JSON_DEPTH) {
@@ -255,12 +316,6 @@ function canonicalJson(value: unknown, depth = 0): string {
   return invalidDataRights();
 }
 
-/** Validates one JSON-safe value and returns the same value with a narrowed type. */
-function requireJsonValue(value: unknown): NotificationDataRightsJsonValue {
-  canonicalJson(value);
-  return value as NotificationDataRightsJsonValue;
-}
-
 /** Computes deterministic SHA-256 evidence over canonical bounded JSON. */
 function digest(value: unknown): string {
   return createHash('sha256')
@@ -278,6 +333,83 @@ function exactlyOne<Row>(result: NotificationSqlQueryResult<Row>): Row {
     return invalidDataRights();
   }
   return row;
+}
+
+/** Decodes and validates one bounded opaque export cursor. */
+function decodeExportCursor(value: unknown): ExportCursor {
+  if (typeof value !== 'string') {
+    return invalidDataRights();
+  }
+  if (value.length === 0 || value.length > MAX_EXPORT_CURSOR_BYTES) {
+    return invalidDataRights();
+  }
+  if (!BASE64URL_PATTERN.test(value)) {
+    return invalidDataRights();
+  }
+  const decoded = Buffer.from(value, 'base64url').toString('utf8');
+  let untrusted: unknown;
+  try {
+    untrusted = JSON.parse(decoded);
+  } catch {
+    return invalidDataRights();
+  }
+  const record = requireRecord(untrusted);
+  requireExactKeys(record, [
+    'version',
+    'evidenceTime',
+    'evidenceKind',
+    'evidenceId',
+  ]);
+  if (record.version !== EXPORT_CURSOR_VERSION) {
+    return invalidDataRights();
+  }
+  if (
+    record.evidenceKind !== 'inbox_message' &&
+    record.evidenceKind !== 'reminder_occurrence' &&
+    record.evidenceKind !== 'reminder_outcome'
+  ) {
+    return invalidDataRights();
+  }
+  return Object.freeze({
+    evidenceTime: requireIsoInstant(record.evidenceTime),
+    evidenceKind: record.evidenceKind,
+    evidenceId: requireUuidV4(record.evidenceId),
+  });
+}
+
+/** Encodes one validated keyset position as an opaque cursor. */
+function encodeExportCursor(cursor: ExportCursor): string {
+  const serialized = canonicalJson({
+    version: EXPORT_CURSOR_VERSION,
+    evidenceTime: cursor.evidenceTime,
+    evidenceKind: cursor.evidenceKind,
+    evidenceId: cursor.evidenceId,
+  });
+  return Buffer.from(serialized, 'utf8').toString('base64url');
+}
+
+/** Validates one cross-table export row before it reaches portability output. */
+function requireExportEvidenceRecord(value: unknown): ExportEvidenceRecord {
+  const record = requireRecord(value);
+  requireExactKeys(record, [
+    'evidenceTime',
+    'evidenceKind',
+    'evidenceId',
+    'data',
+  ]);
+  if (
+    record.evidenceKind !== 'inbox_message' &&
+    record.evidenceKind !== 'reminder_occurrence' &&
+    record.evidenceKind !== 'reminder_outcome'
+  ) {
+    return invalidDataRights();
+  }
+  return Object.freeze({
+    evidenceTime: requireIsoInstant(record.evidenceTime),
+    evidenceKind: record.evidenceKind,
+    evidenceId: requireUuidV4(record.evidenceId),
+    data: record.data as NotificationDataRightsJsonValue,
+  });
 }
 
 /** Validates the exact v1 request shape before any Notification persistence access. */
@@ -302,6 +434,17 @@ function normalizeRequest(untrusted: unknown): NormalizedRequest {
     'requestedByUserId',
     'requestId',
   ];
+  if (operation === 'export') {
+    const hasCursor = Object.prototype.hasOwnProperty.call(record, 'cursor');
+    requireExactKeys(record, hasCursor ? [...baseKeys, 'cursor'] : baseKeys);
+    return {
+      operation,
+      workspaceId: requireUuidV4(record.workspaceId),
+      requestedByUserId: requireUuidV4(record.requestedByUserId),
+      requestId: requireUuidV4(record.requestId),
+      cursor: hasCursor ? decodeExportCursor(record.cursor) : undefined,
+    };
+  }
   requireExactKeys(
     record,
     operation === 'erase' ? [...baseKeys, 'idempotencyKey'] : baseKeys,
@@ -348,6 +491,7 @@ export class NotificationDataRightsContributor {
         return await this.exportWorkspace(
           request.workspaceId,
           request.requestId,
+          request.cursor,
         );
       case 'erase_preflight':
         return await this.preflightErase(request.requestId);
@@ -358,16 +502,20 @@ export class NotificationDataRightsContributor {
     }
   }
 
-  /** Exports one deterministic, bounded, tenant-scoped Notification section. */
+  /** Exports one deterministic bounded page of tenant-scoped Notification evidence. */
   private async exportWorkspace(
     workspaceId: string,
     requestId: string,
+    cursor: ExportCursor | undefined,
   ): Promise<NotificationDataRightsResponse> {
     const row = exactlyOne(
       await this.query<ExportRow>(
-        `SELECT
-           COALESCE((
-             SELECT jsonb_agg(jsonb_build_object(
+        `WITH candidate_evidence AS (
+           SELECT
+             created_at AS evidence_time,
+             'reminder_occurrence'::text AS evidence_kind,
+             reminder_id AS evidence_id,
+             jsonb_build_object(
                'reminderId', reminder_id,
                'title', reminder_title,
                'dueAt', to_char(due_instant AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
@@ -380,16 +528,20 @@ export class NotificationDataRightsContributor {
                'claimExpiresAt', CASE WHEN claim_expires_at IS NULL THEN NULL ELSE to_char(claim_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END,
                'createdAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
                'updatedAt', to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-             ) ORDER BY created_at ASC, reminder_id ASC)
-             FROM (
-               SELECT * FROM notification_service.reminder_occurrences
-               WHERE workspace_id = $1
-               ORDER BY created_at ASC, reminder_id ASC
-               LIMIT $2
-             ) AS bounded_occurrences
-           ), '[]'::jsonb) AS reminder_occurrences,
-           COALESCE((
-             SELECT jsonb_agg(jsonb_build_object(
+             ) AS evidence_data
+           FROM notification_service.reminder_occurrences
+           WHERE workspace_id = $1
+             AND (
+               $2::timestamptz IS NULL
+               OR (created_at, 'reminder_occurrence'::text, reminder_id) >
+                  ($2::timestamptz, $3::text, $4::uuid)
+             )
+           UNION ALL
+           SELECT
+             occurred_at AS evidence_time,
+             'reminder_outcome'::text AS evidence_kind,
+             outcome_id AS evidence_id,
+             jsonb_build_object(
                'outcomeId', outcome_id,
                'reminderId', reminder_id,
                'kind', outcome_kind,
@@ -398,16 +550,20 @@ export class NotificationDataRightsContributor {
                'reason', outcome_reason,
                'deliveryLocalDate', delivery_local_date,
                'createdAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-             ) ORDER BY occurred_at ASC, outcome_id ASC)
-             FROM (
-               SELECT * FROM notification_service.reminder_outcomes
-               WHERE workspace_id = $1
-               ORDER BY occurred_at ASC, outcome_id ASC
-               LIMIT $2
-             ) AS bounded_outcomes
-           ), '[]'::jsonb) AS reminder_outcomes,
-           COALESCE((
-             SELECT jsonb_agg(jsonb_build_object(
+             ) AS evidence_data
+           FROM notification_service.reminder_outcomes
+           WHERE workspace_id = $1
+             AND (
+               $2::timestamptz IS NULL
+               OR (occurred_at, 'reminder_outcome'::text, outcome_id) >
+                  ($2::timestamptz, $3::text, $4::uuid)
+             )
+           UNION ALL
+           SELECT
+             delivered_at AS evidence_time,
+             'inbox_message'::text AS evidence_kind,
+             message_id AS evidence_id,
+             jsonb_build_object(
                'messageId', message_id,
                'reminderId', reminder_id,
                'title', message_title,
@@ -417,47 +573,89 @@ export class NotificationDataRightsContributor {
                'readAt', CASE WHEN read_at IS NULL THEN NULL ELSE to_char(read_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') END,
                'createdAt', to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
                'updatedAt', to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
-             ) ORDER BY delivered_at ASC, message_id ASC)
-             FROM (
-               SELECT * FROM notification_service.inbox_messages
-               WHERE workspace_id = $1
-               ORDER BY delivered_at ASC, message_id ASC
-               LIMIT $2
-             ) AS bounded_messages
-           ), '[]'::jsonb) AS inbox_messages`,
-        [workspaceId, MAX_EXPORT_RECORDS + 1],
+             ) AS evidence_data
+           FROM notification_service.inbox_messages
+           WHERE workspace_id = $1
+             AND (
+               $2::timestamptz IS NULL
+               OR (delivered_at, 'inbox_message'::text, message_id) >
+                  ($2::timestamptz, $3::text, $4::uuid)
+             )
+         ), bounded_evidence AS (
+           SELECT evidence_time, evidence_kind, evidence_id, evidence_data
+           FROM candidate_evidence
+           ORDER BY evidence_time ASC, evidence_kind ASC, evidence_id ASC
+           LIMIT $5
+         )
+         SELECT COALESCE(
+           jsonb_agg(
+             jsonb_build_object(
+               'evidenceTime', to_char(
+                 evidence_time AT TIME ZONE 'UTC',
+                 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+               ),
+               'evidenceKind', evidence_kind,
+               'evidenceId', evidence_id,
+               'data', evidence_data
+             )
+             ORDER BY evidence_time ASC, evidence_kind ASC, evidence_id ASC
+           ),
+           '[]'::jsonb
+         ) AS evidence_records
+         FROM bounded_evidence`,
+        [
+          workspaceId,
+          cursor?.evidenceTime ?? null,
+          cursor?.evidenceKind ?? null,
+          cursor?.evidenceId ?? null,
+          MAX_EXPORT_RECORDS + 1,
+        ],
       ),
     );
-    if (!Array.isArray(row.reminder_occurrences)) {
+    if (!Array.isArray(row.evidence_records)) {
       return invalidDataRights();
     }
-    if (!Array.isArray(row.reminder_outcomes)) {
+    if (row.evidence_records.length > MAX_EXPORT_RECORDS + 1) {
       return invalidDataRights();
     }
-    if (!Array.isArray(row.inbox_messages)) {
-      return invalidDataRights();
-    }
-    const recordCount =
-      row.reminder_occurrences.length +
-      row.reminder_outcomes.length +
-      row.inbox_messages.length;
-    if (recordCount > MAX_EXPORT_RECORDS) {
-      return invalidDataRights();
+
+    const page = Array.from(
+      row.evidence_records.slice(0, MAX_EXPORT_RECORDS),
+      (record) => requireExportEvidenceRecord(record),
+    );
+    const reminderOccurrences: NotificationDataRightsJsonValue[] = [];
+    const reminderOutcomes: NotificationDataRightsJsonValue[] = [];
+    const inboxMessages: NotificationDataRightsJsonValue[] = [];
+    for (const record of page) {
+      if (record.evidenceKind === 'reminder_occurrence') {
+        reminderOccurrences.push(record.data);
+      } else if (record.evidenceKind === 'reminder_outcome') {
+        reminderOutcomes.push(record.data);
+      } else {
+        inboxMessages.push(record.data);
+      }
     }
     const data = Object.freeze({
-      reminderOccurrences: requireJsonValue(row.reminder_occurrences),
-      reminderOutcomes: requireJsonValue(row.reminder_outcomes),
-      inboxMessages: requireJsonValue(row.inbox_messages),
+      reminderOccurrences: Object.freeze(reminderOccurrences),
+      reminderOutcomes: Object.freeze(reminderOutcomes),
+      inboxMessages: Object.freeze(inboxMessages),
     });
+    const hasMore = row.evidence_records.length > MAX_EXPORT_RECORDS;
+    const nextCursor = hasMore
+      ? encodeExportCursor(page[MAX_EXPORT_RECORDS - 1] as ExportEvidenceRecord)
+      : undefined;
+    const sha256 = digest(data);
+
     return {
       contractVersion: NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION,
       contributor: CONTRIBUTOR_NAME,
       operation: 'export',
       requestId,
       schemaVersion: EXPORT_SCHEMA_VERSION,
-      recordCount,
-      sha256: digest(data),
+      recordCount: page.length,
+      sha256,
       data,
+      ...(nextCursor === undefined ? {} : { nextCursor }),
     };
   }
 

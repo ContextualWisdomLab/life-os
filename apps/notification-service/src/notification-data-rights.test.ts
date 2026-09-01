@@ -18,15 +18,9 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 function inertPool(): NotificationPool {
   return {
     async query<Row>(text: string): Promise<{ rows: Row[] }> {
-      if (text.includes('AS reminder_occurrences')) {
+      if (text.includes('AS evidence_records')) {
         return {
-          rows: [
-            {
-              reminder_occurrences: [],
-              reminder_outcomes: [],
-              inbox_messages: [],
-            } as Row,
-          ],
+          rows: [{ evidence_records: [] } as Row],
         };
       }
       return { rows: [] };
