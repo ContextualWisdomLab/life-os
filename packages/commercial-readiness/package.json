@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node --check src/cli.mjs && node --check src/github-client.mjs && node --check src/buyer-gaps.mjs && node --check src/buyer-gap-cli.mjs && node --check src/workflow-registry.mjs && node --check src/release-evidence.mjs",
-    "lint": "node --check src/schema.mjs && node --check src/audit.mjs && node --check src/pr-gate.mjs && node --check src/render.mjs && node --check src/github-client.mjs && node --check src/cli.mjs && node --check src/buyer-gaps.mjs && node --check src/buyer-gap-cli.mjs && node --check src/workflow-registry.mjs && node --check src/release-evidence.mjs && node --check src/release-evidence.test.mjs",
+    "build": "node --check src/cli.mjs && node --check src/github-client.mjs && node --check src/buyer-gaps.mjs && node --check src/buyer-gap-cli.mjs && node --check src/workflow-registry.mjs && node --check src/release-evidence.mjs && node --check src/release-signature-verification.mjs",
+    "lint": "node --check src/schema.mjs && node --check src/audit.mjs && node --check src/pr-gate.mjs && node --check src/render.mjs && node --check src/github-client.mjs && node --check src/cli.mjs && node --check src/buyer-gaps.mjs && node --check src/buyer-gap-cli.mjs && node --check src/workflow-registry.mjs && node --check src/release-evidence.mjs && node --check src/release-evidence.test.mjs && node --check src/release-signature-verification.mjs && node --check src/release-signature-verification.test.mjs",
     "test": "node --test src/*.test.mjs",
-    "typecheck": "node --check src/schema.mjs && node --check src/audit.mjs && node --check src/pr-gate.mjs && node --check src/render.mjs && node --check src/github-client.mjs && node --check src/cli.mjs && node --check src/buyer-gaps.mjs && node --check src/buyer-gap-cli.mjs && node --check src/workflow-registry.mjs && node --check src/release-evidence.mjs && node --check src/release-evidence.test.mjs"
+    "typecheck": "node --check src/schema.mjs && node --check src/audit.mjs && node --check src/pr-gate.mjs && node --check src/render.mjs && node --check src/github-client.mjs && node --check src/cli.mjs && node --check src/buyer-gaps.mjs && node --check src/buyer-gap-cli.mjs && node --check src/workflow-registry.mjs && node --check src/release-evidence.mjs && node --check src/release-evidence.test.mjs && node --check src/release-signature-verification.mjs && node --check src/release-signature-verification.test.mjs"
   }
 }
