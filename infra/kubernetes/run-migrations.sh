@@ -260,8 +260,12 @@ TO :"service_runtime_role";
 REVOKE ALL PRIVILEGES ON TABLE
   notification_service.data_rights_erasure_receipts,
   notification_service.data_rights_erasure_authorizations,
-  notification_service.data_rights_workspace_erasures
+  notification_service.data_rights_workspace_erasures,
+  notification_service.data_rights_authority_replay_records
 FROM :"service_runtime_role";
+GRANT SELECT, INSERT, DELETE ON TABLE
+  notification_service.data_rights_authority_replay_records
+TO :"service_runtime_role";
 GRANT EXECUTE ON FUNCTION notification_service.erase_workspace_data(uuid, uuid, uuid, uuid)
 TO :"service_runtime_role";
 SQL
