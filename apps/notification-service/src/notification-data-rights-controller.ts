@@ -4,6 +4,7 @@ import {
   Controller,
   Headers,
   Inject,
+  Optional,
   Post,
   Req,
 } from '@nestjs/common';
@@ -16,6 +17,9 @@ import type { NotificationRuntime } from './notification-runtime';
 
 export const NOTIFICATION_DATA_RIGHTS_RUNTIME = Symbol(
   'NOTIFICATION_DATA_RIGHTS_RUNTIME',
+);
+export const NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET = Symbol(
+  'NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET',
 );
 
 /** Server-observed request properties used to bind service authority to the exact route. */
@@ -32,11 +36,25 @@ function authorityClaimDigest(signature: string): string {
 /** Private authenticated HTTP controller for Notification-owned data-rights operations. */
 @Controller('internal/data-rights')
 export class NotificationDataRightsController {
-  /** Receives the already-composed Notification runtime without creating foreign persistence. */
+  private readonly contextSecret: string | undefined;
+
+  /**
+   * Receives the already-composed Notification runtime and authentication secret
+   * without creating foreign persistence or rereading ambient process state.
+   * Nest compositions may omit the optional secret provider and retain the
+   * process-environment fallback; explicit composition roots pass their already-
+   * validated secret so startup validation and request authentication cannot drift.
+   */
   constructor(
     @Inject(NOTIFICATION_DATA_RIGHTS_RUNTIME)
     private readonly runtime: NotificationRuntime,
-  ) {}
+    @Optional()
+    @Inject(NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET)
+    contextSecret?: string,
+  ) {
+    this.contextSecret =
+      contextSecret ?? process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET;
+  }
 
   /**
    * Verifies Identity-issued authority before forwarding one normalized request
@@ -56,7 +74,7 @@ export class NotificationDataRightsController {
     const trusted = await parseTrustedNotificationDataRightsRequest(
       body,
       { issuedAt, signature },
-      process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET,
+      this.contextSecret,
       { method: request.method, path: request.originalUrl },
       Math.floor(Date.now() / 1000),
       this.runtime.dataRightsAuthorityReplayGuard,
