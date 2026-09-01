@@ -35,24 +35,22 @@ describe('calendar provider environment selection', () => {
     ).toThrow('Google Calendar provider configuration is incomplete');
   });
 
-  it('refuses deployment-wide Google credentials at the hosted multi-user boundary', () => {
+  it('refuses deployment-wide provider credentials at the hosted multi-user boundary', () => {
     expect(() =>
       createHostedCalendarProviderFromEnvironment({
         CALENDAR_PROVIDER: 'google',
         GOOGLE_CALENDAR_ID: 'primary',
         GOOGLE_CALENDAR_ACCESS_TOKEN: TEST_AUTHORIZATION_VALUE,
       }),
-    ).toThrow(
-      'Hosted Google Calendar requires user-scoped credential authority',
-    );
+    ).toThrow('Hosted Calendar requires user-scoped credential authority');
 
-    expect(
+    expect(() =>
       createHostedCalendarProviderFromEnvironment({
         CALENDAR_PROVIDER: 'caldav',
         CALDAV_CALENDAR_URL: 'https://calendar.example.com/users/test/',
         CALDAV_AUTHORIZATION: `Bearer ${TEST_AUTHORIZATION_VALUE}`,
         CALDAV_ALLOWED_HOSTS: 'calendar.example.com',
       }),
-    ).toBeInstanceOf(CaldavCalendarProvider);
+    ).toThrow('Hosted Calendar requires user-scoped credential authority');
   });
 });
