@@ -33,10 +33,12 @@ interface DataRightsContributorRequestBase {
   readonly requestId: string;
 }
 
-/** Requests one deterministic bounded export section from the owning service. */
+/** Requests one deterministic bounded export page from the owning service. */
 export interface DataRightsContributorExportRequest
   extends DataRightsContributorRequestBase {
   readonly operation: 'export';
+  /** Opaque contributor-owned keyset cursor returned by the previous page. */
+  readonly cursor?: string;
 }
 
 /** Requests fail-closed erasure readiness without mutating service-owned data. */
@@ -71,7 +73,7 @@ interface DataRightsContributorResponseBase {
   readonly requestId: string;
 }
 
-/** Deterministic service-owned export section plus exact digest evidence. */
+/** Deterministic service-owned export page plus exact digest evidence. */
 export interface DataRightsContributorExportResponse
   extends DataRightsContributorResponseBase {
   readonly operation: 'export';
@@ -79,6 +81,8 @@ export interface DataRightsContributorExportResponse
   readonly recordCount: number;
   readonly sha256: string;
   readonly data: DataRightsJsonValue;
+  /** Opaque cursor proving another bounded page remains; absent on the final page. */
+  readonly nextCursor?: string;
 }
 
 /** Readiness result that cannot claim ready while blockers remain. */
