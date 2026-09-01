@@ -41,14 +41,51 @@ describe('Notification data-rights erasure database contract', () => {
     expect(sql).toContain('SET search_path = pg_catalog, notification_service');
     expect(sql).toContain('pg_advisory_xact_lock');
     expect(sql).toContain(
-      "'notification.service:erase:' || target_workspace_id::text",
+      "'notification.service:workspace:' || target_workspace_id::text",
     );
-    expect(sql).toContain('IF FOUND THEN');
+    expect(sql).toContain('IF receipt_found THEN');
     expect(sql).toContain('Notification erasure replay authority conflicts');
+    expect(sql).toContain('Notification erasure replay fence is invalid');
     expect(sql).toContain('sha256(');
     expect(sql).toContain("'notification.service'");
     expect(sql).toMatch(
       /REVOKE ALL ON FUNCTION notification_service\.erase_workspace_data\([\s\S]*?\) FROM PUBLIC;/u,
+    );
+  });
+
+  it('fences normal writes against concurrent and completed workspace erasure', async () => {
+    const sql = await migrationSql();
+    const fenceInsert = sql.indexOf(
+      'INSERT INTO notification_service.data_rights_workspace_erasures',
+    );
+    const inboxDelete = sql.indexOf(
+      'DELETE FROM notification_service.inbox_messages',
+    );
+
+    expect(sql).toContain(
+      'CREATE TABLE notification_service.data_rights_workspace_erasures',
+    );
+    expect(sql).toContain(
+      'CREATE FUNCTION notification_service.guard_erased_workspace_write()',
+    );
+    expect(sql).toContain('pg_advisory_xact_lock_shared');
+    expect(sql).toContain(
+      "'notification.service:workspace:' || NEW.workspace_id::text",
+    );
+    expect(sql).toContain('Notification workspace is erased');
+    expect(sql).toContain(
+      'CREATE TRIGGER reminder_occurrences_workspace_erasure_guard',
+    );
+    expect(sql).toContain(
+      'CREATE TRIGGER reminder_outcomes_workspace_erasure_guard',
+    );
+    expect(sql).toContain(
+      'CREATE TRIGGER inbox_messages_workspace_erasure_guard',
+    );
+    expect(fenceInsert).toBeGreaterThan(-1);
+    expect(inboxDelete).toBeGreaterThan(fenceInsert);
+    expect(sql).toMatch(
+      /REVOKE ALL ON TABLE notification_service\.data_rights_workspace_erasures FROM PUBLIC;/u,
     );
   });
 
