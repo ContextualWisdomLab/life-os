@@ -1,0 +1,42 @@
+\set ON_ERROR_STOP on
+\getenv runtime_password NOTIFICATION_RUNTIME_DATABASE_PASSWORD
+
+SELECT
+  octet_length(:'runtime_password') >= 16
+  AND octet_length(:'runtime_password') <= 1024
+  AND :'runtime_password' !~ '[[:cntrl:]]'
+  AS runtime_password_valid
+\gset
+\if :runtime_password_valid
+\else
+  \echo provision_error=notification_runtime_password_invalid
+  \quit 1
+\endif
+
+SELECT format(
+  'CREATE ROLE lifeos_notification WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT',
+  :'runtime_password'
+)
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM pg_catalog.pg_roles
+  WHERE rolname = 'lifeos_notification'
+)
+\gexec
+
+ALTER ROLE lifeos_notification
+  WITH LOGIN PASSWORD :'runtime_password'
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOREPLICATION
+  NOINHERIT;
+
+SELECT format(
+  'GRANT CONNECT ON DATABASE %I TO lifeos_notification',
+  current_database()
+)
+\gexec
+
+COMMENT ON ROLE lifeos_notification IS
+  'Local Compose Notification runtime identity. Forward-only migrations use a distinct database owner and grant only the Notification privileges required at runtime.';
