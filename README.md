@@ -83,7 +83,7 @@ The calendar integration service supports explicit `caldav` and `google` provide
 
 CalDAV writes use deterministic resource names, `If-None-Match: *` for creation, and strong `If-Match` ETags for updates. Google Calendar writes use a deterministic API event identifier to prevent duplicate creation and the same strong-ETag precondition for updates. Neither adapter exposes delete, move, or copy operations through the LifeOS provider contract.
 
-`GOOGLE_CALENDAR_ACCESS_TOKEN` is an operator-supplied runtime secret for this bounded adapter slice. Per-user OAuth credential storage, token refresh, revocation, calendar discovery, and encrypted persistence remain deferred and must be implemented before a multi-user hosted deployment enables Google Calendar synchronization.
+`GOOGLE_CALENDAR_ACCESS_TOKEN` is retained only for explicit standalone Google-adapter composition and tests. The hosted multi-user bootstrap fails closed when `CALENDAR_PROVIDER=google` because one process-wide token cannot establish user-scoped authority. Hosted Google synchronization remains unavailable until the existing user-owned connection, encrypted secret-store, and credential-materialization boundaries are composed end to end with OAuth state/PKCE, refresh/revocation, calendar discovery/selection, and scoped synchronization.
 
 ## Plugin contract
 
