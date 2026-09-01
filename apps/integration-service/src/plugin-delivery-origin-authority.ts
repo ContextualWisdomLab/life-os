@@ -21,7 +21,13 @@ export class PluginDeliveryOriginAuthorityError extends Error {
   }
 }
 
-/** Durable host-owned permission to target one exact HTTPS origin. */
+/**
+ * Durable host-owned permission for one installation to target one exact HTTPS origin.
+ *
+ * The record is scoped by installation, workspace, and granting user. An active
+ * record authorizes only origin identity; it does not itself authorize network
+ * transport, DNS resolution, redirects, credentials, or payload contents.
+ */
 export interface PluginDeliveryOriginGrantRecord {
   readonly authorityVersion: typeof AUTHORITY_VERSION;
   readonly grantId: string;
@@ -34,7 +40,12 @@ export interface PluginDeliveryOriginGrantRecord {
   readonly revokedAt: string | null;
 }
 
-/** Atomic revocation request scoped to one host-owned origin grant. */
+/**
+ * Atomic revocation command for one host-owned grant inside its full authority scope.
+ *
+ * Exact replay may return the same durable revoked record. The command never
+ * broadens scope and cannot reactivate a revoked grant.
+ */
 export interface RevokePluginDeliveryOriginGrant {
   readonly grantId: string;
   readonly installationId: string;
@@ -43,7 +54,14 @@ export interface RevokePluginDeliveryOriginGrant {
   readonly revokedAt: string;
 }
 
-/** Persistence port for service-owned plugin delivery-origin authority. */
+/**
+ * Service-owned persistence port for delivery-origin grants.
+ *
+ * Implementations must preserve opaque identity, workspace/user scope, and
+ * lifecycle state. Create and revoke operations are replay-safe and return the
+ * durable winner so the application can verify that persistence did not change
+ * authority semantics.
+ */
 export interface PluginDeliveryOriginGrantStore {
   /** Creates one grant or returns the durable winner for its opaque identity. */
   createIfAbsent(
@@ -62,7 +80,13 @@ export interface PluginDeliveryOriginGrantStore {
   ): Promise<PluginDeliveryOriginGrantRecord | undefined>;
 }
 
-/** Read-only service-owned authority needed to validate a plugin installation. */
+/**
+ * Read-only installation authority needed before a delivery origin can be granted.
+ *
+ * The reader must resolve only the exact authenticated workspace/user scope. A
+ * returned record remains untrusted until this boundary revalidates its opaque
+ * installation identity and active lifecycle state.
+ */
 export interface PluginInstallationAuthorityReader {
   /** Reads one installation only inside exact authenticated workspace/user scope. */
   findById(
@@ -72,7 +96,12 @@ export interface PluginInstallationAuthorityReader {
   ): Promise<PluginInstallationRecord | undefined>;
 }
 
-/** Host input for one exact delivery-origin grant. */
+/**
+ * Host request to create one delivery-origin grant.
+ *
+ * `grantId` is opaque UUIDv4 replay identity and `origin` is untrusted request
+ * material. Neither field conveys tenant or installation ownership.
+ */
 export interface GrantPluginDeliveryOriginInput {
   readonly grantId: string;
   readonly origin: string;
@@ -115,6 +144,13 @@ function requireContext(
     workspaceId: requireUuidV4(context.workspaceId),
     actorUserId: requireUuidV4(context.actorUserId),
   });
+}
+
+function requireGrantInput(value: unknown): GrantPluginDeliveryOriginInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  return value as GrantPluginDeliveryOriginInput;
 }
 
 function normalizeOrigin(value: unknown): string {
@@ -256,8 +292,9 @@ export class PluginDeliveryOriginAuthority {
   ): Promise<PluginDeliveryOriginGrantRecord> {
     const context = requireContext(trustedContext);
     const installationId = requireUuidV4(installationIdInput);
-    const grantId = requireUuidV4(input.grantId);
-    const origin = normalizeOrigin(input.origin);
+    const request = requireGrantInput(input);
+    const grantId = requireUuidV4(request.grantId);
+    const origin = normalizeOrigin(request.origin);
     const installationEvidence = await this.installations.findById(
       installationId,
       context.workspaceId,
