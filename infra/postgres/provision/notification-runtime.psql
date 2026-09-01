@@ -14,6 +14,13 @@ SELECT
   \quit 1
 \endif
 
+SELECT current_user = :'runtime_role' AS runtime_role_matches_admin
+\gset
+\if :runtime_role_matches_admin
+  \echo provision_error=notification_runtime_role_matches_admin
+  \quit 1
+\endif
+
 SELECT
   octet_length(:'runtime_password') >= 16
   AND octet_length(:'runtime_password') <= 1024
