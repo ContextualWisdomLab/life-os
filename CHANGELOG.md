@@ -6,7 +6,6 @@ All notable changes to LifeOS are documented in this file.
 
 ### Changed
 
-- Identity PostgreSQL persistence now uses semantically specific multiword database names such as `user_accounts.user_account_id`, `identity_workspaces.workspace_name`, `authentication_sessions.authentication_session_id`, and `oauth_transactions.identity_provider`; migration `0007_identity_database_semantic_names.sql` preserves existing rows and relationships while repository adapters keep the current application/public object shapes stable.
 - Production contextual-orchestrator proposal requests now explicitly use adaptive `auto` mode and avoid provider-native structured-output passthrough, allowing the orchestration plane to meet the quality requirement and then minimize known cost while LifeOS retains strict fail-closed proposal validation.
 
 ### Added
