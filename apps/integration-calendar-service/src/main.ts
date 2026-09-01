@@ -467,22 +467,21 @@ export function createCalendarProviderFromEnvironment(
 }
 
 /**
- * Creates only providers safe for the current hosted multi-user bootstrap.
+ * Rejects process-wide provider credentials at the hosted multi-user boundary.
  *
- * Google synchronization must be composed from authenticated user-owned
- * connection evidence and scoped secret materialization. Until that runtime is
- * wired end to end, a deployment-wide Google access token cannot authorize
- * hosted requests and selecting Google fails closed.
+ * Both Google and CalDAV synchronization require authenticated user-owned
+ * connection evidence plus scoped secret materialization before hosted request
+ * authority can exist. Standalone operator-owned composition remains available
+ * through `createCalendarProviderFromEnvironment` only.
  */
 export function createHostedCalendarProviderFromEnvironment(
   environment: NodeJS.ProcessEnv,
 ): CalendarProvider {
-  if ((environment.CALENDAR_PROVIDER ?? 'caldav') === 'google') {
-    throw new Error(
-      'Hosted Google Calendar requires user-scoped credential authority',
-    );
+  const providerName = environment.CALENDAR_PROVIDER ?? 'caldav';
+  if (providerName === 'google' || providerName === 'caldav') {
+    throw new Error('Hosted Calendar requires user-scoped credential authority');
   }
-  return createCalendarProviderFromEnvironment(environment);
+  throw new Error('Calendar provider configuration is unsupported');
 }
 
 async function bootstrap(): Promise<void> {
