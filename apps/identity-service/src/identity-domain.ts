@@ -3,89 +3,88 @@ import { randomUUID } from 'node:crypto';
 export type IdentityProvider = 'google' | 'github';
 export type MaybePromise<T> = T | Promise<T>;
 
-export interface UserAccount {
-  userAccountId: string;
+export interface User {
+  id: string;
   displayName: string;
   createdAt: string;
 }
 
 export interface ExternalIdentity {
-  externalIdentityId: string;
-  userAccountId: string;
-  identityProvider: IdentityProvider;
+  id: string;
+  userId: string;
+  provider: IdentityProvider;
   providerSubject: string;
   createdAt: string;
 }
 
-export interface IdentityWorkspace {
-  identityWorkspaceId: string;
-  ownerUserAccountId: string;
-  workspaceName: string;
-  workspaceKind: 'personal';
+export interface Workspace {
+  id: string;
+  ownerUserId: string;
+  name: string;
+  kind: 'personal';
   createdAt: string;
 }
 
 export interface ProvisionedAccount {
-  userAccount: UserAccount;
+  user: User;
   externalIdentity: ExternalIdentity;
-  identityWorkspace: IdentityWorkspace;
+  workspace: Workspace;
 }
 
 export interface IdentityRepository {
   findByExternalIdentity(
-    identityProvider: IdentityProvider,
+    provider: IdentityProvider,
     providerSubject: string,
   ): MaybePromise<ProvisionedAccount | undefined>;
-  save(provisionedAccount: ProvisionedAccount): MaybePromise<ProvisionedAccount>;
+  save(account: ProvisionedAccount): MaybePromise<ProvisionedAccount>;
 }
 
-function cloneAccount(provisionedAccount: ProvisionedAccount): ProvisionedAccount {
+function cloneAccount(account: ProvisionedAccount): ProvisionedAccount {
   return {
-    userAccount: { ...provisionedAccount.userAccount },
-    externalIdentity: { ...provisionedAccount.externalIdentity },
-    identityWorkspace: { ...provisionedAccount.identityWorkspace },
+    user: { ...account.user },
+    externalIdentity: { ...account.externalIdentity },
+    workspace: { ...account.workspace },
   };
 }
 
 export class InMemoryIdentityRepository implements IdentityRepository {
-  private readonly provisionedAccounts = new Map<string, ProvisionedAccount>();
+  private readonly accounts = new Map<string, ProvisionedAccount>();
 
   findByExternalIdentity(
-    identityProvider: IdentityProvider,
+    provider: IdentityProvider,
     providerSubject: string,
   ): ProvisionedAccount | undefined {
-    const externalIdentityKey = `${identityProvider}:${providerSubject}`;
-    const provisionedAccount = this.provisionedAccounts.get(externalIdentityKey);
-    return provisionedAccount ? cloneAccount(provisionedAccount) : undefined;
+    const account = this.accounts.get(`${provider}:${providerSubject}`);
+    return account ? cloneAccount(account) : undefined;
   }
 
-  save(provisionedAccount: ProvisionedAccount): ProvisionedAccount {
-    const { identityProvider, providerSubject } = provisionedAccount.externalIdentity;
-    const externalIdentityKey = `${identityProvider}:${providerSubject}`;
-    const existingAccount = this.provisionedAccounts.get(externalIdentityKey);
-    if (existingAccount) {
-      return cloneAccount(existingAccount);
+  save(account: ProvisionedAccount): ProvisionedAccount {
+    const { provider, providerSubject } = account.externalIdentity;
+    const key = `${provider}:${providerSubject}`;
+    const existing = this.accounts.get(key);
+    if (existing) {
+      return cloneAccount(existing);
     }
 
-    const storedAccount = cloneAccount(provisionedAccount);
-    this.provisionedAccounts.set(externalIdentityKey, storedAccount);
-    return cloneAccount(storedAccount);
+    const stored = cloneAccount(account);
+    this.accounts.set(key, stored);
+    return cloneAccount(stored);
   }
 }
 
-function requireProvider(identityProvider: IdentityProvider): IdentityProvider {
-  if (identityProvider !== 'google' && identityProvider !== 'github') {
+function requireProvider(value: IdentityProvider): IdentityProvider {
+  if (value !== 'google' && value !== 'github') {
     throw new Error('Unsupported identity provider');
   }
-  return identityProvider;
+  return value;
 }
 
-function requireText(textValue: string, errorMessage: string): string {
-  const normalizedText = textValue.trim();
-  if (!normalizedText) {
-    throw new Error(errorMessage);
+function requireText(value: string, message: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(message);
   }
-  return normalizedText;
+  return normalized;
 }
 
 function createOpaqueId(): string {
@@ -93,50 +92,44 @@ function createOpaqueId(): string {
 }
 
 export class IdentityService {
-  constructor(private readonly identityRepository: IdentityRepository) {}
+  constructor(private readonly repository: IdentityRepository) {}
 
-  async signInWithExternalIdentity(identityInput: {
-    identityProvider: IdentityProvider;
+  async signInWithExternalIdentity(input: {
+    provider: IdentityProvider;
     providerSubject: string;
     displayName: string;
   }): Promise<ProvisionedAccount> {
-    const identityProvider = requireProvider(identityInput.identityProvider);
-    const providerSubject = requireText(
-      identityInput.providerSubject,
-      'Provider subject is required',
-    );
-    const existingAccount = await this.identityRepository.findByExternalIdentity(
-      identityProvider,
-      providerSubject,
-    );
-    if (existingAccount) {
-      return existingAccount;
+    const provider = requireProvider(input.provider);
+    const providerSubject = requireText(input.providerSubject, 'Provider subject is required');
+    const existing = await this.repository.findByExternalIdentity(provider, providerSubject);
+    if (existing) {
+      return existing;
     }
 
     const createdAt = new Date().toISOString();
-    const userAccount: UserAccount = {
-      userAccountId: createOpaqueId(),
-      displayName: requireText(identityInput.displayName, 'Display name is required'),
+    const user: User = {
+      id: createOpaqueId(),
+      displayName: requireText(input.displayName, 'Display name is required'),
       createdAt,
     };
-    const provisionedAccount: ProvisionedAccount = {
-      userAccount,
+    const account: ProvisionedAccount = {
+      user,
       externalIdentity: {
-        externalIdentityId: createOpaqueId(),
-        userAccountId: userAccount.userAccountId,
-        identityProvider,
+        id: createOpaqueId(),
+        userId: user.id,
+        provider,
         providerSubject,
         createdAt,
       },
-      identityWorkspace: {
-        identityWorkspaceId: createOpaqueId(),
-        ownerUserAccountId: userAccount.userAccountId,
-        workspaceName: `${userAccount.displayName}'s workspace`,
-        workspaceKind: 'personal',
+      workspace: {
+        id: createOpaqueId(),
+        ownerUserId: user.id,
+        name: `${user.displayName}'s workspace`,
+        kind: 'personal',
         createdAt,
       },
     };
 
-    return await this.identityRepository.save(provisionedAccount);
+    return await this.repository.save(account);
   }
 }

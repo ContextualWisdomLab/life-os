@@ -186,16 +186,16 @@ describe('OAuthCallbackApplication', () => {
     );
     expect(account).toBeDefined();
     expect(activeSession).toMatchObject({
-      userId: account?.userAccount.userAccountId,
-      workspaceId: account?.identityWorkspace.identityWorkspaceId,
+      userId: account?.user.id,
+      workspaceId: account?.workspace.id,
     });
     expect(harness.auditEvents).toEqual([
       {
         provider: 'google',
         outcome: 'success',
         correlationId: CORRELATION_ID,
-        userId: account?.userAccount.userAccountId,
-        workspaceId: account?.identityWorkspace.identityWorkspaceId,
+        userId: account?.user.id,
+        workspaceId: account?.workspace.id,
       },
     ]);
     expect(JSON.stringify(harness.auditEvents)).not.toContain(
@@ -237,12 +237,12 @@ describe('OAuthCallbackApplication', () => {
       'github',
       '9007199254740993',
     );
-    expect(account?.userAccount.displayName).toBe('large-subject');
+    expect(account?.user.displayName).toBe('large-subject');
     await expect(
       harness.sessions.authenticate(sessionToken(response.setCookie)),
     ).resolves.toMatchObject({
-      userId: account?.userAccount.userAccountId,
-      workspaceId: account?.identityWorkspace.identityWorkspaceId,
+      userId: account?.user.id,
+      workspaceId: account?.workspace.id,
     });
   });
 
@@ -410,23 +410,23 @@ describe('OAuthCallbackApplication', () => {
 
   it('keeps an issued session active when the success audit cannot be recorded', async () => {
     const account: ProvisionedAccount = {
-      userAccount: {
-        userAccountId: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
+      user: {
+        id: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
         displayName: 'Example Person',
         createdAt: NOW.toISOString(),
       },
       externalIdentity: {
-        externalIdentityId: '10419f2e-e66f-483f-b0ea-947fd392b300',
-        userAccountId: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
-        identityProvider: 'google',
+        id: '10419f2e-e66f-483f-b0ea-947fd392b300',
+        userId: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
+        provider: 'google',
         providerSubject: 'google-subject-123',
         createdAt: NOW.toISOString(),
       },
-      identityWorkspace: {
-        identityWorkspaceId: '4e354c1c-c540-4b66-b6a3-af7e87b547a9',
-        ownerUserAccountId: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
-        workspaceName: "Example Person's workspace",
-        workspaceKind: 'personal',
+      workspace: {
+        id: '4e354c1c-c540-4b66-b6a3-af7e87b547a9',
+        ownerUserId: 'b16f9ab0-97e2-48f7-9870-fbf1753081e2',
+        name: "Example Person's workspace",
+        kind: 'personal',
         createdAt: NOW.toISOString(),
       },
     };
@@ -436,8 +436,8 @@ describe('OAuthCallbackApplication', () => {
         token: issuedToken,
         session: {
           id: '0f984d82-4e08-4593-87ec-816fd72eb6fe',
-          userId: account.userAccount.userAccountId,
-          workspaceId: account.identityWorkspace.identityWorkspaceId,
+          userId: account.user.id,
+          workspaceId: account.workspace.id,
           createdAt: NOW.toISOString(),
           expiresAt: new Date(NOW.getTime() + 60_000).toISOString(),
         },

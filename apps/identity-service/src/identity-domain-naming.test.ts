@@ -2,27 +2,32 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-async function identityDomainSource(): Promise<string> {
-  return readFile(resolve(process.cwd(), 'src', 'identity-domain.ts'), 'utf8');
+async function source(path: string): Promise<string> {
+  return readFile(resolve(process.cwd(), 'src', path), 'utf8');
 }
 
-describe('identity domain naming contract', () => {
-  it('uses bounded-context names for organization-owned aggregate fields', async () => {
-    const domainSource = await identityDomainSource();
+describe('Identity naming boundary', () => {
+  it('keeps the stable application vocabulary while translating to semantic PostgreSQL names in the adapter', async () => {
+    const [domainSource, repositorySource] = await Promise.all([
+      source('identity-domain.ts'),
+      source('postgres-identity-repository.ts'),
+    ]);
 
-    expect(domainSource).toContain('export interface UserAccount {');
-    expect(domainSource).toContain('userAccountId: string;');
-    expect(domainSource).toContain('externalIdentityId: string;');
-    expect(domainSource).toContain('identityProvider: IdentityProvider;');
-    expect(domainSource).toContain('export interface IdentityWorkspace {');
-    expect(domainSource).toContain('identityWorkspaceId: string;');
-    expect(domainSource).toContain('ownerUserAccountId: string;');
-    expect(domainSource).toContain('workspaceName: string;');
-    expect(domainSource).toContain("workspaceKind: 'personal';");
-    expect(domainSource).toContain('userAccount: UserAccount;');
-    expect(domainSource).toContain('identityWorkspace: IdentityWorkspace;');
+    expect(domainSource).toContain('export interface User {');
+    expect(domainSource).toContain('export interface Workspace {');
+    expect(domainSource).toContain('provider: IdentityProvider;');
+    expect(domainSource).toContain('user: User;');
+    expect(domainSource).toContain('workspace: Workspace;');
+    expect(domainSource).not.toContain('userAccountId: string;');
+    expect(domainSource).not.toContain('identityWorkspaceId: string;');
+    expect(domainSource).not.toContain('identityProvider: IdentityProvider;');
 
-    expect(domainSource).not.toContain('export interface User {');
-    expect(domainSource).not.toContain('export interface Workspace {');
+    expect(repositorySource).toContain('identity.user_accounts');
+    expect(repositorySource).toContain('user_account_id');
+    expect(repositorySource).toContain('external_identity_id');
+    expect(repositorySource).toContain('identity_provider');
+    expect(repositorySource).toContain('identity.identity_workspaces');
+    expect(repositorySource).toContain('identity_workspace_id');
+    expect(repositorySource).toContain('owner_user_account_id');
   });
 });

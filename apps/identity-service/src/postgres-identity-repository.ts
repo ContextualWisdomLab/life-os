@@ -5,7 +5,8 @@ import type {
 } from './identity-domain';
 import type { SqlClient } from './postgres-security-repositories';
 
-const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const INVALID_STORED_ACCOUNT = 'Stored identity account is invalid';
 
 export interface SqlTransaction extends SqlClient {
@@ -72,72 +73,65 @@ function toIsoString(timestampValue: unknown): string {
 }
 
 function mapAccountRow(accountRow: IdentityAccountRow): ProvisionedAccount {
-  const userAccountId = requireUuidV4(accountRow.user_account_id);
-  const externalIdentityUserAccountId = requireUuidV4(
+  const userId = requireUuidV4(accountRow.user_account_id);
+  const externalIdentityUserId = requireUuidV4(
     accountRow.external_identity_user_account_id,
   );
-  const workspaceOwnerUserAccountId = requireUuidV4(
+  const workspaceOwnerUserId = requireUuidV4(
     accountRow.workspace_owner_user_account_id,
   );
   if (
-    externalIdentityUserAccountId !== userAccountId ||
-    workspaceOwnerUserAccountId !== userAccountId
+    externalIdentityUserId !== userId ||
+    workspaceOwnerUserId !== userId ||
+    accountRow.workspace_kind !== 'personal'
   ) {
-    throw new Error(INVALID_STORED_ACCOUNT);
-  }
-  if (accountRow.workspace_kind !== 'personal') {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
 
   return {
-    userAccount: {
-      userAccountId,
+    user: {
+      id: userId,
       displayName: requireString(accountRow.display_name),
       createdAt: toIsoString(accountRow.user_created_at),
     },
     externalIdentity: {
-      externalIdentityId: requireUuidV4(accountRow.external_identity_id),
-      userAccountId: externalIdentityUserAccountId,
-      identityProvider: requireProvider(accountRow.identity_provider),
+      id: requireUuidV4(accountRow.external_identity_id),
+      userId: externalIdentityUserId,
+      provider: requireProvider(accountRow.identity_provider),
       providerSubject: requireString(accountRow.provider_subject),
       createdAt: toIsoString(accountRow.external_identity_created_at),
     },
-    identityWorkspace: {
-      identityWorkspaceId: requireUuidV4(accountRow.identity_workspace_id),
-      ownerUserAccountId: workspaceOwnerUserAccountId,
-      workspaceName: requireString(accountRow.workspace_name),
-      workspaceKind: 'personal',
+    workspace: {
+      id: requireUuidV4(accountRow.identity_workspace_id),
+      ownerUserId: workspaceOwnerUserId,
+      name: requireString(accountRow.workspace_name),
+      kind: 'personal',
       createdAt: toIsoString(accountRow.workspace_created_at),
     },
   };
 }
 
-function validateProposedAccount(
-  provisionedAccount: ProvisionedAccount,
-): ProvisionedAccount {
+function validateProposedAccount(account: ProvisionedAccount): ProvisionedAccount {
   return mapAccountRow({
-    user_account_id: provisionedAccount.userAccount.userAccountId,
-    display_name: provisionedAccount.userAccount.displayName,
-    user_created_at: provisionedAccount.userAccount.createdAt,
-    external_identity_id: provisionedAccount.externalIdentity.externalIdentityId,
-    external_identity_user_account_id:
-      provisionedAccount.externalIdentity.userAccountId,
-    identity_provider: provisionedAccount.externalIdentity.identityProvider,
-    provider_subject: provisionedAccount.externalIdentity.providerSubject,
-    external_identity_created_at: provisionedAccount.externalIdentity.createdAt,
-    identity_workspace_id:
-      provisionedAccount.identityWorkspace.identityWorkspaceId,
-    workspace_owner_user_account_id:
-      provisionedAccount.identityWorkspace.ownerUserAccountId,
-    workspace_name: provisionedAccount.identityWorkspace.workspaceName,
-    workspace_kind: provisionedAccount.identityWorkspace.workspaceKind,
-    workspace_created_at: provisionedAccount.identityWorkspace.createdAt,
+    user_account_id: account.user.id,
+    display_name: account.user.displayName,
+    user_created_at: account.user.createdAt,
+    external_identity_id: account.externalIdentity.id,
+    external_identity_user_account_id: account.externalIdentity.userId,
+    identity_provider: account.externalIdentity.provider,
+    provider_subject: account.externalIdentity.providerSubject,
+    external_identity_created_at: account.externalIdentity.createdAt,
+    identity_workspace_id: account.workspace.id,
+    workspace_owner_user_account_id: account.workspace.ownerUserId,
+    workspace_name: account.workspace.name,
+    workspace_kind: account.workspace.kind,
+    workspace_created_at: account.workspace.createdAt,
   });
 }
 
 async function findAccount(
   databaseClient: SqlClient,
-  identityProvider: IdentityProvider,
+  provider: IdentityProvider,
   providerSubject: string,
 ): Promise<ProvisionedAccount | undefined> {
   const queryResult = await databaseClient.query<IdentityAccountRow>(
@@ -164,7 +158,7 @@ async function findAccount(
      WHERE identity.external_identities.identity_provider = $1
        AND identity.external_identities.provider_subject = $2
      LIMIT 2`,
-    [identityProvider, providerSubject],
+    [provider, providerSubject],
   );
 
   if (queryResult.rows.length > 1) {
@@ -178,18 +172,14 @@ export class PostgresIdentityRepository implements IdentityRepository {
   constructor(private readonly databaseClient: TransactionalSqlClient) {}
 
   async findByExternalIdentity(
-    identityProvider: IdentityProvider,
+    provider: IdentityProvider,
     providerSubject: string,
   ): Promise<ProvisionedAccount | undefined> {
-    return await findAccount(
-      this.databaseClient,
-      identityProvider,
-      providerSubject,
-    );
+    return await findAccount(this.databaseClient, provider, providerSubject);
   }
 
-  async save(provisionedAccountValue: ProvisionedAccount): Promise<ProvisionedAccount> {
-    const provisionedAccount = validateProposedAccount(provisionedAccountValue);
+  async save(accountValue: ProvisionedAccount): Promise<ProvisionedAccount> {
+    const account = validateProposedAccount(accountValue);
     const databaseConnection = await this.databaseClient.connect();
     let transactionStarted = false;
 
@@ -198,15 +188,13 @@ export class PostgresIdentityRepository implements IdentityRepository {
       transactionStarted = true;
       await databaseConnection.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        [
-          `${provisionedAccount.externalIdentity.identityProvider}:${provisionedAccount.externalIdentity.providerSubject}`,
-        ],
+        [`${account.externalIdentity.provider}:${account.externalIdentity.providerSubject}`],
       );
 
       const existingAccount = await findAccount(
         databaseConnection,
-        provisionedAccount.externalIdentity.identityProvider,
-        provisionedAccount.externalIdentity.providerSubject,
+        account.externalIdentity.provider,
+        account.externalIdentity.providerSubject,
       );
       if (existingAccount) {
         await databaseConnection.query('COMMIT');
@@ -217,11 +205,7 @@ export class PostgresIdentityRepository implements IdentityRepository {
       await databaseConnection.query(
         `INSERT INTO identity.user_accounts (user_account_id, display_name, created_at)
          VALUES ($1, $2, $3)`,
-        [
-          provisionedAccount.userAccount.userAccountId,
-          provisionedAccount.userAccount.displayName,
-          provisionedAccount.userAccount.createdAt,
-        ],
+        [account.user.id, account.user.displayName, account.user.createdAt],
       );
       await databaseConnection.query(
         `INSERT INTO identity.external_identities (
@@ -232,11 +216,11 @@ export class PostgresIdentityRepository implements IdentityRepository {
            created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
         [
-          provisionedAccount.externalIdentity.externalIdentityId,
-          provisionedAccount.externalIdentity.userAccountId,
-          provisionedAccount.externalIdentity.identityProvider,
-          provisionedAccount.externalIdentity.providerSubject,
-          provisionedAccount.externalIdentity.createdAt,
+          account.externalIdentity.id,
+          account.externalIdentity.userId,
+          account.externalIdentity.provider,
+          account.externalIdentity.providerSubject,
+          account.externalIdentity.createdAt,
         ],
       );
       await databaseConnection.query(
@@ -248,17 +232,17 @@ export class PostgresIdentityRepository implements IdentityRepository {
            created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
         [
-          provisionedAccount.identityWorkspace.identityWorkspaceId,
-          provisionedAccount.identityWorkspace.ownerUserAccountId,
-          provisionedAccount.identityWorkspace.workspaceName,
-          provisionedAccount.identityWorkspace.workspaceKind,
-          provisionedAccount.identityWorkspace.createdAt,
+          account.workspace.id,
+          account.workspace.ownerUserId,
+          account.workspace.name,
+          account.workspace.kind,
+          account.workspace.createdAt,
         ],
       );
 
       await databaseConnection.query('COMMIT');
       transactionStarted = false;
-      return provisionedAccount;
+      return account;
     } catch (persistenceError) {
       if (transactionStarted) {
         try {
