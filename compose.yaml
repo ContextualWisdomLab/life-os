@@ -2,19 +2,46 @@ services:
   postgres:
     image: postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
     environment:
-      POSTGRES_USER: lifeos
-      POSTGRES_PASSWORD: lifeos
-      POSTGRES_DB: lifeos
+      POSTGRES_USER: ${POSTGRES_USER:-lifeos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-lifeos}
     ports:
       - '127.0.0.1:5432:5432'
     volumes:
-      - ./infra/postgres/init/001_notification_migrator.sql:/docker-entrypoint-initdb.d/001_notification_migrator.sql:ro
       - lifeos-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U lifeos -d lifeos']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-lifeos} -d ${POSTGRES_DB:-lifeos}',
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  notification-db-provision:
+    image: postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: '5432'
+      PGDATABASE: ${POSTGRES_DB:-lifeos}
+      PGUSER: ${POSTGRES_USER:-lifeos}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      NOTIFICATION_RUNTIME_DATABASE_PASSWORD: ${NOTIFICATION_RUNTIME_DATABASE_PASSWORD:?Set NOTIFICATION_RUNTIME_DATABASE_PASSWORD}
+    volumes:
+      - ./infra/postgres/provision/notification-runtime.psql:/provision/notification-runtime.psql:ro
+    command:
+      [
+        'psql',
+        '--no-psqlrc',
+        '--no-password',
+        '--set=ON_ERROR_STOP=1',
+        '--file=/provision/notification-runtime.psql',
+      ]
+    restart: 'no'
 
   nats:
     image: nats:2.11.6-alpine@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00
