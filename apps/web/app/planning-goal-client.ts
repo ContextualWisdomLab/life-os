@@ -135,12 +135,16 @@ async function readBoundedText(
   return body;
 }
 
-/** Reads bounded JSON only when the caller supplied an allowed JSON media type. */
+/** Reads bounded JSON while preserving HTTP's case-insensitive media-type semantics. */
 async function readBoundedJson(
   response: Request | Response,
   maximumBytes: number,
 ): Promise<unknown> {
-  const contentType = response.headers.get('content-type')?.split(';', 1)[0];
+  const contentType = response.headers
+    .get('content-type')
+    ?.split(';', 1)[0]
+    ?.trim()
+    .toLowerCase();
   if (
     contentType !== 'application/json' &&
     contentType !== 'application/problem+json'
