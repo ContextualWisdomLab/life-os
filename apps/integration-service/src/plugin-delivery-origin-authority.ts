@@ -145,7 +145,6 @@ function normalizeOrigin(value: unknown): string {
     parsed.pathname !== '/' ||
     parsed.search !== '' ||
     parsed.hash !== '' ||
-    parsed.origin === 'null' ||
     parsed.port === '0' ||
     parsed.origin.length > MAXIMUM_ORIGIN_LENGTH
   ) {
