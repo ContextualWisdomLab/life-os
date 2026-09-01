@@ -320,11 +320,11 @@ export async function bootstrapNotificationService(
 ): Promise<NotificationHttpService> {
   const port = notificationPort(environment.NOTIFICATION_PORT);
   const host = notificationHost(environment.NOTIFICATION_HOST);
-  notificationDataRightsContextSecret(
+  const contextSecret = notificationDataRightsContextSecret(
     environment.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET,
   );
   const runtime = runtimeFactory(environment);
-  const controller = new NotificationDataRightsController(runtime);
+  const controller = new NotificationDataRightsController(runtime, contextSecret);
   const server = serverFactory(createNotificationRequestListener(controller));
   try {
     await listen(server, port, host);
