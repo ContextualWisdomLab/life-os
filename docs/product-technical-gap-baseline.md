@@ -1,6 +1,6 @@
 # LifeOS product and technical gap baseline
 
-**Baseline date:** 2026-08-20 (KST)  
+**Baseline date:** 2026-09-01 (KST)  
 **Protected-main evidence commit:** `f8559bf31dc098bdd58473747805a229bf860cc7`  
 **Document status:** Evidence baseline; not a substitute for the canonical PRD, TRD, Architecture, ADRs, or release evidence  
 **Primary tracking issue:** [#21 LifeOS commercial readiness](https://github.com/ContextualWisdomLab/life-os/issues/21)
@@ -28,7 +28,7 @@ Accordingly, the highest-priority buyer-visible gaps are:
 4. [#129 — complete per-user Calendar credential lifecycle](https://github.com/ContextualWisdomLab/life-os/issues/129);
 5. [#130 — complete Plugin installation, secret, and delivery runtime](https://github.com/ContextualWisdomLab/life-os/issues/130).
 
-These gaps are now represented separately from configured capability maturity in `product/buyer-gaps.json`. A capability can have implementation and tests while a downstream buyer journey remains incomplete.
+These gaps are represented separately from configured capability maturity in `product/buyer-gaps.json`. A capability can have implementation and tests while a downstream buyer journey remains incomplete.
 
 ## 2. Evidence method
 
@@ -119,16 +119,16 @@ The Today synchronization panel is deliberately privacy-preserving: it performs 
 | Personal workspace provisioning | Implemented foundation | Needs first-party end-to-end release proof |
 | Anonymous/local first plan | Implemented | Browser-local only |
 | Durable Today synchronization | Implemented bounded slice | Explicit check/save/load and optimistic revision boundary |
-| Durable Goal creation through first-party UI | Missing | P0 blocker |
+| Durable Goal creation through first-party UI | Missing on protected main | PR #214 provides only an active-PR authenticated BFF slice; no Goals workspace UI |
 | Goal hierarchy and progress explanation | Missing UI | P0 blocker |
 | Project/milestone workspace | Missing UI | P0 blocker |
 | Task inbox/classification and relationship editing | Partial | Quick capture/search exists; complete entity workspace absent |
 | Habit workspace and historical adherence | Domain foundation exists | First-party journey absent |
 | Weekly review workspace | Domain foundation exists | First-party journey absent |
 | Settings/account/integration/data-rights surfaces | Missing coherent UI | P0/P1, depends on #55/#129/#130 |
-| Complete data export/deletion | Partial | #55 open |
-| Per-user Calendar OAuth/KMS lifecycle | Partial | #129 open |
-| Plugin secrets and SSRF-safe outbound runtime | Partial | #130 open |
+| Complete data export/deletion | Partial | #55 open; #198/#199 active |
+| Per-user Calendar OAuth/KMS lifecycle | Partial | #129 open; PR #216 only removes unsafe hosted global-token authority |
+| Plugin secrets and SSRF-safe outbound runtime | Partial | #130 open; #205 authority slice active |
 | Reproducible release from immutable artifacts | Missing complete evidence | #210 open |
 
 ## 4. Protected strengths that should not be reimplemented
@@ -162,7 +162,7 @@ The following are foundations to preserve and consume through contracts rather t
 - Cross-service direct SQL is prohibited.
 - Sensitive payloads are not intended for operational metrics or public problems.
 - Data-rights contributors remain service-owned rather than giving Identity direct persistence access.
-- Calendar and Plugin work correctly treat a manifest or client-selected destination as intent, not authority.
+- Calendar and Plugin work correctly treat a manifest, provider credential, or client-selected destination as intent/material, not sufficient authority.
 
 ### 4.5 Operations
 
@@ -195,6 +195,8 @@ authenticated user
 
 **Do not:** move domain ownership into Next.js, silently upload local drafts, or treat UI presence as closing #55/#129/#130.
 
+PR #214 advances only the authenticated Goal-creation BFF. It remains Draft and does not add the Goal workspace UI or close #209.
+
 ### 5.2 P0 — Complete data portability and deletion (#55)
 
 **Buyer pain:** A privacy-sensitive product cannot claim user-owned data while export/deletion remains incomplete across service participants, artifacts, retention, backup expiry, and operator delivery.
@@ -209,7 +211,7 @@ authenticated user
 - backup-expiry and restoration semantics;
 - account UI that shows request, blockers, progress, completion, and recovery actions.
 
-Active PRs #198 and #199 advance Notification and AI participation but cannot close the cross-domain journey by themselves.
+Active PRs #198 and #199 advance Notification and AI participation but cannot close the cross-domain journey by themselves. PR #215 separately removes deprecated concurrent query scheduling from the Planning contributor without changing the shared data-rights contract.
 
 ### 5.3 P0 — Complete per-user Calendar credentials (#129)
 
@@ -224,6 +226,8 @@ Active PRs #198 and #199 advance Notification and AI participation but cannot cl
 - deterministic sync, idempotency, stale-precondition recovery, bounded retries, and explicit conflict UX;
 - provider-neutral adapter contracts and independently testable CalDAV/Google behavior;
 - no credential, calendar title, or private event body in logs/metrics/errors.
+
+Protected main already contains user-owned Calendar connection, encrypted file secret-store, and credential-materialization foundations, but production bootstrap still allows a process-wide Google token. Draft PR #216 makes the hosted boundary fail closed on that authority path while retaining explicit standalone Google adapter composition. It does not implement OAuth state/PKCE, refresh, provider cleanup, discovery/selection, or end-to-end user-scoped Google synchronization and therefore does not close #129.
 
 ### 5.4 P0 — Complete Plugin runtime delivery (#130)
 
@@ -277,24 +281,30 @@ AI summaries must distinguish observation, inference, and recommendation and mus
 
 ## 6. Current pull-request inventory
 
-Snapshot taken on 2026-08-20 against protected main `f8559bf31dc098bdd58473747805a229bf860cc7`.
+Snapshot taken on 2026-09-01 against protected main `f8559bf31dc098bdd58473747805a229bf860cc7`. Exact heads below were refetched during the maintenance run; queued or stale checks are not represented as passing evidence.
 
 | PR | Exact head at inspection | API state | Product relevance | Required disposition |
 |---|---|---|---|---|
-| [#145](https://github.com/ContextualWisdomLab/life-os/pull/145) canonical product architecture | `be31387b700471f0fcff7bbbfd7eac05a62cd3e9` | Draft; `mergeable: false`; 114 commits; 42 files | Owns the canonical PRD/TRD/Architecture/ADR/documentation reconciliation | Rebase or replace through one canonical lineage; do not infer product completion from it |
-| [#198](https://github.com/ContextualWisdomLab/life-os/pull/198) Notification data-rights contributor | `5ba029dea755050ff84066a62f98a1f443e19160` | Open; non-draft; `mergeable: true` at inspection | Advances #55 for Notification-owned data | Revalidate exact head against current main, reviews, unresolved threads, and required checks before merge |
-| [#199](https://github.com/ContextualWisdomLab/life-os/pull/199) AI data-rights contributor | `ae78023924f59fdb03ef3e88918bc8a09dc94e31` | Open; non-draft; `mergeable: true` at inspection | Advances #55 for AI-owned proposals/decisions | Revalidate exact head; do not treat as cross-domain completion |
-| [#205](https://github.com/ContextualWisdomLab/life-os/pull/205) Plugin delivery-origin authority | `24e363bf4432de4f7ee8d486285f56064d6c4581` | Open; non-draft; `mergeable: true` at inspection | Advances #130 authority boundary only | Merge only after exact-head checks/reviews; continue with KMS and SSRF-safe delivery slices |
-| [#208](https://github.com/ContextualWisdomLab/life-os/pull/208) OpenCode identity verification | `ff4821fb41eda8347c19257328de7badac94062c` | Open; non-draft; `mergeable: true`; CodeRabbit status success at inspection | Restores commercial-development loop reliability | Required workflows and exact-head review remain authoritative; no product-gap closure follows |
+| [#145](https://github.com/ContextualWisdomLab/life-os/pull/145) canonical product architecture | `be31387b700471f0fcff7bbbfd7eac05a62cd3e9` | Draft; `mergeable: false`; 114 commits; 42 files | Legacy canonical documentation branch with source and ADR content not yet proven wholly superseded | Preserve unique valid material; do not merge or close until semantic supersession is proven |
+| [#198](https://github.com/ContextualWisdomLab/life-os/pull/198) Notification data-rights contributor | `70fa86fa1f57aa9643ae7fa27fa708b6fc0ed02e` | Open; non-draft; `mergeable: true`; exact-head repository workflows queued | Advances #55 for Notification-owned data and paginated export | Wait only this lane for exact-head gates; no predecessor check evidence transfers |
+| [#199](https://github.com/ContextualWisdomLab/life-os/pull/199) AI data-rights contributor | `d097f74618d0e8d6038ca718baf80676ddb92cdb` | Open; non-draft; `mergeable: true`; exact-head repository workflows queued | Advances #55 for AI-owned proposals/decisions | Revalidate exact head and fresh merge tree; do not treat as cross-domain completion |
+| [#205](https://github.com/ContextualWisdomLab/life-os/pull/205) Plugin delivery-origin authority | `a43074f8448d2a285f2ed1def825e945a02cea08` | Open; non-draft; `mergeable: true`; central Strix evidence cancelled while containing workflow remains active | Advances #130 authority boundary only | Do not merge until central required evidence and a current independent approval satisfy live policy |
+| [#208](https://github.com/ContextualWisdomLab/life-os/pull/208) OpenCode identity verification | `e3a5d55c786ba0e39c917046835aa3563ceba309` | Open; non-draft; `mergeable: true`; current workflows queued | Repairs scheduled commercial-development verifier isolation | Require exact-head workflow/review proof; no product-gap closure follows |
+| [#211](https://github.com/ContextualWisdomLab/life-os/pull/211) product/technical gap baseline | `715b192b7d6beea0eb8fefcca443a88427c03f25` before this update | Draft; `mergeable: true` | Canonical buyer-gap/readiness baseline candidate | Keep Draft until updated topology and exact-head checks are current |
+| [#213](https://github.com/ContextualWisdomLab/life-os/pull/213) ADR APA references | `f8937db99f7a4b59d50fba23df2a058422f25ebf` | Draft; `mergeable: true`; body explicitly says Draft-only | Citation-only ADR work | Do not mark Ready or merge without new user intent; reconcile overlap with canonical docs first |
+| [#214](https://github.com/ContextualWisdomLab/life-os/pull/214) authenticated Goal creation BFF | `7b3ff6725a89b6ee7e65853778c1ac8439c9961a` | Draft; `mergeable: true` | First bounded #209 server-side Goal creation path; no Goals UI | Finish dependency-first and keep Draft until its stated focused/full gates pass |
+| [#215](https://github.com/ContextualWisdomLab/life-os/pull/215) Planning data-rights serialization | `dc23e622ab4f7a3b636e4e087bd56864098c21b2` | Open; non-draft; `mergeable: true`; repository workflows queued | Removes transaction-client query overlap/deprecation from Planning export | Two informational Devin threads were resolved; require exact-head GREEN before merge |
+| [#216](https://github.com/ContextualWisdomLab/life-os/pull/216) hosted Calendar Google authority | `fcc6e370076ee98a821c4cc5f8ce3c7ac3d302a9` | Draft; exact-head checks queued | Advances #129 by rejecting deployment-wide Google token authority in hosted runtime | Keep Draft until exact-head tests/security/review pass; continue scoped Google lifecycle later |
 
-PR [#206](https://github.com/ContextualWisdomLab/life-os/pull/206) was closed during this assessment as superseded by merged PR [#207](https://github.com/ContextualWisdomLab/life-os/pull/207). Current `main` and #206 had identical production-adapter and focused-test blobs, while #207 is the protected-main integration.
+PR [#206](https://github.com/ContextualWisdomLab/life-os/pull/206) remains superseded by merged PR [#207](https://github.com/ContextualWisdomLab/life-os/pull/207). Current protected main is still the authoritative integration point.
 
 ### PR governance observations
 
 - `mergeable: true` is a GitHub merge-base signal, not proof of review readiness.
-- Large long-lived branches (#145, #198, #199) increase base-drift and reviewer burden; future work should be stacked into bounded contract/implementation/vertical slices.
+- Large long-lived branches (#145, #198, #199) increase base-drift and reviewer burden; future work should remain bounded and dependency-aware.
 - Active PR descriptions correctly state that their slices do not close parent product gaps. Preserve that discipline.
-- Current open PRs predominantly harden privacy, plugin authority, and automation. None implements the missing first-party Goal/Project/Task/Habit/Review workspace.
+- #214 is the first active #209 first-party Goal boundary, but no active PR yet supplies the complete Goal/Project/Task/Habit/Review UI.
+- #216 removes one unsafe hosted Calendar authority path; it is not the per-user Google lifecycle itself.
 
 ## 7. Gap dependency graph
 
@@ -310,7 +320,7 @@ flowchart TD
     E --> F
     F --> G[Stable / GA decision]
 
-    H[#145 canonical documentation lineage] -. traceability .-> B
+    H[#211 buyer-gap baseline] -. traceability .-> B
     H -. traceability .-> C
     H -. traceability .-> D
     H -. traceability .-> E
@@ -321,10 +331,11 @@ flowchart TD
 
 ### Wave 0 — Drain and stabilize current PRs
 
-1. Merge or repair #208 after exact-head workflows and reviews.
-2. Rebase and validate #198, #199, and #205 one at a time; do not combine their ownership boundaries.
-3. Resolve #145 by rebasing/reconstructing a single canonical documentation branch from current main rather than accumulating further stale commits.
-4. Keep the commercial-readiness issue synchronized with the expanded buyer-gap registry.
+1. Merge any unchanged exact-head PR that has current required workflows, required thread resolution, and the live one-approval rule satisfied.
+2. Repair #198, #199, #208, and #215 only from their current first failing boundaries; queued checks block only those lanes.
+3. Keep #214 and #216 Draft until their bounded implementations have exact-head proof; do not inflate either into the parent P0 gap.
+4. Preserve #213 as Draft-only and reconcile its citation work with the canonical documentation line.
+5. Reduce #145 only after semantic comparison proves which material is unique versus superseded by current main/#211/#213.
 
 ### Wave 1 — Product vertical
 
@@ -339,7 +350,7 @@ flowchart TD
 ### Wave 2 — Trust and integration closure
 
 1. Finish #55 participant inventory, orchestration, artifact delivery, retention/legal hold, and backup-expiry behavior.
-2. Finish #129 credential lifecycle and provider-scoped Calendar UX.
+2. Finish #129 credential lifecycle and provider-scoped Calendar UX, using the fail-closed hosted authority boundary rather than a deployment-wide Google token.
 3. Finish #130 KMS secret lifecycle and SSRF-safe delivery/runtime recovery.
 4. Connect all three to Settings without moving domain truth into the web application.
 
@@ -402,7 +413,7 @@ LifeOS is complete enough for a first stable release only when all conditions be
 
 The current capability manifest can report all configured capabilities at target because many probes assert that an implementation, workflow, or test file exists. This is useful for detecting regression of repository evidence but it is not a buyer-journey score.
 
-The repository already corrected the most serious semantic defect by introducing `product/buyer-gaps.json`. This baseline expands that registry with #209 and #210.
+The repository already corrected the most serious semantic defect by introducing `product/buyer-gaps.json`. This baseline includes #209 and #210 as explicit gaps.
 
 Use the two dimensions as follows:
 
@@ -434,7 +445,7 @@ The complete APA 7th reference inventory for this baseline is in `docs/doctoring
 
 ## 12. Known uncertainty and non-claims
 
-- This assessment did not treat queued, historical, or inaccessible workflow state as success.
+- This assessment does not treat queued, cancelled, historical, predecessor, neutral, skipped, status-only, or inaccessible workflow state as success.
 - `mergeable: true` does not establish that an exact head has required reviews and all workflow/check results.
 - The baseline does not certify SOC 2, CSAP, OWASP ASVS, SLSA, WCAG, ISO, or any external standard.
 - No market valuation is asserted. A high-value acquisition case requires external evidence of activation, retention, willingness to pay, supportability, security assurance, and differentiated data/workflow advantage in addition to engineering completion.
