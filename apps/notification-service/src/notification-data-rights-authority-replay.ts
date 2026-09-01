@@ -10,12 +10,14 @@ export interface NotificationDataRightsAuthorityReplayEvidence {
   readonly expiresAt: string;
 }
 
-/** Notification-owned persistence boundary that atomically consumes destructive authority once. */
+/** Notification-owned persistence boundary that claims destructive authority until success or explicit failure release. */
 export interface NotificationDataRightsAuthorityReplayGuardPort {
-  /** Returns true only for the first still-live durable consumption of the evidence digest. */
+  /** Returns true only for the first still-live durable claim of the evidence digest. */
   consume(
     evidence: NotificationDataRightsAuthorityReplayEvidence,
   ): Promise<boolean>;
+  /** Releases only the exact credential-free digest after a failed destructive execution so an authorized retry can reclaim it. */
+  release(evidenceDigest: string): Promise<void>;
 }
 
 interface ReplayEvidenceRow {
@@ -61,8 +63,9 @@ function requireInstant(value: unknown): string {
  *
  * The primary key makes the first still-live signature digest the sole winner
  * across service replicas. Raw signatures are never persisted. PostgreSQL
- * `now()` governs pruning and expiry so application-clock lag cannot re-admit
- * already expired evidence.
+ * `now()` governs pruning and expiry. A controller releases the exact digest
+ * only when the protected erasure operation fails before returning a receipt;
+ * successful authority remains consumed for its lifetime.
  */
 export class PostgresNotificationDataRightsAuthorityReplayGuard
   implements NotificationDataRightsAuthorityReplayGuardPort
@@ -70,7 +73,7 @@ export class PostgresNotificationDataRightsAuthorityReplayGuard
   /** Creates the guard over the Notification service's parameterized SQL boundary. */
   constructor(private readonly client: NotificationSqlClient) {}
 
-  /** Atomically consumes one validated digest, returning false for replay or expiry. */
+  /** Atomically claims one validated digest, returning false for replay or expiry. */
   async consume(
     evidence: NotificationDataRightsAuthorityReplayEvidence,
   ): Promise<boolean> {
@@ -103,5 +106,15 @@ export class PostgresNotificationDataRightsAuthorityReplayGuard
       return invalidReplayEvidence();
     }
     return true;
+  }
+
+  /** Releases a previously claimed digest after a failed erasure without widening authority or retaining raw credentials. */
+  async release(evidenceDigestInput: string): Promise<void> {
+    const evidenceDigest = requireDigest(evidenceDigestInput);
+    await this.client.query(
+      `DELETE FROM notification_service.data_rights_authority_replay_records
+       WHERE evidence_digest = $1`,
+      [evidenceDigest],
+    );
   }
 }
