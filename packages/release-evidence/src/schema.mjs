@@ -7,6 +7,8 @@ const RC_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-
 const NIGHTLY_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-nightly\.\d{8}\.(0|[1-9]\d*)$/u;
 const MAXIMUM_P0_GAPS = 64;
 const MAXIMUM_ARTIFACTS = 128;
+const SPDX_SPEC_VERSION = '3.0.1';
+const SLSA_PROVENANCE_PREDICATE_TYPE = 'https://slsa.dev/provenance/v1';
 const EVIDENCE_TYPES = new Set([
   'application',
   'container',
@@ -87,13 +89,9 @@ function requireOpenP0BuyerGaps(value, channel) {
     return issueNumber;
   });
   for (let index = 0; index < normalized.length; index += 1) {
-    if (
-      (index > 0 && normalized[index - 1] >= normalized[index]) ||
-      (channel === 'stable' && normalized.length > 0)
-    ) {
-      return invalid();
-    }
+    if (index > 0 && normalized[index - 1] >= normalized[index]) return invalid();
   }
+  if (channel === 'stable' && normalized.length > 0) return invalid();
   return Object.freeze(normalized);
 }
 
@@ -117,42 +115,63 @@ function requireSize(value) {
   return value;
 }
 
-function requireStandard(record, evidenceType) {
-  const hasStandard = Object.hasOwn(record, 'standard');
+function requireFormatEvidence(record, evidenceType) {
+  const hasSpecVersion = Object.hasOwn(record, 'spec_version');
+  const hasPredicateType = Object.hasOwn(record, 'predicate_type');
   if (evidenceType === 'sbom') {
-    if (!hasStandard || record.standard !== 'SPDX-3.0.1') return invalid();
-    return record.standard;
+    if (
+      !hasSpecVersion ||
+      hasPredicateType ||
+      record.spec_version !== SPDX_SPEC_VERSION
+    ) {
+      return invalid();
+    }
+    return Object.freeze({ spec_version: SPDX_SPEC_VERSION });
   }
   if (evidenceType === 'provenance') {
-    if (!hasStandard || record.standard !== 'SLSA-v1.2-provenance') return invalid();
-    return record.standard;
+    if (
+      hasSpecVersion ||
+      !hasPredicateType ||
+      record.predicate_type !== SLSA_PROVENANCE_PREDICATE_TYPE
+    ) {
+      return invalid();
+    }
+    return Object.freeze({
+      predicate_type: SLSA_PROVENANCE_PREDICATE_TYPE,
+    });
   }
-  if (hasStandard) return invalid();
-  return undefined;
+  if (hasSpecVersion || hasPredicateType) return invalid();
+  return Object.freeze({});
 }
 
 function requireArtifact(value, sourceCommit) {
   const record = requirePlainObject(value);
   const evidenceType = requireEvidenceType(record.evidence_type);
-  const hasStandard = Object.hasOwn(record, 'standard');
+  const hasSpecVersion = Object.hasOwn(record, 'spec_version');
+  const hasPredicateType = Object.hasOwn(record, 'predicate_type');
   requireExactKeys(
     record,
-    hasStandard
-      ? ['artifact_name', 'evidence_type', 'standard', 'sha256', 'size_bytes', 'source_commit']
-      : ['artifact_name', 'evidence_type', 'sha256', 'size_bytes', 'source_commit'],
+    [
+      'artifact_name',
+      'evidence_type',
+      ...(hasSpecVersion ? ['spec_version'] : []),
+      ...(hasPredicateType ? ['predicate_type'] : []),
+      'sha256',
+      'size_bytes',
+      'source_commit',
+    ],
   );
   const artifactSourceCommit = requireSourceCommit(record.source_commit);
   if (artifactSourceCommit !== sourceCommit) return invalid();
-  const standard = requireStandard(record, evidenceType);
-  const artifact = {
+  const formatEvidence = requireFormatEvidence(record, evidenceType);
+  return Object.freeze({
     artifact_name: requireArtifactName(record.artifact_name),
     evidence_type: evidenceType,
-    ...(standard === undefined ? {} : { standard }),
+    ...formatEvidence,
     sha256: requireDigest(record.sha256),
     size_bytes: requireSize(record.size_bytes),
     source_commit: artifactSourceCommit,
-  };
-  return Object.freeze(artifact);
+  });
 }
 
 function requireArtifacts(value, sourceCommit) {
@@ -178,10 +197,10 @@ function requireArtifacts(value, sourceCommit) {
  *
  * The contract binds every retained artifact to one exact source commit, keeps
  * unresolved P0 buyer gaps explicit, and prevents a `stable` channel assertion
- * while any P0 gap remains. SPDX and SLSA labels describe the evidence format
- * expected in the referenced artifact; successful validation does not claim
- * certification, provenance level, accessibility conformance, or release
- * readiness by itself.
+ * while any P0 gap remains. SPDX `specVersion` and the SLSA in-toto provenance
+ * predicate URI identify the expected evidence formats; successful validation
+ * does not claim certification, SLSA level, accessibility conformance, or
+ * release readiness by itself.
  *
  * @param {unknown} value Untrusted machine-readable release evidence.
  * @returns {Readonly<object>} A deeply frozen, bounded release evidence index.
