@@ -95,9 +95,9 @@ describe('commercial readiness workflow contract', () => {
     );
   });
 
-  it('pins every runner-backed CI job to the explicit supported Ubuntu image', async () => {
-    const workflow = await repositoryFile('.github/workflows/ci.yml');
-    const jobs = [
+  it('pins every LifeOS-owned hosted-runner workflow to the explicit supported Ubuntu image', async () => {
+    const ciWorkflow = await repositoryFile('.github/workflows/ci.yml');
+    const ciJobs = [
       'compose_runtime',
       'today-concurrency',
       'validate',
@@ -105,14 +105,33 @@ describe('commercial readiness workflow contract', () => {
       'merge_compatibility',
     ];
 
-    for (const job of jobs) {
+    for (const job of ciJobs) {
       assert.match(
-        yamlJobBlock(workflow, job),
+        yamlJobBlock(ciWorkflow, job),
         /^\s+runs-on:\s*ubuntu-24\.04\s*$/mu,
         `${job} must use the explicit supported GitHub-hosted runner image`,
       );
     }
-    assert.doesNotMatch(workflow, /runs-on:\s*ubuntu-latest/u);
+
+    const hostedRunnerWorkflows = [
+      '.github/workflows/ci.yml',
+      '.github/workflows/appguardrail.yml',
+      '.github/workflows/commercial-readiness.yml',
+      '.github/workflows/deploy.yml',
+    ];
+    for (const path of hostedRunnerWorkflows) {
+      const workflow = await repositoryFile(path);
+      assert.match(
+        workflow,
+        /runs-on:\s*ubuntu-24\.04/u,
+        `${path} must use the explicit supported GitHub-hosted runner image`,
+      );
+      assert.doesNotMatch(
+        workflow,
+        /runs-on:\s*ubuntu-latest/u,
+        `${path} must not float on ubuntu-latest`,
+      );
+    }
   });
 
   it('requires all review and security gates before merge mode can execute', async () => {
