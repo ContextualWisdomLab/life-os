@@ -1,6 +1,7 @@
 import { Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { Pool, type PoolConfig } from 'pg';
 import { NotificationDataRightsContributor } from './notification-data-rights';
+import { PostgresNotificationDataRightsAuthorityReplayGuard } from './notification-data-rights-authority-replay';
 import {
   PostgresInAppDeliveryGateway,
   PostgresReminderRepository,
@@ -221,6 +222,8 @@ export class NotificationRuntime implements OnApplicationShutdown {
     readonly scheduler: ReminderScheduler,
     /** Service-owned export/erasure participant consumed by Identity orchestration. */
     readonly dataRightsContributor: NotificationDataRightsContributor,
+    /** Durable one-time consumption boundary for destructive signed service authority. */
+    readonly dataRightsAuthorityReplayGuard: PostgresNotificationDataRightsAuthorityReplayGuard,
   ) {}
 
   /** Closes the owned PostgreSQL pool exactly once. */
@@ -270,11 +273,14 @@ export function createNotificationRuntime(
     reminderBatchSize,
   );
   const dataRightsContributor = new NotificationDataRightsContributor(client);
+  const dataRightsAuthorityReplayGuard =
+    new PostgresNotificationDataRightsAuthorityReplayGuard(client);
   return new NotificationRuntime(
     pool,
     repository,
     gateway,
     scheduler,
     dataRightsContributor,
+    dataRightsAuthorityReplayGuard,
   );
 }
