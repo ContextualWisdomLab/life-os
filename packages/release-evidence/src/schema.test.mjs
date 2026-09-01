@@ -27,7 +27,7 @@ function releaseIndex(overrides = {}) {
       {
         artifact_name: 'life-os.spdx.json',
         evidence_type: 'sbom',
-        standard: 'SPDX-3.0.1',
+        spec_version: '3.0.1',
         sha256: SBOM_DIGEST,
         size_bytes: 2048,
         source_commit: SOURCE_COMMIT,
@@ -35,7 +35,7 @@ function releaseIndex(overrides = {}) {
       {
         artifact_name: 'life-os.intoto.jsonl',
         evidence_type: 'provenance',
-        standard: 'SLSA-v1.2-provenance',
+        predicate_type: 'https://slsa.dev/provenance/v1',
         sha256: PROVENANCE_DIGEST,
         size_bytes: 1024,
         source_commit: SOURCE_COMMIT,
@@ -97,7 +97,7 @@ describe('validateReleaseEvidenceIndex', () => {
     assert.throws(() => validateReleaseEvidenceIndex(duplicate));
   });
 
-  it('requires explicit SPDX, SLSA provenance, and checksum evidence without treating labels as certification', () => {
+  it('requires explicit SPDX, SLSA provenance, and checksum evidence without treating format identity as certification', () => {
     for (const evidenceType of ['sbom', 'provenance', 'checksum']) {
       const missing = releaseIndex({
         artifacts: releaseIndex().artifacts.filter(
@@ -107,12 +107,19 @@ describe('validateReleaseEvidenceIndex', () => {
       assert.throws(() => validateReleaseEvidenceIndex(missing));
     }
 
-    const wrongStandard = releaseIndex();
-    wrongStandard.artifacts[1] = {
-      ...wrongStandard.artifacts[1],
-      standard: 'SPDX-3.0',
+    const wrongSpdx = releaseIndex();
+    wrongSpdx.artifacts[1] = {
+      ...wrongSpdx.artifacts[1],
+      spec_version: '3.0.0',
     };
-    assert.throws(() => validateReleaseEvidenceIndex(wrongStandard));
+    assert.throws(() => validateReleaseEvidenceIndex(wrongSpdx));
+
+    const wrongSlsaPredicate = releaseIndex();
+    wrongSlsaPredicate.artifacts[2] = {
+      ...wrongSlsaPredicate.artifacts[2],
+      predicate_type: 'https://slsa.dev/spec/v1.2/provenance',
+    };
+    assert.throws(() => validateReleaseEvidenceIndex(wrongSlsaPredicate));
   });
 
   it('rejects malformed identities, timestamps, semver/channel mismatches, and unbounded collections', () => {
@@ -133,14 +140,15 @@ describe('validateReleaseEvidenceIndex', () => {
     }
   });
 
-  it('rejects unsafe artifact names, invalid digests, sizes, unknown fields, and misplaced standards', () => {
+  it('rejects unsafe artifact names, invalid digests, sizes, unknown fields, and misplaced format metadata', () => {
     const mutations = [
       { artifact_name: '../escape' },
       { artifact_name: 'nested/file' },
       { sha256: 'b'.repeat(64) },
       { size_bytes: 0 },
       { size_bytes: Number.MAX_SAFE_INTEGER + 1 },
-      { evidence_type: 'container', standard: 'SPDX-3.0.1' },
+      { evidence_type: 'container', spec_version: '3.0.1' },
+      { evidence_type: 'container', predicate_type: 'https://slsa.dev/provenance/v1' },
       { unexpected: true },
     ];
     for (const mutation of mutations) {
