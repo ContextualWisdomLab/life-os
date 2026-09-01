@@ -9,6 +9,7 @@ const UUID_V4_PATTERN =
 const ISO_INSTANT_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CONTROL_OR_SEPARATOR_PATTERN = /[\p{Cc}\p{Z}]/u;
+const AUTHORITY_ONLY_HTTPS_ORIGIN_PATTERN = /^https:\/\/[^/?#\\]+\/?$/iu;
 const MAXIMUM_ORIGIN_LENGTH = 512;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-origin.v1' as const;
 
@@ -146,6 +147,12 @@ function requireContext(
   });
 }
 
+/**
+ * Accepts only a non-null object envelope before reading untrusted grant fields.
+ *
+ * Arrays and primitive values fail closed so malformed input cannot reach
+ * installation lookup or grant persistence through native property-access errors.
+ */
 function requireGrantInput(value: unknown): GrantPluginDeliveryOriginInput {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return invalid();
@@ -158,7 +165,8 @@ function normalizeOrigin(value: unknown): string {
     typeof value !== 'string' ||
     value.length < 9 ||
     value.length > MAXIMUM_ORIGIN_LENGTH ||
-    CONTROL_OR_SEPARATOR_PATTERN.test(value)
+    CONTROL_OR_SEPARATOR_PATTERN.test(value) ||
+    !AUTHORITY_ONLY_HTTPS_ORIGIN_PATTERN.test(value)
   ) {
     return invalid();
   }
