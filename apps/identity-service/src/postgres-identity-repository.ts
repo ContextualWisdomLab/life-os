@@ -32,43 +32,52 @@ interface IdentityAccountRow {
   workspace_created_at: unknown;
 }
 
-function requireString(value: unknown, message = INVALID_STORED_ACCOUNT): string {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(message);
+function requireString(
+  stringValue: unknown,
+  errorMessage = INVALID_STORED_ACCOUNT,
+): string {
+  if (typeof stringValue !== 'string' || !stringValue.trim()) {
+    throw new Error(errorMessage);
   }
-  return value;
+  return stringValue;
 }
 
-function requireUuidV4(value: unknown, message = INVALID_STORED_ACCOUNT): string {
-  const opaqueIdentifier = requireString(value, message);
+function requireUuidV4(
+  identifierValue: unknown,
+  errorMessage = INVALID_STORED_ACCOUNT,
+): string {
+  const opaqueIdentifier = requireString(identifierValue, errorMessage);
   if (!UUID_V4_PATTERN.test(opaqueIdentifier)) {
-    throw new Error(message);
+    throw new Error(errorMessage);
   }
   return opaqueIdentifier;
 }
 
-function requireProvider(value: unknown): IdentityProvider {
-  if (value !== 'google' && value !== 'github') {
+function requireProvider(providerValue: unknown): IdentityProvider {
+  if (providerValue !== 'google' && providerValue !== 'github') {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
-  return value;
+  return providerValue;
 }
 
-function toIsoString(value: unknown): string {
-  const date = value instanceof Date ? value : new Date(requireString(value));
-  if (!Number.isFinite(date.getTime())) {
+function toIsoString(timestampValue: unknown): string {
+  const timestampDate =
+    timestampValue instanceof Date
+      ? timestampValue
+      : new Date(requireString(timestampValue));
+  if (!Number.isFinite(timestampDate.getTime())) {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
-  return date.toISOString();
+  return timestampDate.toISOString();
 }
 
-function mapAccountRow(row: IdentityAccountRow): ProvisionedAccount {
-  const userAccountId = requireUuidV4(row.user_account_id);
+function mapAccountRow(accountRow: IdentityAccountRow): ProvisionedAccount {
+  const userAccountId = requireUuidV4(accountRow.user_account_id);
   const externalIdentityUserAccountId = requireUuidV4(
-    row.external_identity_user_account_id,
+    accountRow.external_identity_user_account_id,
   );
   const workspaceOwnerUserAccountId = requireUuidV4(
-    row.workspace_owner_user_account_id,
+    accountRow.workspace_owner_user_account_id,
   );
   if (
     externalIdentityUserAccountId !== userAccountId ||
@@ -76,57 +85,62 @@ function mapAccountRow(row: IdentityAccountRow): ProvisionedAccount {
   ) {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
-  if (row.workspace_kind !== 'personal') {
+  if (accountRow.workspace_kind !== 'personal') {
     throw new Error(INVALID_STORED_ACCOUNT);
   }
 
   return {
-    user: {
-      id: userAccountId,
-      displayName: requireString(row.display_name),
-      createdAt: toIsoString(row.user_created_at),
+    userAccount: {
+      userAccountId,
+      displayName: requireString(accountRow.display_name),
+      createdAt: toIsoString(accountRow.user_created_at),
     },
     externalIdentity: {
-      id: requireUuidV4(row.external_identity_id),
-      userId: externalIdentityUserAccountId,
-      provider: requireProvider(row.identity_provider),
-      providerSubject: requireString(row.provider_subject),
-      createdAt: toIsoString(row.external_identity_created_at),
+      externalIdentityId: requireUuidV4(accountRow.external_identity_id),
+      userAccountId: externalIdentityUserAccountId,
+      identityProvider: requireProvider(accountRow.identity_provider),
+      providerSubject: requireString(accountRow.provider_subject),
+      createdAt: toIsoString(accountRow.external_identity_created_at),
     },
-    workspace: {
-      id: requireUuidV4(row.identity_workspace_id),
-      ownerUserId: workspaceOwnerUserAccountId,
-      name: requireString(row.workspace_name),
-      kind: 'personal',
-      createdAt: toIsoString(row.workspace_created_at),
+    identityWorkspace: {
+      identityWorkspaceId: requireUuidV4(accountRow.identity_workspace_id),
+      ownerUserAccountId: workspaceOwnerUserAccountId,
+      workspaceName: requireString(accountRow.workspace_name),
+      workspaceKind: 'personal',
+      createdAt: toIsoString(accountRow.workspace_created_at),
     },
   };
 }
 
-function validateProposedAccount(account: ProvisionedAccount): ProvisionedAccount {
+function validateProposedAccount(
+  provisionedAccount: ProvisionedAccount,
+): ProvisionedAccount {
   return mapAccountRow({
-    user_account_id: account.user.id,
-    display_name: account.user.displayName,
-    user_created_at: account.user.createdAt,
-    external_identity_id: account.externalIdentity.id,
-    external_identity_user_account_id: account.externalIdentity.userId,
-    identity_provider: account.externalIdentity.provider,
-    provider_subject: account.externalIdentity.providerSubject,
-    external_identity_created_at: account.externalIdentity.createdAt,
-    identity_workspace_id: account.workspace.id,
-    workspace_owner_user_account_id: account.workspace.ownerUserId,
-    workspace_name: account.workspace.name,
-    workspace_kind: account.workspace.kind,
-    workspace_created_at: account.workspace.createdAt,
+    user_account_id: provisionedAccount.userAccount.userAccountId,
+    display_name: provisionedAccount.userAccount.displayName,
+    user_created_at: provisionedAccount.userAccount.createdAt,
+    external_identity_id: provisionedAccount.externalIdentity.externalIdentityId,
+    external_identity_user_account_id:
+      provisionedAccount.externalIdentity.userAccountId,
+    identity_provider: provisionedAccount.externalIdentity.identityProvider,
+    provider_subject: provisionedAccount.externalIdentity.providerSubject,
+    external_identity_created_at: provisionedAccount.externalIdentity.createdAt,
+    identity_workspace_id:
+      provisionedAccount.identityWorkspace.identityWorkspaceId,
+    workspace_owner_user_account_id:
+      provisionedAccount.identityWorkspace.ownerUserAccountId,
+    workspace_name: provisionedAccount.identityWorkspace.workspaceName,
+    workspace_kind: provisionedAccount.identityWorkspace.workspaceKind,
+    workspace_created_at: provisionedAccount.identityWorkspace.createdAt,
   });
 }
 
 async function findAccount(
-  client: SqlClient,
-  provider: IdentityProvider,
+  databaseClient: SqlClient,
+  identityProvider: IdentityProvider,
   providerSubject: string,
 ): Promise<ProvisionedAccount | undefined> {
-  const queryResult = await client.query<IdentityAccountRow>(
+  const queryResult = await databaseClient.query<IdentityAccountRow>(
     `SELECT
        user_accounts.user_account_id,
        user_accounts.display_name,
@@ -150,7 +164,7 @@ async function findAccount(
      WHERE identity.external_identities.identity_provider = $1
        AND identity.external_identities.provider_subject = $2
      LIMIT 2`,
-    [provider, providerSubject],
+    [identityProvider, providerSubject],
   );
 
   if (queryResult.rows.length > 1) {
@@ -161,45 +175,55 @@ async function findAccount(
 }
 
 export class PostgresIdentityRepository implements IdentityRepository {
-  constructor(private readonly database: TransactionalSqlClient) {}
+  constructor(private readonly databaseClient: TransactionalSqlClient) {}
 
   async findByExternalIdentity(
-    provider: IdentityProvider,
+    identityProvider: IdentityProvider,
     providerSubject: string,
   ): Promise<ProvisionedAccount | undefined> {
-    return await findAccount(this.database, provider, providerSubject);
+    return await findAccount(
+      this.databaseClient,
+      identityProvider,
+      providerSubject,
+    );
   }
 
-  async save(accountValue: ProvisionedAccount): Promise<ProvisionedAccount> {
-    const account = validateProposedAccount(accountValue);
-    const connection = await this.database.connect();
+  async save(provisionedAccountValue: ProvisionedAccount): Promise<ProvisionedAccount> {
+    const provisionedAccount = validateProposedAccount(provisionedAccountValue);
+    const databaseConnection = await this.databaseClient.connect();
     let transactionStarted = false;
 
     try {
-      await connection.query('BEGIN');
+      await databaseConnection.query('BEGIN');
       transactionStarted = true;
-      await connection.query(
+      await databaseConnection.query(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        [`${account.externalIdentity.provider}:${account.externalIdentity.providerSubject}`],
+        [
+          `${provisionedAccount.externalIdentity.identityProvider}:${provisionedAccount.externalIdentity.providerSubject}`,
+        ],
       );
 
-      const existing = await findAccount(
-        connection,
-        account.externalIdentity.provider,
-        account.externalIdentity.providerSubject,
+      const existingAccount = await findAccount(
+        databaseConnection,
+        provisionedAccount.externalIdentity.identityProvider,
+        provisionedAccount.externalIdentity.providerSubject,
       );
-      if (existing) {
-        await connection.query('COMMIT');
+      if (existingAccount) {
+        await databaseConnection.query('COMMIT');
         transactionStarted = false;
-        return existing;
+        return existingAccount;
       }
 
-      await connection.query(
+      await databaseConnection.query(
         `INSERT INTO identity.user_accounts (user_account_id, display_name, created_at)
          VALUES ($1, $2, $3)`,
-        [account.user.id, account.user.displayName, account.user.createdAt],
+        [
+          provisionedAccount.userAccount.userAccountId,
+          provisionedAccount.userAccount.displayName,
+          provisionedAccount.userAccount.createdAt,
+        ],
       );
-      await connection.query(
+      await databaseConnection.query(
         `INSERT INTO identity.external_identities (
            external_identity_id,
            user_account_id,
@@ -208,14 +232,14 @@ export class PostgresIdentityRepository implements IdentityRepository {
            created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
         [
-          account.externalIdentity.id,
-          account.externalIdentity.userId,
-          account.externalIdentity.provider,
-          account.externalIdentity.providerSubject,
-          account.externalIdentity.createdAt,
+          provisionedAccount.externalIdentity.externalIdentityId,
+          provisionedAccount.externalIdentity.userAccountId,
+          provisionedAccount.externalIdentity.identityProvider,
+          provisionedAccount.externalIdentity.providerSubject,
+          provisionedAccount.externalIdentity.createdAt,
         ],
       );
-      await connection.query(
+      await databaseConnection.query(
         `INSERT INTO identity.identity_workspaces (
            identity_workspace_id,
            owner_user_account_id,
@@ -224,28 +248,28 @@ export class PostgresIdentityRepository implements IdentityRepository {
            created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
         [
-          account.workspace.id,
-          account.workspace.ownerUserId,
-          account.workspace.name,
-          account.workspace.kind,
-          account.workspace.createdAt,
+          provisionedAccount.identityWorkspace.identityWorkspaceId,
+          provisionedAccount.identityWorkspace.ownerUserAccountId,
+          provisionedAccount.identityWorkspace.workspaceName,
+          provisionedAccount.identityWorkspace.workspaceKind,
+          provisionedAccount.identityWorkspace.createdAt,
         ],
       );
 
-      await connection.query('COMMIT');
+      await databaseConnection.query('COMMIT');
       transactionStarted = false;
-      return account;
-    } catch (error) {
+      return provisionedAccount;
+    } catch (persistenceError) {
       if (transactionStarted) {
         try {
-          await connection.query('ROLLBACK');
+          await databaseConnection.query('ROLLBACK');
         } catch {
           // Preserve the provisioning failure while still releasing the connection.
         }
       }
-      throw error;
+      throw persistenceError;
     } finally {
-      connection.release();
+      databaseConnection.release();
     }
   }
 }
