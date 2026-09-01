@@ -150,6 +150,9 @@ interface PrivilegeRow {
   replay_select_ready: unknown;
   replay_insert_ready: unknown;
   replay_delete_ready: unknown;
+  reminder_occurrences_select_ready: unknown;
+  reminder_outcomes_select_ready: unknown;
+  inbox_messages_select_ready: unknown;
 }
 
 /** Aggregate count returned by post-erasure verification. */
@@ -705,7 +708,22 @@ export class NotificationDataRightsContributor {
              current_user,
              to_regclass('notification_service.data_rights_authority_replay_records'),
              'DELETE'
-           ), false) AS replay_delete_ready`,
+           ), false) AS replay_delete_ready,
+           COALESCE(has_table_privilege(
+             current_user,
+             to_regclass('notification_service.reminder_occurrences'),
+             'SELECT'
+           ), false) AS reminder_occurrences_select_ready,
+           COALESCE(has_table_privilege(
+             current_user,
+             to_regclass('notification_service.reminder_outcomes'),
+             'SELECT'
+           ), false) AS reminder_outcomes_select_ready,
+           COALESCE(has_table_privilege(
+             current_user,
+             to_regclass('notification_service.inbox_messages'),
+             'SELECT'
+           ), false) AS inbox_messages_select_ready`,
         [],
       ),
     );
@@ -713,12 +731,28 @@ export class NotificationDataRightsContributor {
     const replaySelectReady = requireBoolean(row.replay_select_ready);
     const replayInsertReady = requireBoolean(row.replay_insert_ready);
     const replayDeleteReady = requireBoolean(row.replay_delete_ready);
+    const reminderOccurrencesSelectReady = requireBoolean(
+      row.reminder_occurrences_select_ready,
+    );
+    const reminderOutcomesSelectReady = requireBoolean(
+      row.reminder_outcomes_select_ready,
+    );
+    const inboxMessagesSelectReady = requireBoolean(
+      row.inbox_messages_select_ready,
+    );
     const blockers: string[] = [];
     if (!functionReady) {
       blockers.push('notification_erasure_function_unavailable');
     }
     if (!replaySelectReady || !replayInsertReady || !replayDeleteReady) {
       blockers.push('notification_data_rights_replay_store_unavailable');
+    }
+    if (
+      !reminderOccurrencesSelectReady ||
+      !reminderOutcomesSelectReady ||
+      !inboxMessagesSelectReady
+    ) {
+      blockers.push('notification_erasure_verification_unavailable');
     }
     return {
       contractVersion: NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION,
