@@ -1,7 +1,4 @@
-import {
-  bootstrapNotificationService,
-  type NotificationHttpService,
-} from './notification-http';
+import type { NotificationHttpService } from './notification-http';
 
 /** Process capabilities used by the Notification server without exposing the global process in tests. */
 export interface NotificationServerProcess {
@@ -41,9 +38,4 @@ export async function runNotificationServer(
   processLike.once('SIGINT', closeOnce);
   processLike.once('SIGTERM', closeOnce);
   return service;
-}
-
-/** Starts the production server using the real environment-backed composition root. */
-export async function runProductionNotificationServer(): Promise<NotificationHttpService> {
-  return await runNotificationServer(bootstrapNotificationService, process);
 }
