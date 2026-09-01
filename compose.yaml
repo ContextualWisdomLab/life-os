@@ -30,6 +30,7 @@ services:
       PGDATABASE: ${POSTGRES_DB:-lifeos}
       PGUSER: ${POSTGRES_USER:-lifeos}
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      NOTIFICATION_DATABASE_RUNTIME_ROLE: ${NOTIFICATION_DATABASE_RUNTIME_ROLE:-lifeos_notification}
       NOTIFICATION_RUNTIME_DATABASE_PASSWORD: ${NOTIFICATION_RUNTIME_DATABASE_PASSWORD:?Set NOTIFICATION_RUNTIME_DATABASE_PASSWORD}
     volumes:
       - ./infra/postgres/provision/notification-runtime.psql:/provision/notification-runtime.psql:ro
