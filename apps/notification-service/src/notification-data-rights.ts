@@ -712,7 +712,7 @@ export class NotificationDataRightsContributor {
            ), false) AS replay_delete_ready,
            COALESCE(has_schema_privilege(
              current_user,
-             'notification_service',
+             to_regnamespace('notification_service'),
              'USAGE'
            ), false) AS notification_schema_usage_ready,
            COALESCE(has_table_privilege(
