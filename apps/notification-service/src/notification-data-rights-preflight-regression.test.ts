@@ -11,9 +11,14 @@ const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 
 /** Captures the exact preflight query and returns one reviewed privilege row. */
 class PreflightClient implements NotificationSqlClient {
-  readonly calls: Array<{ readonly text: string; readonly values: readonly unknown[] }> = [];
+  readonly calls: Array<{
+    readonly text: string;
+    readonly values: readonly unknown[];
+  }> = [];
 
-  constructor(private readonly privilegeRow: Readonly<Record<string, unknown>>) {}
+  constructor(
+    private readonly privilegeRow: Readonly<Record<string, unknown>>,
+  ) {}
 
   async query<Row>(
     text: string,
