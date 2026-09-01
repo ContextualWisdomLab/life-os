@@ -231,7 +231,7 @@ export class IdentityRuntime implements OnApplicationShutdown {
 
   constructor(
     private readonly databasePool: Pool,
-    readonly oauthHttpApplication: OAuthHttpApplication,
+    readonly application: OAuthHttpApplication,
     readonly callbackApplication: OAuthCallbackApplication,
     readonly dataRightsStatusApplication: AuthenticatedDataRightsStatusApplication,
   ) {}
