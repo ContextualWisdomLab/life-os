@@ -34,7 +34,7 @@ env:
 jobs:
   validate:
     name: Validate immutable deployment
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout exact revision
@@ -75,7 +75,7 @@ jobs:
   deploy:
     name: Apply protected production rollout
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
     env:
@@ -122,7 +122,7 @@ jobs:
             exit 1
           }
           kubeconfig="${RUNNER_TEMP}/life-os-kubeconfig"
-          printf '%s' "${LIFE_OS_KUBE_CONFIG_B64}" | base64 --decode >"${kubeconfig}"
+          printf '%s' "${LIFE_OS_KUBE_CONFIG_B64" | base64 --decode >"${kubeconfig}"
           chmod 0600 "${kubeconfig}"
           printf 'KUBECONFIG=%s\n' "${kubeconfig}" >>"${GITHUB_ENV}"
 
