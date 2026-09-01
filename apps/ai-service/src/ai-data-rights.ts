@@ -582,17 +582,18 @@ export class AiDataRightsContributor {
         decisions: Object.freeze(decisions),
       }),
     );
-    const hasMore = row.evidence_records.length > MAX_EXPORT_RECORDS;
-    const last = page.at(-1);
-    if (hasMore && last === undefined) return invalidDataRights();
+    const last =
+      row.evidence_records.length > MAX_EXPORT_RECORDS
+        ? page[MAX_EXPORT_RECORDS - 1]
+        : undefined;
     const nextCursor =
-      hasMore && last !== undefined
-        ? encodeExportCursor({
+      last === undefined
+        ? undefined
+        : encodeExportCursor({
             evidenceTime: last.evidenceTime,
             evidenceKind: last.evidenceKind,
             evidenceId: last.evidenceId,
-          })
-        : undefined;
+          });
 
     return {
       contractVersion: AI_DATA_RIGHTS_CONTRACT_VERSION,
