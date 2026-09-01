@@ -17,6 +17,7 @@ const DEFAULT_NOTIFICATION_HOST = '127.0.0.1';
 const DEFAULT_NOTIFICATION_PORT = 4300;
 const CONTRIBUTOR_PATH = '/v1/internal/data-rights/contributor';
 const MAXIMUM_REQUEST_BYTES = 64 * 1024;
+const MINIMUM_CONTEXT_SECRET_BYTES = 32;
 const DECIMAL_PORT_PATTERN = /^[1-9]\d{0,4}$/u;
 const HOST_PATTERN = /^(?=.{1,253}$)[A-Za-z0-9.:_-]+$/u;
 const JSON_MEDIA_TYPE_PATTERN = /^application\/json(?:\s*;\s*charset=utf-8)?$/iu;
@@ -105,6 +106,17 @@ function notificationHost(value: string | undefined): string {
   if (value === undefined) return DEFAULT_NOTIFICATION_HOST;
   if (!HOST_PATTERN.test(value)) {
     throw new Error('Notification host is invalid');
+  }
+  return value;
+}
+
+/** Requires a usable authentication secret before durable runtime construction. */
+function notificationDataRightsContextSecret(value: string | undefined): string {
+  if (
+    typeof value !== 'string' ||
+    Buffer.byteLength(value, 'utf8') < MINIMUM_CONTEXT_SECRET_BYTES
+  ) {
+    throw new Error('Notification data-rights context secret is invalid');
   }
   return value;
 }
@@ -297,9 +309,9 @@ async function closeServer(server: NotificationHttpServer): Promise<void> {
 
 /**
  * Boots the deployable Notification HTTP process with no extra framework runtime.
- * Listener configuration is validated before PostgreSQL construction. Startup
- * failure closes service-owned resources. The returned close operation always
- * stops ingress before releasing the PostgreSQL pool.
+ * Listener and authentication configuration are validated before PostgreSQL
+ * construction. Startup failure closes service-owned resources. The returned
+ * close operation always stops ingress before releasing the PostgreSQL pool.
  */
 export async function bootstrapNotificationService(
   environment: NotificationHttpEnvironment = process.env,
@@ -308,6 +320,9 @@ export async function bootstrapNotificationService(
 ): Promise<NotificationHttpService> {
   const port = notificationPort(environment.NOTIFICATION_PORT);
   const host = notificationHost(environment.NOTIFICATION_HOST);
+  notificationDataRightsContextSecret(
+    environment.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET,
+  );
   const runtime = runtimeFactory(environment);
   const controller = new NotificationDataRightsController(runtime);
   const server = serverFactory(createNotificationRequestListener(controller));
