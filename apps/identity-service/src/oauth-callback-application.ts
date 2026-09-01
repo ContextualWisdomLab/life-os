@@ -47,7 +47,7 @@ export class OAuthCallbackServiceError extends Error {
 /** Consumes one browser- and provider-bound OAuth transaction. */
 export interface OAuthTransactionConsumer {
   consume(
-    provider: IdentityProvider,
+    identityProvider: IdentityProvider,
     state: string,
     browserSessionId: string,
   ): Promise<ConsumedOAuthTransaction>;
@@ -55,8 +55,8 @@ export interface OAuthTransactionConsumer {
 
 /** Provisions or reuses the account and personal workspace for an identity. */
 export interface ExternalIdentityProvisioner {
-  signInWithExternalIdentity(input: {
-    provider: IdentityProvider;
+  signInWithExternalIdentity(identityInput: {
+    identityProvider: IdentityProvider;
     providerSubject: string;
     displayName: string;
   }): Promise<ProvisionedAccount>;
@@ -70,16 +70,16 @@ export interface WorkspaceIssuedSession {
 /** Issues and revokes opaque workspace-scoped application sessions. */
 export interface WorkspaceSessionIssuer {
   create(
-    userId: string,
-    workspaceId: string,
+    userAccountId: string,
+    identityWorkspaceId: string,
   ): Promise<{ session: WorkspaceIssuedSession; token: string }>;
-  revoke(token: string): Promise<void>;
+  revoke(sessionToken: string): Promise<void>;
 }
 
 /** Verifies one Google authorization-code response. */
 export interface GoogleAuthorizationCodeAuthenticator {
   authenticateAuthorizationCode(
-    input: GoogleAuthorizationCodeInput,
+    authorizationInput: GoogleAuthorizationCodeInput,
   ): Promise<VerifiedGoogleIdentity>;
 }
 
@@ -87,22 +87,22 @@ export interface GoogleAuthorizationCodeAuthenticator {
 export interface GitHubAuthorizationCodeAuthenticator {
   authenticateAuthorizationCode(
     authorizationCode: string,
-    transaction: ConsumedOAuthTransaction,
+    consumedTransaction: ConsumedOAuthTransaction,
   ): Promise<ProviderIdentityProfile>;
 }
 
 /** Credential-free audit event emitted for every callback outcome. */
 export interface OAuthCallbackAuditEvent {
-  provider: IdentityProvider;
-  outcome: 'success' | 'failure';
+  identityProvider: IdentityProvider;
+  callbackOutcome: 'success' | 'failure';
   correlationId: string;
-  userId?: string;
-  workspaceId?: string;
+  userAccountId?: string;
+  identityWorkspaceId?: string;
 }
 
 /** Required audit boundary for callback completion. */
 export interface OAuthCallbackAuditSink {
-  record(event: OAuthCallbackAuditEvent): MaybePromise<void>;
+  record(auditEvent: OAuthCallbackAuditEvent): MaybePromise<void>;
 }
 
 /** Fixed provider clients required by the callback application. */
@@ -132,19 +132,19 @@ function failService(): never {
   throw new OAuthCallbackServiceError();
 }
 
-function requireCorrelationId(value: string): string {
-  if (typeof value !== 'string') {
+function requireCorrelationId(correlationIdValue: string): string {
+  if (typeof correlationIdValue !== 'string') {
     return failAuthentication();
   }
-  const normalized = value.trim();
+  const normalizedCorrelationId = correlationIdValue.trim();
   if (
-    !normalized ||
-    normalized.length > MAXIMUM_CORRELATION_ID_LENGTH ||
-    /[\u0000-\u001f\u007f]/.test(normalized)
+    !normalizedCorrelationId ||
+    normalizedCorrelationId.length > MAXIMUM_CORRELATION_ID_LENGTH ||
+    /[\u0000-\u001f\u007f]/.test(normalizedCorrelationId)
   ) {
     return failAuthentication();
   }
-  return normalized;
+  return normalizedCorrelationId;
 }
 
 function isExpectedTransactionFailure(error: unknown): boolean {
@@ -153,40 +153,40 @@ function isExpectedTransactionFailure(error: unknown): boolean {
   );
 }
 
-function googleDisplayName(identity: VerifiedGoogleIdentity): string {
+function googleDisplayName(googleIdentity: VerifiedGoogleIdentity): string {
   return (
-    identity.displayName ??
-    identity.email ??
-    `Google account ${identity.subject.slice(0, 12)}`
+    googleIdentity.displayName ??
+    googleIdentity.email ??
+    `Google account ${googleIdentity.subject.slice(0, 12)}`
   );
 }
 
 function providerIdentityInput(
-  provider: IdentityProvider,
-  identity: VerifiedGoogleIdentity | ProviderIdentityProfile,
+  identityProvider: IdentityProvider,
+  providerIdentity: VerifiedGoogleIdentity | ProviderIdentityProfile,
 ): {
-  provider: IdentityProvider;
+  identityProvider: IdentityProvider;
   providerSubject: string;
   displayName: string;
 } {
-  if (provider === 'google') {
-    const googleIdentity = identity as VerifiedGoogleIdentity;
+  if (identityProvider === 'google') {
+    const googleIdentity = providerIdentity as VerifiedGoogleIdentity;
     if (googleIdentity.provider !== 'google') {
       return failAuthentication();
     }
     return {
-      provider,
+      identityProvider,
       providerSubject: googleIdentity.subject,
       displayName: googleDisplayName(googleIdentity),
     };
   }
 
-  const githubIdentity = identity as ProviderIdentityProfile;
+  const githubIdentity = providerIdentity as ProviderIdentityProfile;
   if (githubIdentity.provider !== 'github') {
     return failAuthentication();
   }
   return {
-    provider,
+    identityProvider,
     providerSubject: githubIdentity.providerSubject,
     displayName: githubIdentity.displayName,
   };
@@ -199,86 +199,88 @@ function providerIdentityInput(
  */
 export class OAuthCallbackApplication {
   private readonly redirectLocation: string;
-  private readonly now: () => Date;
+  private readonly currentTime: () => Date;
 
   constructor(
-    private readonly transactions: OAuthTransactionConsumer,
-    private readonly identities: ExternalIdentityProvisioner,
-    private readonly sessions: WorkspaceSessionIssuer,
-    private readonly providers: OAuthCallbackProviderClients,
-    private readonly audit: OAuthCallbackAuditSink,
-    options: OAuthCallbackApplicationOptions,
+    private readonly transactionConsumer: OAuthTransactionConsumer,
+    private readonly identityProvisioner: ExternalIdentityProvisioner,
+    private readonly sessionIssuer: WorkspaceSessionIssuer,
+    private readonly providerClients: OAuthCallbackProviderClients,
+    private readonly auditSink: OAuthCallbackAuditSink,
+    applicationOptions: OAuthCallbackApplicationOptions,
   ) {
-    this.redirectLocation = buildFixedWebRedirect(options.webOrigin);
-    this.now = options.now ?? (() => new Date());
+    this.redirectLocation = buildFixedWebRedirect(applicationOptions.webOrigin);
+    this.currentTime = applicationOptions.now ?? (() => new Date());
   }
 
   /** Completes one provider callback and returns no provider credential. */
   async completeAuthorization(
-    provider: IdentityProvider,
+    identityProvider: IdentityProvider,
     queryInput: Readonly<Record<string, unknown>>,
     cookieHeader: string | undefined,
     correlationIdValue: string,
   ): Promise<OAuthCallbackSuccessResponse> {
     const correlationId = requireCorrelationId(correlationIdValue);
-    let account: ProvisionedAccount | undefined;
-    let issuedToken: string | undefined;
+    let provisionedAccount: ProvisionedAccount | undefined;
+    let issuedSessionToken: string | undefined;
 
     try {
-      const query = this.requireCallbackInput(queryInput, cookieHeader);
+      const callbackQuery = this.requireCallbackInput(queryInput, cookieHeader);
       const browserSessionId = this.requireBrowserSessionId(cookieHeader);
-      const transaction = await this.consumeTransaction(
-        provider,
-        query.state,
+      const consumedTransaction = await this.consumeTransaction(
+        identityProvider,
+        callbackQuery.state,
         browserSessionId,
       );
-      if (query.outcome !== 'authorization_code') {
+      if (callbackQuery.outcome !== 'authorization_code') {
         return failAuthentication();
       }
 
       const providerIdentity = await this.authenticateProvider(
-        provider,
-        query,
-        transaction,
+        identityProvider,
+        callbackQuery,
+        consumedTransaction,
       );
-      account = await this.identities.signInWithExternalIdentity(
-        providerIdentityInput(provider, providerIdentity),
+      provisionedAccount = await this.identityProvisioner.signInWithExternalIdentity(
+        providerIdentityInput(identityProvider, providerIdentity),
       );
-      const issued = await this.sessions.create(
-        account.user.id,
-        account.workspace.id,
+      const issuedSession = await this.sessionIssuer.create(
+        provisionedAccount.userAccount.userAccountId,
+        provisionedAccount.identityWorkspace.identityWorkspaceId,
       );
-      issuedToken = issued.token;
+      issuedSessionToken = issuedSession.token;
       const setCookie = serializeApplicationSessionCookie(
-        issued.token,
-        issued.session.expiresAt,
-        this.now(),
+        issuedSession.token,
+        issuedSession.session.expiresAt,
+        this.currentTime(),
       );
       await this.auditWithoutThrowing({
-        provider,
-        outcome: 'success',
+        identityProvider,
+        callbackOutcome: 'success',
         correlationId,
-        userId: account.user.id,
-        workspaceId: account.workspace.id,
+        userAccountId: provisionedAccount.userAccount.userAccountId,
+        identityWorkspaceId:
+          provisionedAccount.identityWorkspace.identityWorkspaceId,
       });
-      issuedToken = undefined;
+      issuedSessionToken = undefined;
       return {
         statusCode: 303,
         location: this.redirectLocation,
         setCookie,
       };
     } catch (error) {
-      if (issuedToken) {
-        await this.revokeWithoutThrowing(issuedToken);
+      if (issuedSessionToken) {
+        await this.revokeWithoutThrowing(issuedSessionToken);
       }
       await this.auditWithoutThrowing({
-        provider,
-        outcome: 'failure',
+        identityProvider,
+        callbackOutcome: 'failure',
         correlationId,
-        ...(account
+        ...(provisionedAccount
           ? {
-              userId: account.user.id,
-              workspaceId: account.workspace.id,
+              userAccountId: provisionedAccount.userAccount.userAccountId,
+              identityWorkspaceId:
+                provisionedAccount.identityWorkspace.identityWorkspaceId,
             }
           : {}),
       });
@@ -294,9 +296,9 @@ export class OAuthCallbackApplication {
     cookieHeader: string | undefined,
   ): OAuthCallbackQuery {
     try {
-      const query = parseOAuthCallbackQuery(queryInput);
+      const callbackQuery = parseOAuthCallbackQuery(queryInput);
       this.requireBrowserSessionId(cookieHeader);
-      return query;
+      return callbackQuery;
     } catch {
       return failAuthentication();
     }
@@ -317,12 +319,16 @@ export class OAuthCallbackApplication {
   }
 
   private async consumeTransaction(
-    provider: IdentityProvider,
+    identityProvider: IdentityProvider,
     state: string,
     browserSessionId: string,
   ): Promise<ConsumedOAuthTransaction> {
     try {
-      return await this.transactions.consume(provider, state, browserSessionId);
+      return await this.transactionConsumer.consume(
+        identityProvider,
+        state,
+        browserSessionId,
+      );
     } catch (error) {
       if (isExpectedTransactionFailure(error)) {
         return failAuthentication();
@@ -332,39 +338,39 @@ export class OAuthCallbackApplication {
   }
 
   private async authenticateProvider(
-    provider: IdentityProvider,
-    query: Extract<OAuthCallbackQuery, { outcome: 'authorization_code' }>,
-    transaction: ConsumedOAuthTransaction,
+    identityProvider: IdentityProvider,
+    callbackQuery: Extract<OAuthCallbackQuery, { outcome: 'authorization_code' }>,
+    consumedTransaction: ConsumedOAuthTransaction,
   ): Promise<VerifiedGoogleIdentity | ProviderIdentityProfile> {
-    if (provider === 'google') {
-      if (!transaction.nonce) {
+    if (identityProvider === 'google') {
+      if (!consumedTransaction.nonce) {
         return failAuthentication();
       }
-      return await this.providers.google.authenticateAuthorizationCode({
-        code: query.code,
-        codeVerifier: transaction.codeVerifier,
-        nonce: transaction.nonce,
+      return await this.providerClients.google.authenticateAuthorizationCode({
+        code: callbackQuery.code,
+        codeVerifier: consumedTransaction.codeVerifier,
+        nonce: consumedTransaction.nonce,
       });
     }
-    return await this.providers.github.authenticateAuthorizationCode(
-      query.code,
-      transaction,
+    return await this.providerClients.github.authenticateAuthorizationCode(
+      callbackQuery.code,
+      consumedTransaction,
     );
   }
 
-  private async revokeWithoutThrowing(token: string): Promise<void> {
+  private async revokeWithoutThrowing(sessionToken: string): Promise<void> {
     try {
-      await this.sessions.revoke(token);
+      await this.sessionIssuer.revoke(sessionToken);
     } catch {
       // Callback failure remains authoritative and never exposes session data.
     }
   }
 
   private async auditWithoutThrowing(
-    event: OAuthCallbackAuditEvent,
+    auditEvent: OAuthCallbackAuditEvent,
   ): Promise<void> {
     try {
-      await this.audit.record(event);
+      await this.auditSink.record(auditEvent);
     } catch {
       // Authentication remains authoritative and never exposes audit details.
     }
