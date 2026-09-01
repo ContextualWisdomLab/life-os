@@ -29,6 +29,123 @@ migration_roots=(
   'review|REVIEW_DATABASE_URL|apps/review-service/migrations'
 )
 
+legacy_reconciliation_sql() {
+  local service_name="$1"
+  local migration_name="$2"
+
+  case "${service_name}:${migration_name}" in
+    'identity:0004_oauth_secret_key_versions.sql')
+      cat <<'SQL'
+  SELECT
+    EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity'
+        AND table_name = 'oauth_transactions'
+        AND column_name = 'code_verifier_key_version'
+        AND is_nullable = 'NO'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity'
+        AND table_name = 'oauth_transactions'
+        AND column_name = 'nonce_key_version'
+    )
+    AND (
+      SELECT COUNT(*) = 4
+      FROM pg_constraint AS constraint_row
+      JOIN pg_class AS relation_row
+        ON relation_row.oid = constraint_row.conrelid
+      JOIN pg_namespace AS namespace_row
+        ON namespace_row.oid = relation_row.relnamespace
+      WHERE namespace_row.nspname = 'identity'
+        AND relation_row.relname = 'oauth_transactions'
+        AND constraint_row.conname IN (
+          'oauth_verifier_key_version_format',
+          'oauth_nonce_key_version_format',
+          'oauth_verifier_ciphertext_minimum_length',
+          'oauth_nonce_ciphertext_minimum_length'
+        )
+    ) AS legacy_migration_state_matches
+  \gset
+SQL
+      ;;
+    'identity:0004_session_authentication_age.sql'|'identity:0005_finalize_session_authentication_age.sql')
+      cat <<'SQL'
+  SELECT
+    EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity'
+        AND table_name = 'sessions'
+        AND column_name = 'authenticated_at'
+        AND is_nullable = 'NO'
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_row
+      JOIN pg_class AS relation_row
+        ON relation_row.oid = constraint_row.conrelid
+      JOIN pg_namespace AS namespace_row
+        ON namespace_row.oid = relation_row.relnamespace
+      WHERE namespace_row.nspname = 'identity'
+        AND relation_row.relname = 'sessions'
+        AND constraint_row.conname = 'sessions_authentication_not_after_creation'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_row
+      JOIN pg_class AS relation_row
+        ON relation_row.oid = constraint_row.conrelid
+      JOIN pg_namespace AS namespace_row
+        ON namespace_row.oid = relation_row.relnamespace
+      WHERE namespace_row.nspname = 'identity'
+        AND relation_row.relname = 'sessions'
+        AND constraint_row.conname = 'sessions_authentication_present'
+    ) AS legacy_migration_state_matches
+  \gset
+SQL
+      ;;
+    'identity:0005_opaque_uuid_v4_identifiers.sql')
+      cat <<'SQL'
+  SELECT (
+    SELECT COUNT(*) = 5
+    FROM pg_constraint AS constraint_row
+    JOIN pg_class AS relation_row
+      ON relation_row.oid = constraint_row.conrelid
+    JOIN pg_namespace AS namespace_row
+      ON namespace_row.oid = relation_row.relnamespace
+    WHERE namespace_row.nspname = 'identity'
+      AND (
+        (relation_row.relname = 'users' AND constraint_row.conname = 'users_id_uuid_v4')
+        OR (
+          relation_row.relname = 'external_identities'
+          AND constraint_row.conname = 'external_identities_id_uuid_v4'
+        )
+        OR (
+          relation_row.relname = 'workspaces'
+          AND constraint_row.conname = 'workspaces_id_uuid_v4'
+        )
+        OR (
+          relation_row.relname = 'sessions'
+          AND constraint_row.conname = 'sessions_id_uuid_v4'
+        )
+        OR (
+          relation_row.relname = 'oauth_transactions'
+          AND constraint_row.conname = 'oauth_transactions_id_uuid_v4'
+        )
+      )
+  ) AS legacy_migration_state_matches
+  \gset
+SQL
+      ;;
+    *)
+      cat <<'SQL'
+  SELECT false AS legacy_migration_state_matches
+  \gset
+SQL
+      ;;
+  esac
+}
+
 append_migration_command() {
   local command_file="$1"
   local service_name="$2"
@@ -36,6 +153,8 @@ append_migration_command() {
   local migration_name="$4"
   local migration_sequence="$5"
   local migration_sha="$6"
+  local reconciliation_sql
+  reconciliation_sql="$(legacy_reconciliation_sql "${service_name}" "${migration_name}")"
 
   cat >>"${command_file}" <<SQL
 \\set service_name '${service_name}'
@@ -117,8 +236,30 @@ SELECT
       AND migration_status = 'applying';
     \\echo migration_status=applied service=:service_name migration=:migration_name
   \\else
-    \\echo migration_error=migration_name_not_forward service=:service_name migration=:migration_name latest=:latest_migration_name
-    \\quit 1
+${reconciliation_sql}
+    \\if :legacy_migration_state_matches
+      INSERT INTO ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
+        service_name,
+        migration_name,
+        migration_sequence,
+        migration_sha256,
+        migration_status,
+        applied_at,
+        migration_reconciled
+      ) VALUES (
+        :'service_name',
+        :'migration_name',
+        (:'migration_sequence')::integer,
+        :'migration_sha256',
+        'applied',
+        clock_timestamp(),
+        true
+      );
+      \\echo migration_status=reconciled service=:service_name migration=:migration_name
+    \\else
+      \\echo migration_error=migration_name_not_forward service=:service_name migration=:migration_name latest=:latest_migration_name
+      \\quit 1
+    \\endif
   \\endif
 \\endif
 SQL
@@ -163,6 +304,7 @@ CREATE TABLE IF NOT EXISTS ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
   migration_sha256 character(64) NOT NULL,
   migration_status text NOT NULL,
   applied_at timestamp with time zone,
+  migration_reconciled boolean NOT NULL DEFAULT false,
   PRIMARY KEY (service_name, migration_name),
   CONSTRAINT migration_sequence_range CHECK (
     migration_sequence BETWEEN 0 AND 9999
@@ -181,6 +323,14 @@ SET migration_sequence = substring(migration_name FROM '^[0-9]{4}')::integer
 WHERE migration_sequence IS NULL;
 ALTER TABLE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
   ALTER COLUMN migration_sequence SET NOT NULL;
+ALTER TABLE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+  ADD COLUMN IF NOT EXISTS migration_reconciled boolean;
+UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+SET migration_reconciled = false
+WHERE migration_reconciled IS NULL;
+ALTER TABLE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+  ALTER COLUMN migration_reconciled SET DEFAULT false,
+  ALTER COLUMN migration_reconciled SET NOT NULL;
 DROP INDEX IF EXISTS ${MIGRATION_SCHEMA}.schema_migrations_service_sequence_unique;
 SQL
 
