@@ -9,6 +9,8 @@ import {
 } from './notification-http';
 import type { NotificationRuntime } from './notification-runtime';
 
+const CONTEXT_SECRET = '0123456789abcdef0123456789abcdef';
+
 /** Creates a bounded runtime fixture without opening PostgreSQL connections. */
 function runtime(): NotificationRuntime {
   return {
@@ -210,6 +212,7 @@ describe('Notification internal HTTP composition', () => {
         NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os',
         NOTIFICATION_PORT: '4300',
         NOTIFICATION_HOST: '127.0.0.1',
+        NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET: CONTEXT_SECRET,
       },
       () => suppliedRuntime,
       () => suppliedServer,
@@ -228,6 +231,7 @@ describe('Notification internal HTTP composition', () => {
       {
         NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os',
         NOTIFICATION_PORT: '4300',
+        NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET: CONTEXT_SECRET,
       },
       () => suppliedRuntime,
       () => suppliedServer,
@@ -251,6 +255,7 @@ describe('Notification internal HTTP composition', () => {
       bootstrapNotificationService(
         {
           NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os',
+          NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET: CONTEXT_SECRET,
           ...override,
         },
         runtimeFactory,
@@ -261,11 +266,35 @@ describe('Notification internal HTTP composition', () => {
     expect(serverFactory).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, '', 'too-short']) (
+    'rejects missing or short data-rights authentication secrets before runtime creation',
+    async (secret) => {
+      const runtimeFactory = vi.fn(() => runtime());
+      const serverFactory = vi.fn(() => server());
+
+      await expect(
+        bootstrapNotificationService(
+          {
+            NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os',
+            NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET: secret,
+          },
+          runtimeFactory,
+          serverFactory,
+        ),
+      ).rejects.toThrow(/^Notification data-rights context secret is invalid$/u);
+      expect(runtimeFactory).not.toHaveBeenCalled();
+      expect(serverFactory).not.toHaveBeenCalled();
+    },
+  );
+
   it('closes durable resources and sanitizes listener startup failure', async () => {
     const suppliedRuntime = runtime();
     await expect(
       bootstrapNotificationService(
-        { NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os' },
+        {
+          NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os',
+          NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET: CONTEXT_SECRET,
+        },
         () => suppliedRuntime,
         () => server(true),
       ),
