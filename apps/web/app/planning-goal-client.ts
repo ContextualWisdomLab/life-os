@@ -278,7 +278,12 @@ function parseGoalCollection(
   if (!Array.isArray(value) || value.length > MAXIMUM_GOALS) {
     throw new Error('Goal collection is invalid');
   }
-  return value.map((goal) => parseGoalRecord(goal, expectedWorkspaceId));
+  const goals = value.map((goal) => parseGoalRecord(goal, expectedWorkspaceId));
+  const goalIds = new Set(goals.map((goal) => goal.id));
+  if (goalIds.size !== goals.length) {
+    throw new Error('Goal collection contains duplicate identities');
+  }
+  return goals;
 }
 
 /**
