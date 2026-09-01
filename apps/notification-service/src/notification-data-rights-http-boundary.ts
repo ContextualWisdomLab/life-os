@@ -1,9 +1,10 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import {
   NOTIFICATION_DATA_RIGHTS_CONTRACT_VERSION,
   type NotificationDataRightsRequest,
 } from './notification-data-rights';
+import type { NotificationDataRightsAuthorityReplayGuardPort } from './notification-data-rights-authority-replay';
 
 /** Short-lived service-authentication headers for the private Notification contributor route. */
 export interface TrustedNotificationDataRightsContextHeaders {
@@ -66,7 +67,7 @@ function invalidRequest(): never {
   );
 }
 
-/** Rejects forged, stale, future, or route-mismatched service authority. */
+/** Rejects forged, replayed, stale, future, or route-mismatched service authority. */
 function invalidContext(): never {
   throw problemException(
     401,
@@ -75,7 +76,7 @@ function invalidContext(): never {
   );
 }
 
-/** Rejects verifier configuration that cannot authenticate the internal caller. */
+/** Rejects verifier or replay-store configuration that cannot authenticate the internal caller. */
 function unavailableContext(): never {
   throw problemException(
     503,
@@ -233,14 +234,30 @@ function requestDigest(
     .digest();
 }
 
+/** Derives a credential-free replay identity from one already-validated HMAC signature. */
+function replayDigest(signature: string): string {
+  return createHash('sha256').update(signature, 'ascii').digest('hex');
+}
+
+/** Converts the signed issuance time into the exact end of its 60-second authority lifetime. */
+function replayExpiresAt(issuedAtSeconds: number): string {
+  const expiresAt = new Date(
+    (issuedAtSeconds + MAXIMUM_CONTEXT_AGE_SECONDS) * 1_000,
+  );
+  if (!Number.isFinite(expiresAt.getTime())) {
+    return unavailableContext();
+  }
+  return expiresAt.toISOString();
+}
+
 /**
  * Verifies one exact Identity-to-Notification contributor request before persistence access.
  *
  * Tenant, actor, request, operation, destructive idempotency identity, export
- * continuation, lifetime, HTTP method, and resource are HMAC-bound. The function
- * returns only normalized request data and never forwards the verifier secret or
- * signature to the contributor. Cursor semantics remain owned by the Notification
- * contributor so transport authentication cannot become a second source of truth.
+ * continuation, lifetime, HTTP method, and resource are HMAC-bound. Destructive
+ * `erase` authority is additionally consumed once through Notification-owned
+ * durable replay evidence. Only a SHA-256 digest of the validated signature is
+ * persisted; the signature and verifier secret never leave this boundary.
  */
 export async function parseTrustedNotificationDataRightsRequest(
   body: unknown,
@@ -248,6 +265,7 @@ export async function parseTrustedNotificationDataRightsRequest(
   secret: unknown,
   requestBinding: NotificationDataRightsRequestBinding,
   nowSeconds = Math.floor(Date.now() / 1000),
+  replayGuard?: NotificationDataRightsAuthorityReplayGuardPort,
 ): Promise<NotificationDataRightsRequest> {
   const request = normalizeRequest(body);
   if (
@@ -285,6 +303,24 @@ export async function parseTrustedNotificationDataRightsRequest(
     !timingSafeEqual(actual, expected)
   ) {
     return invalidContext();
+  }
+
+  if (request.operation === 'erase') {
+    if (!replayGuard) {
+      return unavailableContext();
+    }
+    let consumed: boolean;
+    try {
+      consumed = await replayGuard.consume({
+        evidenceDigest: replayDigest(headers.signature),
+        expiresAt: replayExpiresAt(issuedAtSeconds),
+      });
+    } catch {
+      return unavailableContext();
+    }
+    if (!consumed) {
+      return invalidContext();
+    }
   }
   return request;
 }
