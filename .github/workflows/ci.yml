@@ -49,7 +49,7 @@ jobs:
               >/dev/null
 
   today-concurrency:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
@@ -92,7 +92,7 @@ jobs:
 
   validate:
     needs: compose_runtime
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
@@ -175,7 +175,7 @@ jobs:
         run: docker compose config --quiet
 
   browser-acceptance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout exact contributor head
@@ -203,7 +203,7 @@ jobs:
 
   merge_compatibility:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       AI_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
