@@ -27,7 +27,7 @@ class PreflightClient implements NotificationSqlClient {
           reminder_occurrences_select_ready: false,
           reminder_outcomes_select_ready: true,
           inbox_messages_select_ready: true,
-        } as Row,
+        } as unknown as Row,
       ],
     };
   }
