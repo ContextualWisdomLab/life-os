@@ -12,11 +12,12 @@ const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
 const MAXIMUM_REQUEST_BYTES = 4 * 1024;
-const MAXIMUM_RESPONSE_BYTES = 16 * 1024;
+const MAXIMUM_RESPONSE_BYTES = 64 * 1024;
 const MAXIMUM_TITLE_CHARACTERS = 160;
+const MAXIMUM_GOALS = 100;
 const UPSTREAM_TIMEOUT_MS = 3_000;
 
-/** Browser-safe projection of one newly created durable Planning goal. */
+/** Browser-safe projection of one durable Planning goal. */
 export interface PlanningGoalView {
   id: string;
   title: string;
@@ -58,12 +59,21 @@ function invalidGoalRequest(): Response {
   );
 }
 
-/** Hides configuration, network, and malformed dependency failures from browsers. */
+/** Hides creation configuration, network, and malformed dependency failures. */
 function unavailableGoalCreation(): Response {
   return problemResponse(
     503,
     'Goal creation is unavailable',
     'goal_creation_unavailable',
+  );
+}
+
+/** Hides listing configuration, network, and malformed dependency failures. */
+function unavailableGoalListing(): Response {
+  return problemResponse(
+    503,
+    'Goal listing is unavailable',
+    'goal_listing_unavailable',
   );
 }
 
@@ -145,23 +155,31 @@ async function readBoundedJson(
   }
 }
 
+/** Requires a bounded, trimmed, control-free Goal title. */
+function requireGoalTitle(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new Error('Goal title is invalid');
+  }
+  const title = value.trim();
+  if (
+    !title ||
+    value !== title ||
+    /[\u0000-\u001f\u007f]/u.test(title) ||
+    codePointLength(title) > MAXIMUM_TITLE_CHARACTERS ||
+    Buffer.byteLength(title, 'utf8') > 1024
+  ) {
+    throw new Error('Goal title is invalid');
+  }
+  return title;
+}
+
 /** Accepts exactly one bounded title and no browser-selected authority fields. */
 async function parseBrowserGoalRequest(request: Request): Promise<string> {
   const value = await readBoundedJson(request, MAXIMUM_REQUEST_BYTES);
   if (!isPlainObject(value) || Object.keys(value).length !== 1) {
     throw new Error('Goal request is invalid');
   }
-  const title = value.title;
-  if (
-    typeof title !== 'string' ||
-    !title.trim() ||
-    /[\u0000-\u001f\u007f]/u.test(title) ||
-    codePointLength(title.trim()) > MAXIMUM_TITLE_CHARACTERS ||
-    Buffer.byteLength(title.trim(), 'utf8') > 1024
-  ) {
-    throw new Error('Goal request is invalid');
-  }
-  return title.trim();
+  return requireGoalTitle(value.title);
 }
 
 /** Accepts a bounded cookie only for Identity session introspection. */
@@ -206,15 +224,10 @@ function requireTimestamp(value: unknown): string {
   return new Date(parsed).toISOString();
 }
 
-/**
- * Validates the exact durable Goal evidence returned by Planning. The host-derived
- * workspace must agree with the service response even though workspace identity is
- * intentionally omitted from the browser projection.
- */
-function parseGoalResponse(
+/** Validates one exact Goal record and strips workspace authority from browser output. */
+function parseGoalRecord(
   value: unknown,
   expectedWorkspaceId: string,
-  expectedTitle: string,
 ): PlanningGoalView {
   if (!isPlainObject(value)) {
     throw new Error('Goal response is invalid');
@@ -233,14 +246,35 @@ function parseGoalResponse(
   if (workspaceId !== expectedWorkspaceId) {
     throw new Error('Goal response ownership is invalid');
   }
-  if (value.title !== expectedTitle) {
-    throw new Error('Goal response title is invalid');
-  }
   return Object.freeze({
     id: requireUuid(value.id),
-    title: expectedTitle,
+    title: requireGoalTitle(value.title),
     createdAt: requireTimestamp(value.createdAt),
   });
+}
+
+/** Validates create evidence against both host-derived ownership and submitted title. */
+function parseCreatedGoal(
+  value: unknown,
+  expectedWorkspaceId: string,
+  expectedTitle: string,
+): PlanningGoalView {
+  const goal = parseGoalRecord(value, expectedWorkspaceId);
+  if (goal.title !== expectedTitle) {
+    throw new Error('Goal response title is invalid');
+  }
+  return goal;
+}
+
+/** Validates a bounded Goal collection before any record reaches the browser. */
+function parseGoalCollection(
+  value: unknown,
+  expectedWorkspaceId: string,
+): PlanningGoalView[] {
+  if (!Array.isArray(value) || value.length > MAXIMUM_GOALS) {
+    throw new Error('Goal collection is invalid');
+  }
+  return value.map((goal) => parseGoalRecord(goal, expectedWorkspaceId));
 }
 
 /**
@@ -330,7 +364,7 @@ export async function handlePlanningGoalCreateRequest(
     if (planningResponse.status !== 201) {
       return unavailableGoalCreation();
     }
-    const goal = parseGoalResponse(
+    const goal = parseCreatedGoal(
       await readBoundedJson(planningResponse, MAXIMUM_RESPONSE_BYTES),
       workspaceId,
       title,
@@ -341,5 +375,102 @@ export async function handlePlanningGoalCreateRequest(
     });
   } catch {
     return unavailableGoalCreation();
+  }
+}
+
+/**
+ * Lists durable Goals through the authenticated first-party web boundary. The
+ * browser cookie is used only for Identity introspection; Planning sees an exact
+ * GET-bound workspace signature, and every returned record is checked against the
+ * server-derived workspace before the authority field is removed from browser output.
+ */
+export async function handlePlanningGoalListRequest(
+  request: Request,
+  environment: WebEnvironment,
+  fetcher: PlanningGoalFetch = fetch,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<Response> {
+  let cookie: string | undefined;
+  try {
+    const url = new URL(request.url);
+    if (request.method !== 'GET' || url.search) {
+      return invalidGoalRequest();
+    }
+    cookie = requireCookieHeader(request);
+  } catch {
+    return invalidGoalRequest();
+  }
+
+  try {
+    const identityOrigin = requireServiceOrigin(
+      environment.IDENTITY_SERVICE_ORIGIN,
+    );
+    const planningOrigin = requireServiceOrigin(
+      environment.PLANNING_SERVICE_ORIGIN,
+    );
+    const contextSecret = requireGatewaySecret(
+      environment.PLANNING_GATEWAY_CONTEXT_SECRET,
+    );
+    const correlationId = randomUUID();
+
+    const identityResponse = await fetcher(
+      new URL('/v1/session', identityOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({
+          cookie,
+          'x-correlation-id': correlationId,
+        }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
+    if (identityResponse.status === 401) {
+      return problemResponse(
+        401,
+        'Authentication is required',
+        'authentication_required',
+      );
+    }
+    if (identityResponse.status !== 200) {
+      return unavailableGoalListing();
+    }
+    const workspaceId = parseSessionWorkspace(
+      await readBoundedJson(identityResponse, MAXIMUM_RESPONSE_BYTES),
+    );
+    const contextHeaders = createPlanningContextHeaders(
+      workspaceId,
+      contextSecret,
+      nowSeconds,
+      { method: 'GET', path: '/v1/goals' },
+    );
+
+    const planningResponse = await fetcher(
+      new URL('/v1/goals', planningOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({
+          ...contextHeaders,
+          'x-correlation-id': correlationId,
+        }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
+    if (planningResponse.status !== 200) {
+      return unavailableGoalListing();
+    }
+    const goals = parseGoalCollection(
+      await readBoundedJson(planningResponse, MAXIMUM_RESPONSE_BYTES),
+      workspaceId,
+    );
+    return Response.json(goals, {
+      status: 200,
+      headers: { 'cache-control': 'no-store' },
+    });
+  } catch {
+    return unavailableGoalListing();
   }
 }
