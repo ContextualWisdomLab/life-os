@@ -63,13 +63,16 @@ describe('Notification database migration authority contract', () => {
     );
   });
 
-  it('provisions a least-privilege Notification runtime on fresh and existing Compose volumes without committed credentials', () => {
+  it('provisions the configured least-privilege Notification runtime on fresh and existing Compose volumes without committed credentials', () => {
     expect(composeConfiguration).toContain('notification-db-provision:');
     expect(composeConfiguration).toContain(
       './infra/postgres/provision/notification-runtime.psql:/provision/notification-runtime.psql:ro',
     );
     expect(composeConfiguration).toContain(
       'NOTIFICATION_RUNTIME_DATABASE_PASSWORD: ${NOTIFICATION_RUNTIME_DATABASE_PASSWORD:?Set NOTIFICATION_RUNTIME_DATABASE_PASSWORD}',
+    );
+    expect(composeConfiguration).toContain(
+      'NOTIFICATION_DATABASE_RUNTIME_ROLE: ${NOTIFICATION_DATABASE_RUNTIME_ROLE:-lifeos_notification}',
     );
     expect(composeConfiguration).not.toContain(
       '/docker-entrypoint-initdb.d/001_notification_migrator.sql',
@@ -79,7 +82,13 @@ describe('Notification database migration authority contract', () => {
     const localProvisioning = read(
       'infra/postgres/provision/notification-runtime.psql',
     );
-    expect(localProvisioning).toContain('CREATE ROLE lifeos_notification');
+    expect(localProvisioning).toContain(
+      '\\getenv runtime_role NOTIFICATION_DATABASE_RUNTIME_ROLE',
+    );
+    expect(localProvisioning).toContain("rolname = :'runtime_role'");
+    expect(localProvisioning).toContain('ALTER ROLE :"runtime_role"');
+    expect(localProvisioning).toContain('TO :"runtime_role"');
+    expect(localProvisioning).toContain('COMMENT ON ROLE :"runtime_role"');
     expect(localProvisioning).toContain('LOGIN');
     expect(localProvisioning).toContain('NOSUPERUSER');
     expect(localProvisioning).toContain('NOCREATEDB');
@@ -89,6 +98,7 @@ describe('Notification database migration authority contract', () => {
       "\\getenv runtime_password NOTIFICATION_RUNTIME_DATABASE_PASSWORD",
     );
     expect(localProvisioning).not.toMatch(/PASSWORD\s+'[^']+'/u);
+    expect(localProvisioning).not.toContain('CREATE ROLE lifeos_notification');
   });
 
   it('transfers legacy Notification object ownership to the migration authority', () => {
