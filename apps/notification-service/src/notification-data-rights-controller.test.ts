@@ -103,6 +103,23 @@ describe('NotificationDataRightsController', () => {
     expect(recorded).toEqual([body]);
   });
 
+  it('uses the composition-provided secret instead of ambient process state', async () => {
+    process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET = 'x'.repeat(32);
+    const recorded: unknown[] = [];
+    const controller = new NotificationDataRightsController(runtime(recorded), SECRET);
+    const issuedAt = String(Math.floor(Date.now() / 1000));
+
+    await expect(
+      controller.contribute(
+        issuedAt,
+        signature(body, issuedAt),
+        { method: 'POST', originalUrl: PATH },
+        body,
+      ),
+    ).resolves.toMatchObject({ operation: 'verify_erased', erased: true });
+    expect(recorded).toEqual([body]);
+  });
+
   it('rejects a route mismatch before the contributor can observe request data', async () => {
     process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET = SECRET;
     const recorded: unknown[] = [];
