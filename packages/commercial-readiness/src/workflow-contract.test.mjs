@@ -95,6 +95,26 @@ describe('commercial readiness workflow contract', () => {
     );
   });
 
+  it('pins every runner-backed CI job to the explicit supported Ubuntu image', async () => {
+    const workflow = await repositoryFile('.github/workflows/ci.yml');
+    const jobs = [
+      'compose_runtime',
+      'today-concurrency',
+      'validate',
+      'browser-acceptance',
+      'merge_compatibility',
+    ];
+
+    for (const job of jobs) {
+      assert.match(
+        yamlJobBlock(workflow, job),
+        /^\s+runs-on:\s*ubuntu-24\.04\s*$/mu,
+        `${job} must use the explicit supported GitHub-hosted runner image`,
+      );
+    }
+    assert.doesNotMatch(workflow, /runs-on:\s*ubuntu-latest/u);
+  });
+
   it('requires all review and security gates before merge mode can execute', async () => {
     const policy = JSON.parse(
       await repositoryFile('product/commercial-readiness-policy.json'),
