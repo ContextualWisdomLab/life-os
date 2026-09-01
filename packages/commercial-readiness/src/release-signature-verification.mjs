@@ -206,7 +206,10 @@ async function verifyIndexedSignature(index, directory, artifact, trustedKeys) {
  * Structural validation and byte/digest verification run first through the release-evidence
  * contract. Each detached signature envelope is then reopened without following a final symlink,
  * rebound to the exact source commit, release channel/version, subject artifact name and digest,
- * and verified with Ed25519 against an operator-supplied explicit trust map. Trust is never
+ * and verified with Ed25519 against an operator-supplied explicit trust map. After all signatures
+ * pass, the complete normalized evidence set is byte-verified again. That second pass prevents a
+ * subject or sibling evidence file changed after the initial artifact pass from being accepted as
+ * the retained evidence set merely because its earlier digest was correctly signed. Trust is never
  * inferred from a key embedded in the artifact, a GitHub actor, or model output. The function
  * establishes signature validity only; it does not distribute/rotate trust roots, claim release
  * readiness, or substitute for SBOM, provenance, install, recovery, accessibility, or buyer-
@@ -215,7 +218,7 @@ async function verifyIndexedSignature(index, directory, artifact, trustedKeys) {
  * @param {unknown} value Untrusted `life-os.release-evidence.v1` index.
  * @param {string} artifactDirectory Directory containing the exact indexed artifacts.
  * @param {unknown} trustedPublicKeys Explicit key-id to PEM-encoded Ed25519 public-key mapping.
- * @returns {Promise<Readonly<object>>} The validated release index after every signature verifies.
+ * @returns {Promise<Readonly<object>>} The validated release index after every signature verifies and retained bytes are rechecked.
  * @throws {ReleaseSignatureVerificationError} When structural, byte, trust, envelope, or signature evidence is invalid.
  */
 export async function verifyReleaseEvidenceSignatures(
@@ -231,7 +234,7 @@ export async function verifyReleaseEvidenceSignatures(
       if (artifact.evidence_type !== 'signature') continue;
       await verifyIndexedSignature(index, directory, artifact, trustedKeys);
     }
-    return index;
+    return await verifyReleaseEvidenceDirectory(index, artifactDirectory);
   } catch (error) {
     if (error instanceof ReleaseSignatureVerificationError) throw error;
     throw new ReleaseSignatureVerificationError();
