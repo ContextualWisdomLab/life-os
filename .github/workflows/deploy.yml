@@ -122,7 +122,7 @@ jobs:
             exit 1
           }
           kubeconfig="${RUNNER_TEMP}/life-os-kubeconfig"
-          printf '%s' "${LIFE_OS_KUBE_CONFIG_B64" | base64 --decode >"${kubeconfig}"
+          printf '%s' "${LIFE_OS_KUBE_CONFIG_B64}" | base64 --decode >"${kubeconfig}"
           chmod 0600 "${kubeconfig}"
           printf 'KUBECONFIG=%s\n' "${kubeconfig}" >>"${GITHUB_ENV}"
 
