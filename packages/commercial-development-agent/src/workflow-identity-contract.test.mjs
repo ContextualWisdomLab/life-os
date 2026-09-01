@@ -24,9 +24,7 @@ describe('OpenCode identity workflow boundary', () => {
       'node packages/commercial-development-agent/src/verify-opencode-identity.mjs',
     );
     expect(verify).toContain('unset NODE_OPTIONS');
-    expect(verify).not.toMatch(
-      /\bopencode\s+--(?:version|help)\b/u,
-    );
+    expect(verify).not.toMatch(/\bopencode\s+--(?:version|help)\b/u);
     expect(verify).not.toMatch(
       /\bexec(?:\s+--)?\s+opencode\s+--(?:version|help)\b/u,
     );
