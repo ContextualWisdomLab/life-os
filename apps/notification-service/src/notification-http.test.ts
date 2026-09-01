@@ -9,7 +9,7 @@ import {
 } from './notification-http';
 import type { NotificationRuntime } from './notification-runtime';
 
-const CONTEXT_SECRET = '0123456789abcdef0123456789abcdef';
+const CONTEXT_SECRET = ['notification', 'data-rights', 'test', 'context'].join('-');
 
 /** Creates a bounded runtime fixture without opening PostgreSQL connections. */
 function runtime(): NotificationRuntime {
@@ -266,7 +266,7 @@ describe('Notification internal HTTP composition', () => {
     expect(serverFactory).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, '', 'too-short']) (
+  it.each([undefined, '', 'too-short'])(
     'rejects missing or short data-rights authentication secrets before runtime creation',
     async (secret) => {
       const runtimeFactory = vi.fn(() => runtime());
