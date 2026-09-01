@@ -35,7 +35,8 @@ export class NotificationDataRightsController {
   /**
    * Verifies Identity-issued authority before forwarding one normalized request
    * to the Notification-owned contributor. No caller-supplied tenant or actor
-   * reaches persistence unless it is covered by the exact short-lived HMAC.
+   * reaches persistence unless it is covered by the exact short-lived HMAC;
+   * destructive authority must also win the durable one-time replay guard.
    */
   @Post('contributor')
   async contribute(
@@ -50,6 +51,7 @@ export class NotificationDataRightsController {
       process.env.NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET,
       { method: request.method, path: request.originalUrl },
       Math.floor(Date.now() / 1000),
+      this.runtime.dataRightsAuthorityReplayGuard,
     );
     try {
       return await this.runtime.dataRightsContributor.handle(trusted);
