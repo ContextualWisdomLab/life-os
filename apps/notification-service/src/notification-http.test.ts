@@ -221,6 +221,22 @@ describe('Notification internal HTTP composition', () => {
     expect(suppliedRuntime.close).toHaveBeenCalledTimes(1);
   });
 
+  it('defaults the private contributor listener to loopback', async () => {
+    const suppliedRuntime = runtime();
+    const suppliedServer = server();
+    const service = await bootstrapNotificationService(
+      {
+        NOTIFICATION_DATABASE_URL: 'postgresql://runtime.invalid/life_os',
+        NOTIFICATION_PORT: '4300',
+      },
+      () => suppliedRuntime,
+      () => suppliedServer,
+    );
+
+    expect(suppliedServer.listenCalls).toEqual([[4300, '127.0.0.1']]);
+    await service.close();
+  });
+
   it.each([
     [{ NOTIFICATION_PORT: '0' }, 'Notification port is invalid'],
     [{ NOTIFICATION_PORT: '65536' }, 'Notification port is invalid'],
