@@ -34,10 +34,11 @@ class MemoryOAuthStore
   readonly deletedReferences: string[] = [];
   failCreate = false;
   failRead = false;
+  secretReference = SECRET_REFERENCE;
 
-  async writeVerifier(): Promise<string> {
-    this.secrets.set(SECRET_REFERENCE, VERIFIER);
-    return SECRET_REFERENCE;
+  async writeVerifier(input: { readonly verifier: string }): Promise<string> {
+    this.secrets.set(this.secretReference, input.verifier);
+    return this.secretReference;
   }
 
   async deleteVerifier(secretReference: string): Promise<void> {
@@ -163,6 +164,19 @@ describe('CalendarGoogleOAuthAuthorizationApplication', () => {
     ).rejects.toBeInstanceOf(CalendarGoogleOAuthAuthorizationDependencyError);
     expect(store.deletedReferences).toEqual([SECRET_REFERENCE]);
     expect(store.secrets.size).toBe(0);
+  });
+
+  it('compensates verifier material when the secret store returns a malformed opaque reference', async () => {
+    const store = new MemoryOAuthStore();
+    store.secretReference = 'not-a-uuid';
+    const { application } = subject(store);
+
+    await expect(
+      application.issue(authority, { redirectUri: REDIRECT_URI }),
+    ).rejects.toBeInstanceOf(CalendarGoogleOAuthAuthorizationDependencyError);
+    expect(store.deletedReferences).toEqual(['not-a-uuid']);
+    expect(store.secrets.size).toBe(0);
+    expect(store.records.size).toBe(0);
   });
 
   it('consumes state once under the exact trusted workspace/user/redirect scope and materializes the verifier internally', async () => {
