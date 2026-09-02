@@ -4,8 +4,8 @@ import { createPlanningContextHeaders } from './planning-search-client';
 import {
   handlePlanningTaskCreateRequest,
   handlePlanningTaskListRequest,
-  type PlanningGoalFetch,
-} from './planning-goal-client';
+  type PlanningTaskFetch,
+} from './planning-task-client';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -74,7 +74,7 @@ function listRequest(projectId: string): Request {
 describe('authenticated planning task creation BFF', () => {
   it('derives workspace authority and signs the exact project task route', async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
-    const fetcher: PlanningGoalFetch = async (input, init) => {
+    const fetcher: PlanningTaskFetch = async (input, init) => {
       calls.push({ url: String(input), init });
       return calls.length === 1
         ? sessionResponse()
