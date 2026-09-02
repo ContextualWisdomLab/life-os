@@ -1,6 +1,6 @@
 # OpenCode commercial development loop: standards and research basis
 
-**Reviewed:** 2026-09-03  
+**Reviewed:** 2026-09-03
 **Scope:** Hourly contextual-orchestrator-routed OpenCode development in `ContextualWisdomLab/life-os`
 
 ## Evidence-status rule
