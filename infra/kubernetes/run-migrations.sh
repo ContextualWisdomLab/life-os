@@ -49,9 +49,40 @@ legacy_reconciliation_sql() {
       WHERE table_schema = 'identity'
         AND table_name = 'oauth_transactions'
         AND column_name = 'nonce_key_version'
+        AND is_nullable = 'YES'
     )
     AND (
-      SELECT COUNT(*) = 4
+      SELECT
+        COUNT(*) = 5
+        AND bool_and(constraint_row.contype = 'c' AND constraint_row.convalidated)
+        AND COUNT(*) FILTER (
+          WHERE constraint_row.conname = 'oauth_verifier_key_version_format'
+            AND position('code_verifier_key_version' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('A-Za-z0-9._-' in pg_get_constraintdef(constraint_row.oid)) > 0
+        ) = 1
+        AND COUNT(*) FILTER (
+          WHERE constraint_row.conname = 'oauth_nonce_key_version_format'
+            AND position('nonce_key_version' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('A-Za-z0-9._-' in pg_get_constraintdef(constraint_row.oid)) > 0
+        ) = 1
+        AND COUNT(*) FILTER (
+          WHERE constraint_row.conname = 'oauth_verifier_ciphertext_minimum_length'
+            AND position('code_verifier_ciphertext' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('28' in pg_get_constraintdef(constraint_row.oid)) > 0
+        ) = 1
+        AND COUNT(*) FILTER (
+          WHERE constraint_row.conname = 'oauth_nonce_ciphertext_minimum_length'
+            AND position('nonce_ciphertext' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('28' in pg_get_constraintdef(constraint_row.oid)) > 0
+        ) = 1
+        AND COUNT(*) FILTER (
+          WHERE constraint_row.conname = 'oauth_nonce_encryption_metadata_by_provider'
+            AND position('provider' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('google' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('github' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('nonce_ciphertext' in pg_get_constraintdef(constraint_row.oid)) > 0
+            AND position('nonce_key_version' in pg_get_constraintdef(constraint_row.oid)) > 0
+        ) = 1
       FROM pg_constraint AS constraint_row
       JOIN pg_class AS relation_row
         ON relation_row.oid = constraint_row.conrelid
@@ -63,13 +94,14 @@ legacy_reconciliation_sql() {
           'oauth_verifier_key_version_format',
           'oauth_nonce_key_version_format',
           'oauth_verifier_ciphertext_minimum_length',
-          'oauth_nonce_ciphertext_minimum_length'
+          'oauth_nonce_ciphertext_minimum_length',
+          'oauth_nonce_encryption_metadata_by_provider'
         )
     ) AS legacy_migration_state_matches
   \gset
 SQL
       ;;
-    'identity:0004_session_authentication_age.sql'|'identity:0005_finalize_session_authentication_age.sql')
+    'identity:0004_session_authentication_age.sql')
       cat <<'SQL'
   SELECT
     EXISTS (
@@ -77,7 +109,11 @@ SQL
       WHERE table_schema = 'identity'
         AND table_name = 'sessions'
         AND column_name = 'authenticated_at'
-        AND is_nullable = 'NO'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM identity.sessions
+      WHERE authenticated_at IS NULL OR authenticated_at > created_at
     )
     AND EXISTS (
       SELECT 1
@@ -89,6 +125,114 @@ SQL
       WHERE namespace_row.nspname = 'identity'
         AND relation_row.relname = 'sessions'
         AND constraint_row.conname = 'sessions_authentication_not_after_creation'
+        AND constraint_row.contype = 'c'
+        AND position('authenticated_at' in pg_get_constraintdef(constraint_row.oid)) > 0
+        AND position('created_at' in pg_get_constraintdef(constraint_row.oid)) > 0
+        AND position('<=' in pg_get_constraintdef(constraint_row.oid)) > 0
+    )
+    AND (
+      (
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'identity'
+            AND table_name = 'sessions'
+            AND column_name = 'authenticated_at'
+            AND is_nullable = 'YES'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_constraint AS constraint_row
+          JOIN pg_class AS relation_row
+            ON relation_row.oid = constraint_row.conrelid
+          JOIN pg_namespace AS namespace_row
+            ON namespace_row.oid = relation_row.relnamespace
+          WHERE namespace_row.nspname = 'identity'
+            AND relation_row.relname = 'sessions'
+            AND constraint_row.conname = 'sessions_authentication_present'
+            AND constraint_row.contype = 'c'
+            AND NOT constraint_row.convalidated
+            AND position('authenticated_at IS NOT NULL' in pg_get_constraintdef(constraint_row.oid)) > 0
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_constraint AS constraint_row
+          JOIN pg_class AS relation_row
+            ON relation_row.oid = constraint_row.conrelid
+          JOIN pg_namespace AS namespace_row
+            ON namespace_row.oid = relation_row.relnamespace
+          WHERE namespace_row.nspname = 'identity'
+            AND relation_row.relname = 'sessions'
+            AND constraint_row.conname = 'sessions_authentication_not_after_creation'
+            AND NOT constraint_row.convalidated
+        )
+      )
+      OR
+      (
+        EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'identity'
+            AND table_name = 'sessions'
+            AND column_name = 'authenticated_at'
+            AND is_nullable = 'NO'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint AS constraint_row
+          JOIN pg_class AS relation_row
+            ON relation_row.oid = constraint_row.conrelid
+          JOIN pg_namespace AS namespace_row
+            ON namespace_row.oid = relation_row.relnamespace
+          WHERE namespace_row.nspname = 'identity'
+            AND relation_row.relname = 'sessions'
+            AND constraint_row.conname = 'sessions_authentication_present'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM pg_constraint AS constraint_row
+          JOIN pg_class AS relation_row
+            ON relation_row.oid = constraint_row.conrelid
+          JOIN pg_namespace AS namespace_row
+            ON namespace_row.oid = relation_row.relnamespace
+          WHERE namespace_row.nspname = 'identity'
+            AND relation_row.relname = 'sessions'
+            AND constraint_row.conname = 'sessions_authentication_not_after_creation'
+            AND constraint_row.convalidated
+        )
+      )
+    ) AS legacy_migration_state_matches
+  \gset
+SQL
+      ;;
+    'identity:0005_finalize_session_authentication_age.sql')
+      cat <<'SQL'
+  SELECT
+    EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity'
+        AND table_name = 'sessions'
+        AND column_name = 'authenticated_at'
+        AND is_nullable = 'NO'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM identity.sessions
+      WHERE authenticated_at IS NULL OR authenticated_at > created_at
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM pg_constraint AS constraint_row
+      JOIN pg_class AS relation_row
+        ON relation_row.oid = constraint_row.conrelid
+      JOIN pg_namespace AS namespace_row
+        ON namespace_row.oid = relation_row.relnamespace
+      WHERE namespace_row.nspname = 'identity'
+        AND relation_row.relname = 'sessions'
+        AND constraint_row.conname = 'sessions_authentication_not_after_creation'
+        AND constraint_row.contype = 'c'
+        AND constraint_row.convalidated
+        AND position('authenticated_at' in pg_get_constraintdef(constraint_row.oid)) > 0
+        AND position('created_at' in pg_get_constraintdef(constraint_row.oid)) > 0
+        AND position('<=' in pg_get_constraintdef(constraint_row.oid)) > 0
     )
     AND NOT EXISTS (
       SELECT 1
@@ -107,7 +251,14 @@ SQL
     'identity:0005_opaque_uuid_v4_identifiers.sql')
       cat <<'SQL'
   SELECT (
-    SELECT COUNT(*) = 5
+    SELECT
+      COUNT(*) = 5
+      AND bool_and(constraint_row.contype = 'c' AND constraint_row.convalidated)
+      AND bool_and(
+        position('id' in pg_get_constraintdef(constraint_row.oid)) > 0
+        AND position('4[0-9a-f]{3}' in pg_get_constraintdef(constraint_row.oid)) > 0
+        AND position('[89ab]' in pg_get_constraintdef(constraint_row.oid)) > 0
+      )
     FROM pg_constraint AS constraint_row
     JOIN pg_class AS relation_row
       ON relation_row.oid = constraint_row.conrelid
