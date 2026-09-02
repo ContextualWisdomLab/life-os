@@ -8,7 +8,7 @@ const TREE_SHA = 'a'.repeat(40);
 const REPOSITORY = 'ContextualWisdomLab/life-os';
 const WORKFLOW_PATH = '.github/workflows/ci.yml';
 
-function clientWithWorkflowTreeMode(mode) {
+function clientWithWorkflowTreeMode(mode, type = 'blob') {
   return {
     async requestJson(path) {
       if (path === `/repos/${REPOSITORY}`) return { default_branch: 'main' };
@@ -26,7 +26,7 @@ function clientWithWorkflowTreeMode(mode) {
             {
               path: WORKFLOW_PATH,
               mode,
-              type: 'blob',
+              type,
               sha: 'b'.repeat(40),
             },
           ],
@@ -58,5 +58,16 @@ test('fails closed when a workflow-shaped Git tree entry is a symlink blob', asy
       SHA,
     ),
     /workflow tree entry mode.*invalid/i,
+  );
+});
+
+test('fails closed when a workflow-shaped Git tree entry is not a blob', async () => {
+  await assert.rejects(
+    collectWorkflowRegistrySnapshot(
+      clientWithWorkflowTreeMode('160000', 'commit'),
+      REPOSITORY,
+      SHA,
+    ),
+    /workflow tree entry.*invalid/i,
   );
 });
