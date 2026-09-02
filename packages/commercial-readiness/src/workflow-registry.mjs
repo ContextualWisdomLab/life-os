@@ -2,6 +2,7 @@ const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
+const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN = /^\.github\/workflows\/.*\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
 const WORKFLOW_STATES = new Set([
   'active',
@@ -248,18 +249,15 @@ function workflowPathsFromTree(payload) {
   const paths = [];
   for (const entry of payload.tree) {
     if (!entry || typeof entry.path !== 'string') continue;
-    if (entry.path.startsWith('.github/workflows/')) {
-      requireWorkflowPath(entry.path);
-      if (entry.type !== 'blob') {
-        return invalid('GitHub workflow tree entry is invalid');
-      }
-      if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
-        return invalid('GitHub workflow tree entry mode is invalid');
-      }
+    if (!WORKFLOW_TREE_CANDIDATE_PATH_PATTERN.test(entry.path)) continue;
+    requireWorkflowPath(entry.path);
+    if (entry.type !== 'blob') {
+      return invalid('GitHub workflow tree entry is invalid');
     }
-    if (entry.type === 'blob' && REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path)) {
-      paths.push(entry.path);
+    if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
+      return invalid('GitHub workflow tree entry mode is invalid');
     }
+    paths.push(entry.path);
   }
   return paths;
 }
