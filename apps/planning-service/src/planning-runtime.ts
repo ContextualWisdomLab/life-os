@@ -83,8 +83,8 @@ class ConnectionSqlClient implements PlanningSqlClient {
   ): Promise<PlanningSqlQueryResult<Row>> {
     // A pg Client owns one PostgreSQL connection. Queue concurrent callers here
     // rather than relying on node-postgres's deprecated implicit serialization.
-    const result = this.queryTail.then(async () =>
-      await this.connection.query<Row>(text, values),
+    const result = this.queryTail.then(
+      async () => await this.connection.query<Row>(text, values),
     );
     this.queryTail = result.then(
       () => undefined,
