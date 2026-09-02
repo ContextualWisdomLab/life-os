@@ -257,19 +257,24 @@ export class CalendarGoogleOAuthAuthorizationApplication {
       created.milliseconds + AUTHORIZATION_STATE_LIFETIME_MILLISECONDS,
     ).toISOString();
 
+    let rawVerifierSecretReference: string | undefined;
     let verifierSecretReference: string;
     try {
-      verifierSecretReference = requireDependencyUuid(
-        await this.verifiers.writeVerifier({
-          stateId,
-          workspaceId,
-          userId,
-          verifier,
-        }),
-      );
-    } catch (error) {
-      if (error instanceof CalendarGoogleOAuthAuthorizationDependencyError) {
-        throw error;
+      rawVerifierSecretReference = await this.verifiers.writeVerifier({
+        stateId,
+        workspaceId,
+        userId,
+        verifier,
+      });
+      verifierSecretReference = requireDependencyUuid(rawVerifierSecretReference);
+    } catch {
+      if (typeof rawVerifierSecretReference === 'string') {
+        try {
+          await this.verifiers.deleteVerifier(rawVerifierSecretReference);
+        } catch {
+          // Fail closed even if the secret backend cannot compensate. The
+          // backend must independently expire/reconcile incomplete ceremonies.
+        }
       }
       return unavailable();
     }
