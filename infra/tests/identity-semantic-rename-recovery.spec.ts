@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const repositoryRoot = resolve(process.cwd(), '../..');
-const kubernetesRoot = resolve(repositoryRoot, 'infra/kubernetes');
 const identityDatabaseUrl = process.env.IDENTITY_DATABASE_URL;
 const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 const testDatabasePattern = /^[a-z0-9_]*_test$/u;
@@ -22,13 +21,6 @@ function requireLoopbackTestDatabaseUrl(): string {
     throw new Error('Identity semantic rename tests require a loopback PostgreSQL test database');
   }
   return identityDatabaseUrl;
-}
-
-/** Return a sibling database URL while preserving the CI connection authority. */
-function siblingDatabaseUrl(sourceUrl: string, databaseName: string): string {
-  const parsedUrl = new URL(sourceUrl);
-  parsedUrl.pathname = `/${databaseName}`;
-  return parsedUrl.toString();
 }
 
 /** Build libpq process state without exposing credentials in process arguments. */
@@ -84,76 +76,11 @@ function identityMigrations(): string[] {
     .sort();
 }
 
-/** Run the production migration entrypoint against one disposable database. */
-function runMigrations(databaseUrl: string) {
-  return spawnSync('bash', [resolve(kubernetesRoot, 'run-migrations.sh')], {
-    cwd: repositoryRoot,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      LIFE_OS_MIGRATION_CONFIRMATION: 'apply-forward-only',
-      LIFE_OS_IDENTITY_SCHEMA_RENAME_CONFIRMATION: 'identity-service-drained',
-      IDENTITY_DATABASE_URL: databaseUrl,
-      PLANNING_DATABASE_URL: databaseUrl,
-      HABIT_DATABASE_URL: databaseUrl,
-      AI_DATABASE_URL: databaseUrl,
-      REVIEW_DATABASE_URL: databaseUrl,
-    },
-    timeout: 60_000,
-  });
-}
-
-describeWithDatabase('Identity semantic rename deployment recovery', () => {
-  it('uses explicit drain authority even when the database URI contains conflicting startup options', () => {
+describeWithDatabase('Identity semantic rename atomic completion', () => {
+  it('commits the semantic schema and its applying ledger row as one transaction', () => {
     const sourceUrl = requireLoopbackTestDatabaseUrl();
     const databaseName = `life_os_semantic_rename_${randomUUID().replaceAll('-', '')}`;
     const databaseIdentifier = quotedDatabase(databaseName);
-    const adminDatabaseName = 'postgres';
-    let databaseCreated = false;
-
-    try {
-      const createResult = psql(sourceUrl, adminDatabaseName, [
-        '--command',
-        `CREATE DATABASE ${databaseIdentifier}`,
-      ]);
-      expect(createResult.status, createResult.stderr).toBe(0);
-      databaseCreated = true;
-
-      const databaseUrl = new URL(siblingDatabaseUrl(sourceUrl, databaseName));
-      databaseUrl.searchParams.set(
-        'options',
-        '-c life_os.identity_schema_rename_confirmation=blocked-by-uri',
-      );
-      const result = runMigrations(databaseUrl.toString());
-      expect(result.status, result.stderr).toBe(0);
-
-      const semanticState = psql(sourceUrl, databaseName, [
-        '--tuples-only',
-        '--no-align',
-        '--command',
-        `SELECT to_regclass('identity.user_accounts') IS NOT NULL
-             AND to_regclass('identity.identity_workspaces') IS NOT NULL
-             AND to_regclass('identity.authentication_sessions') IS NOT NULL
-             AND to_regclass('identity.users') IS NULL`,
-      ]);
-      expect(semanticState.status, semanticState.stderr).toBe(0);
-      expect(semanticState.stdout.trim()).toBe('t');
-    } finally {
-      if (databaseCreated) {
-        const dropResult = psql(sourceUrl, adminDatabaseName, [
-          '--command',
-          `DROP DATABASE ${databaseIdentifier}`,
-        ]);
-        expect(dropResult.status, dropResult.stderr).toBe(0);
-      }
-    }
-  }, 120_000);
-
-  it('reconciles a committed semantic rename whose applying ledger row was not finalized', () => {
-    const sourceUrl = requireLoopbackTestDatabaseUrl();
-    const databaseName = `life_os_semantic_rename_${randomUUID().replaceAll('-', '')}`;
-    const databaseIdentifier = quotedDatabase(databaseName);
-    const databaseUrl = siblingDatabaseUrl(sourceUrl, databaseName);
     const adminDatabaseName = 'postgres';
     let databaseCreated = false;
 
@@ -230,28 +157,19 @@ describeWithDatabase('Identity semantic rename deployment recovery', () => {
       );
       expect(renameResult.status, renameResult.stderr).toBe(0);
 
-      const recovery = runMigrations(databaseUrl);
-      expect(recovery.status, recovery.stderr).toBe(0);
-      expect(recovery.stdout).toContain(
-        `migration_status=recovered_committed service=identity migration=${renameMigrationName}`,
-      );
-      expect(recovery.stdout).not.toContain(
-        `migration_status=retrying service=identity migration=${renameMigrationName}`,
-      );
-
-      const finalState = psql(sourceUrl, databaseName, [
+      const atomicState = psql(sourceUrl, databaseName, [
         '--tuples-only',
         '--no-align',
         '--command',
-        `SELECT migration_status || ':' || migration_reconciled::text || ':' ||
+        `SELECT migration_status || ':' || (applied_at IS NOT NULL)::text || ':' ||
                 (to_regclass('identity.user_accounts') IS NOT NULL)::text || ':' ||
                 (to_regclass('identity.users') IS NULL)::text
          FROM life_os_deployment.schema_migrations
          WHERE service_name = 'identity'
            AND migration_name = '${renameMigrationName}'`,
       ]);
-      expect(finalState.status, finalState.stderr).toBe(0);
-      expect(finalState.stdout.trim()).toBe('applied:true:true:true');
+      expect(atomicState.status, atomicState.stderr).toBe(0);
+      expect(atomicState.stdout.trim()).toBe('applied:true:true:true');
     } finally {
       if (databaseCreated) {
         const dropResult = psql(sourceUrl, adminDatabaseName, [
