@@ -44,6 +44,16 @@ export interface CalendarGoogleOAuthAuthorizationStateRepository {
   }): Promise<CalendarGoogleOAuthAuthorizationStateRecord | null>;
 }
 
+/** Exact authorization context required to materialize or delete one PKCE verifier secret. */
+export interface CalendarGoogleOAuthVerifierSecretAccess {
+  readonly secretReference: string;
+  readonly stateId: string;
+  readonly workspaceId: string;
+  readonly userId: string;
+  readonly purpose: typeof PURPOSE;
+  readonly expiresAt: string;
+}
+
 /** Secret-store boundary that keeps the PKCE verifier out of Calendar persistence. */
 export interface CalendarGoogleOAuthVerifierSecretStore {
   writeVerifier(input: {
@@ -54,8 +64,8 @@ export interface CalendarGoogleOAuthVerifierSecretStore {
     readonly expiresAt: string;
     readonly verifier: string;
   }): Promise<string>;
-  readVerifier(secretReference: string): Promise<string>;
-  deleteVerifier(secretReference: string): Promise<void>;
+  readVerifier(input: CalendarGoogleOAuthVerifierSecretAccess): Promise<string>;
+  deleteVerifier(input: CalendarGoogleOAuthVerifierSecretAccess): Promise<void>;
 }
 
 /** Credential-free browser-facing authorization-start result. */
@@ -208,6 +218,23 @@ function recordsMatch(
   );
 }
 
+function verifierAccess(input: {
+  readonly secretReference: string;
+  readonly stateId: string;
+  readonly workspaceId: string;
+  readonly userId: string;
+  readonly expiresAt: string;
+}): CalendarGoogleOAuthVerifierSecretAccess {
+  return Object.freeze({
+    secretReference: input.secretReference,
+    stateId: input.stateId,
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    purpose: PURPOSE,
+    expiresAt: input.expiresAt,
+  });
+}
+
 /**
  * Owns initiation and single-consumption rules for Google Calendar OAuth state.
  *
@@ -215,10 +242,10 @@ function recordsMatch(
  * server-derived Calendar context. The callback redirect is an exact
  * operator-configured HTTPS URI. PKCE verifier material is written through a
  * purpose- and lifetime-bound secret-store port before the durable state
- * record is created; only its opaque UUIDv4 reference is persisted. State
- * consumption is delegated to an atomic repository operation, then the
- * verifier is materialized for the internal token-exchange boundary. Provider
- * token exchange and post-exchange verifier cleanup are deliberately separate
+ * record is created; only its opaque UUIDv4 reference is persisted. Reads and
+ * deletion repeat the same state/workspace/user/purpose/lifetime authority so
+ * possession of a handle alone is insufficient to materialize the verifier.
+ * Provider token exchange and post-exchange verifier cleanup are separate
  * follow-up responsibilities.
  */
 export class CalendarGoogleOAuthAuthorizationApplication {
@@ -275,7 +302,15 @@ export class CalendarGoogleOAuthAuthorizationApplication {
     } catch {
       if (typeof rawVerifierSecretReference === 'string') {
         try {
-          await this.verifiers.deleteVerifier(rawVerifierSecretReference);
+          await this.verifiers.deleteVerifier(
+            verifierAccess({
+              secretReference: rawVerifierSecretReference,
+              stateId,
+              workspaceId,
+              userId,
+              expiresAt,
+            }),
+          );
         } catch {
           // Fail closed even if the secret backend cannot compensate. The
           // backend must independently expire/reconcile incomplete ceremonies.
@@ -296,6 +331,13 @@ export class CalendarGoogleOAuthAuthorizationApplication {
       expiresAt,
       consumedAt: null,
     });
+    const access = verifierAccess({
+      secretReference: verifierSecretReference,
+      stateId,
+      workspaceId,
+      userId,
+      expiresAt,
+    });
 
     try {
       const persisted = await this.states.createAuthorizationState(record);
@@ -304,7 +346,7 @@ export class CalendarGoogleOAuthAuthorizationApplication {
       }
     } catch {
       try {
-        await this.verifiers.deleteVerifier(verifierSecretReference);
+        await this.verifiers.deleteVerifier(access);
       } catch {
         // The public result still fails closed. Operators need independent
         // secret-store expiry/reconciliation for cleanup after a failed saga.
@@ -379,7 +421,15 @@ export class CalendarGoogleOAuthAuthorizationApplication {
     let verifier: string;
     try {
       verifier = requireVerifier(
-        await this.verifiers.readVerifier(expected.verifierSecretReference),
+        await this.verifiers.readVerifier(
+          verifierAccess({
+            secretReference: expected.verifierSecretReference,
+            stateId,
+            workspaceId,
+            userId,
+            expiresAt: expected.expiresAt,
+          }),
+        ),
       );
     } catch (error) {
       if (error instanceof CalendarGoogleOAuthAuthorizationDependencyError) {
