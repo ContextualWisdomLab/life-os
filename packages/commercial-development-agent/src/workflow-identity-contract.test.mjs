@@ -19,14 +19,16 @@ function namedStep(source, name) {
 describe('OpenCode identity workflow boundary', () => {
   it('allows only the reviewed verifier rather than direct CLI identity probes', () => {
     const verify = namedStep(workflow, 'Verify the exact OpenCode installation');
+    const forbidden =
+      /\b(?:pnpm[^\n]*\bexec(?:\s+--)?\s+)?opencode\s+(?:--(?:version|help)|run\s+--help)\b/u;
 
     expect(verify).toContain(
       'node packages/commercial-development-agent/src/verify-opencode-identity.mjs',
     );
     expect(verify).toContain('unset NODE_OPTIONS');
-    expect(verify).not.toMatch(/\bopencode\s+--(?:version|help)\b/u);
-    expect(verify).not.toMatch(
-      /\bexec(?:\s+--)?\s+opencode\s+--(?:version|help)\b/u,
-    );
+    expect(verify).not.toMatch(forbidden);
+    expect('opencode --version').toMatch(forbidden);
+    expect('pnpm exec -- opencode --help').toMatch(forbidden);
+    expect('pnpm exec -- opencode run --help').toMatch(forbidden);
   });
 });
