@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { classifyWorkflowRegistry } from './workflow-registry.mjs';
+import {
+  classifyWorkflowRegistry,
+  collectWorkflowRegistrySnapshot,
+} from './workflow-registry.mjs';
 
 const SHA = 'f'.repeat(40);
+const TREE_SHA = 'a'.repeat(40);
+const OTHER_TREE_SHA = 'b'.repeat(40);
+const REPOSITORY = 'ContextualWisdomLab/life-os';
 const WORKFLOW_PATH = '.github/workflows/ci.yml';
 
 function workflow(state) {
@@ -12,6 +18,27 @@ function workflow(state) {
     name: 'CI',
     path: WORKFLOW_PATH,
     state,
+  };
+}
+
+function inventoryClient(treeResponseSha = TREE_SHA) {
+  return {
+    async requestJson(path) {
+      if (path === `/repos/${REPOSITORY}`) return { default_branch: 'main' };
+      if (path === `/repos/${REPOSITORY}/branches/main`) {
+        return { commit: { sha: SHA } };
+      }
+      if (path === `/repos/${REPOSITORY}/git/commits/${SHA}`) {
+        return { sha: SHA, tree: { sha: TREE_SHA } };
+      }
+      if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
+        return { sha: treeResponseSha, truncated: false, tree: [] };
+      }
+      if (path.endsWith('per_page=100&page=1')) {
+        return { total_count: 0, workflows: [] };
+      }
+      throw new Error(`unexpected ${path}`);
+    },
   };
 }
 
@@ -98,5 +125,16 @@ test('fails closed when multiple workflow identities claim one repository path',
         ],
       }),
     /repository path.*ambiguous/i,
+  );
+});
+
+test('fails closed when the recursive tree response is not the commit tree', async () => {
+  await assert.rejects(
+    collectWorkflowRegistrySnapshot(
+      inventoryClient(OTHER_TREE_SHA),
+      REPOSITORY,
+      SHA,
+    ),
+    /tree evidence.*inconsistent/i,
   );
 });
