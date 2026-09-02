@@ -111,17 +111,29 @@ test('Habit creation requires an explicit active submission', () => {
   assert.equal(created.message, 'Habit created.');
 });
 
-test('duplicate creation evidence cannot replace an existing Habit', () => {
+test('invalid creation evidence fails closed without stranding the mutation lock', () => {
   const loaded = loadedState();
-  const submitting = reduceHabitsWorkspaceState(loaded, {
-    type: 'submit-started',
-  });
   assert.equal(
-    reduceHabitsWorkspaceState(submitting, {
+    reduceHabitsWorkspaceState(loaded, {
       type: 'submit-succeeded',
       habit,
     }),
-    submitting,
+    loaded,
+  );
+
+  const submitting = reduceHabitsWorkspaceState(loaded, {
+    type: 'submit-started',
+  });
+  const rejected = reduceHabitsWorkspaceState(submitting, {
+    type: 'submit-succeeded',
+    habit,
+  });
+  assert.equal(rejected.status, 'unavailable');
+  assert.equal(rejected.submitting, false);
+  assert.deepEqual(rejected.habits, [habit]);
+  assert.equal(
+    rejected.message,
+    'Habit creation returned invalid durable evidence. Existing habits are unchanged.',
   );
 });
 
