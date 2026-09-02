@@ -57,15 +57,18 @@ docker compose up -d
 pnpm dev
 ```
 
-Existing local PostgreSQL volumes created before Notification runtime-role provisioning were initialized with the historical local administrator credential `lifeos`/`lifeos`. Do not delete those volumes just to upgrade. Leave `POSTGRES_PASSWORD` unset so the Compose-only compatibility fallback uses the stored historical password, or set it to the administrator password already stored by the volume; changing the environment value does not rotate an initialized PostgreSQL role. Set a fresh `NOTIFICATION_RUNTIME_DATABASE_PASSWORD` for the separate least-privilege Notification runtime role, then provision that role before starting the full stack:
+`POSTGRES_PASSWORD` and `NOTIFICATION_RUNTIME_DATABASE_PASSWORD` are required local credentials. Keep them distinct and replace the example placeholders before Compose startup. New local volumes never fall back to the historical public `lifeos` administrator password.
+
+Existing PostgreSQL volumes created before explicit local credential provisioning may still store the historical `lifeos` administrator password. Do not delete those volumes to upgrade and do not restore the old Compose fallback. Supply the current stored password only through `LEGACY_POSTGRES_PASSWORD`, set a new `POSTGRES_PASSWORD`, keep a distinct `NOTIFICATION_RUNTIME_DATABASE_PASSWORD`, and run the bounded rotation path once:
 
 ```bash
-docker compose up -d postgres
-docker compose run --rm --no-deps notification-db-provision
-docker compose up -d
+LEGACY_POSTGRES_PASSWORD='<current legacy password>' \
+POSTGRES_PASSWORD='<new local administrator password>' \
+NOTIFICATION_RUNTIME_DATABASE_PASSWORD='<distinct runtime password>' \
+infra/postgres/provision/upgrade-legacy-local.sh
 ```
 
-Fresh local installations should still copy `.env.example` and replace its placeholder credentials before startup. The `lifeos` fallback exists only to preserve pre-existing local development volumes; it is not a production credential policy.
+The upgrade script starts the existing volume without changing its stored role, authenticates with the operator-supplied legacy credential, rotates the `lifeos` administrator inside PostgreSQL, verifies the new credential, and then provisions the least-privilege Notification runtime role. After it succeeds, persist the new values in your untracked `.env`; `LEGACY_POSTGRES_PASSWORD` is no longer needed.
 
 Default endpoints:
 
