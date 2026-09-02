@@ -1,9 +1,14 @@
+/** Server-authoritative durable Goal projection returned by the authenticated planning BFF. */
 export interface GoalsWorkspaceGoal {
   readonly id: string;
   readonly title: string;
   readonly createdAt: string;
 }
 
+/**
+ * Browser presentation state for the Goals workspace. Failure states may retain
+ * previously loaded durable evidence; only `ready` permits a new Goal submission.
+ */
 export type GoalsWorkspaceStatus =
   | 'loading'
   | 'ready'
@@ -11,6 +16,10 @@ export type GoalsWorkspaceStatus =
   | 'unavailable'
   | 'offline';
 
+/**
+ * Browser-only Goals workspace state. `goals` contains only BFF-returned durable
+ * evidence, while `submitting` and `message` describe the current UI operation.
+ */
 export interface GoalsWorkspaceState {
   readonly status: GoalsWorkspaceStatus;
   readonly goals: readonly GoalsWorkspaceGoal[];
@@ -18,6 +27,10 @@ export interface GoalsWorkspaceState {
   readonly message: string | null;
 }
 
+/**
+ * Reducer inputs emitted by browser operations and validated BFF outcomes.
+ * Success events carry server evidence; failure events never carry workspace authority.
+ */
 export type GoalsWorkspaceEvent =
   | { readonly type: 'load-started' }
   | {
