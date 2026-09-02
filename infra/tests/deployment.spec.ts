@@ -150,6 +150,13 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('kubectl diff --server-side');
   });
 
+  it('requires an explicit externally verified Identity drain before the breaking semantic rename', () => {
+    expect(workflow).toContain('identity_service_drained:');
+    expect(workflow).toContain(
+      "PGOPTIONS: ${{ inputs.identity_service_drained && '-c life_os.identity_schema_rename_confirmation=identity-service-drained' || '' }}",
+    );
+  });
+
   it('recovers captured state after rollout or partial apply failure', () => {
     expect(workflow).toContain('WEB_PRIOR_REVISION');
     expect(workflow).toContain('GATEWAY_PRIOR_REVISION');
