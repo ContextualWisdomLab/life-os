@@ -80,6 +80,23 @@ test('rejects two Weekly Review records for the same Monday even when IDs differ
   assert.deepEqual(state.records, []);
 });
 
+test('rejects duplicate daily ritual periods that the persistence contract cannot produce', () => {
+  const dailyPlanning = Object.freeze({
+    ...record(REVIEW_ID, '2026-09-02'),
+    ritualKind: 'daily-planning' as const,
+  });
+  const duplicateDailyPlanning = Object.freeze({
+    ...record(SECOND_REVIEW_ID, '2026-09-02'),
+    ritualKind: 'daily-planning' as const,
+  });
+  const state = reduceReviewWorkspaceState(createReviewWorkspaceState(), {
+    type: 'history-loaded',
+    records: [dailyPlanning, duplicateDailyPlanning],
+  });
+  assert.equal(state.status, 'unavailable');
+  assert.deepEqual(state.records, []);
+});
+
 test('requires an active explicit submission before accepting completion evidence', () => {
   const ready = reduceReviewWorkspaceState(createReviewWorkspaceState(), {
     type: 'history-loaded',
