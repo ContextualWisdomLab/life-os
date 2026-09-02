@@ -140,7 +140,7 @@ test('paginates the complete registry and binds receipts to an unchanged default
           truncated: false,
           tree: [
             { type: 'blob', path: '.github/dependabot.yml' },
-            { type: 'blob', path: '.github/workflows/ci.yml' },
+            { type: 'blob', mode: '100644', path: '.github/workflows/ci.yml' },
           ],
         };
       }
@@ -170,8 +170,11 @@ test('paginates the complete registry and binds receipts to an unchanged default
   assert.equal(result.workflow_count, 101);
   assert.equal(result.active_orphans.length, 100);
   assert.deepEqual(result.present.map((entry) => entry.id), [101]);
-  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 2);
-  assert.equal(calls.at(-1), `/repos/${REPOSITORY}/branches/main`);
+  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 4);
+  assert.deepEqual(calls.slice(-2), [
+    `/repos/${REPOSITORY}/branches/main`,
+    `/repos/${REPOSITORY}`,
+  ]);
 });
 
 test('fails closed on incomplete or inconsistent workflow pagination', async () => {
