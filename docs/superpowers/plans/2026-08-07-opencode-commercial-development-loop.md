@@ -1,340 +1,93 @@
-# NVIDIA-backed OpenCode commercial development loop implementation plan
+# Contextual-orchestrator OpenCode commercial development loop implementation plan
 
-> **Execution method:** Follow test-driven development and verification-before-completion. The deterministic selector, prompt builder, diff validator, receipt validator, and workflow contract are implemented before any live OpenCode invocation is enabled.
+> **Execution method:** Test-driven development, exact-head verification, and normal pull-request review. The deterministic selector, prompt builder, diff validator, receipt validator, gateway boundary, and workflow contracts are proved before model-assisted mutation is eligible for merge.
 
-**Goal:** Add one hourly and manually dispatchable OpenCode development loop that uses only `NVIDIA_NIM_API_KEY`, creates at most one bounded same-repository draft pull request, and leaves the existing deterministic audit/review/merge loop authoritative.
+**Goal:** Provide one hourly/manual OpenCode development lane that routes exclusively through contextual-orchestrator `orchestrator/free`, creates at most one bounded same-repository draft pull request, and leaves deterministic audit/review/merge authority independent of model availability.
 
-**Architecture:** `@life-os/commercial-development-agent` owns versioned deterministic policy. GitHub Actions gathers bounded public repository evidence, creates one UUIDv4 automation branch, runs one exact pinned OpenCode CLI process without a GitHub token, validates the resulting diff, then commits and opens a draft pull request through a separate credentialed step. Provider absence produces a sanitized receipt and no repository mutation.
+**Architecture:** `@life-os/commercial-development-agent` owns LifeOS policy. GitHub Actions gathers bounded repository evidence, creates an isolated UUIDv4 worktree, runs an exact pinned OpenCode process without GitHub or upstream provider credentials, connects it only to an authenticated loopback contextual-orchestrator gateway, validates the candidate, and then lets a separate trusted step commit and open a draft PR. Provider discovery and credentials remain contextual-orchestrator authority.
 
-**Tech stack:** Node.js 22, TypeScript-free ESM for a minimal runtime surface, Vitest, GitHub Actions, GitHub CLI, exact OpenCode package pin, NVIDIA NIM hosted inference, existing commercial-readiness CLI.
+**Dependency rule:** Do not consume a mutable contextual-orchestrator branch head in production. The gateway-auth prerequisite must land upstream, be published as an immutable reviewed release, and then be consumed by exact released identity before this PR can become Ready.
 
 ## Global constraints
 
-- Never reference or use `COPILOT_GITHUB_TOKEN`.
-- Do not change the credential scheme of existing review agents.
-- `NVIDIA_NIM_API_KEY` is visible only to the loopback NVIDIA credential bridge step.
-- OpenCode receives no `GITHUB_TOKEN` or `GH_TOKEN`.
-- All internal run, branch, and receipt identifiers are UUIDv4 strings.
-- The model cannot change `.github/`, `infra/`, secrets, repository settings, lockfiles, dependency manifests, releases, tags, deployments, or branch protection in the initial slice.
-- The model never commits, pushes, opens a pull request, comments, merges, or publishes artifacts.
-- Deterministic code validates the issue, prompt, diff, exact base SHA, receipt, and draft-only pull-request contract.
-- One run creates at most one feature branch, one commit, and one draft pull request.
-- Existing CI, AppGuardrail, Semgrep, Security Scan, Commercial Readiness, CodeRabbit, and human review remain the merge gate.
-- Every production declaration has explanatory JSDoc and package coverage remains 100%.
-- Realistic prompt-injection and buyer-gap fixtures are mandatory.
+- Never use `COPILOT_GITHUB_TOKEN`.
+- Do not repurpose review-agent credentials.
+- Provider credentials (`BYTEZ_API_KEY`, `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`) are scoped only to contextual-orchestrator gateway bootstrap.
+- `opencode_model` receives only the per-run loopback gateway token and the virtual `orchestrator/free` model label.
+- Do not hard-code a provider, provider group, paid fallback, or direct provider URL in LifeOS model execution.
+- Do not persist or replay raw provider/gateway logs, prompts, responses, hidden reasoning, source diffs, or credentials.
+- Do not terminate reasoning, streaming, or tool-call work solely because a fixed request/chunk/model wall timer elapsed. A separate workflow-level administrative timeout may remain.
+- No force-push, self-approval, admin bypass, workflow self-modification, release mutation, deployment mutation, or direct `main` push.
 
----
+## Completed implementation sequence
 
-## Task 1: Define the versioned policy and schemas
+### 1. Deterministic policy package
 
-**Files**
+Keep issue selection, prompt construction, UUIDv4 validation, diff limits, object-type rejection, prohibited-content rules, credential-free receipt serialization, and exact-base lease checks in repository-owned deterministic code. Maintain 100% package coverage under the repository policy.
 
-- Create: `packages/commercial-development-agent/package.json`
-- Create: `packages/commercial-development-agent/src/contracts.mjs`
-- Create: `packages/commercial-development-agent/src/contracts.test.mjs`
-- Create: `product/opencode-commercial-development-policy.json`
+### 2. Reviewed OpenCode identity
 
-### RED
+Install exact `opencode-ai@1.18.9` from the lockfile. Verify it only through `verify-opencode-identity.mjs`, which runs the binary without `NODE_OPTIONS`, requires exact version equality, detects `--pure` from combined stdout/stderr, and validates the reviewed `run --help` contract. Regression tests must reject direct version/help/run-help probes in workflow YAML.
 
-Write tests for:
+### 3. Contextual-orchestrator gateway boundary
 
-- UUIDv4 run and branch identifiers;
-- exact lowercase 40-character base SHA;
-- bounded repository, issue title/body/URL, and model label;
-- fixed status and reason-code vocabularies;
-- exact receipt keys and credential-free serialization;
-- multiword package/policy identifiers;
-- immutable normalized policy;
-- rejection of unknown keys, control bytes, numeric-only internal IDs, oversized strings, secret-shaped fields, and unsafe limits.
+Replace the obsolete direct NVIDIA bridge with `contextual_orchestrator_gateway/orchestrator/free`. Disable OpenCode project-local configuration discovery, sharing, auto-update, and model-catalog refresh. Register and whitelist only the virtual route.
 
-Run:
+Create separate `opencode_model` and `opencode_gateway` system users. During model execution, UID-based firewall rules permit the model account to reach only the configured IPv4 loopback gateway port and deny IPv6/other egress. Provider credentials are never injected into the model account.
 
-```bash
-pnpm --filter @life-os/commercial-development-agent test
-```
+### 4. Sidecar bootstrap safety
 
-Expected: module-not-found or failing contract assertions.
+`lifeos_contextual_orchestrator_sidecar.sh` must:
 
-### GREEN
+- require a per-run gateway token and at least one governed provider credential;
+- validate decimal port syntax, strip leading zeros, and enforce 1024–65535 before arithmetic;
+- install contextual-orchestrator from an immutable reviewed release identity once available;
+- fail closed when gateway authentication cannot be established;
+- expose no credential/provider body in operator diagnostics.
 
-Implement pure validators and immutable normalized contracts. Keep GitHub issue numbers as external references only; never reuse them as internal run identifiers.
+Current state: decimal-port and missing-provider execution regressions are implemented, but immutable released gateway-auth support is still an upstream prerequisite.
 
-### REFACTOR
+### 5. Timeout and diagnostic authority
 
-Ensure every exported declaration has JSDoc and no validator retains rejected input in an error message.
+Remove provider `timeout` and `chunkTimeout` settings from the OpenCode route and remove the model-level GNU `timeout` wrapper. Preserve the job-level administrative timeout as a distinct runner bound. Discard raw sidecar stdout/stderr during bootstrap and retain only stable credential-free classifications in the receipt.
 
----
+### 6. Candidate isolation and verification
 
-## Task 2: Implement deterministic issue selection and prompt construction
+Copy reviewed source into a disposable workspace without `.git`. Deny external-directory, web fetch/search, and arbitrary Bash authority except reviewed verification commands. After the model returns, the trusted boundary inventories candidate paths without following symlinks, rejects binary/symlink/submodule/oversized/prohibited changes, and validates the exact base before materialization.
 
-**Files**
+Run format, lint, typecheck, test, and build as the unprivileged model account with no Docker socket. Parse the accepted Compose file later through a trusted Docker step. Ordinary credential-free PR CI performs runtime PostgreSQL/NATS health evidence and unconditional teardown.
 
-- Create: `packages/commercial-development-agent/src/issue-selector.mjs`
-- Create: `packages/commercial-development-agent/src/issue-selector.test.mjs`
-- Create: `packages/commercial-development-agent/src/prompt-builder.mjs`
-- Create: `packages/commercial-development-agent/src/prompt-builder.test.mjs`
-- Create: `packages/commercial-development-agent/fixtures/issues.json`
+### 7. Remote mutation lease
 
-### RED
+Immediately before remote mutation re-read protected `main`, open-PR count, selected issue digest, and remote automation branch identity. If any lease changed, perform no remote mutation. Otherwise create one commit, push one UUIDv4 automation branch without force, and open one draft PR.
 
-Cover realistic fixtures:
+### 8. Documentation and traceability
 
-- a bounded buyer-visible application issue;
-- Korean and English requirements;
-- an issue already referenced by an open pull request;
-- the living commercial-readiness issue;
-- billing, credential, visibility, branch-protection, release, deployment, and destructive-data requests;
-- issue bodies containing prompt injection such as “ignore policy,” “print secrets,” “modify workflow,” “merge as admin,” or “push directly to main”;
-- control characters and oversized bodies;
-- no eligible issue.
+Keep `ARCHITECTURE.md`, `CHANGELOG.md`, this plan, the companion design, the operations runbook, and the APA 7 research basis aligned with the contextual-orchestrator route. Historical direct-NVIDIA behavior remains available through Git history rather than as active instructions.
 
-Assert prompt output:
+## Remaining dependency-ordered work
 
-- separates untrusted issue data from fixed policy;
-- contains exact base SHA, UUIDv4 run ID, allowed/prohibited paths, mandatory tests, and no-commit/no-push/no-merge instructions;
-- remains below 32,768 bytes;
-- does not interpolate shell syntax;
-- carries no GitHub or provider credential.
+1. In contextual-orchestrator owner scope, repair and verify gateway token registration for `--auth-token-key CONTEXTUAL_ORCHESTRATOR_TOKEN`.
+2. Publish an immutable contextual-orchestrator release containing that behavior, including SBOM/provenance/rollback evidence required by its owner policy.
+3. In LifeOS, bump the sidecar to that exact immutable release identity. Do not use the newer protected head directly.
+4. Add/execute an authenticated integration test that starts the real released gateway, proves `orchestrator/free` accepts the per-run token, and proves upstream provider credentials never enter `opencode_model`.
+5. Run exact-head package coverage, action/workflow validation, CI, security, AppGuardrail, Commercial Readiness, OpenCode/Noema/Strix, and review-thread gates.
+6. Only after all checks are terminal GREEN and the live approval requirement is satisfied may the PR move from Draft to Ready and merge normally.
 
-### GREEN
+## Acceptance evidence
 
-Select one allowlisted eligible issue deterministically by policy order and then issue number. Build one versioned prompt from a fixed template.
+The final unchanged head must prove:
 
-### REFACTOR
+- exact OpenCode identity and direct-help regression coverage;
+- gateway-only provider-secret mapping;
+- no direct-provider route/configuration;
+- decimal-port normalization and range failures;
+- no raw gateway diagnostic retention/replay;
+- no fixed request/chunk/model elapsed-time termination;
+- authenticated real-gateway execution against an immutable contextual-orchestrator release;
+- diff/path/object/credential/base-lease failure cases;
+- credential-free receipt serialization;
+- 100% package coverage and repository docstring/edge-case policy;
+- all live required checks and review threads resolved without bypass.
 
-Store prompt-injection terms as policy categories, not a single brittle substring check. Treat detection as a reason to quote and constrain issue text, not as permission to execute it.
-
----
-
-## Task 3: Implement the deterministic diff validator
-
-**Files**
-
-- Create: `packages/commercial-development-agent/src/diff-validator.mjs`
-- Create: `packages/commercial-development-agent/src/diff-validator.test.mjs`
-- Create: `packages/commercial-development-agent/fixtures/diffs/`
-
-### RED
-
-Use real temporary Git repositories to prove:
-
-- a realistic bounded application/test/documentation diff is accepted;
-- 25 changed files, 131,073 changed bytes, or 3,001 changed lines are rejected;
-- `.github`, `.env`, `infra`, lockfile, manifest, release, coverage, build, cache, binary, symlink, submodule, and path-traversal changes are rejected;
-- `COPILOT_GITHUB_TOKEN`, GitHub-token persistence, secret-shaped values, force push, tag/release, branch-protection, administrative merge, destructive SQL/shell, and credential-output patterns are rejected;
-- deleted security/legal files are rejected;
-- base drift is rejected;
-- empty changes produce `no_change` rather than a pull request;
-- deterministic counts and sorted path evidence are returned without source content.
-
-### GREEN
-
-Build deterministic evidence by comparing the trusted checkout with the candidate workspace through filesystem metadata and Python `filecmp`/`difflib`, then validate the resulting JSON with `validateCommercialDevelopmentDiff`. After materializing an accepted candidate, run `git diff --check` as a separate pre-mutation check. Reject before any remote push.
-
-### REFACTOR
-
-Keep path policy in the versioned JSON policy and stable source-level prohibitions in code. Error objects expose only stable reason codes.
-
----
-
-## Task 4: Implement credential-free receipts and the CLI
-
-**Files**
-
-- Create: `packages/commercial-development-agent/src/receipt.mjs`
-- Create: `packages/commercial-development-agent/src/receipt.test.mjs`
-- Create: `packages/commercial-development-agent/src/cli.mjs`
-- Create: `packages/commercial-development-agent/src/cli.test.mjs`
-
-### RED
-
-Cover:
-
-- issue selection and prompt-file generation;
-- diff validation and `completed`, `no_eligible_issue`, `provider_credential_missing`, `provider_unavailable`, `diff_rejected`, `base_changed`, and `verification_failed` receipts;
-- private temporary files with atomic publication;
-- receipt redaction of prompt, issue body, source diff, model output, credentials, stack traces, and provider bodies;
-- exact timestamps and UUIDv4 run IDs;
-- invalid CLI arguments and paths;
-- no shell interpolation of issue text.
-
-### GREEN
-
-Expose commands:
-
-```text
-commercial-development-agent select
-commercial-development-agent prompt
-commercial-development-agent validate-diff
-commercial-development-agent receipt
-```
-
-All commands read JSON from private files and write only versioned JSON to explicitly supplied absolute paths.
-
-### REFACTOR
-
-Use one production filesystem seam and one command seam, each exhaustively tested.
-
----
-
-## Task 5: Pin and verify OpenCode
-
-**Files**
-
-- Modify: `packages/commercial-development-agent/package.json`
-- Modify: `pnpm-lock.yaml`
-- Create then remove before merge: `.github/workflows/bootstrap-opencode-commercial-agent.yml`
-
-### RED
-
-Add a workflow-contract test that rejects:
-
-- floating OpenCode package versions;
-- installer pipes such as `curl | sh`;
-- mutable GitHub Action tags;
-- missing CLI-version verification;
-- OpenCode invocation with GitHub credentials;
-- provider credentials outside the one bridge step;
-- provider-side `/v1/models` discovery instead of one offline, explicitly whitelisted NVIDIA catalog entry;
-- project-local OpenCode configuration that can override the private provider boundary;
-- Docker commands executed as the isolated model user;
-- Compose parsing that does not select the accepted candidate file explicitly;
-- missing pull-request CI startup, health probes, diagnostics, or teardown for the Compose infrastructure.
-
-### GREEN
-
-On the feature branch only, a temporary bootstrap workflow:
-
-1. resolves the current official OpenCode npm package once;
-2. adds it with an exact version;
-3. updates `pnpm-lock.yaml`;
-4. verifies the installed `opencode --version` and `opencode run --help` contract through an isolated spawn that cannot lose `--version` to `hideBin`;
-5. runs all package tests;
-6. commits the exact lock evidence;
-7. removes itself before merge.
-
-The final branch contains no floating version or write-capable bootstrap workflow.
-
----
-
-## Task 6: Add the hourly/manual GitHub Actions workflow
-
-**Files**
-
-- Create: `.github/workflows/opencode-commercial-development.yml`
-- Create: `packages/commercial-development-agent/src/workflow-contract.test.mjs`
-
-### RED
-
-Assert:
-
-- hourly schedule and manual dispatch;
-- no `pull_request_target`;
-- all actions pinned by full SHA;
-- single-flight concurrency;
-- 120-minute workflow and 90-minute OpenCode timeout;
-- one `develop` job with separate selection, credential-bridge, model, validation, and credentialed mutation steps;
-- `NVIDIA_NIM_API_KEY` appears in exactly one step;
-- `GITHUB_TOKEN`, `GH_TOKEN`, and review-agent credentials are absent from the OpenCode step;
-- `COPILOT_GITHUB_TOKEN` is absent from the repository workflow;
-- branch names use UUIDv4 suffixes;
-- captured main SHA must still match before push;
-- only draft pull requests are created;
-- no merge, admin, release, deployment, secret, variable, environment, or repository-setting endpoint is called;
-- report artifact contains only the credential-free receipt and has seven-day retention;
-- cleanup runs with `always()` and removes private OpenCode configuration, prompt, model output, logs, and credential aliases.
-
-### GREEN
-
-Workflow sequence:
-
-1. deterministic audit and open-PR drain check;
-2. bounded issue evidence collection;
-3. issue selection and prompt creation;
-4. UUIDv4 branch creation from exact main SHA;
-5. disable project-local OpenCode configuration, explicitly reload reviewed repository instructions, register and whitelist the selected NVIDIA model independently of the bundled snapshot, and validate the effective catalog offline;
-6. loopback bridge invocation with the NVIDIA credential, followed by OpenCode with only a placeholder provider key and no GitHub credential;
-7. deterministic diff validation;
-8. credential-free repository format, lint, typecheck, test, and build gates under the isolated model account;
-9. explicit candidate-file Compose parsing in a separate trusted step without granting the model account Docker-socket authority;
-10. base-SHA recheck;
-11. commit and push the bounded branch;
-12. create a draft pull request whose normal CI boots digest-pinned Compose infrastructure, executes a PostgreSQL query, and validates NATS JetStream before validation can pass;
-13. publish a sanitized receipt that distinguishes model-catalog configuration failure from provider unavailability;
-14. clean temporary files.
-
-Provider absence or failure ends with a successful sanitized unavailable receipt and no branch push.
-
-### REFACTOR
-
-Move reusable deterministic shell behavior into package CLI commands. Keep the workflow declarative and easy to audit.
-
----
-
-## Task 7: Add realistic end-to-end dry-run evidence
-
-**Files**
-
-- Create: `packages/commercial-development-agent/src/dry-run.integration.test.mjs`
-- Create: `packages/commercial-development-agent/fixtures/repository/`
-
-### RED
-
-Build a temporary repository fixture containing:
-
-- one small web capability gap;
-- tests and documentation expectations;
-- hostile issue text attempting workflow and secret changes;
-- an existing open pull-request reference;
-- a base SHA that can be advanced during validation.
-
-### GREEN
-
-Use a deterministic fake OpenCode seam to write the expected bounded change. Prove selection → prompt → diff validation → verification receipt → draft-PR request payload while asserting no main mutation, no secret exposure, no unsafe path, and no merge request.
-
-### REFACTOR
-
-Keep the fake agent output shaped as ordinary source changes, not a privileged internal shortcut.
-
----
-
-## Task 8: Document operations, standards, and architecture
-
-**Files**
-
-- Create: `docs/operations/opencode-commercial-development-loop.md`
-- Create: `docs/research/2026-08-07-opencode-commercial-development-loop-standards.md`
-- Modify: `AGENTS.md`
-- Modify: `CLAUDE.md`
-- Modify: `ARCHITECTURE.md`
-- Modify: `README.md`
-- Modify: `CHANGELOG.md`
-- Modify: `product/capabilities.json`
-
-Document:
-
-- operator enablement and disablement;
-- exact secret and variable names;
-- credential scope and incident revocation;
-- branch/PR reconciliation;
-- provider outage behavior;
-- path and size policy;
-- OpenCode version update procedure;
-- central `.github` reusable-workflow migration contract;
-- deterministic versus model-assisted responsibilities;
-- route baseline and future orchestration ablations;
-- APA 7 references and publication status;
-- diagrams for trust boundaries and the autonomous loop.
-
----
-
-## Task 9: Complete exact-head review and merge
-
-1. Remove every temporary bootstrap or repair workflow.
-2. Confirm the final diff contains no `COPILOT_GITHUB_TOKEN` and no review-agent credential changes.
-3. Run formatting, package lint, package tests with 100% coverage, root lint/typecheck/test/build, Compose validation, and commercial-readiness tests.
-4. Inspect every human, CodeRabbit, AppGuardrail, Semgrep, Security Scan, and supply-chain finding.
-5. Fix root causes and rerun the exact head.
-6. Resolve only addressed review threads.
-7. Merge only when all required checks and statuses succeed, no changes are requested, no actionable thread remains, and the base SHA has not drifted.
-8. Leave the hourly workflow enabled only after its dry-run and permission contracts pass.
+If the immutable upstream release is unavailable, the correct result is a Draft blocked on the owner release path, not a mutable dependency pin or weakened acceptance gate.
