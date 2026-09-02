@@ -255,7 +255,7 @@ describe('CodeRabbit OpenCode identity regressions', () => {
       'Verify the exact OpenCode installation',
     );
     const forbidden =
-      /\b(?:pnpm[^\n]*\bexec(?:\s+--)?\s+)?opencode\s+--(?:version|help)\b/u;
+      /\b(?:pnpm[^\n]*\bexec(?:\s+--)?\s+)?opencode\s+(?:--(?:version|help)|run\s+--help)\b/u;
 
     expect(verification).toContain(
       'node packages/commercial-development-agent/src/verify-opencode-identity.mjs',
@@ -263,6 +263,7 @@ describe('CodeRabbit OpenCode identity regressions', () => {
     expect(verification).not.toMatch(forbidden);
     expect('pnpm exec opencode --version').toMatch(forbidden);
     expect('pnpm exec -- opencode --help').toMatch(forbidden);
+    expect('pnpm exec -- opencode run --help').toMatch(forbidden);
   });
 
   it('keeps the verifier entrypoint covered and documents combined help streams', () => {
