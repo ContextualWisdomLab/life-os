@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useReducer, useState } from 'react';
+import { FormEvent, useEffect, useReducer, useRef, useState } from 'react';
 import {
   createGoalsWorkspaceState,
   reduceGoalsWorkspaceState,
@@ -10,7 +10,19 @@ import styles from './goals.module.css';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const CANONICAL_UTC_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const MAXIMUM_TITLE_CHARACTERS = 160;
+
+function isCanonicalUtcTimestamp(value: string): boolean {
+  if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(value)) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function clampTitleInput(value: string): string {
+  return [...value].slice(0, MAXIMUM_TITLE_CHARACTERS).join('');
+}
 
 function isGoal(value: unknown): value is GoalsWorkspaceGoal {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -28,7 +40,7 @@ function isGoal(value: unknown): value is GoalsWorkspaceGoal {
     [...candidate.title].length > 0 &&
     [...candidate.title].length <= MAXIMUM_TITLE_CHARACTERS &&
     typeof candidate.createdAt === 'string' &&
-    Number.isFinite(Date.parse(candidate.createdAt))
+    isCanonicalUtcTimestamp(candidate.createdAt)
   );
 }
 
@@ -40,6 +52,11 @@ function parseGoalCollection(value: unknown): GoalsWorkspaceGoal[] | null {
   return ids.size === value.length ? value : null;
 }
 
+/**
+ * Renders the authenticated Goals workspace from BFF-returned durable evidence.
+ * Browser credentials terminate at the BFF, workspace authority is never supplied
+ * by this component, and stale loads cannot replace a newer server projection.
+ */
 export function GoalsClient() {
   const [state, dispatch] = useReducer(
     reduceGoalsWorkspaceState,
@@ -47,8 +64,11 @@ export function GoalsClient() {
     createGoalsWorkspaceState,
   );
   const [title, setTitle] = useState('');
+  const loadGeneration = useRef(0);
 
   async function loadGoals(): Promise<void> {
+    const generation = loadGeneration.current + 1;
+    loadGeneration.current = generation;
     if (!navigator.onLine) {
       dispatch({ type: 'offline' });
       return;
@@ -61,6 +81,7 @@ export function GoalsClient() {
         credentials: 'same-origin',
         headers: { accept: 'application/json' },
       });
+      if (generation !== loadGeneration.current) return;
       if (response.status === 401) {
         dispatch({ type: 'authentication-required' });
         return;
@@ -70,23 +91,29 @@ export function GoalsClient() {
         return;
       }
       const goals = parseGoalCollection((await response.json()) as unknown);
+      if (generation !== loadGeneration.current) return;
       if (goals === null) {
         dispatch({ type: 'unavailable' });
         return;
       }
       dispatch({ type: 'load-succeeded', goals });
     } catch {
+      if (generation !== loadGeneration.current) return;
       dispatch(navigator.onLine ? { type: 'unavailable' } : { type: 'offline' });
     }
   }
 
   useEffect(() => {
     void loadGoals();
-    const handleOffline = () => dispatch({ type: 'offline' });
+    const handleOffline = () => {
+      loadGeneration.current += 1;
+      dispatch({ type: 'offline' });
+    };
     const handleOnline = () => void loadGoals();
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnline);
     return () => {
+      loadGeneration.current += 1;
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
     };
@@ -136,6 +163,7 @@ export function GoalsClient() {
         dispatch({ type: 'unavailable' });
         return;
       }
+      loadGeneration.current += 1;
       dispatch({ type: 'submit-succeeded', goal });
       setTitle('');
     } catch {
@@ -196,17 +224,17 @@ export function GoalsClient() {
                 id="goal-title"
                 name="title"
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={MAXIMUM_TITLE_CHARACTERS}
+                onChange={(event) => setTitle(clampTitleInput(event.target.value))}
                 autoComplete="off"
                 disabled={!canCreate}
                 placeholder="Publish the first reproducible LifeOS release"
+                aria-describedby="goal-title-counter"
               />
               <button type="submit" disabled={!canCreate || title.trim().length === 0}>
                 {state.submitting ? 'Creating…' : 'Create goal'}
               </button>
             </div>
-            <span className={styles.counter}>
+            <span className={styles.counter} id="goal-title-counter">
               {[...title].length}/{MAXIMUM_TITLE_CHARACTERS}
             </span>
           </form>
@@ -229,7 +257,10 @@ export function GoalsClient() {
           {state.status === 'ready' && state.goals.length === 0 ? (
             <div className={styles.emptyState}>
               <h3>No durable goals yet</h3>
-              <p>Create one outcome above. Projects and tasks remain separate until linked deliberately.</p>
+              <p>
+                Create one outcome above. Projects and tasks remain separate until
+                linked deliberately.
+              </p>
             </div>
           ) : null}
 
