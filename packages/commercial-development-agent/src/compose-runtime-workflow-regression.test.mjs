@@ -69,4 +69,11 @@ describe('Compose runtime provisioning workflow', () => {
     );
     expect(legacyUpgrade).not.toContain('POSTGRES_PASSWORD=lifeos');
   });
+
+  it('keeps legacy and replacement administrator credentials out of process arguments during rotation', () => {
+    expect(legacyUpgrade).toContain('\\getenv next_admin_password POSTGRES_PASSWORD');
+    expect(legacyUpgrade).not.toContain('--set=next_admin_password="$POSTGRES_PASSWORD"');
+    expect(legacyUpgrade).not.toContain('-e PGPASSWORD="$LEGACY_POSTGRES_PASSWORD"');
+    expect(legacyUpgrade).not.toContain('-e PGPASSWORD="$POSTGRES_PASSWORD"');
+  });
 });
