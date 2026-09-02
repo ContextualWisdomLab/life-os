@@ -214,9 +214,13 @@ function recurrenceSummary(recurrence: HabitsWorkspaceRecurrence): string {
       : `Every ${recurrence.interval} days`;
   }
   const names = recurrence.weekdays.map(
-    (weekday) => WEEKDAYS.find(([value]) => value === weekday)?.[1] ?? String(weekday),
+    (weekday) =>
+      WEEKDAYS.find(([value]) => value === weekday)?.[1] ?? String(weekday),
   );
-  const cadence = recurrence.interval === 1 ? 'Every week' : `Every ${recurrence.interval} weeks`;
+  const cadence =
+    recurrence.interval === 1
+      ? 'Every week'
+      : `Every ${recurrence.interval} weeks`;
   return `${cadence} · ${names.join(', ')}`;
 }
 
@@ -283,7 +287,9 @@ export function HabitsClient() {
   function toggleWeekday(weekday: number): void {
     setWeekdays((current) => {
       if (current.includes(weekday)) {
-        return current.length === 1 ? current : current.filter((value) => value !== weekday);
+        return current.length === 1
+          ? current
+          : current.filter((value) => value !== weekday);
       }
       return [...current, weekday].sort((left, right) => left - right);
     });
@@ -406,8 +412,9 @@ export function HabitsClient() {
           <a href="/goals">Goals</a>
           <a href="/projects">Projects</a>
           <a href="/tasks">Tasks</a>
-          <a href="/habits" aria-current="page">Habits</a>
-          <a href="/review">Review</a>
+          <a href="/habits" aria-current="page">
+            Habits
+          </a>
         </nav>
       </header>
 
@@ -422,23 +429,33 @@ export function HabitsClient() {
         </header>
 
         <div className={styles.workspaceGrid}>
-          <section className={styles.habitPane} aria-labelledby="durable-habits-heading">
+          <section
+            className={styles.habitPane}
+            aria-labelledby="durable-habits-heading"
+          >
             <div className={styles.sectionHeading}>
               <div>
                 <p className={styles.eyebrow}>Durable evidence</p>
                 <h2 id="durable-habits-heading">Your habit rules</h2>
               </div>
-              <span aria-label={`${state.habits.length} habits`}>{state.habits.length}</span>
+              <span aria-label={`${state.habits.length} habits`}>
+                {state.habits.length}
+              </span>
             </div>
 
             <div className={styles.status} aria-live="polite">
               {state.status === 'loading' ? <p>Loading durable habits…</p> : null}
-              {state.status === 'offline' ? <p>You are offline. Existing habits are read-only.</p> : null}
+              {state.status === 'offline' ? (
+                <p>You are offline. Existing habits are read-only.</p>
+              ) : null}
               {state.status === 'authentication-required' ? (
                 <p>Sign in before changing the durable Habits workspace.</p>
               ) : null}
               {state.status === 'unavailable' ? (
-                <p>Habit evidence is temporarily unavailable. Retry without replacing existing records.</p>
+                <p>
+                  Habit evidence is temporarily unavailable. Retry without replacing
+                  existing records.
+                </p>
               ) : null}
               {state.message ? <p>{state.message}</p> : null}
             </div>
@@ -467,7 +484,10 @@ export function HabitsClient() {
             ) : null}
           </section>
 
-          <section className={styles.creationPane} aria-labelledby="create-habit-heading">
+          <section
+            className={styles.creationPane}
+            aria-labelledby="create-habit-heading"
+          >
             <div className={styles.sectionHeading}>
               <div>
                 <p className={styles.eyebrow}>New rule</p>
@@ -481,7 +501,9 @@ export function HabitsClient() {
                 id="habit-title"
                 name="title"
                 value={title}
-                onChange={(event) => setTitle(clampTitleInput(event.target.value))}
+                onChange={(event) =>
+                  setTitle(clampTitleInput(event.target.value))
+                }
                 maxLength={320}
                 autoComplete="off"
                 disabled={!canCreate}
@@ -579,13 +601,20 @@ export function HabitsClient() {
                 </fieldset>
               ) : null}
 
-              <button type="submit" disabled={!canCreate || title.trim().length === 0}>
+              <button
+                type="submit"
+                disabled={!canCreate || title.trim().length === 0}
+              >
                 {state.submitting ? 'Creating habit…' : 'Create habit'}
               </button>
             </form>
 
             {state.status === 'unavailable' ? (
-              <button className={styles.retry} type="button" onClick={() => void loadHabits()}>
+              <button
+                className={styles.retry}
+                type="button"
+                onClick={() => void loadHabits()}
+              >
                 Retry habit evidence
               </button>
             ) : null}
