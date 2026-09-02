@@ -138,3 +138,23 @@ test('fails closed when the recursive tree response is not the commit tree', asy
     /tree evidence.*inconsistent/i,
   );
 });
+
+test('fails closed when the repository default branch changes during inventory', async () => {
+  const stable = inventoryClient();
+  let metadataReads = 0;
+  const client = {
+    async requestJson(path) {
+      if (path === `/repos/${REPOSITORY}`) {
+        metadataReads += 1;
+        return { default_branch: metadataReads === 1 ? 'main' : 'develop' };
+      }
+      return stable.requestJson(path);
+    },
+  };
+
+  await assert.rejects(
+    collectWorkflowRegistrySnapshot(client, REPOSITORY, SHA),
+    /default branch.*changed.*inventory/i,
+  );
+  assert.equal(metadataReads, 2);
+});
