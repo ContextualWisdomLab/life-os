@@ -123,3 +123,40 @@ test('counts and limits Project titles by Unicode code point', async ({ page }) 
   await expect(titleInput).toHaveValue('😀'.repeat(160));
   await expect(page.getByText('160/160')).toBeVisible();
 });
+
+test('fails closed when the authenticated Goal boundary rejects the session', async ({ page }) => {
+  await page.route('**/api/planning/goals', async (route) => {
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/problem+json',
+      body: JSON.stringify({
+        type: 'about:blank',
+        title: 'Authentication is required',
+        status: 401,
+        code: 'authentication_required',
+      }),
+    });
+  });
+
+  await page.goto('/projects');
+  await expect(
+    page.getByText('Sign in before using the durable Projects workspace.'),
+  ).toBeVisible();
+  await expect(page.getByLabel('Project title')).toHaveCount(0);
+});
+
+test('keeps the Projects workspace usable without horizontal overflow on phone width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeGoals(page);
+  await page.route(`**/api/planning/goals/${firstGoal.id}/projects`, async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/projects');
+  const goalButton = page.getByRole('button', { name: firstGoal.title });
+  await expect(goalButton).toBeVisible();
+  expect(await goalButton.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
+});
