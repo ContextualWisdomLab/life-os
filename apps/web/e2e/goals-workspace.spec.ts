@@ -52,7 +52,7 @@ test('keeps the newest Goals load when an older request finishes last', async ({
 
   await page.goto('/goals');
   await firstStarted;
-  await page.getByRole('button', { name: 'Refresh workspace' }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(page.getByText(freshGoal.title)).toBeVisible();
 
   releaseFirst?.();
@@ -84,6 +84,23 @@ test('fails closed when the Goal projection contains a normalized invalid UTC da
     page.getByText('The Goals workspace is temporarily unavailable.'),
   ).toBeVisible();
   await expect(page.getByText('Invalid timestamp evidence')).toHaveCount(0);
+});
+
+test('counts and limits Goal titles by Unicode code point', async ({ page }) => {
+  await page.route('**/api/planning/goals', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
+  });
+
+  await page.goto('/goals');
+  const titleInput = page.getByLabel('Outcome');
+  await titleInput.fill('😀'.repeat(161));
+
+  await expect(titleInput).toHaveValue('😀'.repeat(160));
+  await expect(page.getByText('160/160')).toBeVisible();
 });
 
 test('keeps the LifeOS brand link at the minimum interactive target height', async ({

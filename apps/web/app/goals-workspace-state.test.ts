@@ -56,6 +56,23 @@ test('successful creation adds only returned durable evidence', () => {
   assert.equal(created.message, 'Goal created.');
 });
 
+test('invalid title stops submission without discarding loaded durable evidence', () => {
+  const loaded = reduceGoalsWorkspaceState(createGoalsWorkspaceState(), {
+    type: 'load-succeeded',
+    goals: [firstGoal],
+  });
+  const submitting = reduceGoalsWorkspaceState(loaded, {
+    type: 'submit-started',
+  });
+  const invalid = reduceGoalsWorkspaceState(submitting, {
+    type: 'invalid-title',
+  });
+
+  assert.deepEqual(invalid.goals, [firstGoal]);
+  assert.equal(invalid.submitting, false);
+  assert.equal(invalid.message, 'Enter a goal between 1 and 160 characters.');
+});
+
 test('authentication and dependency failures keep prior durable evidence visible', () => {
   const loaded = reduceGoalsWorkspaceState(createGoalsWorkspaceState(), {
     type: 'load-succeeded',
