@@ -250,8 +250,11 @@ function workflowPathsFromTree(payload) {
     if (!entry || typeof entry.path !== 'string') continue;
     if (entry.path.startsWith('.github/workflows/')) {
       requireWorkflowPath(entry.path);
-      if (entry.type !== 'blob' || !WORKFLOW_FILE_MODES.has(entry.mode)) {
+      if (entry.type !== 'blob') {
         return invalid('GitHub workflow tree entry is invalid');
+      }
+      if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
+        return invalid('GitHub workflow tree entry mode is invalid');
       }
     }
     if (entry.type === 'blob' && REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path)) {
