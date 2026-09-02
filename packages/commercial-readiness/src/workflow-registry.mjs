@@ -115,6 +115,7 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
   }
 
   const seenIds = new Map();
+  const registeredRepositoryPaths = new Set();
   const present = [];
   const activeOrphans = [];
   const disabledOrphans = [];
@@ -130,15 +131,24 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
 
     if (!REPOSITORY_WORKFLOW_PATH_PATTERN.test(record.path)) {
       dynamic.push(record);
-    } else if (presentPaths.has(record.path)) {
-      if (record.state !== 'active') {
-        return invalid('Workflow registry present workflow is disabled');
-      }
-      present.push(record);
-    } else if (record.state === 'active') {
-      activeOrphans.push(record);
     } else {
-      disabledOrphans.push(record);
+      registeredRepositoryPaths.add(record.path);
+      if (presentPaths.has(record.path)) {
+        if (record.state !== 'active') {
+          return invalid('Workflow registry present workflow is disabled');
+        }
+        present.push(record);
+      } else if (record.state === 'active') {
+        activeOrphans.push(record);
+      } else {
+        disabledOrphans.push(record);
+      }
+    }
+  }
+
+  for (const path of presentPaths) {
+    if (!registeredRepositoryPaths.has(path)) {
+      return invalid('Workflow registry protected-tree workflow is missing from registry');
     }
   }
 
