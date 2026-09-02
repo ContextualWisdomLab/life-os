@@ -3,6 +3,13 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
+const WORKFLOW_STATES = new Set([
+  'active',
+  'deleted',
+  'disabled_fork',
+  'disabled_inactivity',
+  'disabled_manually',
+]);
 const PAGE_SIZE = 100;
 const MAXIMUM_PAGES = 10;
 
@@ -55,6 +62,13 @@ function requireWorkflowPath(value) {
   return value;
 }
 
+function requireWorkflowState(value) {
+  if (typeof value !== 'string' || !WORKFLOW_STATES.has(value)) {
+    return invalid('Workflow registry state is invalid');
+  }
+  return value;
+}
+
 function requireWorkflowRecord(value) {
   if (
     !value ||
@@ -63,10 +77,7 @@ function requireWorkflowRecord(value) {
     value.id <= 0 ||
     typeof value.name !== 'string' ||
     value.name.length === 0 ||
-    value.name.length > 512 ||
-    typeof value.state !== 'string' ||
-    value.state.length === 0 ||
-    value.state.length > 64
+    value.name.length > 512
   ) {
     return invalid('Workflow registry identity is invalid');
   }
@@ -74,7 +85,7 @@ function requireWorkflowRecord(value) {
     id: value.id,
     name: value.name,
     path: requireWorkflowPath(value.path),
-    state: value.state,
+    state: requireWorkflowState(value.state),
   });
 }
 
