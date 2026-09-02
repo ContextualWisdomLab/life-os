@@ -208,6 +208,31 @@ async function collectWorkflowRegistry(client, repository) {
   return invalid('GitHub workflow registry pagination exceeded the page limit');
 }
 
+function workflowRegistriesMatch(left, right) {
+  if (
+    left.total_count !== right.total_count ||
+    left.workflows.length !== right.workflows.length
+  ) {
+    return false;
+  }
+
+  const leftRecords = sortById(left.workflows.map(requireWorkflowRecord));
+  const rightRecords = sortById(right.workflows.map(requireWorkflowRecord));
+  for (let index = 0; index < leftRecords.length; index += 1) {
+    const leftRecord = leftRecords[index];
+    const rightRecord = rightRecords[index];
+    if (
+      leftRecord.id !== rightRecord.id ||
+      leftRecord.name !== rightRecord.name ||
+      leftRecord.path !== rightRecord.path ||
+      leftRecord.state !== rightRecord.state
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Extracts validated repository-owned workflow YAML paths from one complete Git tree.
  *
@@ -305,6 +330,10 @@ export async function collectWorkflowRegistrySnapshot(
   }
   const treePaths = workflowPathsFromTree(treePayload);
   const registry = await collectWorkflowRegistry(client, repository);
+  const confirmedRegistry = await collectWorkflowRegistry(client, repository);
+  if (!workflowRegistriesMatch(registry, confirmedRegistry)) {
+    return invalid('GitHub workflow registry changed during inventory');
+  }
 
   const finalHead = await readDefaultBranchHead(client, repository, defaultBranch);
   if (finalHead !== expected) {
