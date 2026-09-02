@@ -124,6 +124,48 @@ SELECT
 SQL
 }
 
+append_notification_owner_check() {
+  local command_file="$1"
+
+  cat >>"${command_file}" <<'SQL'
+SELECT
+  COALESCE((
+    SELECT pg_get_userbyid(namespace.nspowner) = current_user
+    FROM pg_catalog.pg_namespace AS namespace
+    WHERE namespace.nspname = 'notification_service'
+  ), false)
+  AND COALESCE((
+    SELECT pg_get_userbyid(relation.relowner) = current_user
+    FROM pg_catalog.pg_class AS relation
+    WHERE relation.oid = to_regclass('notification_service.reminder_occurrences')
+  ), false)
+  AND COALESCE((
+    SELECT pg_get_userbyid(relation.relowner) = current_user
+    FROM pg_catalog.pg_class AS relation
+    WHERE relation.oid = to_regclass('notification_service.reminder_outcomes')
+  ), false)
+  AND COALESCE((
+    SELECT pg_get_userbyid(relation.relowner) = current_user
+    FROM pg_catalog.pg_class AS relation
+    WHERE relation.oid = to_regclass('notification_service.inbox_messages')
+  ), false)
+  AND COALESCE((
+    SELECT pg_get_userbyid(procedure.proowner) = current_user
+    FROM pg_catalog.pg_proc AS procedure
+    WHERE procedure.oid = to_regprocedure(
+      'notification_service.reject_reminder_outcome_mutation()'
+    )
+  ), false)
+  AS notification_migration_owner_ready
+\gset
+\if :notification_migration_owner_ready
+\else
+  \echo migration_error=notification_migration_owner_mismatch service=notification
+  \quit 1
+\endif
+SQL
+}
+
 apply_service_migrations() {
   local service_name="$1"
   local database_url_name="$2"
@@ -234,6 +276,9 @@ SQL
       rm -rf "${workspace}"
       fail "migration_digest_invalid:${service_name}:${migration_name}"
     }
+    if [[ "${service_name}" == 'notification' && "${migration_sequence}" != '0001' ]]; then
+      append_notification_owner_check "${command_file}"
+    fi
     append_migration_command \
       "${command_file}" \
       "${service_name}" \
