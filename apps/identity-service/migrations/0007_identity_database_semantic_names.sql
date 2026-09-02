@@ -1,5 +1,25 @@
 BEGIN;
 
+-- This migration is intentionally not expand/contract compatible. Existing Identity
+-- binaries address the legacy object names, while the matching binary addresses the
+-- semantic names below. Require an operator-controlled maintenance boundary before
+-- taking any rename lock so old replicas cannot remain live across the cutover.
+SELECT COALESCE(
+  current_setting('life_os.identity_schema_rename_confirmation', true) =
+    'identity-service-drained',
+  false
+) AS identity_schema_rename_confirmed
+\gset
+\if :identity_schema_rename_confirmed
+\else
+  \echo migration_error=identity_schema_rename_requires_drain service=identity migration=0007_identity_database_semantic_names.sql
+  DO $life_os_identity_rename_guard$
+  BEGIN
+    RAISE EXCEPTION 'LifeOS Identity semantic rename requires a drained service boundary';
+  END
+  $life_os_identity_rename_guard$;
+\endif
+
 -- PostgreSQL table/column renames are metadata-only but take ACCESS EXCLUSIVE locks.
 -- Fail fast instead of extending an application write outage when a busy deployment
 -- cannot acquire the complete rename set promptly.
