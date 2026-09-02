@@ -8,7 +8,7 @@ const TREE_SHA = 'a'.repeat(40);
 const REPOSITORY = 'ContextualWisdomLab/life-os';
 const WORKFLOW_PATH = '.github/workflows/ci.yml';
 
-function clientWithWorkflowTreeMode(mode, type = 'blob') {
+function clientWithWorkflowTreeMode(mode, type = 'blob', workflowPath = WORKFLOW_PATH) {
   return {
     async requestJson(path) {
       if (path === `/repos/${REPOSITORY}`) return { default_branch: 'main' };
@@ -24,7 +24,7 @@ function clientWithWorkflowTreeMode(mode, type = 'blob') {
           truncated: false,
           tree: [
             {
-              path: WORKFLOW_PATH,
+              path: workflowPath,
               mode,
               type,
               sha: 'b'.repeat(40),
@@ -39,7 +39,7 @@ function clientWithWorkflowTreeMode(mode, type = 'blob') {
             {
               id: 1,
               name: 'CI',
-              path: WORKFLOW_PATH,
+              path: workflowPath,
               state: 'active',
             },
           ],
@@ -104,6 +104,18 @@ test('fails closed when a workflow-shaped Git tree entry is not a blob', async (
 test('ignores unrelated non-workflow files inside the workflow directory', async () => {
   const snapshot = await collectWorkflowRegistrySnapshot(
     clientWithUnrelatedWorkflowDirectoryEntry(),
+    REPOSITORY,
+    SHA,
+  );
+
+  assert.deepEqual(snapshot.present.map((entry) => entry.id), [1]);
+  assert.equal(snapshot.active_orphans.length, 0);
+});
+
+test('keeps line-separator workflow paths bound to the protected tree', async () => {
+  const workflowPath = '.github/workflows/line\u2028separator.yml';
+  const snapshot = await collectWorkflowRegistrySnapshot(
+    clientWithWorkflowTreeMode('100644', 'blob', workflowPath),
     REPOSITORY,
     SHA,
   );
