@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants as fileConstants } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { lstat, open } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const RELEASE_SCHEMA_VERSION = 'life-os.release-evidence.v1';
@@ -125,11 +125,7 @@ function requireFormatEvidence(record, evidenceType) {
   const hasSpecVersion = Object.hasOwn(record, 'spec_version');
   const hasPredicateType = Object.hasOwn(record, 'predicate_type');
   if (evidenceType === 'sbom') {
-    if (
-      !hasSpecVersion ||
-      hasPredicateType ||
-      record.spec_version !== SPDX_SPEC_VERSION
-    ) {
+    if (!hasSpecVersion || hasPredicateType || record.spec_version !== SPDX_SPEC_VERSION) {
       return invalid();
     }
     return Object.freeze({ spec_version: SPDX_SPEC_VERSION });
@@ -213,11 +209,7 @@ function requireArtifacts(value, sourceCommit) {
   for (const artifact of artifacts) {
     if (artifact.evidence_type !== 'signature') continue;
     const subject = byName.get(artifact.subject_artifact_name);
-    if (
-      !subject ||
-      subject.evidence_type === 'signature' ||
-      subject.sha256 !== artifact.subject_sha256
-    ) {
+    if (!subject || subject.evidence_type === 'signature' || subject.sha256 !== artifact.subject_sha256) {
       return invalid();
     }
   }
@@ -307,14 +299,14 @@ export function validateReleaseEvidenceIndex(value) {
 /**
  * Verifies that every indexed release artifact is the exact regular file claimed.
  *
- * The verifier first applies the structural release contract, then opens each
- * artifact without following a final symlink, streams its bytes through SHA-256,
- * and compares both byte count and digest with the immutable index. It reads only
- * artifact names already accepted by the no-path-separator contract and emits the
- * same payload-free failure for missing, replaced, symlinked, non-regular, short,
- * oversized, or digest-mismatched files. It does not interpret SBOM/provenance
- * content or cryptographically validate detached signatures; those are separate
- * release gates.
+ * The verifier first applies the structural release contract, rejects a symlinked
+ * evidence-directory boundary, then opens each artifact without following a final
+ * symlink, streams its bytes through SHA-256, and compares both byte count and
+ * digest with the immutable index. It reads only artifact names already accepted
+ * by the no-path-separator contract and emits the same payload-free failure for
+ * missing, replaced, symlinked, non-regular, short, oversized, or digest-mismatched
+ * files. It does not interpret SBOM/provenance content or cryptographically validate
+ * detached signatures; those are separate release gates.
  *
  * @param {unknown} value Untrusted release-evidence index.
  * @param {string} artifactDirectory Directory containing the indexed artifact files.
@@ -328,6 +320,13 @@ export async function verifyReleaseEvidenceDirectory(value, artifactDirectory) {
     artifactDirectory.length === 0 ||
     artifactDirectory.includes('\0')
   ) {
+    return invalid();
+  }
+  try {
+    const metadata = await lstat(artifactDirectory);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) return invalid();
+  } catch (error) {
+    if (error instanceof ReleaseEvidenceValidationError) throw error;
     return invalid();
   }
   const directory = resolve(artifactDirectory);
