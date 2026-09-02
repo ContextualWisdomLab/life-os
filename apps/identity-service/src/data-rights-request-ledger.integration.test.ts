@@ -9,6 +9,7 @@ import {
   type DataRightsRequestSqlClient,
   type DataRightsRequestSqlResult,
 } from './data-rights-request-ledger';
+import { applyIdentityMigration } from './tests/identity-migration-test-support';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
@@ -59,7 +60,8 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
       .filter((migrationFile) => migrationFile.endsWith('.sql'))
       .sort();
     for (const migrationFile of migrationFiles) {
-      await pool.query(
+      applyIdentityMigration(
+        testUrl.toString(),
         await readFile(resolve(MIGRATION_DIRECTORY, migrationFile), 'utf8'),
       );
     }
