@@ -26,7 +26,7 @@ function inventoryClient(overrides = {}) {
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
-        return { truncated: false, tree: [] };
+        return { sha: TREE_SHA, truncated: false, tree: [] };
       }
       if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
       throw new Error(`unexpected ${path}`);
@@ -136,6 +136,7 @@ test('paginates the complete registry and binds receipts to an unchanged default
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
         return {
+          sha: TREE_SHA,
           truncated: false,
           tree: [
             { type: 'blob', path: '.github/dependabot.yml' },
@@ -243,7 +244,7 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
-        return { truncated: false, tree: [] };
+        return { sha: TREE_SHA, truncated: false, tree: [] };
       }
       if (path.includes('/actions/workflows?')) {
         return {
@@ -265,6 +266,7 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
 test('fails closed on tree, commit, branch, timestamp, and client evidence defects', async () => {
   const treeTruncatedClient = inventoryClient({
     [`/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`]: () => ({
+      sha: TREE_SHA,
       truncated: true,
       tree: [],
     }),
@@ -305,7 +307,7 @@ test('fails closed on tree, commit, branch, timestamp, and client evidence defec
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
-        return { truncated: false, tree: [] };
+        return { sha: TREE_SHA, truncated: false, tree: [] };
       }
       if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
       throw new Error(`unexpected ${path}`);
