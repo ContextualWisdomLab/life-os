@@ -30,7 +30,10 @@ const MAXIMUM_KEY_VERSIONS = 8;
 const KEY_VERSION_PATTERN = /^[A-Za-z][A-Za-z0-9._-]{0,31}$/;
 const ENCODED_KEY_PATTERN = /^[A-Za-z0-9+/_-]+={0,2}$/;
 
+/** Bounded process environment consumed when constructing the Identity runtime. */
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+
+/** Emits one credential-free OAuth callback audit JSON line to the configured sink. */
 export type OAuthCallbackAuditWriter = (
   auditLine: string,
 ) => void | Promise<void>;
