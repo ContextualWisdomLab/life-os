@@ -191,8 +191,8 @@ describeWithDatabase('legacy migration-ledger reconciliation', () => {
         'migration_error=identity_schema_rename_requires_drain service=identity migration=0007_identity_database_semantic_names.sql',
       );
 
-      runnerEnvironment.LIFE_OS_IDENTITY_SCHEMA_RENAME_CONFIRMATION =
-        'identity-service-drained';
+      runnerEnvironment.PGOPTIONS =
+        '-c life_os.identity_schema_rename_confirmation=identity-service-drained';
       const runResult = spawnSync(
         'bash',
         [resolve(kubernetesRoot, 'run-migrations.sh')],
