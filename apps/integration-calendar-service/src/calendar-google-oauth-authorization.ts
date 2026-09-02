@@ -50,6 +50,8 @@ export interface CalendarGoogleOAuthVerifierSecretStore {
     readonly stateId: string;
     readonly workspaceId: string;
     readonly userId: string;
+    readonly purpose: typeof PURPOSE;
+    readonly expiresAt: string;
     readonly verifier: string;
   }): Promise<string>;
   readVerifier(secretReference: string): Promise<string>;
@@ -212,11 +214,12 @@ function recordsMatch(
  * The application accepts workspace/user authority only from the trusted
  * server-derived Calendar context. The callback redirect is an exact
  * operator-configured HTTPS URI. PKCE verifier material is written through a
- * secret-store port before the durable state record is created; only its
- * opaque UUIDv4 reference is persisted. State consumption is delegated to an
- * atomic repository operation, then the verifier is materialized for the
- * internal token-exchange boundary. Provider token exchange and post-exchange
- * verifier cleanup are deliberately separate follow-up responsibilities.
+ * purpose- and lifetime-bound secret-store port before the durable state
+ * record is created; only its opaque UUIDv4 reference is persisted. State
+ * consumption is delegated to an atomic repository operation, then the
+ * verifier is materialized for the internal token-exchange boundary. Provider
+ * token exchange and post-exchange verifier cleanup are deliberately separate
+ * follow-up responsibilities.
  */
 export class CalendarGoogleOAuthAuthorizationApplication {
   private readonly redirectUri: string;
@@ -264,6 +267,8 @@ export class CalendarGoogleOAuthAuthorizationApplication {
         stateId,
         workspaceId,
         userId,
+        purpose: PURPOSE,
+        expiresAt,
         verifier,
       });
       verifierSecretReference = requireDependencyUuid(rawVerifierSecretReference);
