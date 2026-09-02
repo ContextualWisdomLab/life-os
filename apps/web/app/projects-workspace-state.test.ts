@@ -9,6 +9,10 @@ const goal = Object.freeze({
   id: '11111111-1111-4111-8111-111111111111',
   title: 'Launch LifeOS',
 });
+const secondGoal = Object.freeze({
+  id: '33333333-3333-4333-8333-333333333333',
+  title: 'Harden the operating loop',
+});
 const project = Object.freeze({
   id: '22222222-2222-4222-8222-222222222222',
   goalId: goal.id,
@@ -62,6 +66,7 @@ test('successful project creation accepts only returned durable evidence', () =>
   );
   const loaded = reduceProjectsWorkspaceState(selected, {
     type: 'projects-loaded',
+    goalId: goal.id,
     projects: [],
   });
   const submitting = reduceProjectsWorkspaceState(loaded, {
@@ -76,6 +81,30 @@ test('successful project creation accepts only returned durable evidence', () =>
   assert.equal(created.submitting, false);
 });
 
+test('late project responses cannot cross an explicitly changed goal scope', () => {
+  const ready = reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
+    type: 'goals-loaded',
+    goals: [goal, secondGoal],
+  });
+  const firstSelection = reduceProjectsWorkspaceState(ready, {
+    type: 'goal-selected',
+    goalId: goal.id,
+  });
+  const secondSelection = reduceProjectsWorkspaceState(firstSelection, {
+    type: 'goal-selected',
+    goalId: secondGoal.id,
+  });
+  const staleResponse = reduceProjectsWorkspaceState(secondSelection, {
+    type: 'projects-loaded',
+    goalId: goal.id,
+    projects: [project],
+  });
+
+  assert.equal(staleResponse.selectedGoalId, secondGoal.id);
+  assert.deepEqual(staleResponse.projects, []);
+  assert.equal(staleResponse.loadingProjects, true);
+});
+
 test('offline failure preserves previously loaded project evidence', () => {
   const selected = reduceProjectsWorkspaceState(
     reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
@@ -86,6 +115,7 @@ test('offline failure preserves previously loaded project evidence', () => {
   );
   const loaded = reduceProjectsWorkspaceState(selected, {
     type: 'projects-loaded',
+    goalId: goal.id,
     projects: [project],
   });
   const offline = reduceProjectsWorkspaceState(loaded, { type: 'offline' });
