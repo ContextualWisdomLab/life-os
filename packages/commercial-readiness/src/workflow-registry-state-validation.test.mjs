@@ -80,3 +80,23 @@ test('fails closed when a protected-tree workflow is absent from the Actions reg
     /protected-tree workflow.*missing.*registry/i,
   );
 });
+
+test('fails closed when multiple workflow identities claim one repository path', () => {
+  assert.throws(
+    () =>
+      classifyWorkflowRegistry({
+        commitSha: SHA,
+        treePaths: [WORKFLOW_PATH],
+        workflows: [
+          workflow('active'),
+          {
+            id: 2,
+            name: 'CI replacement',
+            path: WORKFLOW_PATH,
+            state: 'active',
+          },
+        ],
+      }),
+    /repository path.*ambiguous/i,
+  );
+});
