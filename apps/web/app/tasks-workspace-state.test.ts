@@ -193,7 +193,8 @@ test('late creation evidence cannot cross the selected Project scope', () => {
     projectId: secondProject.id,
     tasks: [],
   });
-  const created = reduceTasksWorkspaceState(loaded, {
+  const submitting = reduceTasksWorkspaceState(loaded, { type: 'submit-started' });
+  const created = reduceTasksWorkspaceState(submitting, {
     type: 'submit-succeeded',
     task: secondTask,
   });
