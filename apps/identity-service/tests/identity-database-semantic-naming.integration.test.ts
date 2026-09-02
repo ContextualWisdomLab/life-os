@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
+import { applyIdentityMigration } from '../src/tests/identity-migration-test-support';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const SEMANTIC_NAMING_MIGRATION = '0007_identity_database_semantic_names.sql';
@@ -66,13 +67,14 @@ function requireTemporaryDatabaseIdentifier(databaseName: string): string {
 }
 
 async function withLegacyIdentityDatabase(
-  execute: (databasePool: Pool) => Promise<void>,
+  execute: (databasePool: Pool, temporaryDatabaseUrl: string) => Promise<void>,
 ): Promise<void> {
   const sourceUrl = requireDatabaseUrl();
   const temporaryDatabaseName = createTemporaryDatabaseName();
   const temporaryDatabaseIdentifier = requireTemporaryDatabaseIdentifier(
     temporaryDatabaseName,
   );
+  const temporaryDatabaseUrl = databaseUrl(sourceUrl, temporaryDatabaseName);
   const adminPool = new Pool({
     connectionString: databaseUrl(sourceUrl, 'postgres'),
   });
@@ -82,14 +84,12 @@ async function withLegacyIdentityDatabase(
   try {
     await adminPool.query(`CREATE DATABASE ${temporaryDatabaseIdentifier}`);
     databaseCreated = true;
-    databasePool = new Pool({
-      connectionString: databaseUrl(sourceUrl, temporaryDatabaseName),
-    });
+    databasePool = new Pool({ connectionString: temporaryDatabaseUrl });
 
     for (const migrationFile of await migrationFilesBeforeSemanticNaming()) {
       await databasePool.query(await readMigration(migrationFile));
     }
-    await execute(databasePool);
+    await execute(databasePool, temporaryDatabaseUrl);
   } finally {
     try {
       await databasePool?.end();
@@ -114,7 +114,7 @@ describe('identity database semantic naming contract', () => {
 
 describeWithDatabase('identity database semantic naming migration', () => {
   it('preserves persisted identity relationships while removing generic owned names', async () => {
-    await withLegacyIdentityDatabase(async (databasePool) => {
+    await withLegacyIdentityDatabase(async (databasePool, temporaryDatabaseUrl) => {
       const userAccountId = randomUUID();
       const externalIdentityId = randomUUID();
       const identityWorkspaceId = randomUUID();
@@ -170,7 +170,10 @@ describeWithDatabase('identity database semantic naming migration', () => {
         ],
       );
 
-      await databasePool.query(await readMigration(SEMANTIC_NAMING_MIGRATION));
+      applyIdentityMigration(
+        temporaryDatabaseUrl,
+        await readMigration(SEMANTIC_NAMING_MIGRATION),
+      );
 
       const persistedIdentity = await databasePool.query<{
         user_account_id: string;
