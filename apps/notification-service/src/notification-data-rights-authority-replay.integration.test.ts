@@ -38,13 +38,14 @@ async function applyMigrations(pool: Pool): Promise<void> {
 /** Creates the same least-privilege replay-table grant required from deployment. */
 async function grantRuntimeReplayAuthority(pool: Pool): Promise<void> {
   await pool.query(`
-    GRANT USAGE ON SCHEMA notification_service TO ${RUNTIME_ROLE};
+    GRANT USAGE ON SCHEMA notification_service
+      TO notification_data_rights_replay_runtime_test;
     REVOKE ALL PRIVILEGES ON TABLE
       notification_service.data_rights_authority_replay_records
-      FROM ${RUNTIME_ROLE};
+      FROM notification_data_rights_replay_runtime_test;
     GRANT SELECT, INSERT, DELETE ON TABLE
       notification_service.data_rights_authority_replay_records
-      TO ${RUNTIME_ROLE};
+      TO notification_data_rights_replay_runtime_test;
   `);
 }
 
@@ -60,9 +61,11 @@ describeWithPostgres(
       await administrativePool.query(`DO $$
         BEGIN
           IF NOT EXISTS (
-            SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = '${RUNTIME_ROLE}'
+            SELECT 1
+            FROM pg_catalog.pg_roles
+            WHERE rolname = 'notification_data_rights_replay_runtime_test'
           ) THEN
-            CREATE ROLE ${RUNTIME_ROLE} NOLOGIN;
+            CREATE ROLE notification_data_rights_replay_runtime_test NOLOGIN;
           END IF;
         END
       $$`);
@@ -97,10 +100,10 @@ describeWithPostgres(
         .query('DROP SCHEMA IF EXISTS notification_service CASCADE')
         .catch(() => undefined);
       await administrativePool
-        .query(`DROP OWNED BY ${RUNTIME_ROLE}`)
+        .query('DROP OWNED BY notification_data_rights_replay_runtime_test')
         .catch(() => undefined);
       await administrativePool
-        .query(`DROP ROLE IF EXISTS ${RUNTIME_ROLE}`)
+        .query('DROP ROLE IF EXISTS notification_data_rights_replay_runtime_test')
         .catch(() => undefined);
       await administrativePool.end();
     });
