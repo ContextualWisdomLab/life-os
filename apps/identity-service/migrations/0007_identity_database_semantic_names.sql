@@ -112,4 +112,23 @@ ALTER INDEX identity.sessions_active_user_idx
 ALTER INDEX identity.sessions_active_workspace_idx
   RENAME TO authentication_sessions_active_workspace_idx;
 
+-- The production runner records `applying` before including this file. Finalize that
+-- ledger row inside the same transaction as the incompatible rename so a process
+-- interruption cannot commit the semantic schema while leaving an unrecoverable
+-- pre-commit marker. Direct migration tests remain supported when no ledger exists.
+DO $life_os_identity_rename_ledger$
+BEGIN
+  IF to_regclass('life_os_deployment.schema_migrations') IS NOT NULL THEN
+    EXECUTE $sql$
+      UPDATE life_os_deployment.schema_migrations
+      SET migration_status = 'applied',
+          applied_at = clock_timestamp()
+      WHERE service_name = 'identity'
+        AND migration_name = '0007_identity_database_semantic_names.sql'
+        AND migration_status = 'applying'
+    $sql$;
+  END IF;
+END
+$life_os_identity_rename_ledger$;
+
 COMMIT;
