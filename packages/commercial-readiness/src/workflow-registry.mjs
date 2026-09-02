@@ -115,7 +115,7 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
   }
 
   const seenIds = new Map();
-  const registeredRepositoryPaths = new Set();
+  const registeredRepositoryPaths = new Map();
   const present = [];
   const activeOrphans = [];
   const disabledOrphans = [];
@@ -132,7 +132,11 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
     if (!REPOSITORY_WORKFLOW_PATH_PATTERN.test(record.path)) {
       dynamic.push(record);
     } else {
-      registeredRepositoryPaths.add(record.path);
+      const previousId = registeredRepositoryPaths.get(record.path);
+      if (previousId !== undefined) {
+        return invalid('Workflow registry repository path identity is ambiguous');
+      }
+      registeredRepositoryPaths.set(record.path, record.id);
       if (presentPaths.has(record.path)) {
         if (record.state !== 'active') {
           return invalid('Workflow registry present workflow is disabled');
