@@ -110,21 +110,20 @@ describe('Notification database migration authority contract', () => {
     expect(localProvisioning).not.toContain('CREATE ROLE lifeos_notification');
   });
 
-  it('transfers legacy Notification object ownership to the migration authority', () => {
-    expect(erasureMigration).toContain(
-      'ALTER SCHEMA notification_service OWNER TO CURRENT_USER',
+  it('requires the established Notification owner instead of attempting an implicit ownership handoff', () => {
+    expect(migrationRunner).toContain('notification_migration_owner_ready');
+    expect(migrationRunner).toContain(
+      'migration_error=notification_migration_owner_mismatch',
     );
-    expect(erasureMigration).toContain(
-      'ALTER TABLE notification_service.reminder_occurrences OWNER TO CURRENT_USER',
+    expect(migrationRunner).toContain(
+      "pg_get_userbyid(namespace.nspowner) = current_user",
     );
-    expect(erasureMigration).toContain(
-      'ALTER TABLE notification_service.reminder_outcomes OWNER TO CURRENT_USER',
+    expect(migrationRunner).toContain(
+      "pg_get_userbyid(relation.relowner) = current_user",
     );
-    expect(erasureMigration).toContain(
-      'ALTER TABLE notification_service.inbox_messages OWNER TO CURRENT_USER',
+    expect(migrationRunner).toContain(
+      "pg_get_userbyid(procedure.proowner) = current_user",
     );
-    expect(erasureMigration).toContain(
-      'ALTER FUNCTION notification_service.reject_reminder_outcome_mutation() OWNER TO CURRENT_USER',
-    );
+    expect(erasureMigration).not.toMatch(/\bALTER\s+(?:SCHEMA|TABLE|FUNCTION)\b[^;]*\bOWNER\s+TO\s+CURRENT_USER/u);
   });
 });
