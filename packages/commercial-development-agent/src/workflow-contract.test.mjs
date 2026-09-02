@@ -150,54 +150,62 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).not.toMatch(/curl[^\n]*\|\s*(?:sh|bash)/iu);
   });
 
-  it('keeps the real NVIDIA credential in a loopback bridge, not the model environment', () => {
+  it('keeps provider credentials inside the governed gateway bootstrap, not the model environment', () => {
     expect(workflow).not.toContain('COPILOT_GITHUB_TOKEN');
-    expect(
-      workflow.match(/\$\{\{ secrets\.NVIDIA_NIM_API_KEY \}\}/gu),
-    ).toHaveLength(1);
-
-    const bridge = step('Start loopback NVIDIA credential bridge');
-    expect(bridge).toContain('${{ secrets.NVIDIA_NIM_API_KEY }}');
-    expect(bridge).toContain('127.0.0.1');
-    expect(bridge).toContain('integrate.api.nvidia.com');
-    expect(bridge).toContain('/v1/chat/completions');
-    expect(bridge).toContain('MAX_REQUEST_BYTES');
-    expect(bridge).toContain('MAX_RESPONSE_BYTES');
-    expect(bridge).toContain('UPSTREAM_TIMEOUT_SECONDS');
-    expect(bridge).toContain('--preserve-env=NVIDIA_NIM_API_KEY');
-    expect(bridge).toContain('-u opencode_bridge');
-    expect(bridge).not.toContain('echo "$NVIDIA_NIM_API_KEY"');
+    const gateway = step('Start contextual-orchestrator free gateway');
+    for (const credentialName of [
+      'BYTEZ_API_KEY',
+      'NVIDIA_NIM_API_KEY',
+      'NVIDIA_NIM_API_KEY_SUB',
+      'OPENROUTER_API_KEY',
+      'OPENAI_API_KEY',
+    ]) {
+      expect(gateway).toContain(`\${{ secrets.${credentialName} }}`);
+    }
+    expect(gateway).toContain('-u opencode_gateway');
+    expect(gateway).toContain('CONTEXTUAL_ORCHESTRATOR_TOKEN');
+    expect(gateway).toContain('/healthz');
+    expect(gateway).not.toContain('integrate.api.nvidia.com');
 
     const model = step('Run one bounded OpenCode implementation');
     expect(model).toContain('sudo -u opencode_model env -i');
-    expect(model).toContain('NVIDIA_API_KEY=local-loopback-placeholder');
     expect(model).toContain('opencode run --pure --auto');
     expect(model).toContain('timeout --signal=TERM --kill-after=30s 90m');
     expect(model).not.toContain('NVIDIA_NIM_API_KEY');
+    expect(model).not.toContain('OPENROUTER_API_KEY');
+    expect(model).not.toContain('OPENAI_API_KEY');
     expect(model).not.toContain('${{ secrets.');
     expect(model).not.toContain('github.token');
     expect(model).not.toContain('GITHUB_TOKEN');
     expect(model).not.toContain('GH_TOKEN');
   });
 
-  it('uses one offline explicit NVIDIA model catalog instead of provider model discovery', () => {
+  it('uses one offline explicit contextual-orchestrator model catalog instead of provider discovery', () => {
     const workspace = step('Prepare disposable model workspace');
-    expect(workspace).toContain("'enabled_providers': ['nvidia']");
+    expect(workspace).toContain(
+      "'enabled_providers': ['contextual_orchestrator_gateway']",
+    );
     expect(workspace).toContain("'model': model_label");
     expect(workspace).toContain("'small_model': model_label");
+    expect(workspace).toContain("'npm': '@ai-sdk/openai-compatible'");
     expect(workspace).toContain("'whitelist': [model_id]");
-    expect(workspace).toContain("'models': {model_id: {'name': model_id}}");
+    expect(workspace).toContain(
+      "'models': {model_id: {'name': 'governed zero-cost orchestration'}}",
+    );
     expect(workspace).toContain("model_workspace_path / 'AGENTS.md'");
     expect(workspace).toContain("model_workspace_path / 'CLAUDE.md'");
     expect(workspace).toContain("'instructions': instruction_paths");
     expect(workspace).toContain("model_label.partition('/')");
-    expect(workspace).toContain("provider_id != 'nvidia'");
+    expect(workspace).toContain(
+      "provider_id != 'contextual_orchestrator_gateway'",
+    );
+    expect(workspace).toContain("model_id != 'orchestrator/free'");
 
     const catalog = step('Validate the explicit OpenCode model catalog');
     expect(catalog).toContain('sudo -u opencode_model env -i');
     expect(catalog).toContain('OPENCODE_DISABLE_MODELS_FETCH=true');
     expect(catalog).toContain('OPENCODE_DISABLE_PROJECT_CONFIG=true');
-    expect(catalog).toContain('opencode models nvidia');
+    expect(catalog).toContain('opencode models contextual_orchestrator_gateway');
     expect(catalog).toContain('test "$catalog" = "$2"');
     expect(catalog).not.toContain('NVIDIA_NIM_API_KEY');
     expect(catalog).not.toContain('/v1/models');
@@ -208,16 +216,16 @@ describe('OpenCode commercial development workflow contract', () => {
   });
 
   linuxX64Test(
-    'registers a NVIDIA model absent from the bundled OpenCode catalog without discovery',
+    'registers the contextual-orchestrator virtual model without provider discovery',
     () => {
       const temporaryRoot = mkdtempSync(
         join(tmpdir(), 'life-os-opencode-catalog-'),
       );
       try {
-        const modelId = 'cwl/contract-probe-model-v1';
-        const modelLabel = `nvidia/${modelId}`;
-        const loopbackProbeValue = modelLabel;
-        expect(loopbackProbeValue).not.toHaveLength(0);
+        const providerId = 'contextual_orchestrator_gateway';
+        const modelId = 'orchestrator/free';
+        const modelLabel = `${providerId}/${modelId}`;
+        const loopbackProbeValue = 'catalog-only-loopback-token';
         const opencodePackage = realpathSync(
           resolve(import.meta.dirname, '../node_modules/opencode-ai'),
         );
@@ -233,15 +241,17 @@ describe('OpenCode commercial development workflow contract', () => {
           }),
         );
         const config = JSON.stringify({
-          enabled_providers: ['nvidia'],
+          enabled_providers: [providerId],
           model: modelLabel,
           small_model: modelLabel,
           provider: {
-            nvidia: {
+            [providerId]: {
+              npm: '@ai-sdk/openai-compatible',
+              name: 'Contextual Orchestrator Gateway',
               whitelist: [modelId],
-              models: { [modelId]: { name: modelId } },
+              models: { [modelId]: { name: 'governed zero-cost orchestration' } },
               options: {
-                baseURL: 'http://127.0.0.1:8765/v1',
+                baseURL: 'http://127.0.0.1:8000/v1',
                 apiKey: loopbackProbeValue,
               },
             },
@@ -250,7 +260,7 @@ describe('OpenCode commercial development workflow contract', () => {
         const configPath = resolve(directories.home, 'opencode.json');
         writeFileSync(configPath, config, { mode: 0o600 });
 
-        const result = spawnSync(executable, ['models', 'nvidia'], {
+        const result = spawnSync(executable, ['models', providerId], {
           cwd: resolve(import.meta.dirname, '../../..'),
           encoding: 'utf8',
           timeout: 30_000,
@@ -265,7 +275,6 @@ describe('OpenCode commercial development workflow contract', () => {
             OPENCODE_DISABLE_AUTOUPDATE: 'true',
             OPENCODE_DISABLE_MODELS_FETCH: 'true',
             OPENCODE_DISABLE_PROJECT_CONFIG: 'true',
-            NVIDIA_API_KEY: loopbackProbeValue,
           },
         });
 
@@ -343,7 +352,7 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(capture).toContain('paths = sorted(tracked | candidate_paths)');
   });
 
-  it('renders provider configuration safely and freezes the model writer before evidence', () => {
+  it('renders gateway configuration safely and freezes the model writer before evidence', () => {
     const workspace = step('Prepare disposable model workspace');
     expect(workspace).toContain("'$schema': 'https://opencode.ai/config.json'");
     expect(workspace).toContain('MODEL_HOME="$model_home"');
@@ -354,7 +363,7 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(model).toContain('pkill --signal TERM --euid opencode_model');
     expect(model).toContain('pgrep --euid opencode_model');
     expect(model).toContain('model_process_cleanup_failed');
-    expect(model).toContain('pkill --signal TERM --euid opencode_bridge');
+    expect(model).toContain('pkill --signal TERM --euid opencode_gateway');
     expect(model).toContain('127.0.0.0/8');
   });
 
@@ -364,7 +373,9 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(verification).toContain('cd "$1"');
     expect(verification).toContain('_ "$MODEL_WORKSPACE"');
     expect(verification).toContain('AI_DATABASE_URL="$AI_DATABASE_URL"');
-    expect(verification).not.toContain('NVIDIA_API_KEY');
+    expect(verification).not.toContain('CONTEXTUAL_ORCHESTRATOR_TOKEN');
+    expect(verification).not.toContain('NVIDIA_NIM_API_KEY');
+    expect(verification).not.toContain('OPENAI_API_KEY');
     expect(verification).not.toContain('GH_TOKEN');
     expect(verification).not.toContain('GITHUB_TOKEN');
     expect(verification).not.toContain('docker compose');
@@ -473,6 +484,9 @@ describe('OpenCode commercial development workflow contract', () => {
 
     const branch = step('Create the isolated UUIDv4 feature branch');
     expect(branch).toContain('uuid.uuid4()');
+    expect(branch).toContain(
+      "model_label = 'contextual_orchestrator_gateway/orchestrator/free'",
+    );
     expect(branch).toContain('branch_name="automation/opencode-commercial-');
     expect(branch).toContain('git switch --create "$branch_name"');
     expect(branch).not.toContain('steps.branch.outputs.branch_name');
@@ -503,30 +517,33 @@ describe('OpenCode commercial development workflow contract', () => {
     expect(workflow).not.toContain('actions: write');
   });
 
-  it('marks bridge and provider validations skipped until their prerequisites run', () => {
+  it('marks gateway and provider validations skipped until their prerequisites run', () => {
     const receipt = step('Compose credential-free development receipt');
 
     expect(receipt).toContain(
       'MODEL_CATALOG_OUTCOME: ${{ steps.model_catalog.outcome }}',
     );
     expect(receipt).toContain(
+      'GATEWAY_REASON: ${{ steps.bridge.outputs.reason }}',
+    );
+    expect(receipt).toContain(
       `{'name': 'model_catalog', 'status': 'skipped' if not selected or open_prs != '0' else 'passed' if model_catalog_outcome == 'success' else 'failed'}`,
     );
     expect(receipt).toContain(
-      `{'name': 'credential_bridge', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if bridge_reason == 'completed' else 'failed'}`,
+      `{'name': 'orchestrator_gateway', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if gateway_reason == 'completed' else 'failed'}`,
     );
     expect(receipt).toContain(
-      `{'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'}`,
+      `{'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or gateway_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'}`,
     );
     expect(receipt).toContain(
-      `{'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'}`,
+      `{'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or gateway_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'}`,
     );
     expect(receipt).toContain(
       "status, reason = 'failed', 'invalid_configuration'",
     );
   });
 
-  it('retains only credential-free receipts and removes model/bridge material', () => {
+  it('retains only credential-free receipts and removes model/gateway material', () => {
     const upload = step('Upload credential-free development receipt');
     expect(upload).toContain(
       'path: ${{ runner.temp }}/commercial-development/receipt.json',
@@ -540,18 +557,19 @@ describe('OpenCode commercial development workflow contract', () => {
       'opencode.json',
       'diff.json',
       'changed-paths.z',
-      'nim-bridge.py',
+      'orchestrator-gateway.log',
     ]) {
       expect(upload).not.toContain(prohibited);
     }
 
     const cleanup = step('Remove private agent material');
     expect(cleanup).toContain('if: always()');
-    expect(cleanup).toContain('pkill --signal TERM --euid opencode_bridge');
+    expect(cleanup).toContain('pkill --signal TERM --euid opencode_gateway');
     expect(cleanup).toContain('pkill --signal TERM --euid opencode_model');
     expect(cleanup).toContain('MODEL_NETWORK_PHASE');
     expect(cleanup).toContain('iptables -D');
     expect(cleanup).toContain('MODEL_WORKSPACE');
+    expect(cleanup).toContain('ORCHESTRATOR_SIDECAR_ROOT');
     for (const file of [
       'prompt.json',
       'prompt.txt',
@@ -560,7 +578,7 @@ describe('OpenCode commercial development workflow contract', () => {
       'pulls.json',
       'diff.json',
       'receipt-input.json',
-      'nim-bridge.py',
+      'orchestrator-gateway.log',
     ]) {
       expect(cleanup).toContain(file);
     }
