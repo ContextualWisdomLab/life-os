@@ -25,22 +25,23 @@ fi
 # An existing data directory ignores POSTGRES_PASSWORD for role initialization, so
 # starting it with the new value does not rotate the stored credential. Connect with
 # the operator-supplied legacy credential, rotate inside PostgreSQL, then verify the
-# new credential before provisioning the separate runtime role.
+# new credential before provisioning the separate runtime role. Secrets are inherited
+# through the exec environment instead of being rendered into Docker/psql arguments.
 POSTGRES_PASSWORD="$POSTGRES_PASSWORD" docker compose up --detach --wait --wait-timeout 90 postgres
 
-POSTGRES_PASSWORD="$POSTGRES_PASSWORD" docker compose exec --no-TTY \
-  -e PGPASSWORD="$LEGACY_POSTGRES_PASSWORD" \
+PGPASSWORD="$LEGACY_POSTGRES_PASSWORD" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  docker compose exec --no-TTY -e PGPASSWORD -e POSTGRES_PASSWORD \
   postgres psql \
   --no-psqlrc \
   --username lifeos \
   --dbname "${POSTGRES_DB:-lifeos}" \
-  --set=ON_ERROR_STOP=1 \
-  --set=next_admin_password="$POSTGRES_PASSWORD" <<'SQL'
+  --set=ON_ERROR_STOP=1 <<'SQL'
+\getenv next_admin_password POSTGRES_PASSWORD
 ALTER ROLE lifeos PASSWORD :'next_admin_password';
 SQL
 
-POSTGRES_PASSWORD="$POSTGRES_PASSWORD" docker compose exec --no-TTY \
-  -e PGPASSWORD="$POSTGRES_PASSWORD" \
+PGPASSWORD="$POSTGRES_PASSWORD" POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  docker compose exec --no-TTY -e PGPASSWORD \
   postgres psql \
   --no-psqlrc \
   --username lifeos \
