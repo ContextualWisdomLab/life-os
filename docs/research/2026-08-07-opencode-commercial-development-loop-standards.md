@@ -1,7 +1,7 @@
 # OpenCode commercial development loop: standards and research basis
 
-**Reviewed:** 2026-08-07  
-**Scope:** Hourly NVIDIA-backed OpenCode development in `ContextualWisdomLab/life-os`
+**Reviewed:** 2026-09-03  
+**Scope:** Hourly contextual-orchestrator-routed OpenCode development in `ContextualWisdomLab/life-os`
 
 ## Evidence-status rule
 
@@ -21,23 +21,25 @@ A future organization-central wrapper should use a reusable workflow pinned by e
 
 ### OWASP risks for model-assisted software changes
 
-The OWASP Top 10 for LLM Applications identifies prompt injection, sensitive-information disclosure, excessive agency, improper output handling, supply-chain risk, and unbounded consumption as material concerns. LifeOS treats issue text and model output as untrusted, prevents the model from receiving GitHub credentials, validates source output before execution or push, pins OpenCode and GitHub actions, scopes the NVIDIA key to one process, and enforces file, byte, line, time, recursion, decomposition, and concurrency limits (OWASP Foundation, 2025).
+The OWASP Top 10 for LLM Applications identifies prompt injection, sensitive-information disclosure, excessive agency, improper output handling, supply-chain risk, and unbounded consumption as material concerns. LifeOS treats issue text and model output as untrusted, prevents the model from receiving GitHub credentials or upstream provider credentials, validates source output before execution or push, pins OpenCode and immutable dependencies, scopes provider credentials to the contextual-orchestrator gateway process, and enforces file, byte, line, recursion, decomposition, and concurrency limits (OWASP Foundation, 2025).
 
-## OpenCode and NVIDIA provider boundary
+## OpenCode and contextual-orchestrator boundary
 
-OpenCode exposes a non-interactive `run` command and provider/model configuration. LifeOS uses one exact reviewed `opencode-ai` package version and verifies both the installed version and command contract by spawning that binary without `NODE_OPTIONS` and detecting `--pure` in the combined stdout and stderr of `--help`. Auto-update, sharing, Models.dev refresh, and project-local configuration discovery are disabled; reviewed workspace instruction files are then loaded explicitly. The private configuration enables only NVIDIA, registers the reviewed identifier in `provider.nvidia.models`, whitelists it, pins primary and small-model work to that label, and requires `opencode models nvidia` to return exactly that fully qualified label before the bridge starts. Explicit registration avoids dependence on whether the identifier is present in the binary's bundled snapshot, so no provider `/v1/models` proxy is needed. The model receives a private configuration and a source archive without `.git`; Bash is denied by default except for reviewed `pnpm`, `node`, `python3`, `grep`, `rg`, `find`, `ls`, and `cat` command patterns, while web-fetch, web-search, and external-directory access are denied. The prompt is attached from a private file instead of carrying issue text in process arguments (Anomaly, 2026).
+OpenCode exposes a non-interactive `run` command and provider/model configuration. LifeOS uses one exact reviewed `opencode-ai` package version and verifies the installed version and command contract by spawning that binary without `NODE_OPTIONS`, detecting `--pure` in the combined stdout and stderr of `--help`, and validating the reviewed `run --help` contract inside the verifier boundary. Auto-update, sharing, Models.dev refresh, and project-local configuration discovery are disabled; reviewed workspace instruction files are loaded explicitly. The private OpenCode configuration enables only the loopback `contextual_orchestrator_gateway`, registers and whitelists only `orchestrator/free`, and pins primary and small-model work to that virtual route. The model receives a private configuration and source archive without `.git`; Bash is denied by default except for reviewed command patterns, while web-fetch, web-search, and external-directory access are denied. The prompt is attached from a private file instead of carrying issue text in process arguments (Anomaly, 2026).
 
-NVIDIA NIM exposes hosted OpenAI-compatible inference authenticated with an API key. `NVIDIA_NIM_API_KEY` is mapped only to a loopback bridge running as `opencode_bridge`. OpenCode runs separately as `opencode_model` with a placeholder API-key value and an allowlisted minimal environment; UID-based `iptables` rules restrict its model-phase egress to the bridge. GitHub, review-agent, deployment, and unrelated repository credentials are absent. Provider availability is evidence, not a deterministic merge prerequisite (NVIDIA Corporation, 2026).
+Provider and model selection are not LifeOS authority. The contextual-orchestrator gateway owns auto-discovery and governed routing for the virtual `orchestrator/free` route. LifeOS may bootstrap the gateway with available `BYTEZ_API_KEY`, `NVIDIA_NIM_API_KEY`, `NVIDIA_NIM_API_KEY_SUB`, `OPENROUTER_API_KEY`, and `OPENAI_API_KEY` credentials, but those credentials are mapped only to the gateway step and must not enter `opencode_model`. OpenCode authenticates only to the loopback gateway with a per-run random token. UID-based `iptables` rules restrict model-phase egress to that loopback boundary. A protected contextual-orchestrator branch head is not sufficient dependency authority: production consumption requires an immutable reviewed release that implements the required gateway-auth bootstrap. Until such a release exists, LifeOS fails closed instead of repinning to mutable upstream source.
+
+NVIDIA NIM remains one possible contextual-orchestrator upstream rather than a LifeOS-selected provider. Its hosted OpenAI-compatible API uses API-key authentication, so any NIM credential remains subject to the same gateway-only secret boundary and deployment operator agreement (NVIDIA Corporation, 2026).
 
 ### Docker Compose verification boundary
 
-Docker documents `--file` as the way to select a Compose configuration and `docker compose config` as parsing, resolving, and rendering the resulting application model; `docker compose up --wait` creates services and waits for them to be running or healthy. LifeOS selects the accepted candidate file explicitly and keeps parsing in a trusted step instead of granting Docker authority to `opencode_model`. Actual PostgreSQL query execution, NATS JetStream monitoring, bounded failure logs, and teardown run in ordinary credential-free pull-request CI, where no NVIDIA or GitHub write credential is present, container images are digest-pinned, and published development ports bind only to loopback (Docker, Inc., 2026a, 2026b, 2026c).
+Docker documents `--file` as the way to select a Compose configuration and `docker compose config` as parsing, resolving, and rendering the resulting application model; `docker compose up --wait` creates services and waits for them to be running or healthy. LifeOS selects the accepted candidate file explicitly and keeps parsing in a trusted step instead of granting Docker authority to `opencode_model`. Actual PostgreSQL query execution, NATS JetStream monitoring, bounded failure logs, and teardown run in ordinary credential-free pull-request CI, where no provider or GitHub write credential is present, container images are digest-pinned, and published development ports bind only to loopback (Docker, Inc., 2026a, 2026b, 2026c).
 
 ## Test-time compute allocation
 
 ### Strong single-agent baseline
 
-Xu et al. report that a multi-turn single agent can match homogeneous multi-agent workflows in several evaluated settings and can benefit from KV-cache reuse. Because broader orchestration adds coordination and attack surface, LifeOS requires a strong single-model route as the mandatory baseline and does not assume that more agents are better (Xu et al., 2026b).
+Xu et al. report that a multi-turn single agent can match homogeneous multi-agent workflows in several evaluated settings and can benefit from KV-cache reuse. Because broader orchestration adds coordination and attack surface, LifeOS requires a strong single-route baseline and does not assume that more agents are better (Xu et al., 2026b).
 
 ### Fugu
 
@@ -53,26 +55,27 @@ TRINITY reports a lightweight evolved coordinator assigning Thinker, Worker, and
 
 ## LifeOS design conclusions
 
-The initial workflow intentionally runs one high-effort OpenCode model with recursion depth one. It records a versioned contract for planner, worker, verifier, and synthesizer roles but does not enable hidden multi-agent delegation. A contextual-orchestrator profile may be introduced only when:
+The initial workflow uses the virtual `orchestrator/free` route while keeping repository mutation authority deterministic and outside the model process. Fugu-, Conductor-, or TRINITY-style test-time compute must be treated as an ablation, not a default feature. It may be enabled only when:
 
-1. the same realistic issue fixtures are used for route and orchestrated cells;
+1. the same realistic issue fixtures are used for direct-route and orchestrated cells;
 2. issue selection, prompt policy, source authority, and diff validation remain deterministic;
 3. prompt-injection and sensitive-information tests do not regress;
 4. quality or heterogeneous capability improves materially;
 5. unsupported profile fields remain explicit rather than simulated;
-6. the exact contextual-orchestrator commit and dependency hashes are reviewed;
-7. retained artifacts exclude prompt, response, hidden reasoning, source diff, and credentials.
+6. the exact contextual-orchestrator release and dependency hashes are reviewed and immutable;
+7. retained artifacts exclude prompt, response, hidden reasoning, source diff, raw gateway/provider diagnostics, and credentials.
 
-Latency and token use are recorded for cost and capacity review but are not the primary optimization objective. Product correctness, security, auditability, and buyer-visible quality determine the routing decision.
+Latency and token use are recorded for capacity review but are not elapsed-time termination authority for reasoning, streaming, or tool-call execution. Product correctness, security, auditability, and buyer-visible quality determine routing and administrative timeout policy.
 
 ## Limitations
 
 - Vendor documentation describes interfaces, not independent security assurance.
 - The initial dry-run fixtures cannot establish general autonomous-development reliability.
-- The workflow applies UID-based `iptables` restrictions to `opencode_model`—allowing only the loopback bridge during model execution and denying IPv6—but does not provide a general-purpose operating-system sandbox; the model also receives a source archive without `.git` or GitHub credentials.
-- Provider-side retention and processing remain subject to the deployment operator's NVIDIA agreement and data-governance assessment.
-- The model cannot discover or authorize new backlog work in this slice; issue eligibility is an explicit reviewed policy.
+- The workflow applies UID-based `iptables` restrictions to `opencode_model`, allowing only the loopback gateway during model execution and denying IPv6, but this is not a general-purpose operating-system sandbox; the model also receives a source archive without `.git` or GitHub credentials.
+- Provider-side retention and processing remain subject to the deployment operator's agreement with whichever upstream contextual-orchestrator selects.
+- The model cannot discover or authorize new backlog work in this slice; issue eligibility is an explicit reviewed LifeOS policy.
 - A draft pull request is evidence for review, not proof of correctness or permission to merge.
+- LifeOS cannot claim the gateway authentication path production-ready until an immutable contextual-orchestrator release contains and verifies the required token bootstrap.
 
 ## References
 
