@@ -171,13 +171,18 @@ export function reduceHabitsWorkspaceState(
       return { ...state, submitting: true, message: null };
 
     case 'submit-succeeded':
+      if (state.status !== 'ready' || !state.submitting) return state;
       if (
-        state.status !== 'ready' ||
-        !state.submitting ||
         !validHabit(action.habit) ||
         state.habits.some((existing) => existing.id === action.habit.id)
       ) {
-        return state;
+        return {
+          ...state,
+          status: 'unavailable',
+          submitting: false,
+          message:
+            'Habit creation returned invalid durable evidence. Existing habits are unchanged.',
+        };
       }
       return {
         ...state,
