@@ -243,6 +243,7 @@ export function reduceTasksWorkspaceState(
       if (
         state.status !== 'ready' ||
         state.selectedProjectId === null ||
+        !state.submitting ||
         action.task.projectId !== state.selectedProjectId ||
         !validTasks([action.task], state.selectedProjectId) ||
         state.tasks.some((existing) => existing.id === action.task.id)
