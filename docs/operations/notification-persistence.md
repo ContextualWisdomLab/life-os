@@ -14,6 +14,20 @@ The connection behind `NOTIFICATION_MIGRATION_DATABASE_URL` is the stable migrat
 
 The runtime identity named by `NOTIFICATION_DATABASE_RUNTIME_ROLE` must be distinct from the migration authority. After migration, the runner removes broad privileges and grants only the Notification runtime permissions needed by the repository and data-rights adapter. The owner-only erasure tables remain inaccessible to the runtime except for the narrowly required authority-replay table operations and the explicit `erase_workspace_data` function execution path.
 
+### Existing local Compose volumes
+
+Local PostgreSQL volumes created by earlier LifeOS `main` revisions were initialized with the development administrator credential `lifeos`/`lifeos`. PostgreSQL stores that role password inside the initialized volume; changing `POSTGRES_PASSWORD` later does not rotate it. For that reason, `compose.yaml` keeps `${POSTGRES_PASSWORD:-lifeos}` only as an upgrade-compatible local administrator fallback. Do not delete an existing development volume merely to introduce the Notification runtime role.
+
+For an existing volume, leave `POSTGRES_PASSWORD` unset when the stored administrator password is still `lifeos`, or supply the actual administrator password already stored by that volume. Keep `NOTIFICATION_RUNTIME_DATABASE_PASSWORD` explicit and fresh: the Notification provisioner uses it only for the distinct least-privilege runtime role. Start PostgreSQL, run the idempotent one-shot provisioner, then start the remaining services:
+
+```bash
+docker compose up -d postgres
+docker compose run --rm --no-deps notification-db-provision
+docker compose up -d
+```
+
+Fresh local installations should copy `.env.example` and replace its placeholder credentials before startup. Production and shared deployments must not rely on the local `lifeos` compatibility fallback; supply administrator or migration authority through the deployment's managed-secret boundary and keep runtime credentials separate.
+
 Before rollout, verify that the target database is PostgreSQL 16 or a compatibility-tested later release and that the connection uses TLS outside a private development environment.
 
 ## Runtime configuration
