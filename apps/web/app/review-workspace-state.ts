@@ -106,27 +106,26 @@ function validRecord(record: ReviewWorkspaceRecord): boolean {
   );
 }
 
-/** Weekly Review is append-only but has exactly one durable identity per local Monday. */
-function sameWeeklyReviewPeriod(
+/** Persistence allows at most one immutable completion per ritual and local period. */
+function sameRitualPeriod(
   existing: ReviewWorkspaceRecord,
   candidate: ReviewWorkspaceRecord,
 ): boolean {
   return (
-    existing.ritualKind === 'weekly-review' &&
-    candidate.ritualKind === 'weekly-review' &&
+    existing.ritualKind === candidate.ritualKind &&
     existing.periodStartDate === candidate.periodStartDate
   );
 }
 
 function validCollection(records: readonly ReviewWorkspaceRecord[]): boolean {
-  const weeklyReviewPeriods = records
-    .filter((record) => record.ritualKind === 'weekly-review')
-    .map((record) => record.periodStartDate);
+  const ritualPeriods = records.map(
+    (record) => `${record.ritualKind}\u0000${record.periodStartDate}`,
+  );
   return (
     records.length <= MAXIMUM_HISTORY_RECORDS &&
     records.every(validRecord) &&
     new Set(records.map((record) => record.id.toLowerCase())).size === records.length &&
-    new Set(weeklyReviewPeriods).size === weeklyReviewPeriods.length
+    new Set(ritualPeriods).size === ritualPeriods.length
   );
 }
 
@@ -176,7 +175,7 @@ export function reduceReviewWorkspaceState(
         state.records.some(
           (existing) =>
             existing.id.toLowerCase() === action.record.id.toLowerCase() ||
-            sameWeeklyReviewPeriod(existing, action.record),
+            sameRitualPeriod(existing, action.record),
         )
       ) {
         return Object.freeze({
