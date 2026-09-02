@@ -10,6 +10,7 @@ const WORKFLOW_STATES = new Set([
   'disabled_inactivity',
   'disabled_manually',
 ]);
+const WORKFLOW_FILE_MODES = new Set(['100644', '100755']);
 const PAGE_SIZE = 100;
 const MAXIMUM_PAGES = 10;
 
@@ -236,9 +237,9 @@ function workflowRegistriesMatch(left, right) {
 /**
  * Extracts validated repository-owned workflow YAML paths from one complete Git tree.
  *
- * Returns exact case-sensitive `.github/workflows/*.yml|yaml` blob paths. Malformed,
- * truncated, or unsafe workflow-shaped tree evidence fails closed; unrelated tree
- * entries are ignored.
+ * Returns exact case-sensitive `.github/workflows/*.yml|yaml` regular-file paths.
+ * Malformed, truncated, symlinked, or unsafe workflow-shaped tree evidence fails
+ * closed; unrelated tree entries are ignored.
  */
 function workflowPathsFromTree(payload) {
   if (!payload || payload.truncated !== false || !Array.isArray(payload.tree)) {
@@ -249,6 +250,9 @@ function workflowPathsFromTree(payload) {
     if (!entry || entry.type !== 'blob' || typeof entry.path !== 'string') continue;
     if (entry.path.startsWith('.github/workflows/')) {
       requireWorkflowPath(entry.path);
+      if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
+        return invalid('GitHub workflow tree entry mode is invalid');
+      }
     }
     if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path)) paths.push(entry.path);
   }
