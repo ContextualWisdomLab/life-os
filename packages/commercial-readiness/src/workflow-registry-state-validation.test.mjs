@@ -68,3 +68,15 @@ test('fails closed when a workflow present in the protected tree is disabled in 
     );
   }
 });
+
+test('fails closed when a protected-tree workflow is absent from the Actions registry', () => {
+  assert.throws(
+    () =>
+      classifyWorkflowRegistry({
+        commitSha: SHA,
+        treePaths: [WORKFLOW_PATH],
+        workflows: [],
+      }),
+    /protected-tree workflow.*missing.*registry/i,
+  );
+});
