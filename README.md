@@ -57,6 +57,16 @@ docker compose up -d
 pnpm dev
 ```
 
+Existing local PostgreSQL volumes created before Notification runtime-role provisioning were initialized with the historical local administrator credential `lifeos`/`lifeos`. Do not delete those volumes just to upgrade. Leave `POSTGRES_PASSWORD` unset so the Compose-only compatibility fallback uses the stored historical password, or set it to the administrator password already stored by the volume; changing the environment value does not rotate an initialized PostgreSQL role. Set a fresh `NOTIFICATION_RUNTIME_DATABASE_PASSWORD` for the separate least-privilege Notification runtime role, then provision that role before starting the full stack:
+
+```bash
+docker compose up -d postgres
+docker compose run --rm --no-deps notification-db-provision
+docker compose up -d
+```
+
+Fresh local installations should still copy `.env.example` and replace its placeholder credentials before startup. The `lifeos` fallback exists only to preserve pre-existing local development volumes; it is not a production credential policy.
+
 Default endpoints:
 
 - Web: `http://localhost:3000`
