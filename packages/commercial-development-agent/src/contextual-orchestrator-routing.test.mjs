@@ -13,6 +13,14 @@ const SIDECAR_PATH = resolve(
 const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 const sidecar = readFileSync(SIDECAR_PATH, 'utf8');
 
+function namedStep(source, name) {
+  const marker = `      - name: ${name}\n`;
+  const start = source.indexOf(marker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const next = source.indexOf('\n      - name: ', start + marker.length);
+  return source.slice(start, next === -1 ? source.length : next);
+}
+
 describe('OpenCode commercial development orchestration boundary', () => {
   it('routes model traffic through the pinned contextual-orchestrator free pool', () => {
     expect(sidecar).toContain(
@@ -27,7 +35,13 @@ describe('OpenCode commercial development orchestration boundary', () => {
     expect(workflow).toContain("LIFEOS_ORCHESTRATOR_GATEWAY_PORT: '8000'");
   });
 
-  it('bootstraps the governed provider credential set into the gateway boundary', () => {
+  it('scopes every governed provider credential to gateway bootstrap only', () => {
+    const gatewayStep = namedStep(
+      workflow,
+      'Start contextual-orchestrator free gateway',
+    );
+    const modelStep = namedStep(workflow, 'Run one bounded OpenCode implementation');
+
     for (const secret of [
       'BYTEZ_API_KEY',
       'NVIDIA_NIM_API_KEY',
@@ -35,7 +49,10 @@ describe('OpenCode commercial development orchestration boundary', () => {
       'OPENROUTER_API_KEY',
       'OPENAI_API_KEY',
     ]) {
-      expect(workflow).toContain(`secrets.${secret}`);
+      const mapping = `secrets.${secret}`;
+      expect(gatewayStep).toContain(mapping);
+      expect(modelStep).not.toContain(mapping);
+      expect(workflow.split(mapping)).toHaveLength(2);
       expect(sidecar).toContain(secret);
     }
   });
