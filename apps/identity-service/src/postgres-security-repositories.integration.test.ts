@@ -17,6 +17,7 @@ import {
   type SqlQueryResult,
 } from './postgres-security-repositories';
 import { AesGcmSecretBox } from './secret-box';
+import { applyIdentityMigration } from './tests/identity-migration-test-support';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
@@ -92,7 +93,7 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
         resolve(migrationDirectory, migrationFile),
         'utf8',
       );
-      await pool.query(migrationSql);
+      applyIdentityMigration(DATABASE_URL, migrationSql);
     }
 
     sqlClient = new NodePostgresSqlClient(pool);
