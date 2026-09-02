@@ -9,14 +9,17 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const INVALID_STORED_ACCOUNT = 'Stored identity account is invalid';
 
+/** Transaction-scoped SQL connection that must be released after commit or rollback. */
 export interface SqlTransaction extends SqlClient {
   release(): void;
 }
 
+/** SQL client capable of allocating an isolated transaction connection. */
 export interface TransactionalSqlClient extends SqlClient {
   connect(): Promise<SqlTransaction>;
 }
 
+/** Raw semantic-persistence row joined across one provisioned Identity aggregate. */
 interface IdentityAccountRow {
   user_account_id: unknown;
   display_name: unknown;
@@ -33,6 +36,7 @@ interface IdentityAccountRow {
   workspace_created_at: unknown;
 }
 
+/** Require non-blank persisted text without reflecting malformed stored values. */
 function requireString(
   stringValue: unknown,
   errorMessage = INVALID_STORED_ACCOUNT,
@@ -43,6 +47,7 @@ function requireString(
   return stringValue;
 }
 
+/** Require an opaque UUIDv4 at the persistence boundary. */
 function requireUuidV4(
   identifierValue: unknown,
   errorMessage = INVALID_STORED_ACCOUNT,
@@ -54,6 +59,7 @@ function requireUuidV4(
   return opaqueIdentifier;
 }
 
+/** Require a stored provider that the stable Identity application contract supports. */
 function requireProvider(providerValue: unknown): IdentityProvider {
   if (providerValue !== 'google' && providerValue !== 'github') {
     throw new Error(INVALID_STORED_ACCOUNT);
@@ -61,6 +67,7 @@ function requireProvider(providerValue: unknown): IdentityProvider {
   return providerValue;
 }
 
+/** Convert PostgreSQL timestamp evidence to canonical ISO-8601 output or fail closed. */
 function toIsoString(timestampValue: unknown): string {
   const timestampDate =
     timestampValue instanceof Date
@@ -72,6 +79,7 @@ function toIsoString(timestampValue: unknown): string {
   return timestampDate.toISOString();
 }
 
+/** Map semantic PostgreSQL names back to the stable application aggregate and invariants. */
 function mapAccountRow(accountRow: IdentityAccountRow): ProvisionedAccount {
   const userId = requireUuidV4(accountRow.user_account_id);
   const externalIdentityUserId = requireUuidV4(
@@ -111,6 +119,7 @@ function mapAccountRow(accountRow: IdentityAccountRow): ProvisionedAccount {
   };
 }
 
+/** Validate a proposed application aggregate with the same rules used for stored rows. */
 function validateProposedAccount(account: ProvisionedAccount): ProvisionedAccount {
   return mapAccountRow({
     user_account_id: account.user.id,
@@ -129,6 +138,11 @@ function validateProposedAccount(account: ProvisionedAccount): ProvisionedAccoun
   });
 }
 
+/**
+ * Read one provider-subject aggregate through semantic persistence names.
+ * More than one row is a data-integrity failure; no match is represented as
+ * `undefined` rather than an invented account.
+ */
 async function findAccount(
   databaseClient: SqlClient,
   provider: IdentityProvider,
@@ -168,9 +182,15 @@ async function findAccount(
   return accountRow ? mapAccountRow(accountRow) : undefined;
 }
 
+/**
+ * PostgreSQL adapter for the stable Identity repository port.
+ * Semantic table and column names remain confined to this persistence boundary;
+ * callers continue to consume the established application aggregate.
+ */
 export class PostgresIdentityRepository implements IdentityRepository {
   constructor(private readonly databaseClient: TransactionalSqlClient) {}
 
+  /** Look up one account by provider subject without mutating persistence. */
   async findByExternalIdentity(
     provider: IdentityProvider,
     providerSubject: string,
@@ -178,6 +198,12 @@ export class PostgresIdentityRepository implements IdentityRepository {
     return await findAccount(this.databaseClient, provider, providerSubject);
   }
 
+  /**
+   * Persist one user/external-identity/personal-workspace aggregate atomically.
+   * A transaction-scoped advisory lock serializes the provider-subject key;
+   * concurrent replays return the first stored aggregate. Any failure rolls back
+   * the transaction when possible and always releases the dedicated connection.
+   */
   async save(accountValue: ProvisionedAccount): Promise<ProvisionedAccount> {
     const account = validateProposedAccount(accountValue);
     const databaseConnection = await this.databaseClient.connect();
