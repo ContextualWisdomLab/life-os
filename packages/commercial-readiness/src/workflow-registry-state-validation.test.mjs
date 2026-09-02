@@ -158,3 +158,29 @@ test('fails closed when the repository default branch changes during inventory',
   );
   assert.equal(metadataReads, 2);
 });
+
+test('fails closed when the default branch changes after the last metadata read', async () => {
+  const stable = inventoryClient();
+  let defaultBranch = 'main';
+  let branchReads = 0;
+  const client = {
+    async requestJson(path) {
+      if (path === `/repos/${REPOSITORY}`) {
+        return { default_branch: defaultBranch };
+      }
+      if (path === `/repos/${REPOSITORY}/branches/main`) {
+        branchReads += 1;
+        const response = { commit: { sha: SHA } };
+        if (branchReads === 2) defaultBranch = 'develop';
+        return response;
+      }
+      return stable.requestJson(path);
+    },
+  };
+
+  await assert.rejects(
+    collectWorkflowRegistrySnapshot(client, REPOSITORY, SHA),
+    /default branch.*changed.*inventory/i,
+  );
+  assert.equal(branchReads, 2);
+});
