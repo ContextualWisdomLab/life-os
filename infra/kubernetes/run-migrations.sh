@@ -146,6 +146,84 @@ SQL
   esac
 }
 
+incomplete_migration_recovery_sql() {
+  local service_name="$1"
+  local migration_name="$2"
+
+  case "${service_name}:${migration_name}" in
+    'identity:0007_identity_database_semantic_names.sql')
+      cat <<'SQL'
+  SELECT
+    to_regclass('identity.users') IS NOT NULL
+    AND to_regclass('identity.workspaces') IS NOT NULL
+    AND to_regclass('identity.sessions') IS NOT NULL
+    AND to_regclass('identity.user_accounts') IS NULL
+    AND to_regclass('identity.identity_workspaces') IS NULL
+    AND to_regclass('identity.authentication_sessions') IS NULL
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'users' AND column_name = 'id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'user_id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'provider'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'owner_user_id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'name'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'kind'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'user_id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'workspace_id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'rotated_from_id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'oauth_transactions' AND column_name = 'id'
+    )
+    AND EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'identity' AND table_name = 'oauth_transactions' AND column_name = 'provider'
+    ) AS incomplete_migration_retry_allowed
+  \gset
+SQL
+      ;;
+    *)
+      cat <<'SQL'
+  SELECT false AS incomplete_migration_retry_allowed
+  \gset
+SQL
+      ;;
+  esac
+}
+
 append_migration_command() {
   local command_file="$1"
   local service_name="$2"
@@ -153,14 +231,16 @@ append_migration_command() {
   local migration_name="$4"
   local migration_sequence="$5"
   local migration_sha="$6"
-  local reconciliation_sql
+  local reconciliation_sql recovery_sql
   reconciliation_sql="$(legacy_reconciliation_sql "${service_name}" "${migration_name}")"
+  recovery_sql="$(incomplete_migration_recovery_sql "${service_name}" "${migration_name}")"
 
   cat >>"${command_file}" <<SQL
 \\set service_name '${service_name}'
 \\set migration_name '${migration_name}'
 \\set migration_sequence '${migration_sequence}'
 \\set migration_sha256 '${migration_sha}'
+\\set migration_should_apply false
 SELECT
   EXISTS (
     SELECT 1
@@ -200,12 +280,23 @@ SELECT
     \\if :migration_is_applied
       \\echo migration_status=already_applied service=:service_name migration=:migration_name
     \\else
-      \\echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
-      DO \$life_os_migration_guard\$
-      BEGIN
-        RAISE EXCEPTION 'LifeOS migration guard failed';
-      END
-      \$life_os_migration_guard\$;
+${recovery_sql}
+      \\if :incomplete_migration_retry_allowed
+        DELETE FROM ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+        WHERE service_name = :'service_name'
+          AND migration_name = :'migration_name'
+          AND migration_sha256 = :'migration_sha256'
+          AND migration_status = 'applying';
+        \\echo migration_status=retrying service=:service_name migration=:migration_name
+        \\set migration_should_apply true
+      \\else
+        \\echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
+        DO \$life_os_migration_guard\$
+        BEGIN
+          RAISE EXCEPTION 'LifeOS migration guard failed';
+        END
+        \$life_os_migration_guard\$;
+      \\endif
     \\endif
   \\else
     \\echo migration_error=migration_digest_changed service=:service_name migration=:migration_name
@@ -220,29 +311,7 @@ SELECT
     AS migration_name_is_forward
   \\gset
   \\if :migration_name_is_forward
-    INSERT INTO ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
-      service_name,
-      migration_name,
-      migration_sequence,
-      migration_sha256,
-      migration_status
-    ) VALUES (
-      :'service_name',
-      :'migration_name',
-      (:'migration_sequence')::integer,
-      :'migration_sha256',
-      'applying'
-    );
-    \\echo migration_status=applying service=:service_name migration=:migration_name
-    \\i ${migration_file}
-    UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
-    SET migration_status = 'applied',
-        applied_at = clock_timestamp()
-    WHERE service_name = :'service_name'
-      AND migration_name = :'migration_name'
-      AND migration_sha256 = :'migration_sha256'
-      AND migration_status = 'applying';
-    \\echo migration_status=applied service=:service_name migration=:migration_name
+    \\set migration_should_apply true
   \\else
 ${reconciliation_sql}
     \\if :legacy_migration_state_matches
@@ -273,6 +342,31 @@ ${reconciliation_sql}
       \$life_os_migration_guard\$;
     \\endif
   \\endif
+\\endif
+\\if :migration_should_apply
+  INSERT INTO ${MIGRATION_SCHEMA}.${MIGRATION_TABLE} (
+    service_name,
+    migration_name,
+    migration_sequence,
+    migration_sha256,
+    migration_status
+  ) VALUES (
+    :'service_name',
+    :'migration_name',
+    (:'migration_sequence')::integer,
+    :'migration_sha256',
+    'applying'
+  );
+  \\echo migration_status=applying service=:service_name migration=:migration_name
+  \\i ${migration_file}
+  UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+  SET migration_status = 'applied',
+      applied_at = clock_timestamp()
+  WHERE service_name = :'service_name'
+    AND migration_name = :'migration_name'
+    AND migration_sha256 = :'migration_sha256'
+    AND migration_status = 'applying';
+  \\echo migration_status=applied service=:service_name migration=:migration_name
 \\endif
 SQL
 }
