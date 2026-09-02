@@ -50,6 +50,35 @@ function clientWithWorkflowTreeMode(mode, type = 'blob') {
   };
 }
 
+function clientWithUnrelatedWorkflowDirectoryEntry() {
+  const stable = clientWithWorkflowTreeMode('100644');
+  return {
+    async requestJson(path) {
+      if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
+        return {
+          sha: TREE_SHA,
+          truncated: false,
+          tree: [
+            {
+              path: WORKFLOW_PATH,
+              mode: '100644',
+              type: 'blob',
+              sha: 'b'.repeat(40),
+            },
+            {
+              path: '.github/workflows/README.md',
+              mode: '100644',
+              type: 'blob',
+              sha: 'c'.repeat(40),
+            },
+          ],
+        };
+      }
+      return stable.requestJson(path);
+    },
+  };
+}
+
 test('fails closed when a workflow-shaped Git tree entry is a symlink blob', async () => {
   await assert.rejects(
     collectWorkflowRegistrySnapshot(
@@ -70,4 +99,15 @@ test('fails closed when a workflow-shaped Git tree entry is not a blob', async (
     ),
     /workflow tree entry.*invalid/i,
   );
+});
+
+test('ignores unrelated non-workflow files inside the workflow directory', async () => {
+  const snapshot = await collectWorkflowRegistrySnapshot(
+    clientWithUnrelatedWorkflowDirectoryEntry(),
+    REPOSITORY,
+    SHA,
+  );
+
+  assert.deepEqual(snapshot.present.map((entry) => entry.id), [1]);
+  assert.equal(snapshot.active_orphans.length, 0);
 });
