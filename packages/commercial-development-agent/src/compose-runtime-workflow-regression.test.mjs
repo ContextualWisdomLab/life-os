@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -7,8 +7,15 @@ const CI_WORKFLOW_PATH = resolve(
   '../../../.github/workflows/ci.yml',
 );
 const COMPOSE_PATH = resolve(import.meta.dirname, '../../../compose.yaml');
+const LEGACY_UPGRADE_PATH = resolve(
+  import.meta.dirname,
+  '../../../infra/postgres/provision/upgrade-legacy-local.sh',
+);
 const ciWorkflow = readFileSync(CI_WORKFLOW_PATH, 'utf8');
 const compose = readFileSync(COMPOSE_PATH, 'utf8');
+const legacyUpgrade = existsSync(LEGACY_UPGRADE_PATH)
+  ? readFileSync(LEGACY_UPGRADE_PATH, 'utf8')
+  : '';
 
 /** Returns one named CI step so assertions stay scoped to its shell contract. */
 function ciStep(name) {
@@ -49,14 +56,17 @@ describe('Compose runtime provisioning workflow', () => {
     expect(runtime).toContain('docker compose down --volumes --remove-orphans');
   });
 
-  it('preserves the historical local PostgreSQL password for existing volumes while keeping the new runtime credential explicit', () => {
-    const legacyAdminFallbacks =
-      compose.match(/\$\{POSTGRES_PASSWORD:-lifeos\}/gu) ?? [];
-
-    expect(legacyAdminFallbacks).toHaveLength(2);
-    expect(compose).not.toContain('${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}');
+  it('requires a fresh local PostgreSQL administrator password while preserving an explicit legacy-volume rotation path', () => {
+    expect(compose).toContain('${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}');
+    expect(compose).not.toContain('${POSTGRES_PASSWORD:-lifeos}');
     expect(compose).toContain(
       '${NOTIFICATION_RUNTIME_DATABASE_PASSWORD:?Set NOTIFICATION_RUNTIME_DATABASE_PASSWORD}',
     );
+    expect(legacyUpgrade).toContain("POSTGRES_PASSWORD must not remain 'lifeos'");
+    expect(legacyUpgrade).toContain("ALTER ROLE lifeos PASSWORD :'next_admin_password';");
+    expect(legacyUpgrade).toContain(
+      'docker compose run --rm --no-deps notification-db-provision',
+    );
+    expect(legacyUpgrade).not.toContain('POSTGRES_PASSWORD=lifeos');
   });
 });
