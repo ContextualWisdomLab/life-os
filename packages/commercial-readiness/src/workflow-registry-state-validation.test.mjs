@@ -49,3 +49,22 @@ test('fails closed instead of treating an unknown workflow state as disabled evi
     /state.*invalid/i,
   );
 });
+
+test('fails closed when a workflow present in the protected tree is disabled in Actions', () => {
+  for (const state of [
+    'deleted',
+    'disabled_fork',
+    'disabled_inactivity',
+    'disabled_manually',
+  ]) {
+    assert.throws(
+      () =>
+        classifyWorkflowRegistry({
+          commitSha: SHA,
+          treePaths: [WORKFLOW_PATH],
+          workflows: [workflow(state)],
+        }),
+      /present workflow.*disabled/i,
+    );
+  }
+});
