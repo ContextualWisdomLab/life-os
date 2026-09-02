@@ -201,11 +201,19 @@ SELECT
       \\echo migration_status=already_applied service=:service_name migration=:migration_name
     \\else
       \\echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
-      \\quit 1
+      DO \$life_os_migration_guard\$
+      BEGIN
+        RAISE EXCEPTION 'LifeOS migration guard failed';
+      END
+      \$life_os_migration_guard\$;
     \\endif
   \\else
     \\echo migration_error=migration_digest_changed service=:service_name migration=:migration_name
-    \\quit 1
+    DO \$life_os_migration_guard\$
+    BEGIN
+      RAISE EXCEPTION 'LifeOS migration guard failed';
+    END
+    \$life_os_migration_guard\$;
   \\endif
 \\else
   SELECT (:'migration_name' COLLATE "C") > (:'latest_migration_name' COLLATE "C")
@@ -258,7 +266,11 @@ ${reconciliation_sql}
       \\echo migration_status=reconciled service=:service_name migration=:migration_name
     \\else
       \\echo migration_error=migration_name_not_forward service=:service_name migration=:migration_name latest=:latest_migration_name
-      \\quit 1
+      DO \$life_os_migration_guard\$
+      BEGIN
+        RAISE EXCEPTION 'LifeOS migration guard failed';
+      END
+      \$life_os_migration_guard\$;
     \\endif
   \\endif
 \\endif
