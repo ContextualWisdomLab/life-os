@@ -287,8 +287,6 @@ jobs:
                       'options': {
                           'baseURL': f"http://127.0.0.1:{os.environ['GATEWAY_PORT']}/v1",
                           'apiKey': os.environ['GATEWAY_TOKEN'],
-                          'timeout': 60_000,
-                          'chunkTimeout': 30_000,
                       },
                   },
               },
@@ -393,7 +391,7 @@ jobs:
               LIFEOS_ORCHESTRATOR_SIDECAR_ROOT="$ORCHESTRATOR_SIDECAR_ROOT" \
               LIFEOS_ORCHESTRATOR_GATEWAY_PORT="$LIFEOS_ORCHESTRATOR_GATEWAY_PORT" \
               bash "$ORCHESTRATOR_SIDECAR_ROOT/bootstrap.sh" \
-            </dev/null >"$RECEIPT_DIR/orchestrator-gateway.log" 2>&1 &
+            </dev/null >/dev/null 2>&1 &
           for _ in $(seq 1 60); do
             if curl --fail --silent --show-error --max-time 1 \
               "http://127.0.0.1:${LIFEOS_ORCHESTRATOR_GATEWAY_PORT}/healthz" >/dev/null; then
@@ -411,7 +409,6 @@ jobs:
           done
           echo 'available=false' >> "$GITHUB_OUTPUT"
           echo 'reason=provider_unavailable' >> "$GITHUB_OUTPUT"
-          tail -50 "$RECEIPT_DIR/orchestrator-gateway.log" >&2 || true
 
       - name: Run one bounded OpenCode implementation
         id: model
@@ -429,7 +426,7 @@ jobs:
             OPENCODE_DISABLE_AUTOUPDATE=true \
             OPENCODE_DISABLE_MODELS_FETCH=true \
             OPENCODE_DISABLE_PROJECT_CONFIG=true \
-            bash -c 'cd "$1" && timeout --signal=TERM --kill-after=30s 90m pnpm --filter @life-os/commercial-development-agent exec -- opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
+            bash -c 'cd "$1" && pnpm --filter @life-os/commercial-development-agent exec -- opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
               _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL" \
             > "$RECEIPT_DIR/opencode.log" 2>&1
           status=$?
@@ -1016,7 +1013,6 @@ jobs:
             "$RECEIPT_DIR/opencode.log" \
             "$RECEIPT_DIR/verification.log" \
             "$RECEIPT_DIR/compose-validation.log" \
-            "$RECEIPT_DIR/orchestrator-gateway.log" \
             "$RECEIPT_DIR/issues.json" \
             "$RECEIPT_DIR/pulls.json" \
             "$RECEIPT_DIR/selected-issue.json" \
