@@ -6,7 +6,9 @@ const CI_WORKFLOW_PATH = resolve(
   import.meta.dirname,
   '../../../.github/workflows/ci.yml',
 );
+const COMPOSE_PATH = resolve(import.meta.dirname, '../../../compose.yaml');
 const ciWorkflow = readFileSync(CI_WORKFLOW_PATH, 'utf8');
+const compose = readFileSync(COMPOSE_PATH, 'utf8');
 
 /** Returns one named CI step so assertions stay scoped to its shell contract. */
 function ciStep(name) {
@@ -45,5 +47,16 @@ describe('Compose runtime provisioning workflow', () => {
       'docker compose ps --all --quiet notification-db-provision',
     );
     expect(runtime).toContain('docker compose down --volumes --remove-orphans');
+  });
+
+  it('preserves the historical local PostgreSQL password for existing volumes while keeping the new runtime credential explicit', () => {
+    const legacyAdminFallbacks =
+      compose.match(/\$\{POSTGRES_PASSWORD:-lifeos\}/gu) ?? [];
+
+    expect(legacyAdminFallbacks).toHaveLength(2);
+    expect(compose).not.toContain('${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}');
+    expect(compose).toContain(
+      '${NOTIFICATION_RUNTIME_DATABASE_PASSWORD:?Set NOTIFICATION_RUNTIME_DATABASE_PASSWORD}',
+    );
   });
 });
