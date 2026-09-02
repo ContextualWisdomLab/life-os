@@ -27,17 +27,24 @@ function requireLoopbackTestDatabaseUrl(): string {
 function libpqEnvironment(
   sourceUrl: string,
   databaseName: string,
-  overrides: NodeJS.ProcessEnv = {},
+  environmentOverrides: NodeJS.ProcessEnv = {},
 ): NodeJS.ProcessEnv {
   const parsedUrl = new URL(sourceUrl);
-  return {
+  const databaseEnvironment: NodeJS.ProcessEnv = {
     ...process.env,
     PGHOST: parsedUrl.hostname,
     PGPORT: parsedUrl.port || '5432',
     PGUSER: decodeURIComponent(parsedUrl.username),
     PGPASSWORD: decodeURIComponent(parsedUrl.password),
     PGDATABASE: databaseName,
-    ...overrides,
+  };
+  const sslMode = parsedUrl.searchParams.get('sslmode');
+  if (sslMode) {
+    databaseEnvironment.PGSSLMODE = sslMode;
+  }
+  return {
+    ...databaseEnvironment,
+    ...environmentOverrides,
   };
 }
 
@@ -56,13 +63,13 @@ describe('Identity semantic rename libpq environment', () => {
 function psql(
   sourceUrl: string,
   databaseName: string,
-  arguments_: string[],
-  overrides: NodeJS.ProcessEnv = {},
+  psqlArguments: string[],
+  environmentOverrides: NodeJS.ProcessEnv = {},
 ) {
-  return spawnSync('psql', ['--no-psqlrc', '--no-password', ...arguments_], {
+  return spawnSync('psql', ['--no-psqlrc', '--no-password', ...psqlArguments], {
     cwd: repositoryRoot,
     encoding: 'utf8',
-    env: libpqEnvironment(sourceUrl, databaseName, overrides),
+    env: libpqEnvironment(sourceUrl, databaseName, environmentOverrides),
     timeout: 30_000,
   });
 }
@@ -76,8 +83,8 @@ function quotedDatabase(databaseName: string): string {
 }
 
 /** Return the immutable digest recorded by the migration runner. */
-function migrationDigest(path: string): string {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+function migrationDigest(migrationPath: string): string {
+  return createHash('sha256').update(readFileSync(migrationPath)).digest('hex');
 }
 
 /** List Identity migrations in the same C-compatible filename order as production. */
