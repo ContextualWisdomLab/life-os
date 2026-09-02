@@ -41,6 +41,17 @@ function libpqEnvironment(
   };
 }
 
+describe('Identity semantic rename libpq environment', () => {
+  it('preserves the source SSL mode for psql helpers', () => {
+    const databaseEnvironment = libpqEnvironment(
+      'postgresql://tester:secret@localhost:5432/life_os_test?sslmode=verify-full',
+      'life_os_test',
+    );
+
+    expect(databaseEnvironment.PGSSLMODE).toBe('verify-full');
+  });
+});
+
 /** Execute psql with bounded runtime and no credential-bearing URI argument. */
 function psql(
   sourceUrl: string,
