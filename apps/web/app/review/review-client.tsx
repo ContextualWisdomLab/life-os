@@ -198,6 +198,12 @@ function ritualLabel(kind: ReviewWorkspaceRitualKind): string {
   }
 }
 
+function periodHeading(record: ReviewWorkspaceRecord): string {
+  return record.ritualKind === 'weekly-review'
+    ? `Week of ${record.periodStartDate}`
+    : record.periodStartDate;
+}
+
 /**
  * Renders immutable Review history and records one Weekly Review only after an
  * explicit user ceremony. The browser never supplies workspace authority.
@@ -416,8 +422,8 @@ export function ReviewClient() {
           <p className={styles.eyebrow}>Weekly reset</p>
           <h1>Review</h1>
           <p className={styles.lede}>
-            Compare what you planned with durable evidence, record the week once,
-            and leave with fewer commitments than you started with.
+            Close the week deliberately, record the outcome once, and use immutable
+            history to see what changed over time.
           </p>
         </header>
 
@@ -456,7 +462,7 @@ export function ReviewClient() {
                   <div className={styles.historyHeading}>
                     <div>
                       <p>{ritualLabel(record.ritualKind)}</p>
-                      <h3>Week of {record.periodStartDate}</h3>
+                      <h3>{periodHeading(record)}</h3>
                     </div>
                     <time dateTime={record.recordedAt}>
                       {new Date(record.recordedAt).toLocaleDateString()}
@@ -464,7 +470,7 @@ export function ReviewClient() {
                   </div>
                   <dl className={styles.metrics}>
                     <div>
-                      <dt>Work</dt>
+                      <dt>Completed items</dt>
                       <dd>{record.completedItemCount} / {record.plannedItemCount}</dd>
                     </div>
                     <div>
