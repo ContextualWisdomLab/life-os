@@ -33,7 +33,10 @@ case "$port" in
     exit 64
     ;;
 esac
-if (( port < 1024 || port > 65535 )); then
+while [[ "$port" == 0* && "$port" != '0' ]]; do
+  port="${port#0}"
+done
+if (( ${#port} > 5 || port < 1024 || port > 65535 )); then
   echo 'LIFEOS_ORCHESTRATOR_GATEWAY_PORT must be between 1024 and 65535' >&2
   exit 64
 fi
