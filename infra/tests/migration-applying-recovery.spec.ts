@@ -174,6 +174,8 @@ describeWithDatabase('transactional migration retry recovery', () => {
       const runnerEnvironment: NodeJS.ProcessEnv = {
         ...process.env,
         LIFE_OS_MIGRATION_CONFIRMATION: 'apply-forward-only',
+        PGOPTIONS:
+          '-c life_os.identity_schema_rename_confirmation=identity-service-drained',
         IDENTITY_DATABASE_URL: temporaryUrl,
         PLANNING_DATABASE_URL: temporaryUrl,
         HABIT_DATABASE_URL: temporaryUrl,
