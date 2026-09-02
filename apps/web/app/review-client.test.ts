@@ -261,6 +261,32 @@ describe('authenticated Review history BFF', () => {
     );
   });
 
+  it('fails closed when Review returns more records than the requested limit', async () => {
+    let calls = 0;
+    const response = await handleReviewHistoryRequest(
+      historyRequest('1'),
+      environment,
+      async () => {
+        calls += 1;
+        return calls === 1
+          ? sessionResponse()
+          : Response.json([
+              completionRecord(),
+              completionRecord({
+                id: SECOND_REVIEW_ID,
+                ritualKind: 'daily-shutdown',
+                periodStartDate: '2026-09-01',
+                reflection: null,
+              }),
+            ]);
+      },
+      NOW_SECONDS,
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(calls, 2);
+  });
+
   it('rejects malformed limits and cross-workspace dependency evidence', async () => {
     let called = false;
     const invalidLimit = await handleReviewHistoryRequest(
