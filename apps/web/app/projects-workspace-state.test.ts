@@ -19,6 +19,31 @@ const project = Object.freeze({
   title: 'Ship authenticated planning workspace',
   createdAt: '2026-09-02T00:00:00.000Z',
 });
+const secondProject = Object.freeze({
+  id: '44444444-4444-4444-8444-444444444444',
+  goalId: secondGoal.id,
+  title: 'Close release evidence gaps',
+  createdAt: '2026-09-02T01:00:00.000Z',
+});
+
+function readyState() {
+  return reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
+    type: 'goals-loaded',
+    goals: [goal, secondGoal],
+  });
+}
+
+function loadedState() {
+  const selected = reduceProjectsWorkspaceState(readyState(), {
+    type: 'goal-selected',
+    goalId: goal.id,
+  });
+  return reduceProjectsWorkspaceState(selected, {
+    type: 'projects-loaded',
+    goalId: goal.id,
+    projects: [project],
+  });
+}
 
 test('projects workspace begins without inventing a selected goal', () => {
   assert.deepEqual(createProjectsWorkspaceState(), {
@@ -33,21 +58,14 @@ test('projects workspace begins without inventing a selected goal', () => {
 });
 
 test('durable goals arrive before project scope is selected', () => {
-  const state = reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
-    type: 'goals-loaded',
-    goals: [goal],
-  });
+  const state = readyState();
   assert.equal(state.status, 'ready');
   assert.equal(state.selectedGoalId, null);
   assert.deepEqual(state.projects, []);
 });
 
-test('selecting a goal clears stale project evidence', () => {
-  const ready = reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
-    type: 'goals-loaded',
-    goals: [goal],
-  });
-  const selected = reduceProjectsWorkspaceState(ready, {
+test('selecting a known goal clears stale project evidence', () => {
+  const selected = reduceProjectsWorkspaceState(readyState(), {
     type: 'goal-selected',
     goalId: goal.id,
   });
@@ -56,20 +74,17 @@ test('selecting a goal clears stale project evidence', () => {
   assert.deepEqual(selected.projects, []);
 });
 
-test('successful project creation accepts only returned durable evidence', () => {
-  const selected = reduceProjectsWorkspaceState(
-    reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
-      type: 'goals-loaded',
-      goals: [goal],
-    }),
-    { type: 'goal-selected', goalId: goal.id },
-  );
-  const loaded = reduceProjectsWorkspaceState(selected, {
-    type: 'projects-loaded',
-    goalId: goal.id,
-    projects: [],
+test('an unknown goal cannot become browser scope authority', () => {
+  const ready = readyState();
+  const selected = reduceProjectsWorkspaceState(ready, {
+    type: 'goal-selected',
+    goalId: '55555555-5555-4555-8555-555555555555',
   });
-  const submitting = reduceProjectsWorkspaceState(loaded, {
+  assert.equal(selected, ready);
+});
+
+test('successful project creation accepts only returned durable evidence', () => {
+  const submitting = reduceProjectsWorkspaceState(loadedState(), {
     type: 'submit-started',
   });
   const created = reduceProjectsWorkspaceState(submitting, {
@@ -79,14 +94,19 @@ test('successful project creation accepts only returned durable evidence', () =>
   assert.equal(submitting.submitting, true);
   assert.deepEqual(created.projects, [project]);
   assert.equal(created.submitting, false);
+  assert.equal(created.message, 'Project created.');
 });
 
-test('late project responses cannot cross an explicitly changed goal scope', () => {
-  const ready = reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
-    type: 'goals-loaded',
-    goals: [goal, secondGoal],
-  });
-  const firstSelection = reduceProjectsWorkspaceState(ready, {
+test('submission cannot start before a durable Goal is selected', () => {
+  const ready = readyState();
+  assert.equal(
+    reduceProjectsWorkspaceState(ready, { type: 'submit-started' }),
+    ready,
+  );
+});
+
+test('a late project response cannot cross an explicitly changed Goal scope', () => {
+  const firstSelection = reduceProjectsWorkspaceState(readyState(), {
     type: 'goal-selected',
     goalId: goal.id,
   });
@@ -100,26 +120,70 @@ test('late project responses cannot cross an explicitly changed goal scope', () 
     projects: [project],
   });
 
+  assert.equal(staleResponse, secondSelection);
   assert.equal(staleResponse.selectedGoalId, secondGoal.id);
   assert.deepEqual(staleResponse.projects, []);
   assert.equal(staleResponse.loadingProjects, true);
 });
 
-test('offline failure preserves previously loaded project evidence', () => {
-  const selected = reduceProjectsWorkspaceState(
-    reduceProjectsWorkspaceState(createProjectsWorkspaceState(), {
-      type: 'goals-loaded',
-      goals: [goal],
-    }),
-    { type: 'goal-selected', goalId: goal.id },
-  );
-  const loaded = reduceProjectsWorkspaceState(selected, {
-    type: 'projects-loaded',
-    goalId: goal.id,
-    projects: [project],
+test('a late creation result cannot cross the selected Goal scope', () => {
+  const secondSelection = reduceProjectsWorkspaceState(readyState(), {
+    type: 'goal-selected',
+    goalId: secondGoal.id,
   });
+  const staleCreation = reduceProjectsWorkspaceState(secondSelection, {
+    type: 'submit-succeeded',
+    project,
+  });
+  assert.equal(staleCreation, secondSelection);
+
+  const loaded = reduceProjectsWorkspaceState(secondSelection, {
+    type: 'projects-loaded',
+    goalId: secondGoal.id,
+    projects: [],
+  });
+  const created = reduceProjectsWorkspaceState(loaded, {
+    type: 'submit-succeeded',
+    project: secondProject,
+  });
+  assert.deepEqual(created.projects, [secondProject]);
+});
+
+test('validation and dependency failures preserve loaded durable evidence', () => {
+  const loaded = loadedState();
+  const submitting = reduceProjectsWorkspaceState(loaded, {
+    type: 'submit-started',
+  });
+  const invalid = reduceProjectsWorkspaceState(submitting, {
+    type: 'invalid-title',
+  });
+  assert.deepEqual(invalid.projects, [project]);
+  assert.equal(invalid.submitting, false);
+  assert.equal(invalid.message, 'Enter a project between 1 and 160 characters.');
+
+  const unavailable = reduceProjectsWorkspaceState(loaded, {
+    type: 'unavailable',
+  });
+  assert.equal(unavailable.status, 'unavailable');
+  assert.deepEqual(unavailable.projects, [project]);
+  assert.equal(unavailable.loadingProjects, false);
+});
+
+test('authentication and offline failures preserve evidence but disable mutation', () => {
+  const loaded = loadedState();
+  const authenticationRequired = reduceProjectsWorkspaceState(loaded, {
+    type: 'authentication-required',
+  });
+  assert.equal(authenticationRequired.status, 'authentication-required');
+  assert.deepEqual(authenticationRequired.projects, [project]);
+  assert.equal(authenticationRequired.submitting, false);
+
   const offline = reduceProjectsWorkspaceState(loaded, { type: 'offline' });
   assert.equal(offline.status, 'offline');
   assert.deepEqual(offline.projects, [project]);
   assert.equal(offline.submitting, false);
+  assert.equal(
+    offline.message,
+    'You are offline. Existing projects remain visible but cannot change.',
+  );
 });
