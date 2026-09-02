@@ -6,18 +6,25 @@ const WORKFLOW_PATH = resolve(
   import.meta.dirname,
   '../../../.github/workflows/opencode-commercial-development.yml',
 );
+const SIDECAR_PATH = resolve(
+  import.meta.dirname,
+  '../../../scripts/ci/lifeos_contextual_orchestrator_sidecar.sh',
+);
 const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
+const sidecar = readFileSync(SIDECAR_PATH, 'utf8');
 
 describe('OpenCode commercial development orchestration boundary', () => {
   it('routes model traffic through the pinned contextual-orchestrator free pool', () => {
-    expect(workflow).toContain(
-      "ORCHESTRATOR_PIN_SHA: '045d17da5e2aea56a97e241ee158ab1628d78660'",
+    expect(sidecar).toContain(
+      "readonly ORCHESTRATOR_PIN_SHA='045d17da5e2aea56a97e241ee158ab1628d78660'",
     );
+    expect(sidecar).toContain("readonly ORCHESTRATOR_ROUTE='orchestrator/free'");
+    expect(sidecar).toContain('--auto-discover-model-agents');
+    expect(sidecar).toContain('--auth-token-key CONTEXTUAL_ORCHESTRATOR_TOKEN');
     expect(workflow).toContain('contextual_orchestrator_gateway/orchestrator/free');
     expect(workflow).toContain('CONTEXTUAL_ORCHESTRATOR_TOKEN');
-    expect(workflow).toContain('--auto-discover-model-agents');
-    expect(workflow).toContain('--auth-token-key CONTEXTUAL_ORCHESTRATOR_TOKEN');
-    expect(workflow).toContain('http://127.0.0.1:8000/v1');
+    expect(workflow).toContain('http://127.0.0.1:');
+    expect(workflow).toContain("LIFEOS_ORCHESTRATOR_GATEWAY_PORT: '8000'");
   });
 
   it('bootstraps the governed provider credential set into the gateway boundary', () => {
@@ -29,6 +36,7 @@ describe('OpenCode commercial development orchestration boundary', () => {
       'OPENAI_API_KEY',
     ]) {
       expect(workflow).toContain(`secrets.${secret}`);
+      expect(sidecar).toContain(secret);
     }
   });
 
@@ -38,5 +46,6 @@ describe('OpenCode commercial development orchestration boundary', () => {
     expect(workflow).not.toContain("'enabled_providers': ['nvidia']");
     expect(workflow).not.toContain('opencode models nvidia');
     expect(workflow).not.toContain('NVIDIA_API_KEY=local-loopback-placeholder');
+    expect(sidecar).not.toContain('integrate.api.nvidia.com');
   });
 });
