@@ -21,6 +21,9 @@ export function applyIdentityMigration(
     throw new Error('Identity migration test database URL is incomplete');
   }
 
+  const pgOptions = [process.env.PGOPTIONS, IDENTITY_RENAME_CONFIRMATION]
+    .filter((option): option is string => Boolean(option))
+    .join(' ');
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     PGHOST: target.hostname,
@@ -28,7 +31,7 @@ export function applyIdentityMigration(
     PGUSER: decodeURIComponent(target.username),
     PGPASSWORD: decodeURIComponent(target.password),
     PGDATABASE: databaseName,
-    PGOPTIONS: IDENTITY_RENAME_CONFIRMATION,
+    PGOPTIONS: pgOptions,
   };
   const sslMode = target.searchParams.get('sslmode');
   if (sslMode) environment.PGSSLMODE = sslMode;
