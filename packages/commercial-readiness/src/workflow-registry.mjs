@@ -131,6 +131,9 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
     if (!REPOSITORY_WORKFLOW_PATH_PATTERN.test(record.path)) {
       dynamic.push(record);
     } else if (presentPaths.has(record.path)) {
+      if (record.state !== 'active') {
+        return invalid('Workflow registry present workflow is disabled');
+      }
       present.push(record);
     } else if (record.state === 'active') {
       activeOrphans.push(record);
