@@ -21,6 +21,15 @@ function workflow(state) {
   };
 }
 
+function dynamicWorkflow(id) {
+  return {
+    id,
+    name: `Dynamic workflow ${id}`,
+    path: `dynamic/workflow-${id}`,
+    state: 'active',
+  };
+}
+
 function inventoryClient(treeResponseSha = TREE_SHA) {
   return {
     async requestJson(path) {
@@ -137,6 +146,35 @@ test('fails closed when the recursive tree response is not the commit tree', asy
     ),
     /tree evidence.*inconsistent/i,
   );
+});
+
+test('fails closed when the workflow registry changes across pagination without changing total count', async () => {
+  const stable = inventoryClient();
+  let registryPass = 0;
+  const client = {
+    async requestJson(path) {
+      if (path.endsWith('per_page=100&page=1')) {
+        registryPass += 1;
+        const startId = registryPass === 1 ? 1 : 2;
+        return {
+          total_count: 101,
+          workflows: Array.from({ length: 100 }, (_, index) =>
+            dynamicWorkflow(startId + index),
+          ),
+        };
+      }
+      if (path.endsWith('per_page=100&page=2')) {
+        return { total_count: 101, workflows: [dynamicWorkflow(102)] };
+      }
+      return stable.requestJson(path);
+    },
+  };
+
+  await assert.rejects(
+    collectWorkflowRegistrySnapshot(client, REPOSITORY, SHA),
+    /workflow registry changed during inventory/i,
+  );
+  assert.equal(registryPass, 2);
 });
 
 test('fails closed when the repository default branch changes during inventory', async () => {
