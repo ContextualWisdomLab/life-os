@@ -26,12 +26,22 @@ const authority: TrustedCalendarUserContext = Object.freeze({
   userId: USER_ID,
 });
 
+type TestVerifierAccess = {
+  readonly secretReference: string;
+  readonly stateId: string;
+  readonly workspaceId: string;
+  readonly userId: string;
+  readonly purpose: string;
+  readonly expiresAt: string;
+};
+
 class MemoryOAuthStore
   implements CalendarGoogleOAuthAuthorizationStateRepository, CalendarGoogleOAuthVerifierSecretStore
 {
   readonly records = new Map<string, CalendarGoogleOAuthAuthorizationStateRecord>();
   readonly secrets = new Map<string, string>();
   readonly deletedReferences: string[] = [];
+  readonly verifierReads: Array<string | TestVerifierAccess> = [];
   readonly verifierWrites: Array<{
     readonly stateId: string;
     readonly workspaceId: string;
@@ -57,15 +67,20 @@ class MemoryOAuthStore
     return this.secretReference;
   }
 
-  async deleteVerifier(secretReference: string): Promise<void> {
+  async deleteVerifier(input: string | TestVerifierAccess): Promise<void> {
+    const secretReference = typeof input === 'string' ? input : input.secretReference;
     this.deletedReferences.push(secretReference);
     this.secrets.delete(secretReference);
   }
 
-  async readVerifier(secretReference: string): Promise<string> {
+  async readVerifier(input: string | TestVerifierAccess): Promise<string> {
+    this.verifierReads.push(
+      typeof input === 'string' ? input : Object.freeze({ ...input }),
+    );
     if (this.failRead) {
       throw new Error('kms unavailable');
     }
+    const secretReference = typeof input === 'string' ? input : input.secretReference;
     const value = this.secrets.get(secretReference);
     if (!value) {
       throw new Error('missing verifier');
@@ -205,15 +220,26 @@ describe('CalendarGoogleOAuthAuthorizationApplication', () => {
     expect(store.records.size).toBe(0);
   });
 
-  it('consumes state once under the exact trusted workspace/user/redirect scope and materializes the verifier internally', async () => {
+  it('consumes state once under exact authority and materializes the verifier through the same purpose/lifetime scope', async () => {
     const now = vi.fn(() => CREATED_AT);
-    const { application } = subject(new MemoryOAuthStore(), now);
+    const store = new MemoryOAuthStore();
+    const { application } = subject(store, now);
     await application.issue(authority, { redirectUri: REDIRECT_URI });
     now.mockReturnValue(CONSUMED_AT);
 
     await expect(
       application.consume(authority, { state: STATE_ID, redirectUri: REDIRECT_URI }),
     ).resolves.toEqual({ codeVerifier: VERIFIER });
+    expect(store.verifierReads).toEqual([
+      {
+        secretReference: SECRET_REFERENCE,
+        stateId: STATE_ID,
+        workspaceId: WORKSPACE_ID,
+        userId: USER_ID,
+        purpose: 'google_calendar_oauth_authorization',
+        expiresAt: EXPIRES_AT,
+      },
+    ]);
     await expect(
       application.consume(authority, { state: STATE_ID, redirectUri: REDIRECT_URI }),
     ).rejects.toBeInstanceOf(CalendarGoogleOAuthAuthorizationValidationError);
