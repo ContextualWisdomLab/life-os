@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const firstGoal = Object.freeze({
   id: '11111111-1111-4111-8111-111111111111',
@@ -23,8 +23,8 @@ const secondProject = Object.freeze({
   createdAt: '2026-09-02T04:00:00.000Z',
 });
 
-async function routeGoals(page: Parameters<typeof test>[0] extends never ? never : any) {
-  await page.route('**/api/planning/goals', async (route: any) => {
+async function routeGoals(page: Page): Promise<void> {
+  await page.route('**/api/planning/goals', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fulfill({ status: 405 });
       return;
