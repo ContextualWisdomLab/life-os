@@ -300,6 +300,9 @@ export async function collectWorkflowRegistrySnapshot(
   const treePayload = await client.requestJson(
     `/repos/${repository}/git/trees/${treeSha}?recursive=1`,
   );
+  if (requireSha(treePayload?.sha) !== treeSha) {
+    return invalid('GitHub workflow tree evidence is inconsistent');
+  }
   const treePaths = workflowPathsFromTree(treePayload);
   const registry = await collectWorkflowRegistry(client, repository);
 
