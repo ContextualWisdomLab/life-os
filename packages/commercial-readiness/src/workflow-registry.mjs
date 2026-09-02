@@ -306,6 +306,11 @@ export async function collectWorkflowRegistrySnapshot(
   const treePaths = workflowPathsFromTree(treePayload);
   const registry = await collectWorkflowRegistry(client, repository);
 
+  const finalMetadata = await client.requestJson(`/repos/${repository}`);
+  if (finalMetadata?.default_branch !== defaultBranch) {
+    return invalid('GitHub default branch changed during workflow inventory');
+  }
+
   const finalHead = await readDefaultBranchHead(client, repository, defaultBranch);
   if (finalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
