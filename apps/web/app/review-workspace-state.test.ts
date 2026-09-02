@@ -114,6 +114,15 @@ test('invalid or duplicate completion evidence fails closed and releases the mut
   assert.equal(duplicate.status, 'unavailable');
   assert.equal(duplicate.submitting, false);
   assert.equal(duplicate.records.length, 1);
+
+  const samePeriodSubmitting = reduceReviewWorkspaceState(ready, { type: 'submit-started' });
+  const samePeriod = reduceReviewWorkspaceState(samePeriodSubmitting, {
+    type: 'submit-succeeded',
+    record: record(SECOND_REVIEW_ID),
+  });
+  assert.equal(samePeriod.status, 'unavailable');
+  assert.equal(samePeriod.submitting, false);
+  assert.equal(samePeriod.records.length, 1);
 });
 
 test('conflict, authentication, offline, and dependency failures preserve durable history', () => {
