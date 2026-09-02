@@ -512,6 +512,11 @@ function unavailableProjectCreation(): Response {
   );
 }
 
+/** Preserves Planning's tenant-indistinguishable parent absence without trusting its body. */
+function missingProjectParent(): Response {
+  return problemResponse(404, 'Goal was not found', 'goal_not_found');
+}
+
 /** Hides Project listing configuration, network, and malformed dependency failures. */
 function unavailableProjectListing(): Response {
   return problemResponse(
@@ -702,6 +707,9 @@ export async function handlePlanningProjectCreateRequest(
     );
     if (planningResponse.status === 400) {
       return invalidProjectRequest();
+    }
+    if (planningResponse.status === 404) {
+      return missingProjectParent();
     }
     if (planningResponse.status !== 201) {
       return unavailableProjectCreation();
