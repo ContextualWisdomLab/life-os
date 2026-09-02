@@ -71,6 +71,15 @@ test('rejects duplicate or malformed history without discarding accepted evidenc
   assert.equal(malformed.records[0]?.id, REVIEW_ID);
 });
 
+test('rejects two Weekly Review records for the same Monday even when IDs differ', () => {
+  const state = reduceReviewWorkspaceState(createReviewWorkspaceState(), {
+    type: 'history-loaded',
+    records: [record(), record(SECOND_REVIEW_ID)],
+  });
+  assert.equal(state.status, 'unavailable');
+  assert.deepEqual(state.records, []);
+});
+
 test('requires an active explicit submission before accepting completion evidence', () => {
   const ready = reduceReviewWorkspaceState(createReviewWorkspaceState(), {
     type: 'history-loaded',
