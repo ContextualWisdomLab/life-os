@@ -32,11 +32,27 @@ class MemoryOAuthStore
   readonly records = new Map<string, CalendarGoogleOAuthAuthorizationStateRecord>();
   readonly secrets = new Map<string, string>();
   readonly deletedReferences: string[] = [];
+  readonly verifierWrites: Array<{
+    readonly stateId: string;
+    readonly workspaceId: string;
+    readonly userId: string;
+    readonly verifier: string;
+    readonly purpose?: string;
+    readonly expiresAt?: string;
+  }> = [];
   failCreate = false;
   failRead = false;
   secretReference = SECRET_REFERENCE;
 
-  async writeVerifier(input: { readonly verifier: string }): Promise<string> {
+  async writeVerifier(input: {
+    readonly stateId: string;
+    readonly workspaceId: string;
+    readonly userId: string;
+    readonly verifier: string;
+    readonly purpose?: string;
+    readonly expiresAt?: string;
+  }): Promise<string> {
+    this.verifierWrites.push(Object.freeze({ ...input }));
     this.secrets.set(this.secretReference, input.verifier);
     return this.secretReference;
   }
@@ -126,6 +142,16 @@ describe('CalendarGoogleOAuthAuthorizationApplication', () => {
       expiresAt: EXPIRES_AT,
     });
     expect(Object.keys(issued)).not.toContain('codeVerifier');
+    expect(store.verifierWrites).toEqual([
+      {
+        stateId: STATE_ID,
+        workspaceId: WORKSPACE_ID,
+        userId: USER_ID,
+        verifier: VERIFIER,
+        purpose: 'google_calendar_oauth_authorization',
+        expiresAt: EXPIRES_AT,
+      },
+    ]);
     expect(store.records.get(STATE_ID)).toEqual({
       stateId: STATE_ID,
       workspaceId: WORKSPACE_ID,
