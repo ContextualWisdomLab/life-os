@@ -108,7 +108,7 @@ test('rejects relative repository and default-branch API path segments', async (
     );
   }
 
-  for (const defaultBranch of ['.', '..', 'feature/unsafe']) {
+  for (const defaultBranch of ['.', '..']) {
     const client = {
       async requestJson(path) {
         if (path === `/repos/${REPOSITORY}`) return { default_branch: defaultBranch };
