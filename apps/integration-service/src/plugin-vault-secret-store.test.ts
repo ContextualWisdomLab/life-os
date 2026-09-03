@@ -7,11 +7,11 @@ import {
   type PluginVaultHttpResponse,
 } from './plugin-vault-secret-store';
 
-const BINDING_ID = '11111111-1111-4111-8111-111111111111';
-const INSTALLATION_ID = '22222222-2222-4222-8222-222222222222';
-const WORKSPACE_ID = '33333333-3333-4333-8333-333333333333';
-const USER_ID = '44444444-4444-4444-8444-444444444444';
-const TOKEN = `hvs.${'a'.repeat(48)}`;
+const BINDING_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const INSTALLATION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const WORKSPACE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const USER_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const TOKEN = 'test-vault-token-not-a-real-credential';
 const REFERENCE = `lifeos-plugin-vault://${BINDING_ID}`;
 
 const INPUT: PutPluginSecretInput = Object.freeze({
@@ -20,7 +20,7 @@ const INPUT: PutPluginSecretInput = Object.freeze({
   workspaceId: WORKSPACE_ID,
   installedByUserId: USER_ID,
   credentialName: 'webhook.signing',
-  secretValue: 'buyer-secret-value',
+  secretValue: 'buyer secret value',
 });
 
 function response(status: number, body = ''): PluginVaultHttpResponse {
@@ -31,12 +31,15 @@ function response(status: number, body = ''): PluginVaultHttpResponse {
   };
 }
 
-function exactVaultRead(secretValue = INPUT.secretValue): string {
+function exactVaultRead(
+  secretValue = INPUT.secretValue,
+  credentialBindingId = BINDING_ID,
+): string {
   return JSON.stringify({
     data: {
       data: {
         schemaVersion: 1,
-        credentialBindingId: BINDING_ID,
+        credentialBindingId,
         installationId: INSTALLATION_ID,
         workspaceId: WORKSPACE_ID,
         installedByUserId: USER_ID,
@@ -76,7 +79,7 @@ describe('PluginVaultSecretStore', () => {
         workspaceId: WORKSPACE_ID,
         installedByUserId: USER_ID,
         credentialName: 'webhook.signing',
-        secretValue: 'buyer-secret-value',
+        secretValue: 'buyer secret value',
       },
     });
   });
@@ -84,7 +87,7 @@ describe('PluginVaultSecretStore', () => {
   it('recovers an ambiguous create response only when the exact durable Vault winner matches', async () => {
     const http = vi
       .fn<PluginVaultHttpClient>()
-      .mockResolvedValueOnce(response(400, '{"errors":["check-and-set parameter did not match"]}'))
+      .mockResolvedValueOnce(response(400))
       .mockResolvedValueOnce(response(200, exactVaultRead()));
     const store = new PluginVaultSecretStore(
       'https://vault.example.test',
@@ -102,7 +105,26 @@ describe('PluginVaultSecretStore', () => {
     const http = vi
       .fn<PluginVaultHttpClient>()
       .mockResolvedValueOnce(response(400))
-      .mockResolvedValueOnce(response(200, exactVaultRead('different-secret-value')));
+      .mockResolvedValueOnce(response(200, exactVaultRead('different secret value')));
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      http,
+    );
+
+    await expect(store.putSecret(INPUT)).rejects.toBeInstanceOf(
+      PluginVaultSecretStoreError,
+    );
+  });
+
+  it('rejects non-canonical persisted binding identity instead of normalizing Vault evidence', async () => {
+    const http = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce(
+        response(200, exactVaultRead(INPUT.secretValue, BINDING_ID.toUpperCase())),
+      );
     const store = new PluginVaultSecretStore(
       'https://vault.example.test',
       TOKEN,
@@ -144,9 +166,9 @@ describe('PluginVaultSecretStore', () => {
       http,
     );
 
-    await expect(store.deleteSecret('lifeos-plugin-vault://not-a-uuid')).rejects.toBeInstanceOf(
-      PluginVaultSecretStoreError,
-    );
+    await expect(
+      store.deleteSecret('lifeos-plugin-vault://not-a-uuid'),
+    ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
     expect(http).not.toHaveBeenCalled();
   });
 
