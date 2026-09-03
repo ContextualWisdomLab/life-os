@@ -6,16 +6,14 @@ import { collectWorkflowRegistrySnapshot } from './workflow-registry.mjs';
 const SHA = 'f'.repeat(40);
 const TREE_SHA = 'a'.repeat(40);
 const REPOSITORY = 'ContextualWisdomLab/life-os';
-const DEFAULT_BRANCH = 'release%candidate';
-const ENCODED_DEFAULT_BRANCH = 'release%25candidate';
 
-test('accepts a valid percent-bearing default branch through an encoded branch API segment', async () => {
+async function expectEncodedDefaultBranch(defaultBranch, encodedDefaultBranch) {
   const calls = [];
   const client = {
     async requestJson(path) {
       calls.push(path);
-      if (path === `/repos/${REPOSITORY}`) return { default_branch: DEFAULT_BRANCH };
-      if (path === `/repos/${REPOSITORY}/branches/${ENCODED_DEFAULT_BRANCH}`) {
+      if (path === `/repos/${REPOSITORY}`) return { default_branch: defaultBranch };
+      if (path === `/repos/${REPOSITORY}/branches/${encodedDefaultBranch}`) {
         return { commit: { sha: SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/commits/${SHA}`) {
@@ -38,7 +36,15 @@ test('accepts a valid percent-bearing default branch through an encoded branch A
   assert.equal(snapshot.commit_sha, SHA);
   assert.equal(snapshot.workflow_count, 0);
   assert.equal(
-    calls.filter((path) => path === `/repos/${REPOSITORY}/branches/${ENCODED_DEFAULT_BRANCH}`).length,
+    calls.filter((path) => path === `/repos/${REPOSITORY}/branches/${encodedDefaultBranch}`).length,
     2,
   );
+}
+
+test('accepts a valid percent-bearing default branch through an encoded branch API segment', async () => {
+  await expectEncodedDefaultBranch('release%candidate', 'release%25candidate');
+});
+
+test('accepts a valid slash-bearing default branch through an encoded branch API segment', async () => {
+  await expectEncodedDefaultBranch('release/candidate', 'release%2Fcandidate');
 });
