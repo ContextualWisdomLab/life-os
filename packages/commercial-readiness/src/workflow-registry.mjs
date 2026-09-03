@@ -343,7 +343,6 @@ export async function collectWorkflowRegistrySnapshot(
     defaultBranch.length > 255 ||
     defaultBranch === '.' ||
     defaultBranch === '..' ||
-    defaultBranch.includes('/') ||
     DEFAULT_BRANCH_INVALID_PATTERN.test(defaultBranch)
   ) {
     return invalid('GitHub default branch is invalid');
