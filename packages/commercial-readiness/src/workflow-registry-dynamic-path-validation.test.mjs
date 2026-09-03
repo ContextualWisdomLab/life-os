@@ -26,13 +26,25 @@ test('fails closed when an undocumented non-repository workflow path masquerades
   );
 });
 
-test('retains the documented GitHub Dependabot dynamic workflow namespace', () => {
+test('fails closed when an undocumented workflow path uses the dynamic namespace', () => {
+  assert.throws(
+    () =>
+      classifyWorkflowRegistry({
+        commitSha: SHA,
+        treePaths: [],
+        workflows: [workflow(2, 'dynamic/unknown/repair')],
+      }),
+    /dynamic workflow path.*invalid/i,
+  );
+});
+
+test('retains the documented GitHub Dependabot dynamic workflow identity', () => {
   const snapshot = classifyWorkflowRegistry({
     commitSha: SHA,
     treePaths: [],
-    workflows: [workflow(2, 'dynamic/dependabot/dependabot-updates')],
+    workflows: [workflow(3, 'dynamic/dependabot/dependabot-updates')],
   });
 
-  assert.deepEqual(snapshot.dynamic.map((entry) => entry.id), [2]);
+  assert.deepEqual(snapshot.dynamic.map((entry) => entry.id), [3]);
   assert.equal(snapshot.active_orphans.length, 0);
 });
