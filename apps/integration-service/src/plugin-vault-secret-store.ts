@@ -415,23 +415,13 @@ export class PluginVaultSecretStore implements PluginSecretStore {
 
   /**
    * Reads one replay body incrementally under the total request deadline and byte cap.
-   * Read chunks are zeroized on every abnormal exit and again after successful decode;
-   * malformed UTF-8, body shape, length evidence, stream failure, or abort fails closed.
+   * Every acquired reader is cancelled on abnormal preflight/read exit so underlying
+   * transport resources are released; read chunks are zeroized before failure or decode.
    */
   private async boundedBody(
     response: PluginVaultHttpResponse,
     signal: AbortSignal,
   ): Promise<string> {
-    const declaredLength = response.headers.get('content-length');
-    if (declaredLength !== null) {
-      if (!/^(?:0|[1-9]\d*)$/u.test(declaredLength)) {
-        return unavailable();
-      }
-      const bytes = Number(declaredLength);
-      if (!Number.isSafeInteger(bytes) || bytes > MAXIMUM_RESPONSE_BYTES) {
-        return unavailable();
-      }
-    }
     if (
       response.body === null ||
       typeof response.body !== 'object' ||
@@ -445,6 +435,16 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     let totalBytes = 0;
     let completed = false;
     try {
+      const declaredLength = response.headers.get('content-length');
+      if (declaredLength !== null) {
+        if (!/^(?:0|[1-9]\d*)$/u.test(declaredLength)) {
+          return unavailable();
+        }
+        const bytes = Number(declaredLength);
+        if (!Number.isSafeInteger(bytes) || bytes > MAXIMUM_RESPONSE_BYTES) {
+          return unavailable();
+        }
+      }
       while (true) {
         const result = await this.readWithAbort(reader, signal);
         if (result.done) {
