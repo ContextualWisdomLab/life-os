@@ -27,7 +27,7 @@ function durableRow(overrides: Record<string, unknown>): Record<string, unknown>
 }
 
 class EvidenceClient implements PluginDeliveryOriginSqlClient {
-  constructor(private readonly evidence: Record<string, unknown>) {}
+  constructor(private readonly evidence: unknown) {}
 
   async query<Row>(): Promise<PluginDeliveryOriginSqlResult<Row>> {
     return {
@@ -37,7 +37,22 @@ class EvidenceClient implements PluginDeliveryOriginSqlClient {
   }
 }
 
-describe('plugin delivery-origin malformed Date evidence', () => {
+function storeFor(evidence: unknown): PostgresPluginDeliveryOriginGrantStore {
+  return new PostgresPluginDeliveryOriginGrantStore(new EvidenceClient(evidence));
+}
+
+async function expectEvidenceFailure(evidence: unknown): Promise<void> {
+  await expect(
+    storeFor(evidence).findById(
+      GRANT_ID,
+      INSTALLATION_ID,
+      WORKSPACE_ID,
+      USER_ID,
+    ),
+  ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceEvidenceError);
+}
+
+describe('plugin delivery-origin malformed durable evidence', () => {
   it.each([
     ['granted_at', durableRow({ granted_at: new Date(Number.NaN) })],
     [
@@ -48,12 +63,13 @@ describe('plugin delivery-origin malformed Date evidence', () => {
       }),
     ],
   ])('maps an invalid %s Date to the bounded persistence evidence error', async (_field, evidence) => {
-    const store = new PostgresPluginDeliveryOriginGrantStore(
-      new EvidenceClient(evidence),
-    );
-
-    await expect(
-      store.findById(GRANT_ID, INSTALLATION_ID, WORKSPACE_ID, USER_ID),
-    ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceEvidenceError);
+    await expectEvidenceFailure(evidence);
   });
+
+  it.each([null, undefined])(
+    'maps a non-object persisted row %s to the bounded persistence evidence error',
+    async (evidence) => {
+      await expectEvidenceFailure(evidence);
+    },
+  );
 });
