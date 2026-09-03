@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -15,7 +15,6 @@ const MIGRATION_NAMES = [
 const MIGRATIONS = MIGRATION_NAMES.map((name) =>
   readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
 );
-const CREDENTIAL_GUARD_MIGRATION = MIGRATIONS.at(-1) ?? '';
 
 interface SqlExecution {
   readonly status: number | null;
@@ -23,14 +22,13 @@ interface SqlExecution {
   readonly stderr: string;
 }
 
-function executeSql(sql: string): SqlExecution {
+function psqlConnection(applicationName?: string) {
   if (!DATABASE_URL) {
     throw new Error('A dedicated PostgreSQL integration test database URL is required');
   }
   const target = new URL(DATABASE_URL);
-  const result = spawnSync(
-    'psql',
-    [
+  return {
+    args: [
       '-X',
       '-v',
       'ON_ERROR_STOP=1',
@@ -44,16 +42,53 @@ function executeSql(sql: string): SqlExecution {
       decodeURIComponent(target.pathname.replace(/^\//u, '')),
       '-Atq',
     ],
-    {
-      input: sql,
-      encoding: 'utf8',
-      env: { ...process.env, PGPASSWORD: decodeURIComponent(target.password) },
+    env: {
+      ...process.env,
+      PGPASSWORD: decodeURIComponent(target.password),
+      ...(applicationName ? { PGAPPNAME: applicationName } : {}),
     },
-  );
+  };
+}
+
+function executeSql(sql: string): SqlExecution {
+  const connection = psqlConnection();
+  const result = spawnSync('psql', connection.args, {
+    input: sql,
+    encoding: 'utf8',
+    env: connection.env,
+  });
   if (result.error) {
     throw result.error;
   }
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
+function executeSqlAsync(
+  sql: string,
+  applicationName: string,
+): Promise<SqlExecution> {
+  const connection = psqlConnection(applicationName);
+  return new Promise((resolve, reject) => {
+    const child = spawn('psql', connection.args, {
+      env: connection.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on('error', reject);
+    child.on('close', (status) => {
+      resolve({ status, stdout, stderr });
+    });
+    child.stdin.end(sql);
+  });
 }
 
 function requireSqlSuccess(sql: string): void {
@@ -63,10 +98,34 @@ function requireSqlSuccess(sql: string): void {
   }
 }
 
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForActiveApplication(applicationName: string): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const result = executeSql(`
+      SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM pg_stat_activity
+        WHERE application_name = '${applicationName}'
+          AND state = 'active'
+          AND query LIKE '%pg_sleep%'
+      ) THEN 'ready' ELSE 'waiting' END;
+    `);
+    if (result.status === 0 && result.stdout.trim() === 'ready') {
+      return;
+    }
+    await delay(50);
+  }
+  throw new Error('Credential-admission lock holder did not become observable');
+}
+
 const INSTALLATION_ID = '11111111-1111-4111-8111-111111111111';
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const BINDING_ID = '44444444-4444-4444-8444-444444444444';
+const LOCK_HOLDER_APPLICATION_NAME = 'life-os-plugin-credential-lock-holder';
 
 const INSTALLATION_SQL = `
   INSERT INTO plugin_integration.plugin_installation_record (
@@ -92,6 +151,13 @@ const BINDING_SQL = `
   );
 `;
 
+const REVOCATION_SQL = `
+  UPDATE plugin_integration.plugin_installation_record
+  SET installation_status = 'revoked',
+      revoked_at = '2026-09-04T00:30:00.000Z'
+  WHERE installation_id = '${INSTALLATION_ID}'::uuid;
+`;
+
 describeWithPostgres('plugin credential active-installation persistence fence', () => {
   beforeEach(() => {
     requireSqlSuccess('DROP SCHEMA IF EXISTS plugin_integration CASCADE;');
@@ -100,12 +166,7 @@ describeWithPostgres('plugin credential active-installation persistence fence', 
   });
 
   it('rejects a new credential binding after the owning installation is durably revoked', () => {
-    requireSqlSuccess(`
-      UPDATE plugin_integration.plugin_installation_record
-      SET installation_status = 'revoked',
-          revoked_at = '2026-09-04T00:30:00.000Z'
-      WHERE installation_id = '${INSTALLATION_ID}'::uuid;
-    `);
+    requireSqlSuccess(REVOCATION_SQL);
 
     const result = executeSql(BINDING_SQL);
 
@@ -113,9 +174,48 @@ describeWithPostgres('plugin credential active-installation persistence fence', 
     expect(result.stderr).toContain('plugin_credential_active_installation_check');
   });
 
-  it('serializes credential admission against installation revocation', () => {
-    expect(CREDENTIAL_GUARD_MIGRATION).toContain('FOR SHARE');
-    expect(CREDENTIAL_GUARD_MIGRATION).toContain("installation_status = 'active'");
-    expect(CREDENTIAL_GUARD_MIGRATION).toContain('installed_at <= NEW.bound_at');
+  it('serializes credential admission against installation revocation in PostgreSQL', async () => {
+    const admission = executeSqlAsync(
+      `
+        BEGIN;
+        ${BINDING_SQL}
+        SELECT pg_sleep(1);
+        COMMIT;
+      `,
+      LOCK_HOLDER_APPLICATION_NAME,
+    );
+
+    await waitForActiveApplication(LOCK_HOLDER_APPLICATION_NAME);
+
+    const blockedRevocation = await executeSqlAsync(
+      `
+        SET lock_timeout = '250ms';
+        ${REVOCATION_SQL}
+      `,
+      'life-os-plugin-credential-lock-contender',
+    );
+
+    expect(blockedRevocation.status).not.toBe(0);
+    expect(blockedRevocation.stderr).toContain('lock timeout');
+
+    const admitted = await admission;
+    expect(admitted.status).toBe(0);
+
+    requireSqlSuccess(REVOCATION_SQL);
+    const finalState = executeSql(`
+      SELECT i.installation_status,
+             i.revoked_at IS NOT NULL,
+             c.credential_status,
+             c.revoked_at IS NULL
+      FROM plugin_integration.plugin_installation_record AS i
+      JOIN plugin_integration.plugin_credential_binding_record AS c
+        ON c.installation_id = i.installation_id
+       AND c.workspace_id = i.workspace_id
+       AND c.installed_by_user_id = i.installed_by_user_id
+      WHERE i.installation_id = '${INSTALLATION_ID}'::uuid;
+    `);
+
+    expect(finalState.status).toBe(0);
+    expect(finalState.stdout.trim()).toBe('revoked|t|active|t');
   });
 });
