@@ -417,25 +417,32 @@ incomplete_migration_recovery_sql() {
         JOIN pg_namespace AS namespace_row
           ON namespace_row.oid = relation_row.relnamespace
         WHERE namespace_row.nspname = 'identity'
-          AND constraint_row.conname IN (
-            'user_accounts_pkey',
-            'user_account_id_uuid_v4',
-            'external_identities_user_account_fk',
-            'external_identity_id_uuid_v4',
-            'identity_workspaces_pkey',
-            'identity_workspaces_owner_user_account_fk',
-            'identity_workspace_owner_unique',
-            'identity_workspace_id_uuid_v4',
-            'authentication_sessions_pkey',
-            'authentication_sessions_user_account_fk',
-            'authentication_sessions_rotated_from_session_fk',
-            'authentication_sessions_token_hash_key',
-            'authentication_session_expiry_after_creation',
-            'authentication_session_revocation_after_creation',
-            'authentication_session_workspace_owner_fk',
-            'authentication_session_authentication_not_after_creation',
-            'authentication_session_id_uuid_v4',
-            'oauth_transaction_id_uuid_v4'
+          AND (
+            (relation_row.relname = 'user_accounts' AND constraint_row.conname IN (
+              'user_accounts_pkey', 'user_account_id_uuid_v4'
+            ))
+            OR (relation_row.relname = 'external_identities' AND constraint_row.conname IN (
+              'external_identities_user_account_fk', 'external_identity_id_uuid_v4'
+            ))
+            OR (relation_row.relname = 'identity_workspaces' AND constraint_row.conname IN (
+              'identity_workspaces_pkey',
+              'identity_workspaces_owner_user_account_fk',
+              'identity_workspace_owner_unique',
+              'identity_workspace_id_uuid_v4'
+            ))
+            OR (relation_row.relname = 'authentication_sessions' AND constraint_row.conname IN (
+              'authentication_sessions_pkey',
+              'authentication_sessions_user_account_fk',
+              'authentication_sessions_rotated_from_session_fk',
+              'authentication_sessions_token_hash_key',
+              'authentication_session_expiry_after_creation',
+              'authentication_session_revocation_after_creation',
+              'authentication_session_workspace_owner_fk',
+              'authentication_session_authentication_not_after_creation',
+              'authentication_session_id_uuid_v4'
+            ))
+            OR (relation_row.relname = 'oauth_transactions' AND constraint_row.conname =
+              'oauth_transaction_id_uuid_v4')
           )
       )
       AND NOT EXISTS (
@@ -471,11 +478,15 @@ incomplete_migration_recovery_sql() {
         SELECT COUNT(*) = 4
         FROM pg_indexes
         WHERE schemaname = 'identity'
-          AND indexname IN (
-            'external_identities_user_account_idx',
-            'identity_workspaces_owner_account_idx',
-            'authentication_sessions_active_user_account_idx',
-            'authentication_sessions_active_workspace_idx'
+          AND (
+            (tablename = 'external_identities' AND indexname =
+              'external_identities_user_account_idx')
+            OR (tablename = 'identity_workspaces' AND indexname =
+              'identity_workspaces_owner_account_idx')
+            OR (tablename = 'authentication_sessions' AND indexname IN (
+              'authentication_sessions_active_user_account_idx',
+              'authentication_sessions_active_workspace_idx'
+            ))
           )
       )
       AND NOT EXISTS (
