@@ -112,13 +112,23 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
-function requireContext(
-  context: PluginInstallationContext,
-): PluginInstallationContext {
+function requireContext(value: unknown): PluginInstallationContext {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  const context = value as PluginInstallationContext;
   return Object.freeze({
     workspaceId: requireUuidV4(context.workspaceId),
     actorUserId: requireUuidV4(context.actorUserId),
   });
+}
+
+/** Rejects malformed bind command envelopes before secret or persistence authority is touched. */
+function requireBindInput(value: unknown): BindPluginCredentialInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  return value as BindPluginCredentialInput;
 }
 
 function requireCredentialName(value: unknown): string {
@@ -234,11 +244,12 @@ export class PluginCredentialApplication {
    * persists only the opaque reference returned by the external secret store.
    */
   async bind(input: BindPluginCredentialInput): Promise<PluginCredentialBindingView> {
-    const context = requireContext(input.trustedContext);
-    const installationId = requireUuidV4(input.installationId);
-    const credentialBindingId = requireUuidV4(input.credentialBindingId);
-    const credentialName = requireCredentialName(input.credentialName);
-    const secretValue = requireSecretValue(input.secretValue);
+    const request = requireBindInput(input);
+    const context = requireContext(request.trustedContext);
+    const installationId = requireUuidV4(request.installationId);
+    const credentialBindingId = requireUuidV4(request.credentialBindingId);
+    const credentialName = requireCredentialName(request.credentialName);
+    const secretValue = requireSecretValue(request.secretValue);
     const installation = await this.installationAuthority.getInstallation(
       context,
       installationId,
