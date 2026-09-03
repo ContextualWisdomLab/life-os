@@ -352,7 +352,7 @@ export class PluginDeliveryOriginAuthority {
     return durable;
   }
 
-  /** Reads one grant only inside exact authenticated host authority. */
+  /** Reads one grant only inside exact authenticated host authority and current installation lifecycle. */
   async getGrant(
     trustedContext: PluginInstallationContext,
     installationIdInput: string,
@@ -386,6 +386,28 @@ export class PluginDeliveryOriginAuthority {
           new Date(authorityInstant).getTime())
     ) {
       return invalid();
+    }
+    if (verified.status === 'active') {
+      const installationEvidence = await this.installations.findById(
+        installationId,
+        context.workspaceId,
+        context.actorUserId,
+      );
+      if (!installationEvidence) {
+        return invalid();
+      }
+      const installation = requireActiveInstallation(
+        context,
+        installationId,
+        installationEvidence,
+        authorityInstant,
+      );
+      if (
+        new Date(verified.grantedAt).getTime() <
+        new Date(installation.installedAt).getTime()
+      ) {
+        return invalid();
+      }
     }
     return verified;
   }
