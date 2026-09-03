@@ -140,7 +140,12 @@ test('paginates the complete registry and binds receipts to an unchanged default
           truncated: false,
           tree: [
             { type: 'blob', path: '.github/dependabot.yml' },
-            { type: 'blob', mode: '100644', path: '.github/workflows/ci.yml' },
+            {
+              type: 'blob',
+              mode: '100644',
+              path: '.github/workflows/ci.yml',
+              sha: 'b'.repeat(40),
+            },
           ],
         };
       }
