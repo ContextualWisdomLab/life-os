@@ -100,9 +100,9 @@ class BindingStore implements PluginCredentialBindingStore {
 function environment(): Readonly<Record<string, string>> {
   return Object.freeze({
     INTEGRATION_OPERATOR_CONTEXT_SECRET: CONTEXT_SECRET,
-    PLUGIN_VAULT_ORIGIN: 'https://vault.example.test',
-    PLUGIN_VAULT_TOKEN: VAULT_TOKEN,
-    PLUGIN_VAULT_MOUNT: 'secret',
+    INTEGRATION_PLUGIN_VAULT_ORIGIN: 'https://vault.example.test',
+    INTEGRATION_PLUGIN_VAULT_TOKEN: VAULT_TOKEN,
+    INTEGRATION_PLUGIN_VAULT_MOUNT: 'secret',
   });
 }
 
@@ -142,8 +142,8 @@ describe('Plugin Vault operator composition', () => {
         { installations, bindingStore, replayGuard },
         {
           INTEGRATION_OPERATOR_CONTEXT_SECRET: CONTEXT_SECRET,
-          PLUGIN_VAULT_ORIGIN: 'https://vault.example.test',
-          PLUGIN_VAULT_TOKEN: VAULT_TOKEN,
+          INTEGRATION_PLUGIN_VAULT_ORIGIN: 'https://vault.example.test',
+          INTEGRATION_PLUGIN_VAULT_TOKEN: VAULT_TOKEN,
         },
       ),
     ).toThrow(PluginVaultOperatorCompositionError);
