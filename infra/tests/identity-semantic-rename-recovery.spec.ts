@@ -321,4 +321,57 @@ describeWithDatabase('Identity semantic rename runner-owned recovery', () => {
       }
     }
   }, 120_000);
+
+  it('rejects expected constraint names that no longer preserve constraint type', () => {
+    const sourceUrl = requireLoopbackTestDatabaseUrl();
+    const databaseName = `life_os_semantic_rename_${randomUUID().replaceAll('-', '')}`;
+    const databaseIdentifier = quotedDatabase(databaseName);
+    const adminDatabaseName = 'postgres';
+    let databaseCreated = false;
+
+    try {
+      const createResult = psql(sourceUrl, adminDatabaseName, [
+        '--command',
+        `CREATE DATABASE ${databaseIdentifier}`,
+      ]);
+      expect(createResult.status, createResult.stderr).toBe(0);
+      databaseCreated = true;
+
+      const { databaseUrl } = prepareCommittedRename(sourceUrl, databaseName);
+      const spoofResult = psql(sourceUrl, databaseName, [
+        '--set=ON_ERROR_STOP=1',
+        '--command',
+        `ALTER TABLE identity.user_accounts
+           DROP CONSTRAINT user_account_id_uuid_v4;
+         ALTER TABLE identity.user_accounts
+           ADD CONSTRAINT user_account_id_uuid_v4 UNIQUE (user_account_id);`,
+      ]);
+      expect(spoofResult.status, spoofResult.stderr).toBe(0);
+
+      const recoveryResult = runMigrationRecovery(databaseUrl);
+      expect(recoveryResult.status).not.toBe(0);
+      expect(recoveryResult.stderr).toContain('service_migration_failed:identity');
+
+      const ledgerState = psql(sourceUrl, databaseName, [
+        '--tuples-only',
+        '--no-align',
+        '--command',
+        `SELECT migration_status || ':' || (applied_at IS NULL)::text || ':' ||
+                migration_reconciled::text
+         FROM life_os_deployment.schema_migrations
+         WHERE service_name = 'identity'
+           AND migration_name = '${renameMigrationName}'`,
+      ]);
+      expect(ledgerState.status, ledgerState.stderr).toBe(0);
+      expect(ledgerState.stdout.trim()).toBe('applying:true:false');
+    } finally {
+      if (databaseCreated) {
+        const dropResult = psql(sourceUrl, adminDatabaseName, [
+          '--command',
+          `DROP DATABASE ${databaseIdentifier}`,
+        ]);
+        expect(dropResult.status, dropResult.stderr).toBe(0);
+      }
+    }
+  }, 120_000);
 });
