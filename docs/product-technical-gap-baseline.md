@@ -30,7 +30,7 @@ When claims conflict, use: (1) protected `main` at the exact commit above; (2) l
 - Durable acceptance is explicit. Optimistic, duplicated, unsolicited, stale-scope, impossible, conflicting, or malformed non-absence evidence cannot silently become persisted truth or ordinary not-found.
 - Planning owns Goals/Projects/Tasks/Today; Habit owns definitions/occurrences/history; Review consumes authoritative projections rather than becoming a second Planning/Habit store.
 - Calendar and Plugin provider/destination data are intent until explicit scoped host/user authority exists. Secret material is materialized only behind the owning secret/KMS port and must not enter database rows, logs, public errors, model prompts, or CI artifacts.
-- AI proposals remain distinguishishable from user-authored state and require explicit durable acceptance. Model calls consume a released contextual-orchestrator API/client/schema and `orchestrator/free`; provider/model/group/paid fallback selection and provider credential discovery remain contextual-orchestrator authority.
+- AI proposals remain distinguishable from user-authored state and require explicit durable acceptance. Model calls consume a released contextual-orchestrator API/client/schema and `orchestrator/free`; provider/model/group/paid fallback selection and provider credential discovery remain contextual-orchestrator authority.
 - Optional CWL foundations are consumed through released/versioned contracts and ACLs. LifeOS does not copy their source or query their persistence directly.
 
 ## P0 buyer gaps
