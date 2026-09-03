@@ -13,6 +13,7 @@ const WORKSPACE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const USER_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const TOKEN = 'test-vault-token-not-a-real-credential';
 const REFERENCE = `lifeos-plugin-vault://${BINDING_ID}`;
+const encoder = new TextEncoder();
 
 const INPUT: PutPluginSecretInput = Object.freeze({
   credentialBindingId: BINDING_ID,
@@ -23,11 +24,20 @@ const INPUT: PutPluginSecretInput = Object.freeze({
   secretValue: 'buyer secret value',
 });
 
+function streamFromText(body: string): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(body));
+      controller.close();
+    },
+  });
+}
+
 function response(status: number, body = ''): PluginVaultHttpResponse {
   return {
     status,
     headers: { get: () => null },
-    text: async () => body,
+    body: streamFromText(body),
   };
 }
 
@@ -134,10 +144,9 @@ describe('PluginVaultSecretStore', () => {
 
   it('keeps the total request deadline active while replay response bytes are consumed', async () => {
     vi.useFakeTimers();
-    let resolveBody: ((value: string) => void) | undefined;
     let replaySignal: AbortSignal | undefined;
-    const pendingBody = new Promise<string>((resolve) => {
-      resolveBody = resolve;
+    const stalledBody = new ReadableStream<Uint8Array>({
+      pull: () => new Promise<void>(() => undefined),
     });
     const http = vi
       .fn<PluginVaultHttpClient>()
@@ -147,7 +156,7 @@ describe('PluginVaultSecretStore', () => {
         return {
           status: 200,
           headers: { get: () => null },
-          text: () => pendingBody,
+          body: stalledBody,
         };
       });
     const store = new PluginVaultSecretStore(
@@ -159,24 +168,53 @@ describe('PluginVaultSecretStore', () => {
 
     try {
       let rejected = false;
-      const operation = store.putSecret(INPUT);
-      const settled = operation.catch(() => {
+      const settled = store.putSecret(INPUT).catch(() => {
         rejected = true;
       });
       await vi.advanceTimersByTimeAsync(0);
       expect(replaySignal).toBeDefined();
 
       await vi.advanceTimersByTimeAsync(5_001);
-      const abortedAtDeadline = replaySignal?.aborted;
-      resolveBody?.(exactVaultRead());
       await settled;
 
-      expect(abortedAtDeadline).toBe(true);
+      expect(replaySignal?.aborted).toBe(true);
       expect(rejected).toBe(true);
       expect(http).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('stops an undeclared-length replay body as soon as the byte limit is exceeded', async () => {
+    let cancelled = false;
+    const oversizedBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(32_768));
+        controller.enqueue(new Uint8Array(32_769));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const http = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => null },
+        body: oversizedBody,
+      });
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      http,
+    );
+
+    await expect(store.putSecret(INPUT)).rejects.toBeInstanceOf(
+      PluginVaultSecretStoreError,
+    );
+    expect(cancelled).toBe(true);
   });
 
   it('fails closed when another durable secret wins the same binding identity', async () => {
@@ -250,7 +288,7 @@ describe('PluginVaultSecretStore', () => {
     expect(http).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed or oversized Vault read evidence instead of accepting replay authority', async () => {
+  it('rejects malformed or oversized declared Vault read evidence instead of accepting replay authority', async () => {
     const malformed = vi
       .fn<PluginVaultHttpClient>()
       .mockResolvedValueOnce(response(400))
@@ -268,7 +306,11 @@ describe('PluginVaultSecretStore', () => {
     const oversized = vi
       .fn<PluginVaultHttpClient>()
       .mockResolvedValueOnce(response(400))
-      .mockResolvedValueOnce(response(200, 'x'.repeat(70_000)));
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => '70000' },
+        body: streamFromText(''),
+      });
     const oversizedStore = new PluginVaultSecretStore(
       'https://vault.example.test',
       TOKEN,
