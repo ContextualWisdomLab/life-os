@@ -157,9 +157,18 @@ export function createPluginVaultOperatorApplication(
   const contextSecret = requireOperatorContextSecret(
     requireConfiguration(environment, 'INTEGRATION_OPERATOR_CONTEXT_SECRET'),
   );
-  const origin = requireConfiguration(environment, 'PLUGIN_VAULT_ORIGIN');
-  const token = requireConfiguration(environment, 'PLUGIN_VAULT_TOKEN');
-  const mount = requireConfiguration(environment, 'PLUGIN_VAULT_MOUNT');
+  const origin = requireConfiguration(
+    environment,
+    'INTEGRATION_PLUGIN_VAULT_ORIGIN',
+  );
+  const token = requireConfiguration(
+    environment,
+    'INTEGRATION_PLUGIN_VAULT_TOKEN',
+  );
+  const mount = requireConfiguration(
+    environment,
+    'INTEGRATION_PLUGIN_VAULT_MOUNT',
+  );
 
   let secretStore: PluginVaultSecretStore;
   try {
