@@ -180,6 +180,9 @@ function oneOrUndefined<Row>(
 function validateCreate(
   record: PluginDeliveryOriginGrantRecord,
 ): PluginDeliveryOriginGrantRecord {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+    return invalidInput();
+  }
   if (
     record.authorityVersion !== AUTHORITY_VERSION ||
     record.status !== 'active' ||
@@ -203,6 +206,9 @@ function validateCreate(
 function validateRevocation(
   input: RevokePluginDeliveryOriginGrant,
 ): RevokePluginDeliveryOriginGrant {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    return invalidInput();
+  }
   return Object.freeze({
     grantId: requireInputUuid(input.grantId),
     installationId: requireInputUuid(input.installationId),
