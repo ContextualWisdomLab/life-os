@@ -212,6 +212,10 @@ function requireRecord(record: unknown): PluginDeliveryOriginGrantRecord {
   if (candidate.authorityVersion !== AUTHORITY_VERSION) {
     return invalid();
   }
+  const grantId = requireUuidV4(candidate.grantId);
+  const installationId = requireUuidV4(candidate.installationId);
+  const workspaceId = requireUuidV4(candidate.workspaceId);
+  const grantedByUserId = requireUuidV4(candidate.grantedByUserId);
   const origin = normalizeOrigin(candidate.origin);
   const grantedAt = requireInstant(candidate.grantedAt);
   const revokedAt =
@@ -219,6 +223,10 @@ function requireRecord(record: unknown): PluginDeliveryOriginGrantRecord {
       ? null
       : requireInstant(candidate.revokedAt);
   if (
+    candidate.grantId !== grantId ||
+    candidate.installationId !== installationId ||
+    candidate.workspaceId !== workspaceId ||
+    candidate.grantedByUserId !== grantedByUserId ||
     origin !== candidate.origin ||
     (candidate.status === 'active' && revokedAt !== null) ||
     (candidate.status === 'revoked' && revokedAt === null) ||
@@ -232,10 +240,10 @@ function requireRecord(record: unknown): PluginDeliveryOriginGrantRecord {
   }
   return freezeRecord({
     authorityVersion: AUTHORITY_VERSION,
-    grantId: requireUuidV4(candidate.grantId),
-    installationId: requireUuidV4(candidate.installationId),
-    workspaceId: requireUuidV4(candidate.workspaceId),
-    grantedByUserId: requireUuidV4(candidate.grantedByUserId),
+    grantId,
+    installationId,
+    workspaceId,
+    grantedByUserId,
     origin,
     status: candidate.status,
     grantedAt,
