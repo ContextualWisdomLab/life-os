@@ -125,6 +125,27 @@ describe('PluginVaultSecretStore', () => {
     }
   });
 
+  it('rejects invalid operator configuration before any Vault request can start', () => {
+    expect(
+      () => new PluginVaultSecretStore('https://vault.example.test', 'short'),
+    ).toThrow(PluginVaultSecretStoreError);
+    expect(
+      () => new PluginVaultSecretStore('https://vault.example.test', `${TOKEN}\n`),
+    ).toThrow(PluginVaultSecretStoreError);
+    expect(
+      () => new PluginVaultSecretStore('https://vault.example.test', TOKEN, 'Bad Mount'),
+    ).toThrow(PluginVaultSecretStoreError);
+    expect(
+      () =>
+        new PluginVaultSecretStore(
+          'https://vault.example.test',
+          TOKEN,
+          'secret',
+          null as unknown as PluginVaultHttpClient,
+        ),
+    ).toThrow(PluginVaultSecretStoreError);
+  });
+
   it('recovers an ambiguous create response only when the exact durable Vault winner matches', async () => {
     const http = vi
       .fn<PluginVaultHttpClient>()
@@ -287,6 +308,43 @@ describe('PluginVaultSecretStore', () => {
     );
   });
 
+  it('maps unexpected Vault statuses to the fixed credential-free error', async () => {
+    const http = vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(500));
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      http,
+    );
+
+    await expect(store.putSecret(INPUT)).rejects.toBeInstanceOf(
+      PluginVaultSecretStoreError,
+    );
+    await expect(store.deleteSecret(REFERENCE)).rejects.toBeInstanceOf(
+      PluginVaultSecretStoreError,
+    );
+  });
+
+  it('rejects malformed transport envelopes instead of trusting response status alone', async () => {
+    const malformed = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValue({
+        status: 200,
+        headers: null,
+        body: null,
+      } as unknown as PluginVaultHttpResponse);
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      malformed,
+    );
+
+    await expect(store.putSecret(INPUT)).rejects.toBeInstanceOf(
+      PluginVaultSecretStoreError,
+    );
+  });
+
   it('treats exact missing metadata as idempotent deletion without exposing Vault details', async () => {
     const http = vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(404));
     const store = new PluginVaultSecretStore(
@@ -320,6 +378,77 @@ describe('PluginVaultSecretStore', () => {
       store.deleteSecret('lifeos-plugin-vault://not-a-uuid'),
     ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
     expect(http).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed replay JSON, missing bodies, invalid lengths, and invalid UTF-8', async () => {
+    const invalidJson = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce(response(200, '{'));
+    await expect(
+      new PluginVaultSecretStore(
+        'https://vault.example.test',
+        TOKEN,
+        'secret',
+        invalidJson,
+      ).putSecret(INPUT),
+    ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+
+    const missingBody = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => null },
+        body: null,
+      });
+    await expect(
+      new PluginVaultSecretStore(
+        'https://vault.example.test',
+        TOKEN,
+        'secret',
+        missingBody,
+      ).putSecret(INPUT),
+    ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+
+    const invalidLength = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => 'not-a-number' },
+        body: streamFromText(exactVaultRead()),
+      });
+    await expect(
+      new PluginVaultSecretStore(
+        'https://vault.example.test',
+        TOKEN,
+        'secret',
+        invalidLength,
+      ).putSecret(INPUT),
+    ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+
+    const invalidUtf8 = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => null },
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([0xff]));
+            controller.close();
+          },
+        }),
+      });
+    await expect(
+      new PluginVaultSecretStore(
+        'https://vault.example.test',
+        TOKEN,
+        'secret',
+        invalidUtf8,
+      ).putSecret(INPUT),
+    ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
   });
 
   it('rejects malformed or oversized declared Vault read evidence instead of accepting replay authority', async () => {
