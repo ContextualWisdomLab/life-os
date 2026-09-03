@@ -5,7 +5,7 @@ const UTC_TIMESTAMP_PATTERN =
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
 const DYNAMIC_WORKFLOW_PATH_PATTERN = /^dynamic\/dependabot\/dependabot-updates$/u;
-const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN = /^\.github\/workflows\/[\s\S]*\.ya?ml$/u;
+const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN = /^\.github\/workflows\/[^/]*\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
 const DEFAULT_BRANCH_INVALID_PATTERN = /[\\\u0000-\u001f\u007f]/u;
 const WORKFLOW_STATES = new Set([
