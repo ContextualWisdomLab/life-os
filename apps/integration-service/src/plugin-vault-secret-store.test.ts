@@ -132,6 +132,48 @@ describe('PluginVaultSecretStore', () => {
     expect(http.mock.calls[1]?.[1].method).toBe('GET');
   });
 
+  it('keeps the total request deadline active while replay response bytes are consumed', async () => {
+    vi.useFakeTimers();
+    let resolveBody: ((value: string) => void) | undefined;
+    let replaySignal: AbortSignal | undefined;
+    const pendingBody = new Promise<string>((resolve) => {
+      resolveBody = resolve;
+    });
+    const http = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockImplementationOnce(async (_url, request) => {
+        replaySignal = request.signal;
+        return {
+          status: 200,
+          headers: { get: () => null },
+          text: () => pendingBody,
+        };
+      });
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      http,
+    );
+
+    try {
+      const operation = store.putSecret(INPUT);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(replaySignal).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(5_001);
+      const abortedAtDeadline = replaySignal?.aborted;
+      resolveBody?.(exactVaultRead());
+      await operation.catch(() => undefined);
+
+      expect(abortedAtDeadline).toBe(true);
+      expect(http).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('fails closed when another durable secret wins the same binding identity', async () => {
     const http = vi
       .fn<PluginVaultHttpClient>()
