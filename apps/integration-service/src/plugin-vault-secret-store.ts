@@ -5,6 +5,7 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const CREDENTIAL_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/u;
 const VAULT_MOUNT_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/u;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const CONTROL_OR_SPACE_PATTERN = /[\u0000-\u0020\u007f]/u;
 const SECRET_REFERENCE_PREFIX = 'lifeos-plugin-vault://';
 const MAXIMUM_SECRET_LENGTH = 8_192;
@@ -64,6 +65,15 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires Vault-returned identity to already be canonical lowercase UUIDv4 evidence. */
+function requireStoredUuid(value: unknown): string {
+  const canonical = requireUuidV4(value);
+  if (value !== canonical) {
+    return unavailable();
+  }
+  return canonical;
+}
+
 function requireCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return unavailable();
@@ -76,7 +86,7 @@ function requireSecretValue(value: unknown): string {
     typeof value !== 'string' ||
     value.length === 0 ||
     value.length > MAXIMUM_SECRET_LENGTH ||
-    CONTROL_OR_SPACE_PATTERN.test(value)
+    CONTROL_CHARACTER_PATTERN.test(value)
   ) {
     return unavailable();
   }
@@ -201,10 +211,10 @@ function requireVaultReadPayload(value: unknown): PluginVaultSecretPayload {
   }
   return Object.freeze({
     schemaVersion: 1,
-    credentialBindingId: requireUuidV4(payload.credentialBindingId),
-    installationId: requireUuidV4(payload.installationId),
-    workspaceId: requireUuidV4(payload.workspaceId),
-    installedByUserId: requireUuidV4(payload.installedByUserId),
+    credentialBindingId: requireStoredUuid(payload.credentialBindingId),
+    installationId: requireStoredUuid(payload.installationId),
+    workspaceId: requireStoredUuid(payload.workspaceId),
+    installedByUserId: requireStoredUuid(payload.installedByUserId),
     credentialName: requireCredentialName(payload.credentialName),
     secretValue: requireSecretValue(payload.secretValue),
   });
