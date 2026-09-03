@@ -114,6 +114,10 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/**
+ * Accepts only a UUIDv4 that is already stored in canonical lowercase form.
+ * Persisted identity is evidence, so normalization is rejected rather than hidden.
+ */
 function requireStoredUuid(value: unknown): string {
   const canonical = requireUuidV4(value);
   if (value !== canonical) {
@@ -122,6 +126,10 @@ function requireStoredUuid(value: unknown): string {
   return canonical;
 }
 
+/**
+ * Bounds the trusted runtime context before field access and returns canonical
+ * workspace/user UUIDv4 authority. Malformed envelopes fail without I/O.
+ */
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return invalid();
@@ -159,6 +167,10 @@ function currentInstant(now: () => Date): string {
   }
 }
 
+/**
+ * Requires persisted lifecycle time to be the canonical millisecond UTC instant
+ * representation used by credential authority; equivalent alternate text is rejected.
+ */
 function requireStoredInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -170,6 +182,7 @@ function requireStoredInstant(value: unknown): string {
   return value;
 }
 
+/** Converts an already-validated canonical instant to epoch milliseconds for ordering only. */
 function instantMilliseconds(value: string): number {
   return new Date(value).getTime();
 }
@@ -261,6 +274,10 @@ function sameBindingAuthority(
   );
 }
 
+/**
+ * Tests whether a validated durable binding can be observed at the captured
+ * operation instant: binding must already exist and any revocation must not be future-dated.
+ */
 function bindingVisibleAt(
   record: PluginCredentialBindingRecord,
   operationAt: string,
