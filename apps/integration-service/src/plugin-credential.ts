@@ -5,6 +5,8 @@ import type {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const ISO_INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CREDENTIAL_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const MAXIMUM_SECRET_LENGTH = 8192;
@@ -112,6 +114,14 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+function requireStoredUuid(value: unknown): string {
+  const canonical = requireUuidV4(value);
+  if (value !== canonical) {
+    return invalid();
+  }
+  return canonical;
+}
+
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return invalid();
@@ -149,6 +159,17 @@ function currentInstant(now: () => Date): string {
   }
 }
 
+function requireStoredInstant(value: unknown): string {
+  if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
+    return invalid();
+  }
+  const instant = new Date(value);
+  if (!Number.isFinite(instant.getTime()) || instant.toISOString() !== value) {
+    return invalid();
+  }
+  return value;
+}
+
 function requireCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return invalid();
@@ -181,12 +202,40 @@ function requireSecretReference(value: unknown): string {
   return value;
 }
 
-/** Requires a durable binding result to be an object before any authority field is read. */
+/** Validates the complete durable binding lifecycle before any record becomes application authority. */
 function requireBindingRecord(value: unknown): PluginCredentialBindingRecord {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return invalid();
   }
-  return value as PluginCredentialBindingRecord;
+  const candidate = value as PluginCredentialBindingRecord;
+  const status =
+    candidate.status === 'active' || candidate.status === 'revoked'
+      ? candidate.status
+      : invalid();
+  const boundAt = requireStoredInstant(candidate.boundAt);
+  const revokedAt =
+    candidate.revokedAt === null
+      ? null
+      : requireStoredInstant(candidate.revokedAt);
+  if (
+    (status === 'active' && revokedAt !== null) ||
+    (status === 'revoked' && revokedAt === null) ||
+    (revokedAt !== null &&
+      new Date(revokedAt).getTime() < new Date(boundAt).getTime())
+  ) {
+    return invalid();
+  }
+  return Object.freeze({
+    credentialBindingId: requireStoredUuid(candidate.credentialBindingId),
+    installationId: requireStoredUuid(candidate.installationId),
+    workspaceId: requireStoredUuid(candidate.workspaceId),
+    installedByUserId: requireStoredUuid(candidate.installedByUserId),
+    credentialName: requireCredentialName(candidate.credentialName),
+    secretReference: requireSecretReference(candidate.secretReference),
+    status,
+    boundAt,
+    revokedAt,
+  });
 }
 
 function sameBindingAuthority(
