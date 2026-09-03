@@ -151,11 +151,17 @@ function normalizedOrigin(value: unknown, evidence: boolean): string {
   return parsed.origin;
 }
 
-function oneOrUndefined<Row>(rows: readonly Row[]): Row | undefined {
-  if (rows.length > 1) {
+function oneOrUndefined<Row>(
+  result: PluginDeliveryOriginSqlResult<Row>,
+): Row | undefined {
+  if (
+    result.rowCount === null ||
+    result.rowCount !== result.rows.length ||
+    result.rows.length > 1
+  ) {
     return invalidEvidence();
   }
-  return rows[0];
+  return result.rows[0];
 }
 
 function validateCreate(
@@ -263,7 +269,7 @@ export class PostgresPluginDeliveryOriginGrantStore
         safe.grantedAt,
       ],
     );
-    let durableRow = oneOrUndefined(inserted.rows);
+    let durableRow = oneOrUndefined(inserted);
     if (!durableRow) {
       const existing = await this.client.query<PluginDeliveryOriginRow>(
         `SELECT ${RETURNING_COLUMNS}
@@ -275,7 +281,7 @@ export class PostgresPluginDeliveryOriginGrantStore
          LIMIT 2`,
         [safe.grantId, safe.installationId, safe.workspaceId, safe.grantedByUserId],
       );
-      durableRow = oneOrUndefined(existing.rows);
+      durableRow = oneOrUndefined(existing);
     }
     if (!durableRow) {
       return invalidEvidence();
@@ -304,7 +310,7 @@ export class PostgresPluginDeliveryOriginGrantStore
        LIMIT 2`,
       [grantId, installationId, workspaceId, grantedByUserId],
     );
-    const durableRow = oneOrUndefined(result.rows);
+    const durableRow = oneOrUndefined(result);
     if (!durableRow) {
       return undefined;
     }
@@ -344,7 +350,7 @@ export class PostgresPluginDeliveryOriginGrantStore
         safe.revokedAt,
       ],
     );
-    let durableRow = oneOrUndefined(updated.rows);
+    let durableRow = oneOrUndefined(updated);
     if (!durableRow) {
       const replay = await this.client.query<PluginDeliveryOriginRow>(
         `SELECT ${RETURNING_COLUMNS}
@@ -357,7 +363,7 @@ export class PostgresPluginDeliveryOriginGrantStore
          LIMIT 2`,
         [safe.grantId, safe.installationId, safe.workspaceId, safe.grantedByUserId],
       );
-      durableRow = oneOrUndefined(replay.rows);
+      durableRow = oneOrUndefined(replay);
     }
     if (!durableRow) {
       return undefined;
