@@ -48,3 +48,18 @@ test('retains the documented GitHub Dependabot dynamic workflow identity', () =>
   assert.deepEqual(snapshot.dynamic.map((entry) => entry.id), [3]);
   assert.equal(snapshot.active_orphans.length, 0);
 });
+
+test('fails closed when multiple workflow identities claim the documented dynamic path', () => {
+  assert.throws(
+    () =>
+      classifyWorkflowRegistry({
+        commitSha: SHA,
+        treePaths: [],
+        workflows: [
+          workflow(4, 'dynamic/dependabot/dependabot-updates'),
+          workflow(5, 'dynamic/dependabot/dependabot-updates'),
+        ],
+      }),
+    /dynamic workflow path identity.*ambiguous/i,
+  );
+});
