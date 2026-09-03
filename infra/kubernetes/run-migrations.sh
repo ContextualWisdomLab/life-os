@@ -444,6 +444,35 @@ incomplete_migration_recovery_sql() {
             OR (relation_row.relname = 'oauth_transactions' AND constraint_row.conname =
               'oauth_transaction_id_uuid_v4')
           )
+          AND (
+            (constraint_row.contype = 'p' AND constraint_row.conname IN (
+              'user_accounts_pkey',
+              'identity_workspaces_pkey',
+              'authentication_sessions_pkey'
+            ))
+            OR (constraint_row.contype = 'f' AND constraint_row.conname IN (
+              'external_identities_user_account_fk',
+              'identity_workspaces_owner_user_account_fk',
+              'authentication_sessions_user_account_fk',
+              'authentication_sessions_rotated_from_session_fk',
+              'authentication_session_workspace_owner_fk'
+            ))
+            OR (constraint_row.contype = 'u' AND constraint_row.conname IN (
+              'identity_workspace_owner_unique',
+              'authentication_sessions_token_hash_key'
+            ))
+            OR (constraint_row.contype = 'c' AND constraint_row.convalidated AND
+              constraint_row.conname IN (
+                'user_account_id_uuid_v4',
+                'external_identity_id_uuid_v4',
+                'identity_workspace_id_uuid_v4',
+                'authentication_session_expiry_after_creation',
+                'authentication_session_revocation_after_creation',
+                'authentication_session_authentication_not_after_creation',
+                'authentication_session_id_uuid_v4',
+                'oauth_transaction_id_uuid_v4'
+              ))
+          )
       )
       AND NOT EXISTS (
         SELECT 1
