@@ -65,3 +65,44 @@ for (const [name, workflowBlobSha] of [
     );
   });
 }
+
+test('ignores YAML stored below a workflows subdirectory because GitHub does not register it as a workflow', async () => {
+  const nestedPath = '.github/workflows/archive/ci.yml';
+  const client = {
+    async requestJson(path) {
+      if (path === `/repos/${REPOSITORY}`) return { default_branch: 'main' };
+      if (path === `/repos/${REPOSITORY}/branches/main`) {
+        return { commit: { sha: SHA } };
+      }
+      if (path === `/repos/${REPOSITORY}/git/commits/${SHA}`) {
+        return { sha: SHA, tree: { sha: TREE_SHA } };
+      }
+      if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
+        return {
+          sha: TREE_SHA,
+          truncated: false,
+          tree: [
+            {
+              path: nestedPath,
+              mode: '100644',
+              type: 'blob',
+              sha: 'b'.repeat(40),
+            },
+          ],
+        };
+      }
+      if (path.endsWith('per_page=100&page=1')) {
+        return { total_count: 0, workflows: [] };
+      }
+      throw new Error(`unexpected ${path}`);
+    },
+  };
+
+  const snapshot = await collectWorkflowRegistrySnapshot(client, REPOSITORY, SHA, {
+    generatedAt: '2026-09-03T06:00:00Z',
+  });
+
+  assert.equal(snapshot.workflow_count, 0);
+  assert.deepEqual(snapshot.present, []);
+  assert.deepEqual(snapshot.active_orphans, []);
+});
