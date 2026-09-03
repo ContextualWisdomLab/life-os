@@ -23,6 +23,11 @@ interface PluginVaultSecretPayload {
   readonly secretValue: string;
 }
 
+interface PluginVaultHttpResult {
+  readonly response: PluginVaultHttpResponse;
+  readonly body?: string;
+}
+
 /** Minimal response contract required from the Vault transport. */
 export interface PluginVaultHttpResponse {
   readonly status: number;
@@ -279,7 +284,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
 
     let response: PluginVaultHttpResponse | undefined;
     try {
-      response = await this.request(url, 'POST', body);
+      ({ response } = await this.request(url, 'POST', body));
     } catch {
       return this.reconcileCreate(payload, reference);
     }
@@ -295,7 +300,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
   /** Deletes all Vault KV versions for one exact opaque binding reference; missing is replay-safe. */
   async deleteSecret(secretReference: string): Promise<void> {
     const bindingId = parseReference(secretReference);
-    const response = await this.request(this.metadataUrl(bindingId), 'DELETE');
+    const { response } = await this.request(this.metadataUrl(bindingId), 'DELETE');
     if (response.status === 200 || response.status === 204 || response.status === 404) {
       return;
     }
@@ -306,19 +311,23 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     expected: PluginVaultSecretPayload,
     reference: string,
   ): Promise<string> {
-    let response: PluginVaultHttpResponse;
+    let result: PluginVaultHttpResult;
     try {
-      response = await this.request(this.dataUrl(expected.credentialBindingId), 'GET');
+      result = await this.request(
+        this.dataUrl(expected.credentialBindingId),
+        'GET',
+        undefined,
+        true,
+      );
     } catch {
       return unavailable();
     }
-    if (response.status !== 200) {
+    if (result.response.status !== 200 || result.body === undefined) {
       return unavailable();
     }
-    const body = await this.boundedBody(response);
     let parsed: unknown;
     try {
-      parsed = JSON.parse(body);
+      parsed = JSON.parse(result.body);
     } catch {
       return unavailable();
     }
@@ -340,8 +349,9 @@ export class PluginVaultSecretStore implements PluginSecretStore {
   private async request(
     url: string,
     method: 'GET' | 'POST' | 'DELETE',
-    body?: string,
-  ): Promise<PluginVaultHttpResponse> {
+    requestBody?: string,
+    consumeSuccessfulBody = false,
+  ): Promise<PluginVaultHttpResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MILLISECONDS);
     try {
@@ -352,7 +362,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
           'content-type': 'application/json',
           'x-vault-token': this.token,
         }),
-        ...(body === undefined ? {} : { body }),
+        ...(requestBody === undefined ? {} : { body: requestBody }),
         redirect: 'error',
         signal: controller.signal,
       });
@@ -369,7 +379,13 @@ export class PluginVaultSecretStore implements PluginSecretStore {
       ) {
         return unavailable();
       }
-      return response;
+      if (consumeSuccessfulBody && response.status === 200) {
+        return {
+          response,
+          body: await this.boundedBody(response, controller.signal),
+        };
+      }
+      return { response };
     } catch {
       return unavailable();
     } finally {
@@ -377,7 +393,10 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     }
   }
 
-  private async boundedBody(response: PluginVaultHttpResponse): Promise<string> {
+  private async boundedBody(
+    response: PluginVaultHttpResponse,
+    signal: AbortSignal,
+  ): Promise<string> {
     const declaredLength = response.headers.get('content-length');
     if (declaredLength !== null) {
       if (!/^(?:0|[1-9]\d*)$/u.test(declaredLength)) {
@@ -388,12 +407,27 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         return unavailable();
       }
     }
+
+    let abortListener: (() => void) | undefined;
     let body: string;
     try {
-      body = await response.text();
+      const aborted = new Promise<never>((_resolve, reject) => {
+        abortListener = () => reject(new PluginVaultSecretStoreError());
+        if (signal.aborted) {
+          abortListener();
+          return;
+        }
+        signal.addEventListener('abort', abortListener, { once: true });
+      });
+      body = await Promise.race([response.text(), aborted]);
     } catch {
       return unavailable();
+    } finally {
+      if (abortListener !== undefined) {
+        signal.removeEventListener('abort', abortListener);
+      }
     }
+
     if (Buffer.byteLength(body, 'utf8') > MAXIMUM_RESPONSE_BYTES) {
       return unavailable();
     }
