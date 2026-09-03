@@ -7,6 +7,7 @@ const REPOSITORY_WORKFLOW_PATH_PATTERN =
 const DYNAMIC_WORKFLOW_PATH_PATTERN = /^dynamic\/dependabot\/dependabot-updates$/u;
 const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN = /^\.github\/workflows\/[\s\S]*\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
+const DEFAULT_BRANCH_INVALID_PATTERN = /[\\\u0000-\u001f\u007f]/u;
 const WORKFLOW_STATES = new Set([
   'active',
   'deleted',
@@ -343,7 +344,7 @@ export async function collectWorkflowRegistrySnapshot(
     defaultBranch === '.' ||
     defaultBranch === '..' ||
     defaultBranch.includes('/') ||
-    CONTROL_OR_ESCAPE_PATTERN.test(defaultBranch)
+    DEFAULT_BRANCH_INVALID_PATTERN.test(defaultBranch)
   ) {
     return invalid('GitHub default branch is invalid');
   }
