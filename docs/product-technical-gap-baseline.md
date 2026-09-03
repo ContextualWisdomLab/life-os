@@ -59,7 +59,9 @@ Active #216 removes deployment-wide Google/CalDAV credential authority from host
 
 Protected main owns versioned plugin SDK/manifest preparation, host-authorized installation/grant/revocation, PostgreSQL installation evidence, credential binding, and opaque secret-reference boundaries. A manifest cannot self-authorize capability or destination authority.
 
-Active #205 adds host-owned HTTPS delivery-origin authority; stacked #235 adds the Integration-owned PostgreSQL grant store. They intentionally perform no outbound HTTP yet. Remaining work is concrete encrypted secret/KMS composition, SSRF/DNS-rebinding-safe outbound HTTPS with connect-time address enforcement or equivalent reviewed egress, redirect/proxy denial, finite byte/deadline limits, signed/idempotent delivery, durable attempt/outcome/retry/dead-letter evidence, revocation fencing, operator recovery, and buyer-visible status.
+Active #205 exact head `5e6a2b69ef367b643391beffb12809cb7fbc77a8` adds host-owned HTTPS delivery-origin authority. Stacked #235 exact head `b9595dc5397a47b6f3a05375acf569764b933790` adds the Integration-owned PostgreSQL grant store and now also rejects malformed SQL result envelopes before row-count/row-array dereference, keeping corrupted runtime persistence evidence inside the bounded `PluginDeliveryOriginPersistenceEvidenceError` contract. Both PRs intentionally perform no outbound HTTP, and #235 remains a non-force ahead-only child of #205 rather than shipped truth.
+
+Remaining work is concrete encrypted secret/KMS composition, SSRF/DNS-rebinding-safe outbound HTTPS with connect-time address enforcement or equivalent reviewed egress, redirect/proxy denial, finite byte/deadline limits, signed/idempotent delivery, durable attempt/outcome/retry/dead-letter evidence, revocation fencing, operator recovery, and buyer-visible status.
 
 ### #210 — reproducible release candidate
 
