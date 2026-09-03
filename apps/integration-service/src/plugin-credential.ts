@@ -170,6 +170,10 @@ function requireStoredInstant(value: unknown): string {
   return value;
 }
 
+function instantMilliseconds(value: string): number {
+  return new Date(value).getTime();
+}
+
 function requireCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return invalid();
@@ -221,7 +225,7 @@ function requireBindingRecord(value: unknown): PluginCredentialBindingRecord {
     (status === 'active' && revokedAt !== null) ||
     (status === 'revoked' && revokedAt === null) ||
     (revokedAt !== null &&
-      new Date(revokedAt).getTime() < new Date(boundAt).getTime())
+      instantMilliseconds(revokedAt) < instantMilliseconds(boundAt))
   ) {
     return invalid();
   }
@@ -254,6 +258,18 @@ function sameBindingAuthority(
     record.workspaceId === input.workspaceId &&
     record.installedByUserId === input.installedByUserId &&
     record.credentialName === input.credentialName
+  );
+}
+
+function bindingVisibleAt(
+  record: PluginCredentialBindingRecord,
+  operationAt: string,
+): boolean {
+  const operationMilliseconds = instantMilliseconds(operationAt);
+  return (
+    instantMilliseconds(record.boundAt) <= operationMilliseconds &&
+    (record.revokedAt === null ||
+      instantMilliseconds(record.revokedAt) <= operationMilliseconds)
   );
 }
 
@@ -333,10 +349,15 @@ export class PluginCredentialApplication {
     if (
       !installation ||
       installation.status !== 'active' ||
+      installation.revokedAt !== null ||
       installation.workspaceId !== context.workspaceId ||
       installation.installedByUserId !== context.actorUserId ||
       installation.installationId !== installationId
     ) {
+      return invalid();
+    }
+    const installedAt = requireStoredInstant(installation.installedAt);
+    if (instantMilliseconds(installedAt) > instantMilliseconds(boundAt)) {
       return invalid();
     }
 
@@ -354,7 +375,11 @@ export class PluginCredentialApplication {
     );
     if (existingEvidence !== undefined) {
       const existing = requireBindingRecord(existingEvidence);
-      if (!activeBinding(existing, authority)) {
+      if (
+        !activeBinding(existing, authority) ||
+        !bindingVisibleAt(existing, boundAt) ||
+        instantMilliseconds(existing.boundAt) < instantMilliseconds(installedAt)
+      ) {
         return invalid();
       }
       return view(existing);
@@ -397,7 +422,11 @@ export class PluginCredentialApplication {
       }
       return invalid();
     }
-    if (!activeBinding(durable, authority)) {
+    if (
+      !activeBinding(durable, authority) ||
+      !bindingVisibleAt(durable, boundAt) ||
+      instantMilliseconds(durable.boundAt) < instantMilliseconds(installedAt)
+    ) {
       try {
         await this.secretStore.deleteSecret(secretReference);
       } catch {
@@ -437,7 +466,8 @@ export class PluginCredentialApplication {
     const existing = requireBindingRecord(existingEvidence);
     if (
       existing.workspaceId !== context.workspaceId ||
-      existing.installedByUserId !== context.actorUserId
+      existing.installedByUserId !== context.actorUserId ||
+      !bindingVisibleAt(existing, revokedAt)
     ) {
       return invalid();
     }
@@ -456,7 +486,8 @@ export class PluginCredentialApplication {
         credentialBindingId,
         workspaceId: context.workspaceId,
         installedByUserId: context.actorUserId,
-      })
+      }) ||
+      !bindingVisibleAt(durable, revokedAt)
     ) {
       return invalid();
     }
