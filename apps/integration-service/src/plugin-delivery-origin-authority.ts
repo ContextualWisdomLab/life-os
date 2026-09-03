@@ -376,7 +376,18 @@ export class PluginDeliveryOriginAuthority {
     ) {
       return undefined;
     }
-    return requireRecord(existing);
+    const verified = requireRecord(existing);
+    const authorityInstant = currentInstant(this.now);
+    if (
+      new Date(verified.grantedAt).getTime() >
+        new Date(authorityInstant).getTime() ||
+      (verified.revokedAt !== null &&
+        new Date(verified.revokedAt).getTime() >
+          new Date(authorityInstant).getTime())
+    ) {
+      return invalid();
+    }
+    return verified;
   }
 
   /** Revokes future use while preserving the durable authority lifecycle. */

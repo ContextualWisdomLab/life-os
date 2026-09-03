@@ -55,10 +55,11 @@ function authority(store: PluginDeliveryOriginGrantStore, now = NOW) {
 function storeWith(
   createWinner: PluginDeliveryOriginGrantRecord = record(),
   revokeWinner: PluginDeliveryOriginGrantRecord | undefined = undefined,
+  readWinner: PluginDeliveryOriginGrantRecord | undefined = undefined,
 ): PluginDeliveryOriginGrantStore {
   return {
     createIfAbsent: vi.fn(async () => createWinner),
-    findById: vi.fn(async () => undefined),
+    findById: vi.fn(async () => readWinner),
     revokeActive: vi.fn(async () => revokeWinner),
   };
 }
@@ -74,6 +75,18 @@ describe('Plugin delivery-origin lifecycle time evidence', () => {
         grantId: GRANT_ID,
         origin: 'https://api.example.com',
       }),
+    ).rejects.toBeInstanceOf(PluginDeliveryOriginAuthorityError);
+  });
+
+  it('rejects a future-dated grant when reading current authority', async () => {
+    const futureGrant = record({ grantedAt: '2026-08-12T06:00:00.001Z' });
+
+    await expect(
+      authority(storeWith(record(), undefined, futureGrant)).getGrant(
+        CONTEXT,
+        INSTALLATION_ID,
+        GRANT_ID,
+      ),
     ).rejects.toBeInstanceOf(PluginDeliveryOriginAuthorityError);
   });
 
