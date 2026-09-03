@@ -32,7 +32,7 @@ interface PluginVaultHttpResult {
 export interface PluginVaultHttpResponse {
   readonly status: number;
   readonly headers: { get(name: string): string | null };
-  text(): Promise<string>;
+  readonly body: ReadableStream<Uint8Array> | null;
 }
 
 /** Fixed HTTPS request contract used by the Vault adapter and its deterministic tests. */
@@ -282,12 +282,13 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     const url = this.dataUrl(payload.credentialBindingId);
     const body = JSON.stringify({ options: { cas: 0 }, data: payload });
 
-    let response: PluginVaultHttpResponse | undefined;
+    let result: PluginVaultHttpResult;
     try {
-      ({ response } = await this.request(url, 'POST', body));
+      result = await this.request(url, 'POST', body);
     } catch {
       return this.reconcileCreate(payload, reference);
     }
+    const { response } = result;
     if (response.status === 200 || response.status === 204) {
       return reference;
     }
@@ -374,8 +375,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         response.status > 599 ||
         response.headers === null ||
         typeof response.headers !== 'object' ||
-        typeof response.headers.get !== 'function' ||
-        typeof response.text !== 'function'
+        typeof response.headers.get !== 'function'
       ) {
         return unavailable();
       }
@@ -407,9 +407,65 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         return unavailable();
       }
     }
+    if (
+      response.body === null ||
+      typeof response.body !== 'object' ||
+      typeof response.body.getReader !== 'function'
+    ) {
+      return unavailable();
+    }
 
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const result = await this.readWithAbort(reader, signal);
+        if (result.done) {
+          break;
+        }
+        if (!(result.value instanceof Uint8Array)) {
+          return unavailable();
+        }
+        totalBytes += result.value.byteLength;
+        if (!Number.isSafeInteger(totalBytes) || totalBytes > MAXIMUM_RESPONSE_BYTES) {
+          return unavailable();
+        }
+        chunks.push(Buffer.from(result.value));
+      }
+    } catch {
+      try {
+        await reader.cancel();
+      } catch {
+        // The fixed public error below is authoritative; cancellation failure is not exposed.
+      }
+      return unavailable();
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // A pending/cancelled reader can already have released its lock.
+      }
+    }
+
+    const bytes = Buffer.concat(chunks, totalBytes);
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return unavailable();
+    } finally {
+      bytes.fill(0);
+      for (const chunk of chunks) {
+        chunk.fill(0);
+      }
+    }
+  }
+
+  private async readWithAbort(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    signal: AbortSignal,
+  ): Promise<ReadableStreamReadResult<Uint8Array>> {
     let abortListener: (() => void) | undefined;
-    let body: string;
     try {
       const aborted = new Promise<never>((_resolve, reject) => {
         abortListener = () => reject(new PluginVaultSecretStoreError());
@@ -419,18 +475,11 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         }
         signal.addEventListener('abort', abortListener, { once: true });
       });
-      body = await Promise.race([response.text(), aborted]);
-    } catch {
-      return unavailable();
+      return await Promise.race([reader.read(), aborted]);
     } finally {
       if (abortListener !== undefined) {
         signal.removeEventListener('abort', abortListener);
       }
     }
-
-    if (Buffer.byteLength(body, 'utf8') > MAXIMUM_RESPONSE_BYTES) {
-      return unavailable();
-    }
-    return body;
   }
 }
