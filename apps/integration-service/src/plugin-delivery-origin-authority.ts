@@ -255,7 +255,9 @@ function requireActiveInstallation(
   context: PluginInstallationContext,
   installationId: string,
   installation: PluginInstallationRecord,
+  authorityInstant: string,
 ): PluginInstallationRecord {
+  const installedAt = requireInstant(installation.installedAt);
   if (
     installation.installationId !== installationId ||
     installation.installationId !==
@@ -263,7 +265,8 @@ function requireActiveInstallation(
     installation.workspaceId !== context.workspaceId ||
     installation.installedByUserId !== context.actorUserId ||
     installation.status !== 'active' ||
-    installation.revokedAt !== null
+    installation.revokedAt !== null ||
+    new Date(installedAt).getTime() > new Date(authorityInstant).getTime()
   ) {
     return invalid();
   }
@@ -322,10 +325,12 @@ export class PluginDeliveryOriginAuthority {
     if (!installationEvidence) {
       return invalid();
     }
+    const grantedAt = currentInstant(this.now);
     const installation = requireActiveInstallation(
       context,
       installationId,
       installationEvidence,
+      grantedAt,
     );
     const candidate = freezeRecord({
       authorityVersion: AUTHORITY_VERSION,
@@ -335,7 +340,7 @@ export class PluginDeliveryOriginAuthority {
       grantedByUserId: context.actorUserId,
       origin,
       status: 'active',
-      grantedAt: currentInstant(this.now),
+      grantedAt,
       revokedAt: null,
     });
     const durable = requireRecord(await this.store.createIfAbsent(candidate));
