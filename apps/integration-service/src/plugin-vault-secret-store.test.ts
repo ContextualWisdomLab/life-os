@@ -84,6 +84,37 @@ describe('PluginVaultSecretStore', () => {
     });
   });
 
+  it('rejects non-canonical caller authority identities before Vault I/O', async () => {
+    const authorityFields: ReadonlyArray<keyof Pick<
+      PutPluginSecretInput,
+      'credentialBindingId' | 'installationId' | 'workspaceId' | 'installedByUserId'
+    >> = [
+      'credentialBindingId',
+      'installationId',
+      'workspaceId',
+      'installedByUserId',
+    ];
+
+    for (const field of authorityFields) {
+      const http = vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(200));
+      const store = new PluginVaultSecretStore(
+        'https://vault.example.test',
+        TOKEN,
+        'secret',
+        http,
+      );
+      const input = {
+        ...INPUT,
+        [field]: INPUT[field].toUpperCase(),
+      } as PutPluginSecretInput;
+
+      await expect(store.putSecret(input)).rejects.toBeInstanceOf(
+        PluginVaultSecretStoreError,
+      );
+      expect(http).not.toHaveBeenCalled();
+    }
+  });
+
   it('recovers an ambiguous create response only when the exact durable Vault winner matches', async () => {
     const http = vi
       .fn<PluginVaultHttpClient>()
