@@ -416,22 +416,24 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     }
 
     const reader = response.body.getReader();
-    const chunks: Buffer[] = [];
+    const chunks: Uint8Array[] = [];
     let totalBytes = 0;
+    let completed = false;
     try {
       while (true) {
         const result = await this.readWithAbort(reader, signal);
         if (result.done) {
+          completed = true;
           break;
         }
         if (!(result.value instanceof Uint8Array)) {
           return unavailable();
         }
+        chunks.push(result.value);
         totalBytes += result.value.byteLength;
         if (!Number.isSafeInteger(totalBytes) || totalBytes > MAXIMUM_RESPONSE_BYTES) {
           return unavailable();
         }
-        chunks.push(Buffer.from(result.value));
       }
     } catch {
       try {
@@ -441,6 +443,11 @@ export class PluginVaultSecretStore implements PluginSecretStore {
       }
       return unavailable();
     } finally {
+      if (!completed) {
+        for (const chunk of chunks) {
+          chunk.fill(0);
+        }
+      }
       try {
         reader.releaseLock();
       } catch {
