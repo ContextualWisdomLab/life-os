@@ -3,8 +3,14 @@ name: AppGuardrail
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
   workflow_dispatch:
 
 permissions:
