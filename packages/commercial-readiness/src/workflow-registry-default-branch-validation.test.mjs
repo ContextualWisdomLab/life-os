@@ -38,7 +38,7 @@ async function expectEncodedDefaultBranch(defaultBranch, encodedDefaultBranch) {
   assert.equal(snapshot.workflow_count, 0);
   assert.equal(
     calls.filter((path) => path === `/repos/${REPOSITORY}/branches/${encodedDefaultBranch}`).length,
-    2,
+    3,
   );
 }
 
