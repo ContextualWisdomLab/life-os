@@ -17,6 +17,10 @@ National Institute of Standards and Technology. (2025). *Digital identity guidel
 
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard 5.0.0.* https://owasp.org/www-project-application-security-verification-standard/
 
+PostgreSQL Global Development Group. (n.d.). *13.3. Explicit locking (PostgreSQL 18 documentation).* Retrieved September 4, 2026, from https://www.postgresql.org/docs/18/explicit-locking.html
+
+PostgreSQL Global Development Group. (n.d.). *41.9. Errors and messages (PostgreSQL 18 documentation).* Retrieved September 4, 2026, from https://www.postgresql.org/docs/18/plpgsql-errors-and-messages.html
+
 SLSA Community. (2025). *Supply-chain Levels for Software Artifacts specification (Version 1.2).* https://slsa.dev/spec/v1.2/
 
 SPDX Workgroup. (2024). *System Package Data Exchange specification (Version 3.0.1).* Linux Foundation. https://spdx.github.io/spdx-spec/
@@ -39,6 +43,7 @@ Locke, E. A., & Latham, G. P. (2002). Building a practically useful theory of go
 - WCAG 2.2 AA is the intended first-party web/PWA conformance target. Automated checks are necessary but not sufficient; manual keyboard and assistive-technology journeys remain required.
 - NIST SP 800-63-4 is guidance for risk-based identity, authenticator, session, and federation decisions. LifeOS does not claim a government identity assurance level solely by citing the publication.
 - OWASP ASVS identifiers must include the exact version when entered into traceability records.
+- PostgreSQL 18 Section 13.3 is the authority for #235's row-lock serialization: `FOR SHARE` conflicts with concurrent `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, and `SELECT FOR NO KEY UPDATE` on the selected installation row. Section 41.9 is the authority for bounded PL/pgSQL `RAISE` metadata. These citations support the mechanism; they are not execution evidence that the migration passed on a database.
 - SLSA claims must state the exact track and attained level with verifiable provenance; “SLSA compliant” is not an acceptable unqualified product claim.
 - SPDX is used for SBOM exchange. An SBOM does not replace vulnerability assessment or license review.
 - Goal-setting, implementation-intention, and habit research informs interaction design guardrails; LifeOS is not a medical or psychological treatment and does not diagnose users.
