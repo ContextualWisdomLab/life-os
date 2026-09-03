@@ -10,6 +10,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- An authenticated Plugin Vault operator composition that keeps signed workspace/user authority and durable replay consumption upstream of secret materialization, uses only Integration-owned installation/credential/replay ports, and reads Vault origin/token/mount from service-owned `INTEGRATION_PLUGIN_VAULT_*` configuration without making the composition factory a hosted PostgreSQL owner.
 - A Plugin-owned HashiCorp Vault KV v2 secret-store adapter that binds one credential UUID to one opaque reference/path, uses create-only CAS for concurrent/retry safety, accepts replay only after exact durable authority-and-secret comparison, rejects redirects, bounds transport deadlines/replay response size, and never stores Vault credentials or provider plaintext in LifeOS persistence.
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.
 - A host-owned `life-os.plugin-delivery-origin.v1` authority boundary that accepts only exact normalized HTTPS origins after active installation evidence, scopes grant lifecycle to installation/workspace/granting-user identity, revalidates current active installation authority before exposing an active grant so installation revocation fences future origin use, and keeps manifest intent separate from network authority.
@@ -34,6 +35,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Plugin Vault operator configuration no longer accepts generic `PLUGIN_VAULT_*` aliases as credential authority; origin, token, and mount must come from the Integration service-owned configuration namespace and malformed/incomplete composition still fails through one credential-free error.
 - Plugin credential binding now validates command/context envelopes, server-clock evidence, persistence result envelopes, canonical durable UUID/timestamp/lifecycle evidence, and exact absence sentinels before they become authority; malformed durable reads cannot cause fresh secret materialization, malformed create winners trigger secret compensation instead of leaving provider material silently orphaned, and credential/install chronology is fenced so future or pre-installation bindings and future-dated revocation replays cannot become current authority or trigger provider deletion.
 - The public Gateway Today endpoint now fails explicitly with bounded `today_composition_unavailable` problem details instead of returning fabricated successful composition data while authenticated Planning/Habit integration is absent; issue #163 remains open for the real composition path.
 - Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
