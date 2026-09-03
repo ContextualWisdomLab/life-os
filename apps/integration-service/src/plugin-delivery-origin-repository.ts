@@ -174,6 +174,9 @@ function oneOrUndefined<Row>(
   ) {
     return invalidEvidence();
   }
+  if (rows.length === 1 && rows[0] === undefined) {
+    return invalidEvidence();
+  }
   return rows[0];
 }
 
@@ -295,7 +298,7 @@ export class PostgresPluginDeliveryOriginGrantStore
       ],
     );
     let durableRow = oneOrUndefined(inserted);
-    if (!durableRow) {
+    if (durableRow === undefined) {
       const existing = await this.client.query<PluginDeliveryOriginRow>(
         `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_delivery_origin_grant_record
@@ -308,7 +311,7 @@ export class PostgresPluginDeliveryOriginGrantStore
       );
       durableRow = oneOrUndefined(existing);
     }
-    if (!durableRow) {
+    if (durableRow === undefined) {
       return invalidEvidence();
     }
     return parseRow(durableRow);
@@ -336,7 +339,7 @@ export class PostgresPluginDeliveryOriginGrantStore
       [grantId, installationId, workspaceId, grantedByUserId],
     );
     const durableRow = oneOrUndefined(result);
-    if (!durableRow) {
+    if (durableRow === undefined) {
       return undefined;
     }
     const durable = parseRow(durableRow);
@@ -376,7 +379,7 @@ export class PostgresPluginDeliveryOriginGrantStore
       ],
     );
     let durableRow = oneOrUndefined(updated);
-    if (!durableRow) {
+    if (durableRow === undefined) {
       const replay = await this.client.query<PluginDeliveryOriginRow>(
         `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_delivery_origin_grant_record
@@ -390,7 +393,7 @@ export class PostgresPluginDeliveryOriginGrantStore
       );
       durableRow = oneOrUndefined(replay);
     }
-    if (!durableRow) {
+    if (durableRow === undefined) {
       return undefined;
     }
     const durable = parseRow(durableRow);
