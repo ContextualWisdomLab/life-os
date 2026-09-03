@@ -11,6 +11,7 @@ const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const INSTALLATION_ID = '33333333-3333-4333-8333-333333333333';
 const GRANT_ID = '44444444-4444-4444-8444-444444444444';
+const CASED_GRANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const NOW = new Date('2026-08-12T06:00:00.000Z');
 
 const ACTIVE_INSTALLATION: PluginInstallationRecord = Object.freeze({
@@ -71,7 +72,7 @@ describe('Plugin delivery-origin durable evidence', () => {
   it('rejects non-canonical UUID casing in durable create evidence', async () => {
     const durableEvidence: PluginDeliveryOriginGrantRecord = Object.freeze({
       authorityVersion: 'life-os.plugin-delivery-origin.v1',
-      grantId: GRANT_ID.toUpperCase(),
+      grantId: CASED_GRANT_ID.toUpperCase(),
       installationId: INSTALLATION_ID,
       workspaceId: WORKSPACE_ID,
       grantedByUserId: USER_ID,
@@ -94,7 +95,7 @@ describe('Plugin delivery-origin durable evidence', () => {
       subject.grant(
         { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
         INSTALLATION_ID,
-        { grantId: GRANT_ID, origin: 'https://api.example.com' },
+        { grantId: CASED_GRANT_ID, origin: 'https://api.example.com' },
       ),
     ).rejects.toBeInstanceOf(PluginDeliveryOriginAuthorityError);
   });
