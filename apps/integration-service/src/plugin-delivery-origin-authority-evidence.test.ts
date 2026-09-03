@@ -67,4 +67,35 @@ describe('Plugin delivery-origin durable evidence', () => {
       ).rejects.toBeInstanceOf(PluginDeliveryOriginAuthorityError);
     },
   );
+
+  it('rejects non-canonical UUID casing in durable create evidence', async () => {
+    const durableEvidence: PluginDeliveryOriginGrantRecord = Object.freeze({
+      authorityVersion: 'life-os.plugin-delivery-origin.v1',
+      grantId: GRANT_ID.toUpperCase(),
+      installationId: INSTALLATION_ID,
+      workspaceId: WORKSPACE_ID,
+      grantedByUserId: USER_ID,
+      origin: 'https://api.example.com',
+      status: 'active',
+      grantedAt: NOW.toISOString(),
+      revokedAt: null,
+    });
+    const subject = new PluginDeliveryOriginAuthority(
+      storeReturning(durableEvidence),
+      {
+        async findById(): Promise<PluginInstallationRecord> {
+          return ACTIVE_INSTALLATION;
+        },
+      },
+      () => NOW,
+    );
+
+    await expect(
+      subject.grant(
+        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+        INSTALLATION_ID,
+        { grantId: GRANT_ID, origin: 'https://api.example.com' },
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryOriginAuthorityError);
+  });
 });
