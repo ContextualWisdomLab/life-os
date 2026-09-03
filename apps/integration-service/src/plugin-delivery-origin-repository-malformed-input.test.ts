@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { PluginDeliveryOriginGrantRecord } from './plugin-delivery-origin-authority';
+import type {
+  PluginDeliveryOriginGrantRecord,
+  RevokePluginDeliveryOriginGrant,
+} from './plugin-delivery-origin-authority';
 import {
   PluginDeliveryOriginPersistenceValidationError,
   PostgresPluginDeliveryOriginGrantStore,
@@ -19,18 +22,41 @@ class NoIoSqlClient implements PluginDeliveryOriginSqlClient {
   }
 }
 
+const MALFORMED_ENVELOPES: readonly unknown[] = [
+  null,
+  undefined,
+  'invalid',
+  [],
+];
+
 describe('PostgresPluginDeliveryOriginGrantStore malformed input envelopes', () => {
-  it('rejects malformed create and revoke envelopes with the bounded validation error before SQL', async () => {
-    const client = new NoIoSqlClient();
-    const store = new PostgresPluginDeliveryOriginGrantStore(client);
+  it.each(MALFORMED_ENVELOPES)(
+    'rejects malformed create envelope %# before SQL',
+    async (malformed) => {
+      const client = new NoIoSqlClient();
+      const store = new PostgresPluginDeliveryOriginGrantStore(client);
 
-    await expect(
-      store.createIfAbsent(null as unknown as PluginDeliveryOriginGrantRecord),
-    ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceValidationError);
-    await expect(store.revokeActive(null as never)).rejects.toBeInstanceOf(
-      PluginDeliveryOriginPersistenceValidationError,
-    );
+      await expect(
+        store.createIfAbsent(
+          malformed as unknown as PluginDeliveryOriginGrantRecord,
+        ),
+      ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceValidationError);
+      expect(client.calls).toBe(0);
+    },
+  );
 
-    expect(client.calls).toBe(0);
-  });
+  it.each(MALFORMED_ENVELOPES)(
+    'rejects malformed revoke envelope %# before SQL',
+    async (malformed) => {
+      const client = new NoIoSqlClient();
+      const store = new PostgresPluginDeliveryOriginGrantStore(client);
+
+      await expect(
+        store.revokeActive(
+          malformed as unknown as RevokePluginDeliveryOriginGrant,
+        ),
+      ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceValidationError);
+      expect(client.calls).toBe(0);
+    },
+  );
 });
