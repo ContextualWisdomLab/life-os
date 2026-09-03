@@ -159,14 +159,22 @@ function normalizedOrigin(value: unknown, evidence: boolean): string {
 function oneOrUndefined<Row>(
   result: PluginDeliveryOriginSqlResult<Row>,
 ): Row | undefined {
+  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+    return invalidEvidence();
+  }
+  const rows = result.rows;
+  const rowCount = result.rowCount;
   if (
-    result.rowCount === null ||
-    result.rowCount !== result.rows.length ||
-    result.rows.length > 1
+    !Array.isArray(rows) ||
+    typeof rowCount !== 'number' ||
+    !Number.isInteger(rowCount) ||
+    rowCount < 0 ||
+    rowCount !== rows.length ||
+    rows.length > 1
   ) {
     return invalidEvidence();
   }
-  return result.rows[0];
+  return rows[0];
 }
 
 function validateCreate(
