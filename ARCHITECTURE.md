@@ -43,7 +43,7 @@ flowchart LR
 
 ### Plugin outbound authority
 
-A plugin manifest or prepared event is intent, not network authority. The integration service owns versioned `life-os.plugin-delivery-origin.v1` grants that bind one opaque grant ID to an exact active installation, workspace, granting user, and normalized HTTPS origin. Grant creation requires active host-owned installation evidence; lookup and revocation remain scoped to the same installation/workspace/user authority.
+A plugin manifest or prepared event is intent, not network authority. The integration service owns versioned `life-os.plugin-delivery-origin.v1` grants that bind one opaque grant ID to an exact installation, workspace, granting user, and normalized HTTPS origin. Grant creation requires active host-owned installation evidence. Every read that would expose an active origin grant re-resolves that exact installation/workspace/user authority and requires the installation to remain active, so installation revocation fences future use of the origin grant. Revoked grant records remain readable as bounded lifecycle/audit evidence inside their original scope. Grant and installation chronology must also be internally consistent.
 
 This boundary records authorization metadata through an integration-service-owned persistence port but does not itself perform outbound HTTP. DNS/IP rebinding resistance, connect-time address enforcement, redirect/proxy policy, bounded request/response sizes and timeouts, retry/dead-letter behavior, and durable PostgreSQL grant storage remain separate runtime responsibilities and must not be inferred from an origin grant alone.
 
