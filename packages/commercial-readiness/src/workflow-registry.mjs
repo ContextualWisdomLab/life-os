@@ -275,6 +275,9 @@ function workflowPathsFromTree(payload) {
     if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
       return invalid('GitHub workflow tree entry mode is invalid');
     }
+    if (typeof entry.sha !== 'string' || !SHA_PATTERN.test(entry.sha)) {
+      return invalid('GitHub workflow tree entry blob SHA is invalid');
+    }
     if (seenPaths.has(entry.path)) {
       return invalid('GitHub workflow tree path is ambiguous');
     }
