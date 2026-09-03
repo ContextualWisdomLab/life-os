@@ -364,8 +364,8 @@ export class PluginVaultSecretStore implements PluginSecretStore {
   /**
    * Executes one bounded Vault request and validates its response envelope.
    * `consumeSuccessfulBody` is reserved for the replay GET: status-only create/delete
-   * paths cancel uninterpreted response bodies, while a 200 replay body is consumed under
-   * the same deadline before the abort timer is cleared.
+   * paths cancel uninterpreted response bodies, while transport, read, and cleanup
+   * completion all remain inside the same finite deadline.
    */
   private async request(
     url: string,
@@ -376,17 +376,20 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MILLISECONDS);
     try {
-      const response = await this.http(url, {
-        method,
-        headers: Object.freeze({
-          accept: 'application/json',
-          'content-type': 'application/json',
-          'x-vault-token': this.token,
+      const response = await this.settleWithinDeadline(
+        this.http(url, {
+          method,
+          headers: Object.freeze({
+            accept: 'application/json',
+            'content-type': 'application/json',
+            'x-vault-token': this.token,
+          }),
+          ...(requestBody === undefined ? {} : { body: requestBody }),
+          redirect: 'error',
+          signal: controller.signal,
         }),
-        ...(requestBody === undefined ? {} : { body: requestBody }),
-        redirect: 'error',
-        signal: controller.signal,
-      });
+        controller.signal,
+      );
       if (
         response === null ||
         typeof response !== 'object' ||
@@ -405,7 +408,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
           body: await this.boundedBody(response, controller.signal),
         };
       }
-      await this.cancelUnusedBody(response);
+      await this.cancelUnusedBody(response, controller.signal);
       return { response };
     } catch {
       return unavailable();
@@ -414,8 +417,11 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     }
   }
 
-  /** Cancels a response body whose bytes are not part of the adapter's authority decision. */
-  private async cancelUnusedBody(response: PluginVaultHttpResponse): Promise<void> {
+  /** Cancels uninterpreted response bytes without letting cleanup outlive the request deadline. */
+  private async cancelUnusedBody(
+    response: PluginVaultHttpResponse,
+    signal: AbortSignal,
+  ): Promise<void> {
     if (response.body === null) {
       return;
     }
@@ -426,7 +432,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
       return unavailable();
     }
     try {
-      await response.body.cancel();
+      await this.settleWithinDeadline(response.body.cancel(), signal);
     } catch {
       return unavailable();
     }
@@ -481,9 +487,9 @@ export class PluginVaultSecretStore implements PluginSecretStore {
       }
     } catch {
       try {
-        await reader.cancel();
+        await this.settleWithinDeadline(reader.cancel(), signal);
       } catch {
-        // The fixed public error below is authoritative; cancellation failure is not exposed.
+        // Cancellation has still been initiated; the fixed public failure remains authoritative.
       }
       return unavailable();
     } finally {
@@ -517,6 +523,17 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     reader: ReadableStreamDefaultReader<Uint8Array>,
     signal: AbortSignal,
   ): Promise<ReadableStreamReadResult<Uint8Array>> {
+    return this.settleWithinDeadline(reader.read(), signal);
+  }
+
+  /**
+   * Accepts a transport step only if it settles before the shared request deadline.
+   * A result delivered by the same abort that expires the deadline is still rejected.
+   */
+  private async settleWithinDeadline<T>(
+    operation: Promise<T>,
+    signal: AbortSignal,
+  ): Promise<T> {
     let abortListener: (() => void) | undefined;
     try {
       const aborted = new Promise<never>((_resolve, reject) => {
@@ -527,7 +544,11 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         }
         signal.addEventListener('abort', abortListener, { once: true });
       });
-      return await Promise.race([reader.read(), aborted]);
+      const result = await Promise.race([operation, aborted]);
+      if (signal.aborted) {
+        return unavailable();
+      }
+      return result;
     } finally {
       if (abortListener !== undefined) {
         signal.removeEventListener('abort', abortListener);
