@@ -303,6 +303,22 @@ function revokedBinding(
   );
 }
 
+/**
+ * Keeps a revoke winner tied to the exact immutable binding evidence that was
+ * validated before the durable mutation. A store cannot redirect provider
+ * deletion by changing installation, credential, secret reference, or bound time.
+ */
+function sameImmutableBindingEvidence(
+  durable: PluginCredentialBindingRecord,
+  existing: PluginCredentialBindingRecord,
+): boolean {
+  return (
+    sameBindingAuthority(durable, existing) &&
+    durable.secretReference === existing.secretReference &&
+    durable.boundAt === existing.boundAt
+  );
+}
+
 function view(
   record: PluginCredentialBindingRecord,
 ): PluginCredentialBindingView {
@@ -465,6 +481,7 @@ export class PluginCredentialApplication {
     }
     const existing = requireBindingRecord(existingEvidence);
     if (
+      existing.credentialBindingId !== credentialBindingId ||
       existing.workspaceId !== context.workspaceId ||
       existing.installedByUserId !== context.actorUserId ||
       !bindingVisibleAt(existing, revokedAt)
@@ -487,6 +504,9 @@ export class PluginCredentialApplication {
         workspaceId: context.workspaceId,
         installedByUserId: context.actorUserId,
       }) ||
+      !sameImmutableBindingEvidence(durable, existing) ||
+      (existing.status === 'revoked' &&
+        durable.revokedAt !== existing.revokedAt) ||
       !bindingVisibleAt(durable, revokedAt)
     ) {
       return invalid();
