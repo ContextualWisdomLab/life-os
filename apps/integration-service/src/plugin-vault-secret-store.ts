@@ -13,6 +13,7 @@ const MAXIMUM_TOKEN_LENGTH = 2_048;
 const MAXIMUM_RESPONSE_BYTES = 65_536;
 const REQUEST_TIMEOUT_MILLISECONDS = 5_000;
 
+/** Exact authority and secret bytes written to one Vault KV v2 binding path. */
 interface PluginVaultSecretPayload {
   readonly schemaVersion: 1;
   readonly credentialBindingId: string;
@@ -23,6 +24,7 @@ interface PluginVaultSecretPayload {
   readonly secretValue: string;
 }
 
+/** Validated transport response plus the optional bounded body consumed for replay reconciliation. */
 interface PluginVaultHttpResult {
   readonly response: PluginVaultHttpResponse;
   readonly body?: string;
@@ -59,10 +61,12 @@ export class PluginVaultSecretStoreError extends Error {
   }
 }
 
+/** Terminates the current boundary with the fixed credential-free adapter error. */
 function unavailable(): never {
   throw new PluginVaultSecretStoreError();
 }
 
+/** Accepts only canonical lowercase UUIDv4 authority; equivalent alternate spellings are rejected. */
 function requireUuidV4(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -74,15 +78,12 @@ function requireUuidV4(value: unknown): string {
   return value;
 }
 
-/** Requires Vault-returned identity to already be canonical lowercase UUIDv4 evidence. */
+/** Applies the canonical UUID contract specifically to Vault-returned durable authority evidence. */
 function requireStoredUuid(value: unknown): string {
-  const canonical = requireUuidV4(value);
-  if (value !== canonical) {
-    return unavailable();
-  }
-  return canonical;
+  return requireUuidV4(value);
 }
 
+/** Accepts one bounded plugin credential key that is safe to persist as non-secret metadata. */
 function requireCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return unavailable();
@@ -90,6 +91,7 @@ function requireCredentialName(value: unknown): string {
   return value;
 }
 
+/** Accepts bounded non-empty secret text while rejecting control characters before provider I/O. */
 function requireSecretValue(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -102,6 +104,7 @@ function requireSecretValue(value: unknown): string {
   return value;
 }
 
+/** Requires one canonical credential-free HTTPS origin with no path, query, fragment, or userinfo. */
 function requireVaultOrigin(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 2_048) {
     return unavailable();
@@ -126,6 +129,7 @@ function requireVaultOrigin(value: unknown): string {
   return parsed.origin;
 }
 
+/** Requires an operator-supplied Vault token that is bounded and contains no whitespace/control data. */
 function requireVaultToken(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -138,6 +142,7 @@ function requireVaultToken(value: unknown): string {
   return value;
 }
 
+/** Restricts the configured KV v2 mount to one path segment controlled by the operator. */
 function requireVaultMount(value: unknown): string {
   if (typeof value !== 'string' || !VAULT_MOUNT_PATTERN.test(value)) {
     return unavailable();
@@ -145,6 +150,7 @@ function requireVaultMount(value: unknown): string {
   return value;
 }
 
+/** Converts one plugin write command into immutable, already-canonical Vault authority and secret evidence. */
 function requirePayload(value: unknown): PluginVaultSecretPayload {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return unavailable();
@@ -161,6 +167,7 @@ function requirePayload(value: unknown): PluginVaultSecretPayload {
   });
 }
 
+/** Parses only this adapter's canonical opaque binding reference and returns its binding UUID. */
 function parseReference(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith(SECRET_REFERENCE_PREFIX)) {
     return unavailable();
@@ -173,6 +180,7 @@ function parseReference(value: unknown): string {
   return bindingId;
 }
 
+/** Compares secret UTF-8 bytes without early content comparison and zeroizes temporary buffers. */
 function sameSecret(left: string, right: string): boolean {
   const leftBytes = Buffer.from(left, 'utf8');
   const rightBytes = Buffer.from(right, 'utf8');
@@ -187,6 +195,7 @@ function sameSecret(left: string, right: string): boolean {
   }
 }
 
+/** Accepts replay only when every immutable authority field and the secret bytes match exactly. */
 function samePayload(
   durable: PluginVaultSecretPayload,
   expected: PluginVaultSecretPayload,
@@ -202,6 +211,7 @@ function samePayload(
   );
 }
 
+/** Validates the Vault KV v2 read envelope before any durable winner becomes replay authority. */
 function requireVaultReadPayload(value: unknown): PluginVaultSecretPayload {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return unavailable();
@@ -229,6 +239,7 @@ function requireVaultReadPayload(value: unknown): PluginVaultSecretPayload {
   });
 }
 
+/** Performs the real fetch while preserving the adapter's redirect and abort policy. */
 const defaultHttpClient: PluginVaultHttpClient = async (url, request) => {
   const response = await fetch(url, {
     method: request.method,
@@ -308,6 +319,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     return unavailable();
   }
 
+  /** Re-reads one ambiguous/CAS-losing create and returns only an exact durable replay winner. */
   private async reconcileCreate(
     expected: PluginVaultSecretPayload,
     reference: string,
@@ -339,14 +351,22 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     return reference;
   }
 
+  /** Builds the one KV v2 data path owned by the credential-binding UUID. */
   private dataUrl(bindingId: string): string {
     return `${this.origin}/v1/${this.mount}/data/life-os/plugin-credentials/${bindingId}`;
   }
 
+  /** Builds the matching KV v2 metadata path used for all-version deletion. */
   private metadataUrl(bindingId: string): string {
     return `${this.origin}/v1/${this.mount}/metadata/life-os/plugin-credentials/${bindingId}`;
   }
 
+  /**
+   * Executes one bounded Vault request and validates its response envelope.
+   * `consumeSuccessfulBody` is reserved for the replay GET: status-only create/delete
+   * paths never buffer a response body, while a 200 replay body is consumed under the
+   * same deadline before the abort timer is cleared.
+   */
   private async request(
     url: string,
     method: 'GET' | 'POST' | 'DELETE',
@@ -393,6 +413,11 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     }
   }
 
+  /**
+   * Reads one replay body incrementally under the total request deadline and byte cap.
+   * Read chunks are zeroized on every abnormal exit and again after successful decode;
+   * malformed UTF-8, body shape, length evidence, stream failure, or abort fails closed.
+   */
   private async boundedBody(
     response: PluginVaultHttpResponse,
     signal: AbortSignal,
@@ -468,6 +493,7 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     }
   }
 
+  /** Races one stream read against the request abort signal without leaving an abort listener behind. */
   private async readWithAbort(
     reader: ReadableStreamDefaultReader<Uint8Array>,
     signal: AbortSignal,
