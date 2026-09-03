@@ -26,6 +26,7 @@ const ACTIVE_GRANT: PluginDeliveryOriginGrantRecord = Object.freeze({
   grantedAt: '2026-09-01T20:00:00.000Z',
   revokedAt: null,
 });
+const CASED_GRANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 interface QueryCall {
   readonly text: string;
@@ -134,6 +135,22 @@ describe('PostgresPluginDeliveryOriginGrantStore', () => {
     await expect(
       evidenceStore.findById(
         ACTIVE_GRANT.grantId,
+        ACTIVE_GRANT.installationId,
+        ACTIVE_GRANT.workspaceId,
+        ACTIVE_GRANT.grantedByUserId,
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceEvidenceError);
+  });
+
+  it('rejects non-canonical UUID casing in persisted row evidence', async () => {
+    const client = new ScriptedSqlClient([
+      result([row({ grant_id: CASED_GRANT_ID.toUpperCase() })]),
+    ]);
+    const store = new PostgresPluginDeliveryOriginGrantStore(client);
+
+    await expect(
+      store.findById(
+        CASED_GRANT_ID,
         ACTIVE_GRANT.installationId,
         ACTIVE_GRANT.workspaceId,
         ACTIVE_GRANT.grantedByUserId,
