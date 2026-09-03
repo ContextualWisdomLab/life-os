@@ -158,16 +158,21 @@ describe('PluginVaultSecretStore', () => {
     );
 
     try {
+      let rejected = false;
       const operation = store.putSecret(INPUT);
+      const settled = operation.catch(() => {
+        rejected = true;
+      });
       await vi.advanceTimersByTimeAsync(0);
       expect(replaySignal).toBeDefined();
 
       await vi.advanceTimersByTimeAsync(5_001);
       const abortedAtDeadline = replaySignal?.aborted;
       resolveBody?.(exactVaultRead());
-      await operation.catch(() => undefined);
+      await settled;
 
       expect(abortedAtDeadline).toBe(true);
+      expect(rejected).toBe(true);
       expect(http).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
