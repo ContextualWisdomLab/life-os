@@ -181,6 +181,14 @@ function requireSecretReference(value: unknown): string {
   return value;
 }
 
+/** Requires a durable binding result to be an object before any authority field is read. */
+function requireBindingRecord(value: unknown): PluginCredentialBindingRecord {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  return value as PluginCredentialBindingRecord;
+}
+
 function sameBindingAuthority(
   record: PluginCredentialBindingRecord,
   input: {
@@ -290,12 +298,13 @@ export class PluginCredentialApplication {
       installedByUserId: context.actorUserId,
       credentialName,
     } as const;
-    const existing = await this.bindingStore.findById(
+    const existingEvidence = await this.bindingStore.findById(
       credentialBindingId,
       context.workspaceId,
       context.actorUserId,
     );
-    if (existing) {
+    if (existingEvidence !== undefined) {
+      const existing = requireBindingRecord(existingEvidence);
       if (!activeBinding(existing, authority)) {
         return invalid();
       }
@@ -327,7 +336,9 @@ export class PluginCredentialApplication {
     });
     let durable: PluginCredentialBindingRecord;
     try {
-      durable = await this.bindingStore.createIfAbsent(candidate);
+      durable = requireBindingRecord(
+        await this.bindingStore.createIfAbsent(candidate),
+      );
     } catch {
       try {
         await this.secretStore.deleteSecret(secretReference);
@@ -366,26 +377,32 @@ export class PluginCredentialApplication {
     const context = requireContext(trustedContext);
     const credentialBindingId = requireUuidV4(credentialBindingIdInput);
     const revokedAt = currentInstant(this.now);
-    const existing = await this.bindingStore.findById(
+    const existingEvidence = await this.bindingStore.findById(
       credentialBindingId,
       context.workspaceId,
       context.actorUserId,
     );
+    if (existingEvidence === undefined) {
+      return invalid();
+    }
+    const existing = requireBindingRecord(existingEvidence);
     if (
-      !existing ||
       existing.workspaceId !== context.workspaceId ||
       existing.installedByUserId !== context.actorUserId
     ) {
       return invalid();
     }
-    const durable = await this.bindingStore.revokeActive({
+    const durableEvidence = await this.bindingStore.revokeActive({
       credentialBindingId,
       workspaceId: context.workspaceId,
       installedByUserId: context.actorUserId,
       revokedAt,
     });
+    if (durableEvidence === undefined) {
+      return invalid();
+    }
+    const durable = requireBindingRecord(durableEvidence);
     if (
-      !durable ||
       !revokedBinding(durable, {
         credentialBindingId,
         workspaceId: context.workspaceId,
