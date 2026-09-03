@@ -15,6 +15,8 @@ National Institute of Standards and Technology. (2025). *Digital identity guidel
 
 National Institute of Standards and Technology. (2025). *Digital identity guidelines: Federation and assertions (NIST Special Publication 800-63C-4).* U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-63C-4
 
+Node.js. (n.d.). *Undici: Specification compliance—Garbage collection.* Retrieved September 4, 2026, from https://undici.nodejs.org/#/?id=garbage-collection
+
 OWASP Foundation. (2025). *OWASP Application Security Verification Standard 5.0.0.* https://owasp.org/www-project-application-security-verification-standard/
 
 PostgreSQL Global Development Group. (n.d.). *13.3. Explicit locking (PostgreSQL 18 documentation).* Retrieved September 4, 2026, from https://www.postgresql.org/docs/18/explicit-locking.html
@@ -24,6 +26,8 @@ PostgreSQL Global Development Group. (n.d.). *41.9. Errors and messages (Postgre
 SLSA Community. (2025). *Supply-chain Levels for Software Artifacts specification (Version 1.2).* https://slsa.dev/spec/v1.2/
 
 SPDX Workgroup. (2024). *System Package Data Exchange specification (Version 3.0.1).* Linux Foundation. https://spdx.github.io/spdx-spec/
+
+WHATWG. (n.d.). *Streams standard.* Retrieved September 4, 2026, from https://streams.spec.whatwg.org/
 
 World Wide Web Consortium. (2024). *Web Content Accessibility Guidelines (WCAG) 2.2.* https://www.w3.org/TR/WCAG22/
 
@@ -44,6 +48,7 @@ Locke, E. A., & Latham, G. P. (2002). Building a practically useful theory of go
 - NIST SP 800-63-4 is guidance for risk-based identity, authenticator, session, and federation decisions. LifeOS does not claim a government identity assurance level solely by citing the publication.
 - OWASP ASVS identifiers must include the exact version when entered into traceability records.
 - PostgreSQL 18 Section 13.3 is the authority for #235's row-lock serialization: `FOR SHARE` conflicts with concurrent `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, and `SELECT FOR NO KEY UPDATE` on the selected installation row. Section 41.9 is the authority for bounded PL/pgSQL `RAISE` metadata. These citations support the mechanism; they are not execution evidence that the migration passed on a database.
+- WHATWG Streams defines readable-stream cancellation as consumer loss of interest that closes the stream, discards queued chunks, and invokes the underlying source cancellation mechanism. Node.js Undici additionally warns that leaving response-body resource release to garbage collection can reduce connection reuse and cause stalls or deadlocks; #242 therefore requires every acquired Vault replay body to be consumed or cancelled on abnormal exit. These references justify the transport-cleanup contract but are not package or integration execution evidence.
 - SLSA claims must state the exact track and attained level with verifiable provenance; “SLSA compliant” is not an acceptable unqualified product claim.
 - SPDX is used for SBOM exchange. An SBOM does not replace vulnerability assessment or license review.
 - Goal-setting, implementation-intention, and habit research informs interaction design guardrails; LifeOS is not a medical or psychological treatment and does not diagnose users.
