@@ -217,6 +217,40 @@ describe('PluginVaultSecretStore', () => {
     expect(cancelled).toBe(true);
   });
 
+  it('zeroizes replay bytes already read when the Vault stream fails', async () => {
+    const sensitiveChunk = encoder.encode('partial buyer secret value');
+    let readCount = 0;
+    const failingBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (readCount === 0) {
+          readCount += 1;
+          controller.enqueue(sensitiveChunk);
+          return;
+        }
+        controller.error(new Error('stream failure detail must not escape'));
+      },
+    });
+    const http = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(400))
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => null },
+        body: failingBody,
+      });
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      http,
+    );
+
+    await expect(store.putSecret(INPUT)).rejects.toBeInstanceOf(
+      PluginVaultSecretStoreError,
+    );
+    expect([...sensitiveChunk]).toEqual(new Array(sensitiveChunk.length).fill(0));
+  });
+
   it('fails closed when another durable secret wins the same binding identity', async () => {
     const http = vi
       .fn<PluginVaultHttpClient>()
