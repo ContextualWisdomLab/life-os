@@ -79,6 +79,35 @@ function clientWithUnrelatedWorkflowDirectoryEntry() {
   };
 }
 
+function clientWithDuplicateWorkflowTreePath() {
+  const stable = clientWithWorkflowTreeMode('100644');
+  return {
+    async requestJson(path) {
+      if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
+        return {
+          sha: TREE_SHA,
+          truncated: false,
+          tree: [
+            {
+              path: WORKFLOW_PATH,
+              mode: '100644',
+              type: 'blob',
+              sha: 'b'.repeat(40),
+            },
+            {
+              path: WORKFLOW_PATH,
+              mode: '100644',
+              type: 'blob',
+              sha: 'c'.repeat(40),
+            },
+          ],
+        };
+      }
+      return stable.requestJson(path);
+    },
+  };
+}
+
 test('fails closed when a workflow-shaped Git tree entry is a symlink blob', async () => {
   await assert.rejects(
     collectWorkflowRegistrySnapshot(
@@ -98,6 +127,17 @@ test('fails closed when a workflow-shaped Git tree entry is not a blob', async (
       SHA,
     ),
     /workflow tree entry.*invalid/i,
+  );
+});
+
+test('fails closed when the recursive tree repeats one workflow path', async () => {
+  await assert.rejects(
+    collectWorkflowRegistrySnapshot(
+      clientWithDuplicateWorkflowTreePath(),
+      REPOSITORY,
+      SHA,
+    ),
+    /workflow tree path.*ambiguous/i,
   );
 });
 
