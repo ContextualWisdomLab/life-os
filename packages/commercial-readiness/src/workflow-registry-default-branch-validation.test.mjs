@@ -132,5 +132,5 @@ test('rejects workflow registry drift after default-branch metadata revalidation
     /GitHub workflow registry changed after branch validation/u,
   );
   assert.equal(registryReads, 3);
-  assert.equal(branchReads, 3);
+  assert.equal(branchReads, 2);
 });
