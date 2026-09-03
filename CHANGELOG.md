@@ -47,7 +47,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
-- Plugin Vault secret creation is create-only per credential binding and reconciles an ambiguous/CAS-losing write only against canonical matching durable evidence; a different secret winner cannot be overwritten or treated as replay, malformed Vault evidence fails closed, and the opaque reference contains no Vault token, address, or provider plaintext.
+- Plugin Vault secret creation is create-only per credential binding and reconciles an ambiguous/CAS-losing write only against canonical matching durable evidence; caller and Vault-returned binding/installation/workspace/user UUIDs must already be canonical lowercase and are never normalized into authority, a different secret winner cannot be overwritten or treated as replay, malformed Vault evidence fails closed, and the opaque reference contains no Vault token, address, or provider plaintext.
 - Plugin credential persistence now treats exact `undefined` as the only normal application-level absence sentinel, rejects malformed SQL/result/row evidence with bounded errors, requires canonical durable UUIDv4/timestamps, and prevents installation revocation from racing a new durable credential admission.
 - Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
