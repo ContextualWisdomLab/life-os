@@ -367,16 +367,18 @@ export class PluginDeliveryOriginAuthority {
       context.workspaceId,
       context.actorUserId,
     );
-    if (
-      !existing ||
-      existing.grantId !== grantId ||
-      existing.installationId !== installationId ||
-      existing.workspaceId !== context.workspaceId ||
-      existing.grantedByUserId !== context.actorUserId
-    ) {
+    if (existing === undefined) {
       return undefined;
     }
     const verified = requireRecord(existing);
+    if (
+      verified.grantId !== grantId ||
+      verified.installationId !== installationId ||
+      verified.workspaceId !== context.workspaceId ||
+      verified.grantedByUserId !== context.actorUserId
+    ) {
+      return undefined;
+    }
     const authorityInstant = currentInstant(this.now);
     if (
       new Date(verified.grantedAt).getTime() >
