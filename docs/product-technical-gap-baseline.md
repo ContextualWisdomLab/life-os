@@ -59,9 +59,9 @@ Active #216 removes deployment-wide Google/CalDAV credential authority from host
 
 Protected main owns versioned plugin SDK/manifest preparation, host-authorized installation/grant/revocation, PostgreSQL installation evidence, credential binding, and opaque secret-reference boundaries. A manifest cannot self-authorize capability or destination authority.
 
-Active #205 exact head `30a3ef4e0219b9b29ed2b6bd01b50fd276f414e8` adds host-owned HTTPS delivery-origin authority. Its latest RED `3e61c3c71920325bce45a8ca1b6f12db69591824` and GREEN exact head add a monotonic durable replay-time invariant: an older persisted `grantedAt` remains valid for a later idempotent retry, but persistence cannot return a `grantedAt` later than the authority instant being proposed and have that future-shifted lifecycle promoted as an exact replay.
+Active #205 exact head `9f41c75f99a2670d1238a66548ea6e0e85d76212` adds host-owned HTTPS delivery-origin authority. Two current RED/GREEN contracts harden temporal durable acceptance without breaking replay: RED `3e61c3c71920325bce45a8ca1b6f12db69591824` / GREEN `30a3ef4e0219b9b29ed2b6bd01b50fd276f414e8` permits an older persisted `grantedAt` on a later idempotent retry but rejects a durable winner later than the proposed grant instant; RED `df4e7fa78a5b24e9a019ed1570b6b7c94842a0f8` / GREEN current head rejects malformed or future `installedAt` evidence before grant persistence and reuses one captured authority instant for installation ordering and the grant candidate.
 
-Stacked #235 exact head `64e29bfd685ad49b187fc3de39ac5ebef6356063` adds the Integration-owned PostgreSQL grant store. It was non-force restacked onto current #205 and fresh compare is ahead-only (`behind_by=0`) with exactly the six persistence-owned files. The adapter rejects malformed SQL result envelopes before row-count/row-array dereference and keeps corrupted runtime persistence evidence inside the bounded `PluginDeliveryOriginPersistenceEvidenceError` contract. Both PRs intentionally perform no outbound HTTP and remain active evidence rather than shipped truth.
+Stacked #235 exact head `603875229128baf2eee94e7fa28f9813ac9b379b` adds the Integration-owned PostgreSQL grant store. It was non-force restacked onto current #205 and fresh compare is ahead-only (`behind_by=0`) with exactly the same six persistence-owned files. The adapter rejects malformed SQL result envelopes before row-count/row-array dereference and keeps corrupted runtime persistence evidence inside the bounded `PluginDeliveryOriginPersistenceEvidenceError` contract. Both PRs intentionally perform no outbound HTTP and remain active evidence rather than shipped truth.
 
 Remaining work is concrete encrypted secret/KMS composition, SSRF/DNS-rebinding-safe outbound HTTPS with connect-time address enforcement or equivalent reviewed egress, redirect/proxy denial, finite byte/deadline limits, signed/idempotent delivery, durable attempt/outcome/retry/dead-letter evidence, revocation fencing, operator recovery, and buyer-visible status.
 
@@ -75,7 +75,7 @@ A release-ready exact protected head must produce and verify version/CHANGELOG/t
 
 PR #230 hardens the read-only Actions workflow-registry evidence used by Commercial Readiness. Its current lineage fails closed on registry/tree/default-branch ambiguity but does not disable orphan workflow identities. Issue #202 remains the authorized control-plane owner for exact-state orphan disablement.
 
-LifeOS-owned Actions lanes remain subject to the organization ruleset and central reusable workflows. Queueing, startup/control-plane failure, and central dependency-review support defects belong to their actual owner path; do not weaken LifeOS gates to manufacture GREEN evidence. #218 remains the LifeOS-owned explicit hosted-runner selection repair and must preserve #240's workflow-safety correction when restacked.
+LifeOS-owned Actions lanes remain subject to the organization ruleset and central reusable workflows. Fresh cross-lane evidence on #198, #199, #218, #205, and #211 shows the same repository/security workflow families queued on unchanged heads; queue/control-plane repair belongs to #212 and its central owner paths, not a LifeOS product-source bypass. #218 remains the LifeOS-owned explicit hosted-runner selection repair and must preserve #240's workflow-safety correction when restacked.
 
 ## Documentation and traceability
 
@@ -93,4 +93,4 @@ A stacked child stays Draft until its prerequisite integrates, then adopts the r
 
 LifeOS is commercially complete only when an operator can install immutable release artifacts and a user can authenticate, obtain a durable personal workspace, create and connect Goal/Project/Task/Habit state, execute Today, complete Weekly Review, manage Settings/integrations/data rights, recover from expected failures, and reproduce that evidence without repository-internal knowledge.
 
-Refs #21, #55, #129, #130, #145, #198, #199, #202, #205, #209, #210, #214, #216, #217, #218, #228, #230, #235, #236, #237, #238, #240.
+Refs #21, #55, #129, #130, #145, #198, #199, #202, #205, #209, #210, #211, #212, #214, #216, #217, #218, #228, #230, #235, #236, #237, #238, #240.
