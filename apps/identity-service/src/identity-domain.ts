@@ -120,8 +120,9 @@ export class IdentityService {
 
   /**
    * Signs in one supported provider subject without exposing persistence names.
-   * Empty subjects/display names and unsupported providers fail before mutation;
-   * concurrent durable idempotency is enforced by the repository implementation.
+   * Unsupported providers and empty subjects always fail before repository mutation.
+   * A display name is required only when no durable binding exists; replay returns the
+   * authoritative stored account unchanged and deliberately ignores profile-name drift.
    */
   async signInWithExternalIdentity(input: {
     provider: IdentityProvider;
