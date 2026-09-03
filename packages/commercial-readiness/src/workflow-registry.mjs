@@ -1,5 +1,7 @@
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
+const UTC_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
 const DYNAMIC_WORKFLOW_PATH_PATTERN = /^dynamic\/dependabot\/dependabot-updates$/u;
@@ -39,14 +41,19 @@ function requireSha(value) {
 }
 
 function requireGeneratedAt(value) {
-  if (typeof value !== 'string') {
+  if (typeof value !== 'string' || !UTC_TIMESTAMP_PATTERN.test(value)) {
     return invalid('Workflow registry timestamp is invalid');
   }
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime()) || date.toISOString() !== value) {
+  if (!Number.isFinite(date.getTime())) {
     return invalid('Workflow registry timestamp is invalid');
   }
-  return value;
+  const canonical = date.toISOString();
+  const expected = value.includes('.') ? value : value.replace(/Z$/u, '.000Z');
+  if (canonical !== expected) {
+    return invalid('Workflow registry timestamp is invalid');
+  }
+  return canonical;
 }
 
 function requireWorkflowPath(value) {
