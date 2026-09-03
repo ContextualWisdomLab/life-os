@@ -256,14 +256,15 @@ function workflowRegistriesMatch(left, right) {
  * Extracts validated repository-owned workflow YAML paths from one complete Git tree.
  *
  * Returns exact case-sensitive `.github/workflows/*.yml|yaml` regular-file paths.
- * Malformed, truncated, symlinked, non-blob, or unsafe workflow-shaped tree evidence
- * fails closed; unrelated tree entries are ignored.
+ * Malformed, truncated, symlinked, non-blob, duplicate, or unsafe workflow-shaped
+ * tree evidence fails closed; unrelated tree entries are ignored.
  */
 function workflowPathsFromTree(payload) {
   if (!payload || payload.truncated !== false || !Array.isArray(payload.tree)) {
     return invalid('GitHub workflow tree was truncated or invalid');
   }
   const paths = [];
+  const seenPaths = new Set();
   for (const entry of payload.tree) {
     if (!entry || typeof entry.path !== 'string') continue;
     if (!WORKFLOW_TREE_CANDIDATE_PATH_PATTERN.test(entry.path)) continue;
@@ -274,6 +275,10 @@ function workflowPathsFromTree(payload) {
     if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
       return invalid('GitHub workflow tree entry mode is invalid');
     }
+    if (seenPaths.has(entry.path)) {
+      return invalid('GitHub workflow tree path is ambiguous');
+    }
+    seenPaths.add(entry.path);
     paths.push(entry.path);
   }
   return paths;
