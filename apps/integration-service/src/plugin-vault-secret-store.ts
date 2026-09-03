@@ -364,8 +364,8 @@ export class PluginVaultSecretStore implements PluginSecretStore {
   /**
    * Executes one bounded Vault request and validates its response envelope.
    * `consumeSuccessfulBody` is reserved for the replay GET: status-only create/delete
-   * paths never buffer a response body, while a 200 replay body is consumed under the
-   * same deadline before the abort timer is cleared.
+   * paths cancel uninterpreted response bodies, while a 200 replay body is consumed under
+   * the same deadline before the abort timer is cleared.
    */
   private async request(
     url: string,
@@ -405,11 +405,30 @@ export class PluginVaultSecretStore implements PluginSecretStore {
           body: await this.boundedBody(response, controller.signal),
         };
       }
+      await this.cancelUnusedBody(response);
       return { response };
     } catch {
       return unavailable();
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  /** Cancels a response body whose bytes are not part of the adapter's authority decision. */
+  private async cancelUnusedBody(response: PluginVaultHttpResponse): Promise<void> {
+    if (response.body === null) {
+      return;
+    }
+    if (
+      typeof response.body !== 'object' ||
+      typeof response.body.cancel !== 'function'
+    ) {
+      return unavailable();
+    }
+    try {
+      await response.body.cancel();
+    } catch {
+      return unavailable();
     }
   }
 
