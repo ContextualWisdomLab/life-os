@@ -282,7 +282,9 @@ function sameActiveGrant(
     durable.grantedByUserId === candidate.grantedByUserId &&
     durable.origin === candidate.origin &&
     durable.status === 'active' &&
-    durable.revokedAt === null
+    durable.revokedAt === null &&
+    new Date(durable.grantedAt).getTime() <=
+      new Date(candidate.grantedAt).getTime()
   );
 }
 
