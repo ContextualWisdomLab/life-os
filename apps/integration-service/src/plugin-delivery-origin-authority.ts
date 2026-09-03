@@ -139,9 +139,11 @@ function currentInstant(now: () => Date): string {
   }
 }
 
-function requireContext(
-  context: PluginInstallationContext,
-): PluginInstallationContext {
+function requireContext(value: unknown): PluginInstallationContext {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  const context = value as PluginInstallationContext;
   return Object.freeze({
     workspaceId: requireUuidV4(context.workspaceId),
     actorUserId: requireUuidV4(context.actorUserId),
