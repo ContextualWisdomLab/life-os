@@ -157,6 +157,22 @@ describe('PostgresPluginDeliveryOriginGrantStore', () => {
       ),
     ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceEvidenceError);
   });
+
+  it('rejects inconsistent SQL row-count evidence instead of trusting a partial row array', async () => {
+    const client = new ScriptedSqlClient([
+      { rows: [row()], rowCount: 2 },
+    ]);
+    const store = new PostgresPluginDeliveryOriginGrantStore(client);
+
+    await expect(
+      store.findById(
+        ACTIVE_GRANT.grantId,
+        ACTIVE_GRANT.installationId,
+        ACTIVE_GRANT.workspaceId,
+        ACTIVE_GRANT.grantedByUserId,
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryOriginPersistenceEvidenceError);
+  });
 });
 
 describe('plugin delivery-origin migration contract', () => {
