@@ -59,10 +59,14 @@ function unavailable(): never {
 }
 
 function requireUuidV4(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    !UUID_V4_PATTERN.test(value) ||
+    value !== value.toLowerCase()
+  ) {
     return unavailable();
   }
-  return value.toLowerCase();
+  return value;
 }
 
 /** Requires Vault-returned identity to already be canonical lowercase UUIDv4 evidence. */
