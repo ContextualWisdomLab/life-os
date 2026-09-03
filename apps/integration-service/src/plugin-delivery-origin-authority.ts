@@ -276,7 +276,9 @@ function requireActiveInstallation(
 function sameActiveGrant(
   durable: PluginDeliveryOriginGrantRecord,
   candidate: PluginDeliveryOriginGrantRecord,
+  installedAt: string,
 ): boolean {
+  const durableGrantedAt = new Date(durable.grantedAt).getTime();
   return (
     durable.authorityVersion === candidate.authorityVersion &&
     durable.grantId === candidate.grantId &&
@@ -286,8 +288,8 @@ function sameActiveGrant(
     durable.origin === candidate.origin &&
     durable.status === 'active' &&
     durable.revokedAt === null &&
-    new Date(durable.grantedAt).getTime() <=
-      new Date(candidate.grantedAt).getTime()
+    durableGrantedAt >= new Date(installedAt).getTime() &&
+    durableGrantedAt <= new Date(candidate.grantedAt).getTime()
   );
 }
 
@@ -344,7 +346,7 @@ export class PluginDeliveryOriginAuthority {
       revokedAt: null,
     });
     const durable = requireRecord(await this.store.createIfAbsent(candidate));
-    if (!sameActiveGrant(durable, candidate)) {
+    if (!sameActiveGrant(durable, candidate, installation.installedAt)) {
       return invalid();
     }
     return durable;
@@ -386,12 +388,13 @@ export class PluginDeliveryOriginAuthority {
     const context = requireContext(trustedContext);
     const installationId = requireUuidV4(installationIdInput);
     const grantId = requireUuidV4(grantIdInput);
+    const revokedAt = currentInstant(this.now);
     const durable = await this.store.revokeActive({
       grantId,
       installationId,
       workspaceId: context.workspaceId,
       grantedByUserId: context.actorUserId,
-      revokedAt: currentInstant(this.now),
+      revokedAt,
     });
     if (
       !durable ||
@@ -403,7 +406,11 @@ export class PluginDeliveryOriginAuthority {
       return invalid();
     }
     const verified = requireRecord(durable);
-    if (verified.status !== 'revoked' || verified.revokedAt === null) {
+    if (
+      verified.status !== 'revoked' ||
+      verified.revokedAt === null ||
+      new Date(verified.revokedAt).getTime() > new Date(revokedAt).getTime()
+    ) {
       return invalid();
     }
     return verified;
