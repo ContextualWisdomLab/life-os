@@ -2,7 +2,7 @@ const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
-const DYNAMIC_WORKFLOW_PATH_PATTERN = /^dynamic\/[^/]+(?:\/[^/]+)*$/u;
+const DYNAMIC_WORKFLOW_PATH_PATTERN = /^dynamic\/dependabot\/dependabot-updates$/u;
 const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN = /^\.github\/workflows\/[\s\S]*\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
 const WORKFLOW_STATES = new Set([
