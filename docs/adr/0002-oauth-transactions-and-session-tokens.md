@@ -67,3 +67,11 @@ Migrations introduce workspace/session binding and authentication provenance wit
 ## Supersession
 
 This ADR is superseded only by a reviewed identity/session architecture change with provider, migration, recent-auth and browser-security compatibility evidence.
+
+## References
+
+GitHub. (n.d.). *Authorizing OAuth apps*. https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+
+Lodderstedt, T., Bradley, J., Labunets, A., & Fett, D. (2025). *Best current practice for OAuth 2.0 security* (RFC 9700; BCP 240) [Published Best Current Practice]. RFC Editor. https://doi.org/10.17487/RFC9700
+
+Sakimura, N., Bradley, J., & Agarwal, N. (2015). *Proof key for code exchange by OAuth public clients* (RFC 7636) [Published Standards Track RFC]. RFC Editor. https://doi.org/10.17487/RFC7636
