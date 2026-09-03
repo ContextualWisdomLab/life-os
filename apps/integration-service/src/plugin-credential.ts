@@ -131,6 +131,24 @@ function requireBindInput(value: unknown): BindPluginCredentialInput {
   return value as BindPluginCredentialInput;
 }
 
+/** Captures one canonical operation instant before any authority, persistence, or secret I/O. */
+function currentInstant(now: () => Date): string {
+  let value: unknown;
+  try {
+    value = now();
+  } catch {
+    return invalid();
+  }
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    return invalid();
+  }
+  try {
+    return value.toISOString();
+  } catch {
+    return invalid();
+  }
+}
+
 function requireCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return invalid();
@@ -250,6 +268,7 @@ export class PluginCredentialApplication {
     const credentialBindingId = requireUuidV4(request.credentialBindingId);
     const credentialName = requireCredentialName(request.credentialName);
     const secretValue = requireSecretValue(request.secretValue);
+    const boundAt = currentInstant(this.now);
     const installation = await this.installationAuthority.getInstallation(
       context,
       installationId,
@@ -303,7 +322,7 @@ export class PluginCredentialApplication {
       ...authority,
       secretReference,
       status: 'active',
-      boundAt: this.now().toISOString(),
+      boundAt,
       revokedAt: null,
     });
     let durable: PluginCredentialBindingRecord;
@@ -346,6 +365,7 @@ export class PluginCredentialApplication {
   ): Promise<PluginCredentialBindingView> {
     const context = requireContext(trustedContext);
     const credentialBindingId = requireUuidV4(credentialBindingIdInput);
+    const revokedAt = currentInstant(this.now);
     const existing = await this.bindingStore.findById(
       credentialBindingId,
       context.workspaceId,
@@ -358,7 +378,6 @@ export class PluginCredentialApplication {
     ) {
       return invalid();
     }
-    const revokedAt = this.now().toISOString();
     const durable = await this.bindingStore.revokeActive({
       credentialBindingId,
       workspaceId: context.workspaceId,
