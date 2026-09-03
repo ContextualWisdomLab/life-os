@@ -175,10 +175,13 @@ test('paginates the complete registry and binds receipts to an unchanged default
   assert.equal(result.workflow_count, 101);
   assert.equal(result.active_orphans.length, 100);
   assert.deepEqual(result.present.map((entry) => entry.id), [101]);
-  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 4);
-  assert.deepEqual(calls.slice(-2), [
+  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 6);
+  assert.deepEqual(calls.slice(-5), [
     `/repos/${REPOSITORY}/branches/main`,
     `/repos/${REPOSITORY}`,
+    `/repos/${REPOSITORY}/actions/workflows?per_page=100&page=1`,
+    `/repos/${REPOSITORY}/actions/workflows?per_page=100&page=2`,
+    `/repos/${REPOSITORY}/branches/main`,
   ]);
 });
 
