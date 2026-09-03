@@ -96,12 +96,17 @@ function requireInputInstant(value: unknown): string {
 }
 
 function requireStoredInstant(value: unknown): string {
-  const candidate =
-    value instanceof Date
-      ? value.toISOString()
-      : typeof value === 'string'
-        ? value
-        : '';
+  let candidate: string;
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) {
+      return invalidEvidence();
+    }
+    candidate = value.toISOString();
+  } else if (typeof value === 'string') {
+    candidate = value;
+  } else {
+    return invalidEvidence();
+  }
   if (!ISO_INSTANT_PATTERN.test(candidate)) {
     return invalidEvidence();
   }
