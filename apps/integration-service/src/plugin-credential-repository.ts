@@ -153,6 +153,11 @@ function storedSecretReference(value: unknown): string {
   return value;
 }
 
+/**
+ * Accepts only an internally consistent zero-or-one-row SQL result. Exact zero-row
+ * results map to `undefined`; malformed envelopes, mismatched row counts, and a
+ * declared row without row evidence are corrupted persistence evidence.
+ */
 function oneOrUndefined<Row>(
   result: PluginCredentialSqlResult<Row>,
 ): Row | undefined {
@@ -211,6 +216,11 @@ function validateRevocation(input: RevokePluginCredential): RevokePluginCredenti
   });
 }
 
+/**
+ * Converts one returned SQL row into canonical durable binding evidence. Every
+ * identity, lifecycle instant, status transition, credential name, and opaque
+ * secret reference is validated before the row can become application authority.
+ */
 function parseRow(row: unknown): PluginCredentialBindingRecord {
   if (row === null || typeof row !== 'object' || Array.isArray(row)) {
     return invalidEvidence();
