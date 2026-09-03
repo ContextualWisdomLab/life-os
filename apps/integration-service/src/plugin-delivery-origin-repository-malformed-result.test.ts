@@ -27,6 +27,7 @@ describe('PostgresPluginDeliveryOriginGrantStore malformed SQL evidence', () => 
     ['array result envelope', []],
     ['null rows collection', { rows: null, rowCount: 0 }],
     ['undefined durable row', { rows: [undefined], rowCount: 1 }],
+    ['null durable row', { rows: [null], rowCount: 1 }],
   ])('rejects %s inside the bounded persistence-evidence error contract', async (_label, result) => {
     const store = new PostgresPluginDeliveryOriginGrantStore(malformedClient(result));
 
