@@ -77,7 +77,11 @@ function requireStoredUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
   }
-  return value.toLowerCase();
+  const canonical = value.toLowerCase();
+  if (value !== canonical) {
+    return invalidEvidence();
+  }
+  return canonical;
 }
 
 function requireInputInstant(value: unknown): string {
