@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const repositoryRoot = resolve(process.cwd(), '../..');
+const kubernetesRoot = resolve(repositoryRoot, 'infra/kubernetes');
 const identityDatabaseUrl = process.env.IDENTITY_DATABASE_URL;
 const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
 const testDatabasePattern = /^[a-z0-9_]*_test$/u;
@@ -74,6 +75,13 @@ function psql(
   });
 }
 
+/** Return a sibling database URL without putting credentials in runner arguments. */
+function siblingDatabaseUrl(sourceUrl: string, databaseName: string): string {
+  const parsedUrl = new URL(sourceUrl);
+  parsedUrl.pathname = `/${databaseName}`;
+  return parsedUrl.toString();
+}
+
 /** Quote only a locally generated temporary database identifier. */
 function quotedDatabase(databaseName: string): string {
   if (!temporaryDatabasePattern.test(databaseName)) {
@@ -94,11 +102,12 @@ function identityMigrations(): string[] {
     .sort();
 }
 
-describeWithDatabase('Identity semantic rename atomic completion', () => {
-  it('commits the semantic schema and its applying ledger row as one transaction', () => {
+describeWithDatabase('Identity semantic rename runner-owned recovery', () => {
+  it('keeps deployment ledger authority in the runner and recovers a committed rename', () => {
     const sourceUrl = requireLoopbackTestDatabaseUrl();
     const databaseName = `life_os_semantic_rename_${randomUUID().replaceAll('-', '')}`;
     const databaseIdentifier = quotedDatabase(databaseName);
+    const databaseUrl = siblingDatabaseUrl(sourceUrl, databaseName);
     const adminDatabaseName = 'postgres';
     let databaseCreated = false;
 
@@ -175,19 +184,60 @@ describeWithDatabase('Identity semantic rename atomic completion', () => {
       );
       expect(renameResult.status, renameResult.stderr).toBe(0);
 
-      const atomicState = psql(sourceUrl, databaseName, [
+      const interruptedState = psql(sourceUrl, databaseName, [
         '--tuples-only',
         '--no-align',
         '--command',
-        `SELECT migration_status || ':' || (applied_at IS NOT NULL)::text || ':' ||
+        `SELECT migration_status || ':' || (applied_at IS NULL)::text || ':' ||
                 (to_regclass('identity.user_accounts') IS NOT NULL)::text || ':' ||
                 (to_regclass('identity.users') IS NULL)::text
          FROM life_os_deployment.schema_migrations
          WHERE service_name = 'identity'
            AND migration_name = '${renameMigrationName}'`,
       ]);
-      expect(atomicState.status, atomicState.stderr).toBe(0);
-      expect(atomicState.stdout.trim()).toBe('applied:true:true:true');
+      expect(interruptedState.status, interruptedState.stderr).toBe(0);
+      expect(interruptedState.stdout.trim()).toBe('applying:true:true:true');
+
+      const runnerEnvironment: NodeJS.ProcessEnv = {
+        ...process.env,
+        LIFE_OS_MIGRATION_CONFIRMATION: 'apply-forward-only',
+        PGOPTIONS:
+          '-c life_os.identity_schema_rename_confirmation=identity-service-drained',
+        IDENTITY_DATABASE_URL: databaseUrl,
+        PLANNING_DATABASE_URL: databaseUrl,
+        HABIT_DATABASE_URL: databaseUrl,
+        AI_DATABASE_URL: databaseUrl,
+        REVIEW_DATABASE_URL: databaseUrl,
+      };
+      const recoveryResult = spawnSync(
+        'bash',
+        [resolve(kubernetesRoot, 'run-migrations.sh')],
+        {
+          cwd: repositoryRoot,
+          encoding: 'utf8',
+          env: runnerEnvironment,
+          timeout: 60_000,
+        },
+      );
+      expect(recoveryResult.status, recoveryResult.stderr).toBe(0);
+      expect(recoveryResult.stdout).toContain(
+        `migration_status=reconciled service=identity migration=${renameMigrationName}`,
+      );
+
+      const recoveredState = psql(sourceUrl, databaseName, [
+        '--tuples-only',
+        '--no-align',
+        '--command',
+        `SELECT migration_status || ':' || (applied_at IS NOT NULL)::text || ':' ||
+                migration_reconciled::text || ':' ||
+                (to_regclass('identity.user_accounts') IS NOT NULL)::text || ':' ||
+                (to_regclass('identity.users') IS NULL)::text
+         FROM life_os_deployment.schema_migrations
+         WHERE service_name = 'identity'
+           AND migration_name = '${renameMigrationName}'`,
+      ]);
+      expect(recoveredState.status, recoveredState.stderr).toBe(0);
+      expect(recoveredState.stdout.trim()).toBe('applied:true:true:true:true');
     } finally {
       if (databaseCreated) {
         const dropResult = psql(sourceUrl, adminDatabaseName, [
