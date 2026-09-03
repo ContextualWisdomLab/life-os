@@ -377,6 +377,11 @@ export async function collectWorkflowRegistrySnapshot(
     return invalid('GitHub default branch changed during workflow inventory');
   }
 
+  const finalRegistry = await collectWorkflowRegistry(client, repository);
+  if (!workflowRegistriesMatch(registry, finalRegistry)) {
+    return invalid('GitHub workflow registry changed after branch validation');
+  }
+
   const confirmedFinalHead = await readDefaultBranchHead(client, repository, defaultBranch);
   if (confirmedFinalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
