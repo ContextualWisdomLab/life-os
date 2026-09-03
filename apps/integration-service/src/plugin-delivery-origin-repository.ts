@@ -204,17 +204,23 @@ function validateRevocation(
   });
 }
 
-function parseRow(row: PluginDeliveryOriginRow): PluginDeliveryOriginGrantRecord {
-  if (row.authority_version !== AUTHORITY_VERSION) {
+function parseRow(row: unknown): PluginDeliveryOriginGrantRecord {
+  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+    return invalidEvidence();
+  }
+  const candidate = row as PluginDeliveryOriginRow;
+  if (candidate.authority_version !== AUTHORITY_VERSION) {
     return invalidEvidence();
   }
   const status =
-    row.grant_status === 'active' || row.grant_status === 'revoked'
-      ? row.grant_status
+    candidate.grant_status === 'active' || candidate.grant_status === 'revoked'
+      ? candidate.grant_status
       : invalidEvidence();
-  const grantedAt = requireStoredInstant(row.granted_at);
+  const grantedAt = requireStoredInstant(candidate.granted_at);
   const revokedAt =
-    row.revoked_at === null ? null : requireStoredInstant(row.revoked_at);
+    candidate.revoked_at === null
+      ? null
+      : requireStoredInstant(candidate.revoked_at);
   if (
     (status === 'active' && revokedAt !== null) ||
     (status === 'revoked' && revokedAt === null) ||
@@ -225,11 +231,11 @@ function parseRow(row: PluginDeliveryOriginRow): PluginDeliveryOriginGrantRecord
   }
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    grantId: requireStoredUuid(row.grant_id),
-    installationId: requireStoredUuid(row.installation_id),
-    workspaceId: requireStoredUuid(row.workspace_id),
-    grantedByUserId: requireStoredUuid(row.granted_by_user_id),
-    origin: normalizedOrigin(row.origin_uri, true),
+    grantId: requireStoredUuid(candidate.grant_id),
+    installationId: requireStoredUuid(candidate.installation_id),
+    workspaceId: requireStoredUuid(candidate.workspace_id),
+    grantedByUserId: requireStoredUuid(candidate.granted_by_user_id),
+    origin: normalizedOrigin(candidate.origin_uri, true),
     status,
     grantedAt,
     revokedAt,
