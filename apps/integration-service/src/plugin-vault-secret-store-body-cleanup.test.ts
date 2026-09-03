@@ -82,6 +82,50 @@ describe('PluginVaultSecretStore response cleanup', () => {
     expect(deleteCancelled).toBe(true);
   });
 
+  it('fails closed when status-only body cancellation reaches the request deadline', async () => {
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | undefined;
+    const http = vi.fn<PluginVaultHttpClient>().mockImplementation(async (_url, request) => {
+      requestSignal = request.signal;
+      return {
+        status: 404,
+        headers: { get: () => null },
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([1]));
+          },
+          cancel() {
+            return new Promise<void>((resolve) => {
+              if (request.signal.aborted) {
+                resolve();
+                return;
+              }
+              request.signal.addEventListener('abort', () => resolve(), { once: true });
+            });
+          },
+        }),
+      };
+    });
+    const store = new PluginVaultSecretStore(
+      'https://vault.example.test',
+      TOKEN,
+      'secret',
+      http,
+    );
+
+    try {
+      const deletion = store.deleteSecret(REFERENCE);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requestSignal).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(5_001);
+      expect(requestSignal?.aborted).toBe(true);
+      await expect(deletion).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('cancels a declared-oversized replay body before failing closed', async () => {
     let cancelled = false;
     const oversizedBody = new ReadableStream<Uint8Array>({
