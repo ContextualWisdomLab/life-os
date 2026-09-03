@@ -305,70 +305,199 @@ incomplete_migration_recovery_sql() {
     'identity:0007_identity_database_semantic_names.sql')
       cat <<'SQL'
   SELECT
-    to_regclass('identity.users') IS NOT NULL
-    AND to_regclass('identity.workspaces') IS NOT NULL
-    AND to_regclass('identity.sessions') IS NOT NULL
-    AND to_regclass('identity.user_accounts') IS NULL
-    AND to_regclass('identity.identity_workspaces') IS NULL
-    AND to_regclass('identity.authentication_sessions') IS NULL
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'users' AND column_name = 'id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'user_id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'provider'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'owner_user_id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'name'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'kind'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'user_id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'workspace_id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'rotated_from_id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'oauth_transactions' AND column_name = 'id'
-    )
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'identity' AND table_name = 'oauth_transactions' AND column_name = 'provider'
-    ) AS incomplete_migration_retry_allowed
+    (
+      to_regclass('identity.users') IS NOT NULL
+      AND to_regclass('identity.workspaces') IS NOT NULL
+      AND to_regclass('identity.sessions') IS NOT NULL
+      AND to_regclass('identity.user_accounts') IS NULL
+      AND to_regclass('identity.identity_workspaces') IS NULL
+      AND to_regclass('identity.authentication_sessions') IS NULL
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'users' AND column_name = 'id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'user_id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'external_identities' AND column_name = 'provider'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'owner_user_id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'name'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'workspaces' AND column_name = 'kind'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'user_id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'workspace_id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'sessions' AND column_name = 'rotated_from_id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'oauth_transactions' AND column_name = 'id'
+      )
+      AND EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'identity' AND table_name = 'oauth_transactions' AND column_name = 'provider'
+      )
+    ) AS incomplete_migration_retry_allowed,
+    (
+      to_regclass('identity.users') IS NULL
+      AND to_regclass('identity.workspaces') IS NULL
+      AND to_regclass('identity.sessions') IS NULL
+      AND to_regclass('identity.user_accounts') IS NOT NULL
+      AND to_regclass('identity.identity_workspaces') IS NOT NULL
+      AND to_regclass('identity.authentication_sessions') IS NOT NULL
+      AND (
+        SELECT COUNT(*) = 14
+        FROM information_schema.columns
+        WHERE table_schema = 'identity'
+          AND (
+            (table_name = 'user_accounts' AND column_name = 'user_account_id')
+            OR (table_name = 'external_identities' AND column_name IN (
+              'external_identity_id', 'user_account_id', 'identity_provider'
+            ))
+            OR (table_name = 'identity_workspaces' AND column_name IN (
+              'identity_workspace_id', 'owner_user_account_id', 'workspace_name', 'workspace_kind'
+            ))
+            OR (table_name = 'authentication_sessions' AND column_name IN (
+              'authentication_session_id', 'user_account_id', 'identity_workspace_id',
+              'rotated_from_session_id'
+            ))
+            OR (table_name = 'oauth_transactions' AND column_name IN (
+              'oauth_transaction_id', 'identity_provider'
+            ))
+          )
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'identity'
+          AND (
+            (table_name = 'user_accounts' AND column_name = 'id')
+            OR (table_name = 'external_identities' AND column_name IN ('id', 'user_id', 'provider'))
+            OR (table_name = 'identity_workspaces' AND column_name IN (
+              'id', 'owner_user_id', 'name', 'kind'
+            ))
+            OR (table_name = 'authentication_sessions' AND column_name IN (
+              'id', 'user_id', 'workspace_id', 'rotated_from_id'
+            ))
+            OR (table_name = 'oauth_transactions' AND column_name IN ('id', 'provider'))
+          )
+      )
+      AND (
+        SELECT COUNT(*) = 18
+        FROM pg_constraint AS constraint_row
+        JOIN pg_class AS relation_row
+          ON relation_row.oid = constraint_row.conrelid
+        JOIN pg_namespace AS namespace_row
+          ON namespace_row.oid = relation_row.relnamespace
+        WHERE namespace_row.nspname = 'identity'
+          AND constraint_row.conname IN (
+            'user_accounts_pkey',
+            'user_account_id_uuid_v4',
+            'external_identities_user_account_fk',
+            'external_identity_id_uuid_v4',
+            'identity_workspaces_pkey',
+            'identity_workspaces_owner_user_account_fk',
+            'identity_workspace_owner_unique',
+            'identity_workspace_id_uuid_v4',
+            'authentication_sessions_pkey',
+            'authentication_sessions_user_account_fk',
+            'authentication_sessions_rotated_from_session_fk',
+            'authentication_sessions_token_hash_key',
+            'authentication_session_expiry_after_creation',
+            'authentication_session_revocation_after_creation',
+            'authentication_session_workspace_owner_fk',
+            'authentication_session_authentication_not_after_creation',
+            'authentication_session_id_uuid_v4',
+            'oauth_transaction_id_uuid_v4'
+          )
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint AS constraint_row
+        JOIN pg_class AS relation_row
+          ON relation_row.oid = constraint_row.conrelid
+        JOIN pg_namespace AS namespace_row
+          ON namespace_row.oid = relation_row.relnamespace
+        WHERE namespace_row.nspname = 'identity'
+          AND constraint_row.conname IN (
+            'users_pkey',
+            'users_id_uuid_v4',
+            'external_identities_user_id_fkey',
+            'external_identities_id_uuid_v4',
+            'workspaces_pkey',
+            'workspaces_owner_user_id_fkey',
+            'workspaces_id_owner_unique',
+            'workspaces_id_uuid_v4',
+            'sessions_pkey',
+            'sessions_user_id_fkey',
+            'sessions_rotated_from_id_fkey',
+            'sessions_token_hash_key',
+            'sessions_expiry_after_creation',
+            'sessions_revocation_after_creation',
+            'sessions_workspace_owner_fk',
+            'sessions_authentication_not_after_creation',
+            'sessions_id_uuid_v4',
+            'oauth_transactions_id_uuid_v4'
+          )
+      )
+      AND (
+        SELECT COUNT(*) = 4
+        FROM pg_indexes
+        WHERE schemaname = 'identity'
+          AND indexname IN (
+            'external_identities_user_account_idx',
+            'identity_workspaces_owner_account_idx',
+            'authentication_sessions_active_user_account_idx',
+            'authentication_sessions_active_workspace_idx'
+          )
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_indexes
+        WHERE schemaname = 'identity'
+          AND indexname IN (
+            'external_identities_user_idx',
+            'workspaces_owner_idx',
+            'sessions_active_user_idx',
+            'sessions_active_workspace_idx'
+          )
+      )
+    ) AS incomplete_migration_reconciliation_allowed
   \gset
 SQL
       ;;
     *)
       cat <<'SQL'
-  SELECT false AS incomplete_migration_retry_allowed
+  SELECT
+    false AS incomplete_migration_retry_allowed,
+    false AS incomplete_migration_reconciliation_allowed
   \gset
 SQL
       ;;
@@ -441,12 +570,39 @@ ${recovery_sql}
         \\echo migration_status=retrying service=:service_name migration=:migration_name
         \\set migration_should_apply true
       \\else
-        \\echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
-        DO \$life_os_migration_guard\$
-        BEGIN
-          RAISE EXCEPTION 'LifeOS migration guard failed';
-        END
-        \$life_os_migration_guard\$;
+        \\if :incomplete_migration_reconciliation_allowed
+          WITH updated_row AS (
+            UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+            SET migration_status = 'applied',
+                applied_at = clock_timestamp(),
+                migration_reconciled = true
+            WHERE service_name = :'service_name'
+              AND migration_name = :'migration_name'
+              AND migration_sha256 = :'migration_sha256'
+              AND migration_status = 'applying'
+            RETURNING 1
+          )
+          SELECT COUNT(*) = 1 AS migration_reconciled_now
+          FROM updated_row
+          \\gset
+          \\if :migration_reconciled_now
+            \\echo migration_status=reconciled service=:service_name migration=:migration_name
+          \\else
+            \\echo migration_error=incomplete_migration_reconciliation_failed service=:service_name migration=:migration_name
+            DO \$life_os_migration_guard\$
+            BEGIN
+              RAISE EXCEPTION 'LifeOS migration guard failed';
+            END
+            \$life_os_migration_guard\$;
+          \\endif
+        \\else
+          \\echo migration_error=incomplete_migration_requires_reconciliation service=:service_name migration=:migration_name
+          DO \$life_os_migration_guard\$
+          BEGIN
+            RAISE EXCEPTION 'LifeOS migration guard failed';
+          END
+          \$life_os_migration_guard\$;
+        \\endif
       \\endif
     \\endif
   \\else
@@ -510,14 +666,29 @@ ${reconciliation_sql}
   );
   \\echo migration_status=applying service=:service_name migration=:migration_name
   \\i ${migration_file}
-  UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
-  SET migration_status = 'applied',
-      applied_at = clock_timestamp()
-  WHERE service_name = :'service_name'
-    AND migration_name = :'migration_name'
-    AND migration_sha256 = :'migration_sha256'
-    AND migration_status = 'applying';
-  \\echo migration_status=applied service=:service_name migration=:migration_name
+  WITH updated_row AS (
+    UPDATE ${MIGRATION_SCHEMA}.${MIGRATION_TABLE}
+    SET migration_status = 'applied',
+        applied_at = clock_timestamp()
+    WHERE service_name = :'service_name'
+      AND migration_name = :'migration_name'
+      AND migration_sha256 = :'migration_sha256'
+      AND migration_status = 'applying'
+    RETURNING 1
+  )
+  SELECT COUNT(*) = 1 AS migration_finalized
+  FROM updated_row
+  \\gset
+  \\if :migration_finalized
+    \\echo migration_status=applied service=:service_name migration=:migration_name
+  \\else
+    \\echo migration_error=migration_ledger_finalization_failed service=:service_name migration=:migration_name
+    DO \$life_os_migration_guard\$
+    BEGIN
+      RAISE EXCEPTION 'LifeOS migration guard failed';
+    END
+    \$life_os_migration_guard\$;
+  \\endif
 \\endif
 SQL
 }
