@@ -44,6 +44,18 @@ describe('Plugin Vault hosted runtime', () => {
     expect(createPool).not.toHaveBeenCalled();
   });
 
+  it('bounds malformed environment envelopes before configuration field access', async () => {
+    const createPool = vi.fn(() => pool());
+
+    await expect(
+      createPluginVaultHostedRuntime(
+        createPool,
+        null as unknown as Readonly<Record<string, string | undefined>>,
+      ),
+    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
+    expect(createPool).not.toHaveBeenCalled();
+  });
+
   it('constructs one service-owned pool and closes it exactly once across repeated shutdown', async () => {
     const ownedPool = pool();
     const createPool = vi.fn(() => ownedPool);
@@ -73,6 +85,18 @@ describe('Plugin Vault hosted runtime', () => {
     ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
     expect(createPool).toHaveBeenCalledTimes(1);
     expect(ownedPool.end).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes an acquired pool-like resource when its SQL authority is malformed', async () => {
+    const end = vi.fn(async () => undefined);
+    const malformed = { end } as unknown as PluginHostedPostgresPool;
+    const createPool = vi.fn(() => malformed);
+
+    await expect(
+      createPluginVaultHostedRuntime(createPool, environment()),
+    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
+    expect(createPool).toHaveBeenCalledTimes(1);
+    expect(end).toHaveBeenCalledTimes(1);
   });
 
   it('rejects generic database aliases instead of accepting cross-service persistence authority', async () => {
