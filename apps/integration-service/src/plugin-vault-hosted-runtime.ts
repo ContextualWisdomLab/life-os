@@ -55,6 +55,14 @@ function unavailable(): never {
   throw new PluginVaultHostedRuntimeError();
 }
 
+/** Requires a bounded environment mapping before any configuration field is read. */
+function requireEnvironment(value: unknown): PluginVaultOperatorEnvironment {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return unavailable();
+  }
+  return value as PluginVaultOperatorEnvironment;
+}
+
 /** Requires one exact Integration-owned database setting and rejects generic aliases. */
 function databaseUrl(environment: PluginVaultOperatorEnvironment): string {
   const value = environment.INTEGRATION_DATABASE_URL;
@@ -81,7 +89,23 @@ function requirePool(value: unknown): PluginHostedPostgresPool {
   return value as PluginHostedPostgresPool;
 }
 
-/** Closes an acquired pool and preserves the credential-free runtime error surface. */
+/** Best-effort cleanup for an acquired value before it has been accepted as a pool. */
+async function closeAcquired(value: unknown): Promise<void> {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    typeof (value as { end?: unknown }).end !== 'function'
+  ) {
+    return;
+  }
+  try {
+    await (value as { end(): Promise<void> }).end();
+  } catch {
+    // Startup still collapses to the fixed credential-free runtime error below.
+  }
+}
+
+/** Closes an accepted pool and preserves the credential-free runtime error surface. */
 async function closePool(pool: PluginHostedPostgresPool): Promise<void> {
   try {
     await pool.end();
@@ -106,17 +130,26 @@ async function closePool(pool: PluginHostedPostgresPool): Promise<void> {
  */
 export async function createPluginVaultHostedRuntime(
   createPool: PluginHostedPostgresPoolFactory,
-  environment: PluginVaultOperatorEnvironment = process.env,
+  environmentInput: PluginVaultOperatorEnvironment = process.env,
 ): Promise<PluginVaultHostedRuntime> {
   if (typeof createPool !== 'function') {
     return unavailable();
   }
 
+  const environment = requireEnvironment(environmentInput);
   const connectionString = databaseUrl(environment);
+  let acquired: unknown;
+  try {
+    acquired = await createPool(connectionString);
+  } catch {
+    return unavailable();
+  }
+
   let candidate: PluginHostedPostgresPool;
   try {
-    candidate = requirePool(await createPool(connectionString));
+    candidate = requirePool(acquired);
   } catch {
+    await closeAcquired(acquired);
     return unavailable();
   }
 
@@ -140,11 +173,7 @@ export async function createPluginVaultHostedRuntime(
       },
     });
   } catch {
-    try {
-      await candidate.end();
-    } catch {
-      // Startup remains one credential-free failure even when cleanup also fails.
-    }
+    await closeAcquired(candidate);
     return unavailable();
   }
 }
