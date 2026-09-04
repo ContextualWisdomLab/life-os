@@ -37,6 +37,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Plugin PostgreSQL idle-client diagnostics no longer trust arbitrary five-character `error.code` values as SQLSTATE evidence; retained codes are limited to the explicit operational PostgreSQL classes needed for pool health (08, 53, 57, and 58), while unknown values are discarded without serializing native error detail.
 - The concrete Plugin PostgreSQL pool no longer inherits an unbounded connection-acquisition wait or an unhandled idle-client failure surface: acquisition, idle, lifetime, and pool-size limits are explicit, and idle driver errors are reduced to bounded classification evidence without serializing native messages or connection material.
 - Hosted Plugin startup now bounds malformed environment/pool/application envelopes before field or method access, cleans an acquired pool if later composition fails, validates the listener port before resource acquisition, and collapses startup/cleanup failure detail into one credential-free runtime error.
 - Plugin Vault operator configuration no longer accepts generic `PLUGIN_VAULT_*` aliases as credential authority; origin, token, and mount must come from the Integration service-owned configuration namespace and malformed/incomplete composition still fails through one credential-free error.
