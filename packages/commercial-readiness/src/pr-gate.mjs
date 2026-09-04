@@ -12,10 +12,12 @@ function latestReviewsByActor(reviews) {
     ) {
       continue;
     }
-    const timestamp = Date.parse(review.submitted_at ?? '') || 0;
-    const current = latest.get(review.actor);
+    const actor = review.actor.trim();
+    const timestamp = Date.parse(review.submitted_at ?? '');
+    if (!actor || !Number.isFinite(timestamp)) continue;
+    const current = latest.get(actor);
     if (!current || timestamp >= current.timestamp) {
-      latest.set(review.actor, { state: review.state, timestamp });
+      latest.set(actor, { state: review.state, timestamp });
     }
   }
   return latest;
