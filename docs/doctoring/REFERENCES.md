@@ -9,6 +9,8 @@ International Organization for Standardization, & International Electrotechnical
 
 International Organization for Standardization, & International Electrotechnical Commission. (2025). *Information technology—Web Content Accessibility Guidelines (WCAG) 2.2 (ISO/IEC 40500:2025).* https://www.iso.org/standard/91029.html
 
+Lodderstedt, T., Bradley, J., Labunets, A., & Fett, D. (2025). *Best current practice for OAuth 2.0 security (RFC 9700; BCP 240).* Internet Engineering Task Force. https://doi.org/10.17487/RFC9700
+
 National Institute of Standards and Technology. (2025). *Digital identity guidelines (NIST Special Publication 800-63-4).* U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-63-4
 
 National Institute of Standards and Technology. (2025). *Digital identity guidelines: Authentication and authenticator management (NIST Special Publication 800-63B-4).* U.S. Department of Commerce. https://doi.org/10.6028/NIST.SP.800-63B-4
@@ -39,6 +41,8 @@ PostgreSQL Global Development Group. (n.d.). *41.9. Errors and messages (Postgre
 
 PostgreSQL Global Development Group. (n.d.). *Appendix A. PostgreSQL error codes (PostgreSQL 18 documentation).* Retrieved September 4, 2026, from https://www.postgresql.org/docs/18/errcodes-appendix.html
 
+Sakimura, N., Bradley, J., & Agarwal, N. (2015). *Proof key for code exchange by OAuth public clients (RFC 7636).* Internet Engineering Task Force. https://doi.org/10.17487/RFC7636
+
 SLSA Community. (2025). *Supply-chain Levels for Software Artifacts specification (Version 1.2).* https://slsa.dev/spec/v1.2/
 
 SPDX Workgroup. (2024). *System Package Data Exchange specification (Version 3.0.1).* Linux Foundation. https://spdx.github.io/spdx-spec/
@@ -63,6 +67,7 @@ Locke, E. A., & Latham, G. P. (2002). Building a practically useful theory of go
 - WCAG 2.2 AA is the intended first-party web/PWA conformance target. Automated checks are necessary but not sufficient; manual keyboard and assistive-technology journeys remain required.
 - NIST SP 800-63-4 is guidance for risk-based identity, authenticator, session, and federation decisions. LifeOS does not claim a government identity assurance level solely by citing the publication.
 - OWASP ASVS identifiers must include the exact version when entered into traceability records.
+- RFC 9700 requires exact registered redirect-URI matching for redirect-based OAuth flows and requires clients to prevent CSRF; it permits reliance on PKCE for that protection only when authorization-server PKCE support is assured, otherwise a one-time `state` bound to the user agent is required. RFC 7636 defines the PKCE verifier/challenge construction and requires `S256` when the client can use it. Draft #228's exact operator-configured HTTPS callback, five-minute one-time state, and `S256` verifier/challenge contract align with these mechanisms, but hosted browser/session binding, Google capability assurance, token exchange, refresh, provider cleanup, and end-to-end OAuth acceptance remain unshipped and unverified.
 - PostgreSQL 18 Section 13.3 is the authority for #235's row-lock serialization: `FOR SHARE` conflicts with concurrent `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, and `SELECT FOR NO KEY UPDATE` on the selected installation row. Section 41.9 is the authority for bounded PL/pgSQL `RAISE` metadata. These citations support the mechanism; they are not execution evidence that the migration passed on a database.
 - PostgreSQL 18 Appendix A defines server SQLSTATE as five-character error codes and states that the first two characters denote an error class. That wire shape is not itself proof that arbitrary five-character data is one of PostgreSQL's defined conditions. #245 therefore retains only an explicit operational subset needed to diagnose idle-pool health—connection exceptions (08), insufficient resources (53), operator intervention (57), and external system errors (58)—and maps every other `error.code` to `null`. The source is design traceability, not package or real-database execution evidence.
 - WHATWG Streams defines readable-stream cancellation as consumer loss of interest that closes the stream, discards queued chunks, and invokes the underlying source cancellation mechanism. Node.js Undici additionally warns that leaving response-body resource release to garbage collection can reduce connection reuse and cause stalls or deadlocks; #242 therefore requires every acquired Vault replay body to be consumed or cancelled on abnormal exit. These references justify the transport-cleanup contract but are not package or integration execution evidence.
