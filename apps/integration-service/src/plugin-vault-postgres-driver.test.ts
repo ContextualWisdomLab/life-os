@@ -127,6 +127,40 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     expect(JSON.stringify(records)).not.toContain('must-not-enter-logs');
   });
 
+  it('rejects arbitrary credential-shaped error classifications from retained logs', () => {
+    const test = fixture();
+    const records: IdleErrorRecord[] = [];
+    const createWithLogger = createNodePostgresPluginPool as unknown as (
+      connectionString: string,
+      constructor: NodePostgresPoolConstructor,
+      logError: (record: IdleErrorRecord) => void,
+    ) => NodePostgresPoolLike;
+
+    createWithLogger(
+      'postgresql://integration:secret@db.example.test:5432/life_os',
+      test.constructor,
+      (record) => records.push(record),
+    );
+
+    test.emitIdleError(
+      Object.assign(new Error('native detail'), {
+        name: 'vault_token_ABCDEF1234567890',
+        code: 'token',
+      }),
+    );
+
+    expect(records).toEqual([
+      {
+        message: 'Integration PostgreSQL pool reported an idle client error',
+        context: 'IntegrationPluginPostgresRuntime',
+        errorName: 'Error',
+        postgresCode: null,
+      },
+    ]);
+    expect(JSON.stringify(records)).not.toContain('vault_token');
+    expect(JSON.stringify(records)).not.toContain('token');
+  });
+
   it('bounds hostile or noncanonical idle-client error classification', () => {
     const test = fixture();
     const records: IdleErrorRecord[] = [];
