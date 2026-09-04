@@ -8,6 +8,8 @@ import type {
 const POSTGRES_PROTOCOLS = new Set(['postgres:', 'postgresql:']);
 const PLUGIN_POSTGRES_POOL_MAX = 10;
 const PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS = 5_000;
+const PLUGIN_POSTGRES_STATEMENT_TIMEOUT_MS = 5_000;
+const PLUGIN_POSTGRES_QUERY_TIMEOUT_MS = 6_000;
 const PLUGIN_POSTGRES_IDLE_TIMEOUT_MS = 30_000;
 const PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS = 300;
 const PLUGIN_POSTGRES_POOL_ERROR_MESSAGE =
@@ -46,6 +48,8 @@ export interface NodePostgresPluginPoolConfiguration {
   readonly ssl: Readonly<{ readonly rejectUnauthorized: true }>;
   readonly max: number;
   readonly connectionTimeoutMillis: number;
+  readonly statement_timeout: number;
+  readonly query_timeout: number;
   readonly idleTimeoutMillis: number;
   readonly maxLifetimeSeconds: number;
 }
@@ -230,12 +234,14 @@ function requireConnectionString(value: string): string {
  * required to carry complete target/credential authority before the node-postgres constructor is
  * invoked. TLS is mandatory with peer verification through Node's configured trust store; because
  * connection-string query options are rejected, URI input cannot downgrade or replace this `ssl`
- * policy. Finite acquisition, idle, lifetime, and pool-size bounds are explicit because the
- * node-postgres connection-acquisition timeout otherwise defaults to no timeout. An idle-client
- * error listener is registered before the pool crosses the runtime boundary; if registration
- * itself fails, the newly constructed pool is closed before a bounded failure is returned.
- * Parameter arrays are copied because node-postgres accepts mutable arrays while Integration
- * repositories expose readonly fixed-query values.
+ * policy. Connection acquisition and database work are both finite: PostgreSQL receives a five-
+ * second `statement_timeout`, while node-postgres retains a six-second `query_timeout` fallback so
+ * the server-side cancellation has a bounded interval to arrive before the client call fails closed.
+ * Idle, lifetime, and pool-size bounds are explicit as well. An idle-client error listener is
+ * registered before the pool crosses the runtime boundary; if registration itself fails, the newly
+ * constructed pool is closed before a bounded failure is returned. Parameter arrays are copied
+ * because node-postgres accepts mutable arrays while Integration repositories expose readonly
+ * fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
@@ -247,6 +253,8 @@ export function createNodePostgresPluginPool(
     ssl: { rejectUnauthorized: true },
     max: PLUGIN_POSTGRES_POOL_MAX,
     connectionTimeoutMillis: PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS,
+    statement_timeout: PLUGIN_POSTGRES_STATEMENT_TIMEOUT_MS,
+    query_timeout: PLUGIN_POSTGRES_QUERY_TIMEOUT_MS,
     idleTimeoutMillis: PLUGIN_POSTGRES_IDLE_TIMEOUT_MS,
     maxLifetimeSeconds: PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS,
   });
