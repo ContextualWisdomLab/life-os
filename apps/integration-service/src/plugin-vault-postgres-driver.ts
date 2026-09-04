@@ -175,9 +175,11 @@ export function registerPluginPostgresPoolErrorHandler(
  * awaited before the fixed configuration failure is returned, while cleanup detail is consumed so
  * a driver or injected seam cannot reflect connection material through the startup error surface.
  */
-async function rejectAcquiredPool(pool: NodePostgresPoolLike): Promise<never> {
+async function rejectAcquiredPool(
+  end: NodePostgresPoolLike['end'],
+): Promise<never> {
   try {
-    await pool.end();
+    await end();
   } catch {
     // The acquisition failure remains the authoritative bounded startup failure.
   }
@@ -205,6 +207,24 @@ function capturePoolQuery(pool: NodePostgresPoolLike): NodePostgresPoolLike['que
       readonly rows: readonly Row[];
       readonly rowCount: number | null;
     }>;
+  };
+}
+
+/** Captures the accepted shutdown capability once so cleanup authority cannot change later. */
+function capturePoolEnd(pool: NodePostgresPoolLike): NodePostgresPoolLike['end'] {
+  let end: NodePostgresPoolLike['end'];
+  try {
+    end = pool.end;
+  } catch {
+    return unavailable();
+  }
+  if (typeof end !== 'function') {
+    return unavailable();
+  }
+
+  const receiver = pool as object;
+  return function capturedEnd(): Promise<void> {
+    return Reflect.apply(end, receiver, []) as Promise<void>;
   };
 }
 
@@ -243,7 +263,7 @@ function hasCanonicalReadinessEvidence(value: unknown): boolean {
  * collapsed to the credential-free acquisition error before the pool can reach service adapters.
  */
 async function requirePluginPostgresReadiness(
-  pool: NodePostgresPoolLike,
+  end: NodePostgresPoolLike['end'],
   query: NodePostgresPoolLike['query'],
 ): Promise<void> {
   let result: unknown;
@@ -252,11 +272,11 @@ async function requirePluginPostgresReadiness(
       PLUGIN_POSTGRES_READINESS_SQL,
     );
   } catch {
-    return rejectAcquiredPool(pool);
+    return rejectAcquiredPool(end);
   }
 
   if (!hasCanonicalReadinessEvidence(result)) {
-    return rejectAcquiredPool(pool);
+    return rejectAcquiredPool(end);
   }
 }
 
@@ -318,13 +338,14 @@ function requireConnectionString(value: string): string {
  * the server-side cancellation has a bounded interval to arrive before the client call fails closed.
  * Idle, lifetime, and pool-size bounds are explicit as well. Pool construction itself is part of the
  * credential boundary: a constructor failure is reduced to the same fixed configuration error before
- * native driver detail can become startup evidence. The accepted query method is captured once before
- * readiness so a stateful or hostile accessor cannot pass the probe and later replace SQL authority.
- * An idle-client error listener is registered before the first query, then a fixed readiness statement
- * must prove authenticated, verified-TLS query execution before the pool crosses the runtime boundary.
- * Registration/readiness failure closes the newly constructed pool before returning the bounded
- * configuration error. Parameter arrays are copied because node-postgres accepts mutable arrays while
- * Integration repositories expose readonly fixed-query values.
+ * native driver detail can become startup evidence. The accepted query and shutdown methods are each
+ * captured once before readiness so stateful or hostile accessors cannot pass acquisition and later
+ * replace SQL or cleanup authority. An idle-client error listener is registered before the first query,
+ * then a fixed readiness statement must prove authenticated, verified-TLS query execution before the
+ * pool crosses the runtime boundary. Registration/readiness failure closes the newly constructed pool
+ * through the already-captured shutdown authority before returning the bounded configuration error.
+ * Parameter arrays are copied because node-postgres accepts mutable arrays while Integration
+ * repositories expose readonly fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
@@ -347,20 +368,27 @@ export function createNodePostgresPluginPool(
     return unavailable();
   }
 
+  let end: NodePostgresPoolLike['end'];
+  try {
+    end = capturePoolEnd(pool);
+  } catch {
+    return unavailable();
+  }
+
   let query: NodePostgresPoolLike['query'];
   try {
     query = capturePoolQuery(pool);
   } catch {
-    return rejectAcquiredPool(pool);
+    return rejectAcquiredPool(end);
   }
 
   try {
     registerPluginPostgresPoolErrorHandler(pool, logError);
   } catch {
-    return rejectAcquiredPool(pool);
+    return rejectAcquiredPool(end);
   }
 
-  return requirePluginPostgresReadiness(pool, query).then(() =>
+  return requirePluginPostgresReadiness(end, query).then(() =>
     Object.freeze({
       async query<Row>(
         text: string,
@@ -373,7 +401,7 @@ export function createNodePostgresPluginPool(
         });
       },
       async end(): Promise<void> {
-        await pool.end();
+        await end();
       },
     }),
   );
