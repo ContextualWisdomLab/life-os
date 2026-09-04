@@ -43,6 +43,7 @@ const SAFE_POSTGRES_SQLSTATES = new Set([
 /** Exact node-postgres lifecycle configuration owned by the Integration runtime. */
 export interface NodePostgresPluginPoolConfiguration {
   readonly connectionString: string;
+  readonly ssl: Readonly<{ readonly rejectUnauthorized: true }>;
   readonly max: number;
   readonly connectionTimeoutMillis: number;
   readonly idleTimeoutMillis: number;
@@ -164,8 +165,9 @@ export function registerPluginPostgresPoolErrorHandler(
  * `PG*` environment variables and that connection-string query parameters can change
  * transport behavior. Requiring scheme, user, password, host, port, and database while
  * rejecting every query parameter keeps the Integration service's database target,
- * credential, and transport authority on one canonical configuration surface. TLS policy
- * still requires deployment acceptance; it cannot be disabled or replaced through the URI.
+ * credential, and transport authority on one canonical configuration surface. TLS is
+ * configured separately by the Pool with certificate verification enabled, so the URI
+ * cannot disable or replace the deployment transport policy.
  */
 function requireConnectionString(value: string): string {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
@@ -207,7 +209,9 @@ function requireConnectionString(value: string): string {
  *
  * The connection string is supplied explicitly by the already-validated hosted runtime and is
  * required to carry complete target/credential authority before the node-postgres constructor is
- * invoked. Finite acquisition, idle, lifetime, and pool-size bounds are explicit because the
+ * invoked. TLS is mandatory with peer verification through Node's configured trust store; because
+ * connection-string query options are rejected, URI input cannot downgrade or replace this `ssl`
+ * policy. Finite acquisition, idle, lifetime, and pool-size bounds are explicit because the
  * node-postgres connection-acquisition timeout otherwise defaults to no timeout. An idle-client
  * error listener is registered before the pool crosses the runtime boundary so native errors do
  * not become uncaught process failures or credential-bearing logs. Parameter arrays are copied
@@ -221,6 +225,7 @@ export function createNodePostgresPluginPool(
 ): PluginHostedPostgresPool {
   const pool = new PoolConstructor({
     connectionString: requireConnectionString(connectionString),
+    ssl: { rejectUnauthorized: true },
     max: PLUGIN_POSTGRES_POOL_MAX,
     connectionTimeoutMillis: PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS,
     idleTimeoutMillis: PLUGIN_POSTGRES_IDLE_TIMEOUT_MS,
