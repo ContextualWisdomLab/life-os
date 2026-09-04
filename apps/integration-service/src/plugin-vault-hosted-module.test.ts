@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
-import type { PluginOperatorApplication } from './plugin-operator-application';
+import { PluginOperatorApplication } from './plugin-operator-application';
 import {
   createPluginVaultHostedModule,
   PLUGIN_VAULT_HOSTED_RUNTIME,
@@ -11,6 +11,23 @@ import {
 } from './plugin-vault-hosted-runtime';
 import { PLUGIN_OPERATOR_APPLICATION } from './main';
 
+function operatorApplication(): PluginOperatorApplication {
+  return new PluginOperatorApplication(
+    {
+      install: vi.fn(async () => {
+        throw new Error('unused installation fixture');
+      }),
+      getInstallation: vi.fn(async () => undefined),
+      revoke: vi.fn(async () => {
+        throw new Error('unused installation fixture');
+      }),
+    },
+    undefined,
+    'operator-context-fixture-value-32-bytes-minimum',
+    undefined,
+  );
+}
+
 describe('Integration hosted Plugin runtime module', () => {
   it.each([
     null,
@@ -18,6 +35,7 @@ describe('Integration hosted Plugin runtime module', () => {
     {},
     { operator: null, close: vi.fn() },
     { operator: {}, close: null },
+    { operator: {}, close: vi.fn(async () => undefined) },
   ])('rejects malformed runtime envelope %j', (malformed) => {
     expect(() =>
       createPluginVaultHostedModule(
@@ -30,7 +48,7 @@ describe('Integration hosted Plugin runtime module', () => {
     'bounds a throwing runtime %s accessor before module authority is registered',
     (property) => {
       const runtime = {
-        operator: {} as PluginOperatorApplication,
+        operator: operatorApplication(),
         close: vi.fn(async () => undefined),
       } as Record<string, unknown>;
       Object.defineProperty(runtime, property, {
@@ -52,7 +70,7 @@ describe('Integration hosted Plugin runtime module', () => {
     const acceptedClose = vi.fn(async () => undefined);
     const replacementClose = vi.fn(async () => undefined);
     let reads = 0;
-    const operator = {} as PluginOperatorApplication;
+    const operator = operatorApplication();
     const runtime = {
       operator,
       get close() {
@@ -74,7 +92,7 @@ describe('Integration hosted Plugin runtime module', () => {
 
   it('registers the composed operator and closes its owned runtime exactly once on application shutdown', async () => {
     const close = vi.fn(async () => undefined);
-    const operator = {} as PluginOperatorApplication;
+    const operator = operatorApplication();
     const runtime: PluginVaultHostedRuntime = { operator, close };
 
     const app = await NestFactory.createApplicationContext(
