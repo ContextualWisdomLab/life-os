@@ -37,6 +37,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Integration Plugin PostgreSQL pool construction failures are now reduced to `PluginNodePostgresConfigurationError` before native driver detail can become startup evidence; listener-registration cleanup remains a separate post-construction boundary.
 - Integration Plugin PostgreSQL queries no longer inherit node-postgres's default unbounded statement/query execution. The Pool now applies a 5-second PostgreSQL `statement_timeout` and a 6-second node-postgres `query_timeout` fallback so normal server cancellation can arrive before the client call fails closed; protected-lineage database timing and p95 evidence remain required.
 - The concrete Plugin PostgreSQL driver now supplies an explicit verified-TLS Pool policy instead of leaving transport encryption disabled by node-postgres defaults; connection-string query parameters remain rejected so URI input cannot downgrade or replace that service-owned policy.
 - Plugin PostgreSQL idle-client diagnostics no longer trust arbitrary five-character `error.code` values as SQLSTATE evidence; retained codes are limited to the explicit operational PostgreSQL classes needed for pool health (08, 53, 57, and 58), while unknown values are discarded without serializing native error detail.
