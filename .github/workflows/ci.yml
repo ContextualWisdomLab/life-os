@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -15,6 +16,7 @@ concurrency:
 
 jobs:
   compose_runtime:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -49,6 +51,7 @@ jobs:
               >/dev/null
 
   today-concurrency:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -91,6 +94,7 @@ jobs:
           tests/postgres-today-lock-order.integration.test.ts
 
   validate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: compose_runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -175,6 +179,7 @@ jobs:
         run: docker compose config --quiet
 
   browser-acceptance:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -202,7 +207,7 @@ jobs:
         run: pnpm --filter @life-os/web test:e2e
 
   merge_compatibility:
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
