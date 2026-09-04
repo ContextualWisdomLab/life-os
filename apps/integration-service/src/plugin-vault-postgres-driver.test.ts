@@ -148,6 +148,12 @@ describe('Integration-owned node-postgres Plugin pool', () => {
         code: 'token',
       }),
     );
+    test.emitIdleError(
+      Object.assign(new Error('native detail'), {
+        name: 'DatabaseError',
+        code: 'TOKEN',
+      }),
+    );
 
     expect(records).toEqual([
       {
@@ -156,9 +162,16 @@ describe('Integration-owned node-postgres Plugin pool', () => {
         errorName: 'Error',
         postgresCode: null,
       },
+      {
+        message: 'Integration PostgreSQL pool reported an idle client error',
+        context: 'IntegrationPluginPostgresRuntime',
+        errorName: 'DatabaseError',
+        postgresCode: null,
+      },
     ]);
     expect(JSON.stringify(records)).not.toContain('vault_token');
     expect(JSON.stringify(records)).not.toContain('token');
+    expect(JSON.stringify(records)).not.toContain('TOKEN');
   });
 
   it('bounds hostile or noncanonical idle-client error classification', () => {
