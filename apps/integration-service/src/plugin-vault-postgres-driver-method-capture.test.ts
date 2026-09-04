@@ -56,4 +56,54 @@ describe('Integration-owned node-postgres method authority', () => {
       expect(queryReads).toBe(1);
     },
   );
+
+  it(
+    'captures the accepted shutdown method once before the pool crosses the runtime boundary',
+    async () => {
+      let endReads = 0;
+      let stableEndCalls = 0;
+
+      class StatefulEndPool {
+        on(): void {}
+
+        async query<Row>(text: string): Promise<{
+          readonly rows: readonly Row[];
+          readonly rowCount: number;
+        }> {
+          if (text === READINESS_SQL) {
+            return {
+              rows: [
+                { integration_plugin_runtime_ready: 1 },
+              ] as unknown as readonly Row[],
+              rowCount: 1,
+            };
+          }
+          return { rows: [], rowCount: 0 };
+        }
+
+        get end(): () => Promise<void> {
+          endReads += 1;
+          if (endReads === 1) {
+            return async () => {
+              stableEndCalls += 1;
+            };
+          }
+          return async () => {
+            throw new Error('password=must-not-become-late-end-authority');
+          };
+        }
+      }
+
+      const pool = await createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.invalid:5432/life_os',
+        StatefulEndPool as unknown as NodePostgresPoolConstructor,
+        () => undefined,
+      );
+
+      expect(endReads).toBe(1);
+      await expect(pool.end()).resolves.toBeUndefined();
+      expect(endReads).toBe(1);
+      expect(stableEndCalls).toBe(1);
+    },
+  );
 });
