@@ -5,18 +5,6 @@ import type {
 } from './plugin-vault-hosted-runtime';
 
 const POSTGRES_PROTOCOLS = new Set(['postgres:', 'postgresql:']);
-const EXTERNAL_CONNECTION_AUTHORITY_KEYS = Object.freeze([
-  'host',
-  'hostaddr',
-  'port',
-  'user',
-  'password',
-  'database',
-  'dbname',
-  'service',
-  'servicefile',
-  'passfile',
-]);
 
 /** Minimal node-postgres pool surface retained behind the Integration runtime port. */
 export interface NodePostgresPoolLike {
@@ -50,11 +38,11 @@ function unavailable(): never {
  * Requires one self-contained PostgreSQL URI before node-postgres sees process state.
  *
  * node-postgres documents that missing connection fields can be supplied by libpq-style
- * `PG*` environment variables. Requiring scheme, user, password, host, port, and database
- * here prevents generic process settings from becoming the Integration service's database
- * target or credential authority. Query-string aliases that can replace those fields, or
- * delegate them to service/passfile configuration, are rejected to keep one canonical URI.
- * TLS policy remains a separate deployment-acceptance concern and is not inferred here.
+ * `PG*` environment variables and that connection-string query parameters can change
+ * transport behavior. Requiring scheme, user, password, host, port, and database while
+ * rejecting every query parameter keeps the Integration service's database target,
+ * credential, and transport authority on one canonical configuration surface. TLS policy
+ * still requires deployment acceptance; it cannot be disabled or replaced through the URI.
  */
 function requireConnectionString(value: string): string {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
@@ -82,15 +70,10 @@ function requireConnectionString(value: string): string {
     port < 1 ||
     port > 65_535 ||
     database.length === 0 ||
+    parsed.search.length !== 0 ||
     parsed.hash.length !== 0
   ) {
     return unavailable();
-  }
-
-  for (const key of EXTERNAL_CONNECTION_AUTHORITY_KEYS) {
-    if (parsed.searchParams.has(key)) {
-      return unavailable();
-    }
   }
 
   return value;
@@ -102,8 +85,9 @@ function requireConnectionString(value: string): string {
  * The connection string is supplied explicitly by the already-validated hosted runtime and is
  * required to carry complete target/credential authority before the node-postgres constructor is
  * invoked. The constructor therefore cannot fill missing core connection fields from generic
- * libpq-style `PG*` process settings. Parameter arrays are copied because node-postgres accepts
- * mutable arrays while Integration repositories expose readonly fixed-query values.
+ * libpq-style `PG*` process settings or accept query-string transport overrides. Parameter arrays
+ * are copied because node-postgres accepts mutable arrays while Integration repositories expose
+ * readonly fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
