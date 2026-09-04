@@ -44,10 +44,12 @@ function createWorkflowRegistryClient({
         `/repos/ContextualWisdomLab/life-os/git/trees/${workflowTree}?recursive=1`
       ) {
         return {
+          sha: workflowTree,
           truncated: false,
           tree: treePaths.map((entryPath) => ({
             path: entryPath,
             type: 'blob',
+            mode: '100644',
           })),
         };
       }
