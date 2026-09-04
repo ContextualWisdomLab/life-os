@@ -52,15 +52,25 @@ describe('commercial readiness workflow contract', () => {
     assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
   });
 
-  it('isolates scheduled drains from push-triggered publication runs', async () => {
-    const workflow = await repositoryFile(
+  it('cancels only superseded heads from the same pull request', async () => {
+    const paths = [
+      '.github/workflows/appguardrail.yml',
+      '.github/workflows/ci.yml',
       '.github/workflows/commercial-readiness.yml',
-    );
-    assert.match(
-      workflow,
-      /group:\s*\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-/,
-    );
-    assert.match(workflow, /cancel-in-progress:\s*true/);
+    ];
+    for (const path of paths) {
+      const workflow = await repositoryFile(path);
+      assert.match(
+        workflow,
+        /group:\s*\$\{\{ github\.workflow \}\}-\$\{\{ github\.repository \}\}-\$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.number \|\| github\.run_id \}\}/,
+        path,
+      );
+      assert.match(
+        workflow,
+        /cancel-in-progress:\s*\$\{\{ github\.event_name == 'pull_request' \}\}/,
+        path,
+      );
+    }
   });
 
   it('pins every external action to a full commit SHA and retains evidence for no more than seven days', async () => {
@@ -93,6 +103,48 @@ describe('commercial readiness workflow contract', () => {
       browserJob,
       /^\s+run:\s*pnpm --filter @life-os\/web test:e2e\s*$/mu,
     );
+  });
+
+  it('pins every LifeOS-owned hosted-runner workflow to the explicit supported Ubuntu image', async () => {
+    const ciWorkflow = await repositoryFile('.github/workflows/ci.yml');
+    const ciJobs = [
+      'compose_runtime',
+      'today-concurrency',
+      'validate',
+      'browser-acceptance',
+      'merge_compatibility',
+    ];
+
+    for (const job of ciJobs) {
+      assert.match(
+        yamlJobBlock(ciWorkflow, job),
+        /^\s+runs-on:\s*ubuntu-24\.04\s*$/mu,
+        `${job} must use the explicit supported GitHub-hosted runner image`,
+      );
+    }
+
+    const hostedRunnerWorkflows = [
+      '.github/workflows/ai-proposal-live-conformance.yml',
+      '.github/workflows/appguardrail.yml',
+      '.github/workflows/ci.yml',
+      '.github/workflows/commercial-readiness.yml',
+      '.github/workflows/deploy.yml',
+      '.github/workflows/opencode-commercial-development.yml',
+    ];
+    for (const path of hostedRunnerWorkflows) {
+      const workflow = await repositoryFile(path);
+      const runners = [...workflow.matchAll(/^\s+runs-on:\s*(\S+)\s*$/gmu)].map(
+        ([, runner]) => runner,
+      );
+      assert.ok(runners.length > 0, `${path} must define a hosted runner`);
+      for (const runner of runners) {
+        assert.equal(
+          runner,
+          'ubuntu-24.04',
+          `${path} must use ubuntu-24.04 for every hosted runner job`,
+        );
+      }
+    }
   });
 
   it('requires all review and security gates before merge mode can execute', async () => {
