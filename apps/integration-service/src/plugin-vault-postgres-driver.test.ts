@@ -175,7 +175,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       '      pg:\n        specifier: ^8.22.0\n        version: 8.22.0',
     );
     expect(importer).toContain(
-      "      '@types/pg':\n        specifier: ^8.20.0\n        version: 8.20.0",
+      "      '@types/pg':\n        specifier: ^8.20.0\n        version: 8.20.3",
     );
   });
 });
