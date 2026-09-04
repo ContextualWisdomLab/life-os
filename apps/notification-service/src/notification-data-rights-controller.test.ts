@@ -40,6 +40,7 @@ function signature(
   return createHmac('sha256', SECRET)
     .update(
       [
+        'life-os.notification-data-rights-context.v1',
         String(request.contractVersion),
         String(request.workspaceId),
         String(request.requestedByUserId),
@@ -50,9 +51,7 @@ function signature(
         issuedAt,
         'POST',
         PATH,
-      ]
-        .toSpliced(0, 0, 'life-os.notification-data-rights-context.v1')
-        .join('\n'),
+      ].join('\n'),
       'utf8',
     )
     .digest('base64url');
