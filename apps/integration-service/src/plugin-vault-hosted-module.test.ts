@@ -18,6 +18,7 @@ describe('Integration hosted Plugin runtime module', () => {
     {},
     { operator: null, close: vi.fn() },
     { operator: {}, close: null },
+    { operator: {}, close: vi.fn(async () => undefined) },
   ])('rejects malformed runtime envelope %j', (malformed) => {
     expect(() =>
       createPluginVaultHostedModule(
