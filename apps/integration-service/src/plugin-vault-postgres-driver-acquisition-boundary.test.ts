@@ -41,6 +41,26 @@ function registrationFailurePool(options: {
 }
 
 describe('Integration PostgreSQL pool acquisition boundary', () => {
+  it('bounds constructor failure before native detail can become startup evidence', async () => {
+    class ConstructorFailurePool {
+      constructor() {
+        throw new Error('password=must-not-escape-pool-construction');
+      }
+    }
+
+    const acquisition = Promise.resolve().then(() =>
+      createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.test:5432/life_os',
+        ConstructorFailurePool as unknown as NodePostgresPoolConstructor,
+      ),
+    );
+
+    await expect(acquisition).rejects.toBeInstanceOf(
+      PluginNodePostgresConfigurationError,
+    );
+    await expect(acquisition).rejects.not.toThrow(/must-not-escape/u);
+  });
+
   it.each([false, true])(
     'closes a constructed pool before returning a bounded registration failure (cleanupRejects=%s)',
     async (cleanupRejects) => {
