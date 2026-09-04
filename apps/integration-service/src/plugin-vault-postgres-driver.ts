@@ -141,12 +141,19 @@ export function registerPluginPostgresPoolErrorHandler(
       postgresCode = undefined;
     }
 
-    logError({
+    const record = Object.freeze({
       message: PLUGIN_POSTGRES_POOL_ERROR_MESSAGE,
-      context: 'IntegrationPluginPostgresRuntime',
+      context: 'IntegrationPluginPostgresRuntime' as const,
       errorName: safePoolErrorName(errorName),
       postgresCode: safePostgresCode(postgresCode),
     });
+
+    try {
+      logError(record);
+    } catch {
+      // A telemetry sink failure must not turn an already-bounded idle database error into an
+      // uncaught process exception or restore native/provider detail to the process error surface.
+    }
   });
 }
 
