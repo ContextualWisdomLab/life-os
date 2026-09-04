@@ -75,7 +75,7 @@ describe('Plugin Vault hosted bootstrap', () => {
     },
   );
 
-  it.each(['0', '65536', '01', '-1', 'not-a-port']) (
+  it.each(['0', '65536', '01', '-1', 'not-a-port'])(
     'fails before pool acquisition for malformed listener port %s',
     async (port) => {
       const createPool = vi.fn(() => pool());
@@ -90,6 +90,23 @@ describe('Plugin Vault hosted bootstrap', () => {
       expect(createPool).not.toHaveBeenCalled();
     },
   );
+
+  it('bounds a throwing listener-port accessor before pool acquisition', async () => {
+    const createPool = vi.fn(() => pool());
+    const env = Object.create(null) as Record<string, string | undefined>;
+    Object.assign(env, environment({ INTEGRATION_SERVICE_PORT: undefined }));
+    Object.defineProperty(env, 'INTEGRATION_SERVICE_PORT', {
+      enumerable: true,
+      get() {
+        throw new Error('listener accessor fixture secret');
+      },
+    });
+
+    await expectBootstrapFailure(
+      startPluginVaultHostedService(createPool, env, async () => app()),
+    );
+    expect(createPool).not.toHaveBeenCalled();
+  });
 
   it('uses the bounded default listener port when the service port is absent', async () => {
     const ownedPool = pool();
@@ -173,6 +190,26 @@ describe('Plugin Vault hosted bootstrap', () => {
         () => ownedPool,
         environment(),
         async () => malformed as unknown as PluginVaultHostedNestApplication,
+      ),
+    );
+    expect(ownedPool.end).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds a throwing application cleanup accessor and still closes the runtime', async () => {
+    const ownedPool = pool();
+    const malformed = {
+      enableShutdownHooks: vi.fn(),
+      listen: vi.fn(async () => undefined),
+      get close(): never {
+        throw new Error('application close accessor fixture secret');
+      },
+    } as unknown as PluginVaultHostedNestApplication;
+
+    await expectBootstrapFailure(
+      startPluginVaultHostedService(
+        () => ownedPool,
+        environment(),
+        async () => malformed,
       ),
     );
     expect(ownedPool.end).toHaveBeenCalledTimes(1);
