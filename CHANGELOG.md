@@ -32,7 +32,7 @@ All notable changes to LifeOS are documented in this file.
 ### Fixed
 
 - Commercial Readiness now ignores malformed decisive review evidence with a blank reviewer identity or invalid submission timestamp, so malformed approvals cannot satisfy the merge gate.
-- Commercial Readiness merge automation now fails closed when the latest decisive review set contains no approval, instead of allowing otherwise-GREEN zero-review or COMMENTED-only evidence to reach the merge path; exact-head approval freshness remains governed by the active stale-review-dismissal rule until immutable review-head identity is carried locally.
+- Commercial Readiness merge automation now requires an approval bound by GitHub review `commit_id` to the exact pull-request head; stale, missing, or malformed approval bindings cannot satisfy `missing-approval` or replace a current change request in the per-reviewer decisive state.
 - The public Gateway Today endpoint now fails explicitly with bounded `today_composition_unavailable` problem details instead of returning fabricated successful composition data while authenticated Planning/Habit integration is absent; issue #163 remains open for the real composition path.
 - Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
 - The OpenCode development loop now prevents project settings from overriding its pinned offline NVIDIA model, records catalog failures accurately, parses the accepted candidate's exact Compose file outside the model account, and requires digest-pinned PostgreSQL queries plus NATS JetStream probes in pull-request CI.
@@ -57,5 +57,5 @@ All notable changes to LifeOS are documented in this file.
 - AI gateway service-context authentication now carries an integrity-protected key identifier, signs only with one active key, verifies one explicitly selected active or previous key during a bounded overlap, and rejects retired identifiers immediately without trial verification.
 - Planning-search upstream responses are stopped at a fixed byte limit before they can be fully buffered by the web boundary.
 - Notification persistence stores SHA-256 idempotency digests instead of raw delivery keys, validates every untrusted row, and keeps all SQL tenant-scoped and parameterized.
-- The AI production boundary rejects direct client-selected ownership headers, verifies a short-lived HMAC-SHA-256 context bound to workspace, actor, HTTP method, and exact path, returns credential-free problem details, and exposes no proposal apply or execution route.
+- The AI production boundary rejects direct client-selected ownership headers, verifies a short-lived HMAC-SHA256 context bound to workspace, actor, HTTP method, and exact path, returns credential-free problem details, and exposes no proposal apply or execution route.
 - The AI web boundary consumes and bounds identity-session response streams exactly once, avoiding unbounded buffering from cloning an untrusted streamed response.
