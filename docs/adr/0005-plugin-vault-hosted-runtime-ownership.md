@@ -57,6 +57,7 @@ The pool factory remains injected in this Proposed slice. A successor must add t
 - Repair `b9590f548aa3f4f3e4005220c1e3bd780eec4ff7`: bounded environment validation and cleanup of acquired closable values.
 - Module lifecycle RED `08738a55ab52086728546e7aacd9e490016b7db1`, refined test seam `c2a285b82344a9e5551245a683ffbb7babe9d90f`, implementation `22e74cdb886880c12130fd81e4ca586ad8ae49fe`.
 - Bootstrap RED `a88b1bdcea312fc3d85cb0aed6a756c1f6c11ce7` and implementation `9b6b3a7b7568a0f929661f6d2ecf38d0493ad2cb`.
+- Edge-contract expansions `0ace60f0bb45c608dc3b88bb5bfd0e3b732adcb0`, `0dad08faab16b4cbe1c789e848b82512ebd237bb`, and `f0b76371c9d19836b1b73493dfd1889ddc70a265` cover malformed environment/database/factory/pool/runtime/application envelopes, pool-factory failure, shutdown failure/reuse, cleanup failure, listener-port bounds, application-construction failure, shutdown-hook failure, listener failure, and nested cleanup failure without widening public error detail.
 - Nest documents `onApplicationShutdown` as an application lifecycle hook and requires shutdown hooks to be enabled for signal-driven shutdown. node-postgres documents `pool.end()` as the operation that drains active clients, disconnects clients, and stops pool timers. These primary implementation references support the explicit lifecycle ownership rather than an ad hoc process-exit callback.
 
 ## Risks and follow-up
