@@ -29,6 +29,27 @@ describe('Integration service production entrypoint', () => {
     expect(result).toBe(application);
   });
 
+  it('leaves the process failure surface untouched after successful startup', async () => {
+    const application = {} as PluginVaultHostedNestApplication;
+    const startHosted = vi.fn(async () => application);
+    const writes: string[] = [];
+    const runtime = {
+      exitCode: undefined as number | undefined,
+      stderr: {
+        write(chunk: string): boolean {
+          writes.push(chunk);
+          return true;
+        },
+      },
+    };
+
+    await runIntegrationServiceEntrypoint(environment, startHosted, runtime);
+
+    expect(startHosted).toHaveBeenCalledTimes(1);
+    expect(runtime.exitCode).toBeUndefined();
+    expect(writes).toEqual([]);
+  });
+
   it('turns startup rejection into one credential-free nonzero process failure', async () => {
     const vaultToken = 'vault-token-that-must-never-enter-startup-output';
     const startupEnvironment = Object.freeze({
@@ -58,5 +79,24 @@ describe('Integration service production entrypoint', () => {
     expect(runtime.exitCode).toBe(1);
     expect(writes).toEqual(['Integration service startup failed.\n']);
     expect(writes.join('')).not.toContain(vaultToken);
+  });
+
+  it('still sets a nonzero exit code when stderr itself is unavailable', async () => {
+    const startHosted = vi.fn(async () => {
+      throw new Error('startup failed');
+    });
+    const runtime = {
+      exitCode: undefined as number | undefined,
+      stderr: {
+        write(): never {
+          throw new Error('stderr unavailable');
+        },
+      },
+    };
+
+    await expect(
+      runIntegrationServiceEntrypoint(environment, startHosted, runtime),
+    ).resolves.toBeUndefined();
+    expect(runtime.exitCode).toBe(1);
   });
 });
