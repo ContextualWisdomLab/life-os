@@ -73,13 +73,47 @@ class NodePostgresPlanningPool implements PlanningPool {
 }
 
 class ConnectionSqlClient implements PlanningSqlClient {
+  private queryTail: Promise<void> = Promise.resolve();
+  private closed = false;
+
   constructor(private readonly connection: PlanningPoolConnection) {}
 
-  async query<Row>(
+  query<Row>(
     text: string,
     values: readonly unknown[],
   ): Promise<PlanningSqlQueryResult<Row>> {
-    return await this.connection.query<Row>(text, values);
+    if (this.closed) {
+      return Promise.reject(
+        new Error('Planning transaction SQL capability is closed'),
+      );
+    }
+    // Admission fixes the parameter evidence before queued work can be delayed;
+    // later caller mutation must not change SQL that already owns queue position.
+    const capturedValues = [...values];
+    // A pg Client owns one PostgreSQL connection. Queue concurrent callers here
+    // rather than relying on node-postgres's deprecated implicit serialization.
+    const result = this.queryTail.then(
+      async () => await this.connection.query<Row>(text, capturedValues),
+    );
+    this.queryTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  /** Prevents callers from admitting SQL after the transaction callback settles. */
+  close(): void {
+    this.closed = true;
+  }
+
+  /**
+   * Waits until every query already admitted to this transaction connection has
+   * settled. Individual query failures still reach their original callers; the
+   * tail intentionally remains usable so COMMIT/ROLLBACK never races queued work.
+   */
+  async drain(): Promise<void> {
+    await this.queryTail;
   }
 }
 
@@ -97,14 +131,25 @@ class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
     operation: (client: PlanningSqlClient) => Promise<Result>,
   ): Promise<Result> {
     const connection = await this.pool.connect();
+    const transactionClient = new ConnectionSqlClient(connection);
     let destroyConnection = false;
     try {
       await connection.query('BEGIN');
-      const result = await operation(new ConnectionSqlClient(connection));
+      let result: Result;
+      try {
+        result = await operation(transactionClient);
+      } finally {
+        // The callback owns this capability only for its lexical transaction
+        // lifetime. Revoke new admissions before draining and transaction control.
+        transactionClient.close();
+      }
+      await transactionClient.drain();
       await connection.query('COMMIT');
       return result;
     } catch (error) {
+      transactionClient.close();
       try {
+        await transactionClient.drain();
         await connection.query('ROLLBACK');
       } catch {
         destroyConnection = true;
