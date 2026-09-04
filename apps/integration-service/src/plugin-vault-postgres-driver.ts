@@ -12,7 +12,8 @@ const PLUGIN_POSTGRES_IDLE_TIMEOUT_MS = 30_000;
 const PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS = 300;
 const PLUGIN_POSTGRES_POOL_ERROR_MESSAGE =
   'Integration PostgreSQL pool reported an idle client error';
-const POOL_ERROR_CLASSIFICATION_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/u;
+const SAFE_POOL_ERROR_NAMES = new Set(['Error', 'DatabaseError']);
+const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/u;
 
 /** Exact node-postgres lifecycle configuration owned by the Integration runtime. */
 export interface NodePostgresPluginPoolConfiguration {
@@ -65,10 +66,23 @@ function unavailable(): never {
   throw new PluginNodePostgresConfigurationError();
 }
 
-/** Retains only bounded classification tokens from a native PostgreSQL error. */
-function safePoolErrorClassification(value: unknown): string | null {
+/**
+ * Retains only the two non-secret error class names expected at this boundary.
+ *
+ * A character whitelist is insufficient because an arbitrary credential-shaped string can still
+ * contain only letters, digits, punctuation, and fit inside a nominal length bound. Unknown names
+ * therefore collapse to `Error` rather than becoming retained log data.
+ */
+function safePoolErrorName(value: unknown): string {
+  return typeof value === 'string' && SAFE_POOL_ERROR_NAMES.has(value)
+    ? value
+    : 'Error';
+}
+
+/** Retains only canonical five-character PostgreSQL SQLSTATE classification evidence. */
+function safePostgresCode(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  return POOL_ERROR_CLASSIFICATION_PATTERN.test(value) ? value : null;
+  return POSTGRES_SQLSTATE_PATTERN.test(value) ? value : null;
 }
 
 /** Emits one structured pool-failure record without serializing the native database error. */
@@ -97,8 +111,8 @@ export function registerPluginPostgresPoolErrorHandler(
     logError({
       message: PLUGIN_POSTGRES_POOL_ERROR_MESSAGE,
       context: 'IntegrationPluginPostgresRuntime',
-      errorName: safePoolErrorClassification(errorName) ?? 'Error',
-      postgresCode: safePoolErrorClassification(postgresCode),
+      errorName: safePoolErrorName(errorName),
+      postgresCode: safePostgresCode(postgresCode),
     });
   });
 }
