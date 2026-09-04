@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createNodePostgresPluginPool,
+  PluginNodePostgresConfigurationError,
   type NodePostgresPoolConstructor,
 } from './plugin-vault-postgres-driver';
 
@@ -104,6 +105,47 @@ describe('Integration-owned node-postgres method authority', () => {
       await expect(pool.end()).resolves.toBeUndefined();
       expect(endReads).toBe(1);
       expect(stableEndCalls).toBe(1);
+    },
+  );
+
+  it.each(['throwing', 'non-callable'] as const)(
+    'rejects a %s shutdown accessor before the pool becomes runtime authority',
+    async (mode) => {
+      class MalformedEndPool {
+        on(): void {}
+
+        async query<Row>(): Promise<{
+          readonly rows: readonly Row[];
+          readonly rowCount: number;
+        }> {
+          return {
+            rows: [
+              { integration_plugin_runtime_ready: 1 },
+            ] as unknown as readonly Row[],
+            rowCount: 1,
+          };
+        }
+
+        get end(): unknown {
+          if (mode === 'throwing') {
+            throw new Error('password=must-not-escape-end-accessor');
+          }
+          return 'not-a-function';
+        }
+      }
+
+      const acquisition = Promise.resolve().then(() =>
+        createNodePostgresPluginPool(
+          'postgresql://integration:secret@db.example.invalid:5432/life_os',
+          MalformedEndPool as unknown as NodePostgresPoolConstructor,
+          () => undefined,
+        ),
+      );
+
+      await expect(acquisition).rejects.toBeInstanceOf(
+        PluginNodePostgresConfigurationError,
+      );
+      await expect(acquisition).rejects.not.toThrow(/must-not-escape/u);
     },
   );
 });
