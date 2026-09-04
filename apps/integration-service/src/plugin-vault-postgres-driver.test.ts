@@ -7,6 +7,8 @@ import {
   type NodePostgresPoolLike,
 } from './plugin-vault-postgres-driver';
 
+const READINESS_SQL = 'SELECT 1 AS integration_plugin_runtime_ready';
+
 interface IdleErrorRecord {
   readonly message: string;
   readonly context: 'IntegrationPluginPostgresRuntime';
@@ -23,10 +25,17 @@ function fixture(): {
   emitIdleError(error: Error): void;
 } {
   const constructedWith = vi.fn();
-  const query = vi.fn(async () => ({
-    rows: [{ value: 'ok' }],
-    rowCount: 1,
-  }));
+  const query = vi.fn(async (text: string) =>
+    text === READINESS_SQL
+      ? {
+          rows: [{ integration_plugin_runtime_ready: 1 }],
+          rowCount: 1,
+        }
+      : {
+          rows: [{ value: 'ok' }],
+          rowCount: 1,
+        },
+  );
   const end = vi.fn(async () => undefined);
   const on = vi.fn();
   let idleErrorListener: ((error: Error) => void) | undefined;
@@ -73,7 +82,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
   it('constructs node-postgres with verified TLS and finite service-owned connection, statement, query, and pool lifecycle bounds', () => {
     const test = fixture();
 
-    createNodePostgresPluginPool(
+    void createNodePostgresPluginPool(
       'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
     );
@@ -99,9 +108,9 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       connectionString: string,
       constructor: NodePostgresPoolConstructor,
       logError: (record: IdleErrorRecord) => void,
-    ) => NodePostgresPoolLike;
+    ) => NodePostgresPoolLike | Promise<NodePostgresPoolLike>;
 
-    createWithLogger(
+    void createWithLogger(
       'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
       (record) => records.push(record),
@@ -137,9 +146,9 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       connectionString: string,
       constructor: NodePostgresPoolConstructor,
       logError: (record: IdleErrorRecord) => void,
-    ) => NodePostgresPoolLike;
+    ) => NodePostgresPoolLike | Promise<NodePostgresPoolLike>;
 
-    createWithLogger(
+    void createWithLogger(
       'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
       (record) => records.push(record),
@@ -184,9 +193,9 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       connectionString: string,
       constructor: NodePostgresPoolConstructor,
       logError: (record: IdleErrorRecord) => void,
-    ) => NodePostgresPoolLike;
+    ) => NodePostgresPoolLike | Promise<NodePostgresPoolLike>;
 
-    createWithLogger(
+    void createWithLogger(
       'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
       (record) => records.push(record),
@@ -273,6 +282,20 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     },
   );
 
+  it('executes the fixed readiness query before returning runtime authority', async () => {
+    const test = fixture();
+
+    await Promise.resolve(
+      createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.test:5432/life_os',
+        test.constructor,
+      ),
+    );
+
+    expect(test.query).toHaveBeenCalledTimes(1);
+    expect(test.query).toHaveBeenCalledWith(READINESS_SQL, undefined);
+  });
+
   it('forwards fixed SQL and a copied parameter list while preserving row-count evidence', async () => {
     const test = fixture();
     const pool = await Promise.resolve(
@@ -281,6 +304,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
         test.constructor,
       ),
     );
+    test.query.mockClear();
     const values = Object.freeze(['workspace-1', 7]);
 
     const result = await pool.query<{ readonly value: string }>(
