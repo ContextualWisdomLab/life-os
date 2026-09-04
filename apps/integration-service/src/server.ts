@@ -2,10 +2,12 @@ import 'reflect-metadata';
 import {
   startPluginVaultHostedService,
   type PluginVaultHostedNestApplication,
-  type PluginVaultHostedNestApplicationFactory,
 } from './plugin-vault-hosted-bootstrap';
 import { createNodePostgresPluginPool } from './plugin-vault-postgres-driver';
 import type { PluginVaultOperatorEnvironment } from './plugin-vault-operator-composition';
+
+/** Injectable hosted-service starter keeps entrypoint selection executable without opening sockets. */
+export type PluginVaultHostedServiceStarter = typeof startPluginVaultHostedService;
 
 /**
  * Starts the production Integration service through the authenticated Plugin/Vault runtime.
@@ -17,9 +19,7 @@ import type { PluginVaultOperatorEnvironment } from './plugin-vault-operator-com
  */
 export async function startIntegrationService(
   environment: PluginVaultOperatorEnvironment = process.env,
-  startHosted: PluginVaultHostedNestApplicationFactory extends never
-    ? never
-    : typeof startPluginVaultHostedService = startPluginVaultHostedService,
+  startHosted: PluginVaultHostedServiceStarter = startPluginVaultHostedService,
 ): Promise<PluginVaultHostedNestApplication> {
   return await startHosted(createNodePostgresPluginPool, environment);
 }
