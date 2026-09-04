@@ -70,7 +70,7 @@ function fixture(): {
 }
 
 describe('Integration-owned node-postgres Plugin pool', () => {
-  it('constructs node-postgres with verified TLS and finite service-owned pool lifecycle bounds', () => {
+  it('constructs node-postgres with verified TLS and finite service-owned connection, statement, query, and pool lifecycle bounds', () => {
     const test = fixture();
 
     createNodePostgresPluginPool(
@@ -85,6 +85,8 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       ssl: { rejectUnauthorized: true },
       max: 10,
       connectionTimeoutMillis: 5_000,
+      statement_timeout: 5_000,
+      query_timeout: 6_000,
       idleTimeoutMillis: 30_000,
       maxLifetimeSeconds: 300,
     });
