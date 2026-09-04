@@ -74,6 +74,7 @@ class NodePostgresPlanningPool implements PlanningPool {
 
 class ConnectionSqlClient implements PlanningSqlClient {
   private queryTail: Promise<void> = Promise.resolve();
+  private closed = false;
 
   constructor(private readonly connection: PlanningPoolConnection) {}
 
@@ -81,6 +82,11 @@ class ConnectionSqlClient implements PlanningSqlClient {
     text: string,
     values: readonly unknown[],
   ): Promise<PlanningSqlQueryResult<Row>> {
+    if (this.closed) {
+      return Promise.reject(
+        new Error('Planning transaction SQL capability is closed'),
+      );
+    }
     // A pg Client owns one PostgreSQL connection. Queue concurrent callers here
     // rather than relying on node-postgres's deprecated implicit serialization.
     const result = this.queryTail.then(
@@ -91,6 +97,11 @@ class ConnectionSqlClient implements PlanningSqlClient {
       () => undefined,
     );
     return result;
+  }
+
+  /** Prevents callers from admitting SQL after the transaction callback settles. */
+  close(): void {
+    this.closed = true;
   }
 
   /**
@@ -121,11 +132,19 @@ class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
     let destroyConnection = false;
     try {
       await connection.query('BEGIN');
-      const result = await operation(transactionClient);
+      let result: Result;
+      try {
+        result = await operation(transactionClient);
+      } finally {
+        // The callback owns this capability only for its lexical transaction
+        // lifetime. Revoke new admissions before draining and transaction control.
+        transactionClient.close();
+      }
       await transactionClient.drain();
       await connection.query('COMMIT');
       return result;
     } catch (error) {
+      transactionClient.close();
       try {
         await transactionClient.drain();
         await connection.query('ROLLBACK');
