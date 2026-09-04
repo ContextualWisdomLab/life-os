@@ -76,6 +76,20 @@ describe('Plugin Vault hosted runtime', () => {
     },
   );
 
+  it('bounds a throwing database configuration accessor before pool acquisition', async () => {
+    const createPool = vi.fn(() => pool());
+    const env = Object.create(null) as Record<string, string | undefined>;
+    Object.defineProperty(env, 'INTEGRATION_DATABASE_URL', {
+      enumerable: true,
+      get() {
+        throw new Error('database accessor fixture secret');
+      },
+    });
+
+    await expectRuntimeFailure(createPluginVaultHostedRuntime(createPool, env));
+    expect(createPool).not.toHaveBeenCalled();
+  });
+
   it('rejects a malformed pool factory before resource acquisition', async () => {
     await expectRuntimeFailure(
       createPluginVaultHostedRuntime(
@@ -177,6 +191,19 @@ describe('Plugin Vault hosted runtime', () => {
       createPluginVaultHostedRuntime(() => malformed, environment()),
     );
     expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds a throwing cleanup accessor on malformed acquired SQL authority', async () => {
+    const malformed = {
+      query: vi.fn(),
+      get end(): never {
+        throw new Error('pool accessor fixture secret');
+      },
+    } as unknown as PluginHostedPostgresPool;
+
+    await expectRuntimeFailure(
+      createPluginVaultHostedRuntime(() => malformed, environment()),
+    );
   });
 
   it.each([
