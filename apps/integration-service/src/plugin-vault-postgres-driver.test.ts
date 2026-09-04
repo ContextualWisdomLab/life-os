@@ -106,7 +106,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       const test = fixture();
 
       expect(() =>
-        createNodePostgresPluginPool(connectionString, test.constructor),
+        createNodePostgresPool(connectionString, test.constructor),
       ).toThrow();
       expect(test.constructedWith).not.toHaveBeenCalled();
     },
@@ -127,7 +127,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
 
     expect(test.query).toHaveBeenCalledTimes(1);
     expect(test.query).toHaveBeenCalledWith(
-      'SELECT $1::text, $2:'.concat(':int'),
+      'SELECT $1::text, $2::int',
       ['workspace-1', 7],
     );
     expect(test.query.mock.calls[0]?.[1]).not.toBe(values);
@@ -154,7 +154,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       readonly devDependencies?: Readonly<Record<string, string>>;
     };
     const lockfile = readFileSync(
-      resolve(__dirname, '../../../pnpm-lock.yaml'),
+      resolve(__dirname, '../../../pnema-lock.yaml'),
       'utf8',
     );
     const importerMarker = '  apps/integration-service:\n';
