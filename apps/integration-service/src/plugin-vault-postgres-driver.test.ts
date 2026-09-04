@@ -53,20 +53,57 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     const test = fixture();
 
     createNodePostgresPluginPool(
-      'postgresql://integration.example.test/life_os',
+      'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
     );
 
     expect(test.constructedWith).toHaveBeenCalledTimes(1);
     expect(test.constructedWith).toHaveBeenCalledWith({
-      connectionString: 'postgresql://integration.example.test/life_os',
+      connectionString:
+        'postgresql://integration:secret@db.example.test:5432/life_os',
     });
   });
+
+  it.each([
+    ['malformed URI', 'not-a-postgres-uri'],
+    [
+      'non-PostgreSQL scheme',
+      'https://integration:secret@db.example.test:5432/life_os',
+    ],
+    ['missing user', 'postgresql://:secret@db.example.test:5432/life_os'],
+    ['missing password', 'postgresql://integration@db.example.test:5432/life_os'],
+    ['missing host', 'postgresql://integration:secret@:5432/life_os'],
+    ['missing port', 'postgresql://integration:secret@db.example.test/life_os'],
+    ['invalid port', 'postgresql://integration:secret@db.example.test:0/life_os'],
+    ['missing database', 'postgresql://integration:secret@db.example.test:5432/'],
+    [
+      'query-string host override',
+      'postgresql://integration:secret@db.example.test:5432/life_os?host=other.example.test',
+    ],
+    [
+      'external passfile authority',
+      'postgresql://integration:secret@db.example.test:5432/life_os?passfile=%2Frun%2Fsecrets%2Fpgpass',
+    ],
+    [
+      'external service-file authority',
+      'postgresql://integration:secret@db.example.test:5432/life_os?service=shared',
+    ],
+  ])(
+    'rejects %s before node-postgres can inherit generic PG* connection authority',
+    (_label, connectionString) => {
+      const test = fixture();
+
+      expect(() =>
+        createNodePostgresPluginPool(connectionString, test.constructor),
+      ).toThrow();
+      expect(test.constructedWith).not.toHaveBeenCalled();
+    },
+  );
 
   it('forwards fixed SQL and a copied parameter list while preserving row-count evidence', async () => {
     const test = fixture();
     const pool = createNodePostgresPluginPool(
-      'postgresql://integration.example.test/life_os',
+      'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
     );
     const values = Object.freeze(['workspace-1', 7]);
@@ -88,7 +125,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
   it('owns deterministic pool shutdown', async () => {
     const test = fixture();
     const pool = createNodePostgresPluginPool(
-      'postgresql://integration.example.test/life_os',
+      'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
     );
 
