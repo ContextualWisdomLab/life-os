@@ -273,9 +273,11 @@ describe('Integration-owned node-postgres Plugin pool', () => {
 
   it('forwards fixed SQL and a copied parameter list while preserving row-count evidence', async () => {
     const test = fixture();
-    const pool = createNodePostgresPluginPool(
-      'postgresql://integration:secret@db.example.test:5432/life_os',
-      test.constructor,
+    const pool = await Promise.resolve(
+      createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.test:5432/life_os',
+        test.constructor,
+      ),
     );
     const values = Object.freeze(['workspace-1', 7]);
 
@@ -295,9 +297,11 @@ describe('Integration-owned node-postgres Plugin pool', () => {
 
   it('owns deterministic pool shutdown', async () => {
     const test = fixture();
-    const pool = createNodePostgresPluginPool(
-      'postgresql://integration:secret@db.example.test:5432/life_os',
-      test.constructor,
+    const pool = await Promise.resolve(
+      createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.test:5432/life_os',
+        test.constructor,
+      ),
     );
 
     await pool.end();
