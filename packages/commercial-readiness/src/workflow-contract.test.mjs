@@ -26,6 +26,20 @@ function yamlTopLevelBlock(source, key) {
   return lines.slice(start, end).join('\n');
 }
 
+function yamlChildBlock(source, key) {
+  const lines = source.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === `  ${key}:`);
+  assert.notEqual(start, -1, `missing YAML child key: ${key}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
 function yamlJobBlock(source, jobName) {
   const lines = source.split(/\r?\n/u);
   const start = lines.findIndex((line) => line === `  ${jobName}:`);
@@ -42,8 +56,9 @@ function yamlJobBlock(source, jobName) {
 
 function assertDraftReadyPullRequestTrigger(path, workflow) {
   const triggerBlock = yamlTopLevelBlock(workflow, 'on');
+  const pullRequestBlock = yamlChildBlock(triggerBlock, 'pull_request');
   assert.match(
-    triggerBlock,
+    pullRequestBlock,
     /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
     `${path} must reacquire exact-head evidence when a draft becomes ready`,
   );
@@ -204,7 +219,7 @@ describe('commercial readiness workflow contract', () => {
     ];
     for (const path of hostedRunnerWorkflows) {
       const workflow = await repositoryFile(path);
-      const runners = [...workflow.matchAll(/^\s+runs-on:\s*(\S+)\s*$/gmu)].map(
+      const runners = [...workflow.matchAll(/^\s*runs-on:\s*(\S+)\s*$/gmu)].map(
         ([, runner]) => runner,
       );
       assert.ok(runners.length > 0, `${path} must define a hosted runner`);
