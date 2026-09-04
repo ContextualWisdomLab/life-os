@@ -3,6 +3,7 @@ import {
   createPluginVaultHostedRuntime,
   PluginVaultHostedRuntimeError,
   type PluginHostedPostgresPool,
+  type PluginHostedPostgresPoolFactory,
 } from './plugin-vault-hosted-runtime';
 
 const DATABASE_URL = 'postgresql://runtime.invalid/life_os';
@@ -31,29 +32,68 @@ function pool(): PluginHostedPostgresPool & {
   };
 }
 
-describe('Plugin Vault hosted runtime', () => {
-  it('requires the Integration-owned PostgreSQL configuration before creating a pool', async () => {
-    const createPool = vi.fn(() => pool());
+async function expectRuntimeFailure(promise: Promise<unknown>): Promise<void> {
+  await expect(promise).rejects.toEqual(
+    expect.objectContaining({
+      name: 'PluginVaultHostedRuntimeError',
+      message: 'Plugin hosted runtime configuration is unavailable',
+    }),
+  );
+}
 
-    await expect(
+describe('Plugin Vault hosted runtime', () => {
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['oversized', 'x'.repeat(8_193)],
+  ])(
+    'rejects %s Integration-owned PostgreSQL configuration before creating a pool',
+    async (_label, databaseUrl) => {
+      const createPool = vi.fn(() => pool());
+
+      await expectRuntimeFailure(
+        createPluginVaultHostedRuntime(
+          createPool,
+          environment({ INTEGRATION_DATABASE_URL: databaseUrl }),
+        ),
+      );
+      expect(createPool).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([null, undefined, 'invalid', []])(
+    'bounds malformed environment envelope %j before configuration field access',
+    async (malformed) => {
+      const createPool = vi.fn(() => pool());
+
+      await expectRuntimeFailure(
+        createPluginVaultHostedRuntime(
+          createPool,
+          malformed as unknown as Readonly<Record<string, string | undefined>>,
+        ),
+      );
+      expect(createPool).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a malformed pool factory before resource acquisition', async () => {
+    await expectRuntimeFailure(
       createPluginVaultHostedRuntime(
-        createPool,
-        environment({ INTEGRATION_DATABASE_URL: undefined }),
+        null as unknown as PluginHostedPostgresPoolFactory,
+        environment(),
       ),
-    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
-    expect(createPool).not.toHaveBeenCalled();
+    );
   });
 
-  it('bounds malformed environment envelopes before configuration field access', async () => {
-    const createPool = vi.fn(() => pool());
+  it('bounds pool-factory rejection without reflecting dependency detail', async () => {
+    const createPool = vi.fn(async () => {
+      throw new Error('database credential fixture must never escape');
+    });
 
-    await expect(
-      createPluginVaultHostedRuntime(
-        createPool,
-        null as unknown as Readonly<Record<string, string | undefined>>,
-      ),
-    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
-    expect(createPool).not.toHaveBeenCalled();
+    await expectRuntimeFailure(
+      createPluginVaultHostedRuntime(createPool, environment()),
+    );
+    expect(createPool).toHaveBeenCalledTimes(1);
   });
 
   it('constructs one service-owned pool and closes it exactly once across repeated shutdown', async () => {
@@ -73,17 +113,45 @@ describe('Plugin Vault hosted runtime', () => {
     expect(ownedPool.end).toHaveBeenCalledTimes(1);
   });
 
+  it('shares one bounded shutdown failure without retrying pool end', async () => {
+    const ownedPool = pool();
+    ownedPool.end.mockRejectedValueOnce(new Error('pool shutdown fixture'));
+    const runtime = await createPluginVaultHostedRuntime(
+      () => ownedPool,
+      environment(),
+    );
+
+    const first = runtime.close();
+    const second = runtime.close();
+    await expectRuntimeFailure(first);
+    await expectRuntimeFailure(second);
+    expect(ownedPool.end).toHaveBeenCalledTimes(1);
+  });
+
   it('closes an acquired pool when Vault/operator composition fails before listener registration', async () => {
     const ownedPool = pool();
     const createPool = vi.fn(() => ownedPool);
 
-    await expect(
+    await expectRuntimeFailure(
       createPluginVaultHostedRuntime(
         createPool,
         environment({ INTEGRATION_PLUGIN_VAULT_MOUNT: undefined }),
       ),
-    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
+    );
     expect(createPool).toHaveBeenCalledTimes(1);
+    expect(ownedPool.end).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps composition failure credential-free when cleanup also fails', async () => {
+    const ownedPool = pool();
+    ownedPool.end.mockRejectedValueOnce(new Error('cleanup fixture secret'));
+
+    await expectRuntimeFailure(
+      createPluginVaultHostedRuntime(
+        () => ownedPool,
+        environment({ INTEGRATION_PLUGIN_VAULT_MOUNT: undefined }),
+      ),
+    );
     expect(ownedPool.end).toHaveBeenCalledTimes(1);
   });
 
@@ -92,11 +160,38 @@ describe('Plugin Vault hosted runtime', () => {
     const malformed = { end } as unknown as PluginHostedPostgresPool;
     const createPool = vi.fn(() => malformed);
 
-    await expect(
+    await expectRuntimeFailure(
       createPluginVaultHostedRuntime(createPool, environment()),
-    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
+    );
     expect(createPool).toHaveBeenCalledTimes(1);
     expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it('still returns the bounded failure when malformed acquired-resource cleanup rejects', async () => {
+    const end = vi.fn(async () => {
+      throw new Error('malformed cleanup fixture');
+    });
+    const malformed = { end } as unknown as PluginHostedPostgresPool;
+
+    await expectRuntimeFailure(
+      createPluginVaultHostedRuntime(() => malformed, environment()),
+    );
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    null,
+    undefined,
+    {},
+    { query: vi.fn() },
+    { end: vi.fn() },
+  ])('rejects malformed acquired SQL authority %j', async (malformed) => {
+    await expectRuntimeFailure(
+      createPluginVaultHostedRuntime(
+        () => malformed as unknown as PluginHostedPostgresPool,
+        environment(),
+      ),
+    );
   });
 
   it('rejects generic database aliases instead of accepting cross-service persistence authority', async () => {
@@ -109,9 +204,9 @@ describe('Plugin Vault hosted runtime', () => {
       INTEGRATION_PLUGIN_VAULT_MOUNT: 'secret',
     });
 
-    await expect(
+    await expectRuntimeFailure(
       createPluginVaultHostedRuntime(createPool, env),
-    ).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
+    );
     expect(createPool).not.toHaveBeenCalled();
   });
 });
