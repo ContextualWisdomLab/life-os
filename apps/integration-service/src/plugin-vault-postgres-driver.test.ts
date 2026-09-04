@@ -127,6 +127,54 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     expect(JSON.stringify(records)).not.toContain('must-not-enter-logs');
   });
 
+  it('bounds hostile or noncanonical idle-client error classification', () => {
+    const test = fixture();
+    const records: IdleErrorRecord[] = [];
+    const createWithLogger = createNodePostgresPluginPool as unknown as (
+      connectionString: string,
+      constructor: NodePostgresPoolConstructor,
+      logError: (record: IdleErrorRecord) => void,
+    ) => NodePostgresPoolLike;
+
+    createWithLogger(
+      'postgresql://integration:secret@db.example.test:5432/life_os',
+      test.constructor,
+      (record) => records.push(record),
+    );
+
+    test.emitIdleError(
+      Object.assign(new Error('native detail'), {
+        name: 'Database Error with spaces',
+        code: '57 P01',
+      }),
+    );
+
+    const accessorError = Object.create(Error.prototype) as Error;
+    Object.defineProperty(accessorError, 'name', {
+      get(): never {
+        throw new Error('credential-bearing accessor failure');
+      },
+    });
+    test.emitIdleError(accessorError);
+
+    expect(records).toEqual([
+      {
+        message: 'Integration PostgreSQL pool reported an idle client error',
+        context: 'IntegrationPluginPostgresRuntime',
+        errorName: 'Error',
+        postgresCode: null,
+      },
+      {
+        message: 'Integration PostgreSQL pool reported an idle client error',
+        context: 'IntegrationPluginPostgresRuntime',
+        errorName: 'Error',
+        postgresCode: null,
+      },
+    ]);
+    expect(JSON.stringify(records)).not.toContain('native detail');
+    expect(JSON.stringify(records)).not.toContain('credential-bearing');
+  });
+
   it.each([
     ['malformed URI', 'not-a-postgres-uri'],
     [
