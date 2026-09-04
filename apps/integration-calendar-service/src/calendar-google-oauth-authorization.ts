@@ -394,27 +394,32 @@ export class CalendarGoogleOAuthAuthorizationApplication {
       return invalid();
     }
 
-    const expected: CalendarGoogleOAuthAuthorizationStateRecord = Object.freeze({
-      stateId,
-      workspaceId,
-      userId,
-      purpose: PURPOSE,
-      redirectUri,
-      verifierSecretReference: requireDependencyUuid(record.verifierSecretReference),
-      codeChallenge:
-        typeof record.codeChallenge === 'string' &&
-        PKCE_CHALLENGE_PATTERN.test(record.codeChallenge)
-          ? record.codeChallenge
-          : unavailable(),
-      createdAt: requireInstant(record.createdAt),
-      expiresAt: requireInstant(record.expiresAt),
-      consumedAt: consumed.value,
-    });
-    if (
-      !recordsMatch(record, expected) ||
-      Date.parse(expected.createdAt) >= Date.parse(expected.expiresAt) ||
-      Date.parse(expected.expiresAt) <= consumed.milliseconds
-    ) {
+    let expected: CalendarGoogleOAuthAuthorizationStateRecord;
+    try {
+      expected = Object.freeze({
+        stateId,
+        workspaceId,
+        userId,
+        purpose: PURPOSE,
+        redirectUri,
+        verifierSecretReference: requireDependencyUuid(record.verifierSecretReference),
+        codeChallenge:
+          typeof record.codeChallenge === 'string' &&
+          PKCE_CHALLENGE_PATTERN.test(record.codeChallenge)
+            ? record.codeChallenge
+            : unavailable(),
+        createdAt: requireInstant(record.createdAt),
+        expiresAt: requireInstant(record.expiresAt),
+        consumedAt: consumed.value,
+      });
+      if (
+        !recordsMatch(record, expected) ||
+        Date.parse(expected.createdAt) >= Date.parse(expected.expiresAt) ||
+        Date.parse(expected.expiresAt) <= consumed.milliseconds
+      ) {
+        return unavailable();
+      }
+    } catch {
       return unavailable();
     }
 
