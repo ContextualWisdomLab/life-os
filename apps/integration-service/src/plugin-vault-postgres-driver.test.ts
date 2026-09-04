@@ -7,11 +7,20 @@ import {
   type NodePostgresPoolLike,
 } from './plugin-vault-postgres-driver';
 
+interface IdleErrorRecord {
+  readonly message: string;
+  readonly context: 'IntegrationPluginPostgresRuntime';
+  readonly errorName: string;
+  readonly postgresCode: string | null;
+}
+
 function fixture(): {
   readonly constructor: NodePostgresPoolConstructor;
   readonly constructedWith: ReturnType<typeof vi.fn>;
   readonly query: ReturnType<typeof vi.fn>;
   readonly end: ReturnType<typeof vi.fn>;
+  readonly on: ReturnType<typeof vi.fn>;
+  emitIdleError(error: Error): void;
 } {
   const constructedWith = vi.fn();
   const query = vi.fn(async () => ({
@@ -19,10 +28,18 @@ function fixture(): {
     rowCount: 1,
   }));
   const end = vi.fn(async () => undefined);
+  const on = vi.fn();
+  let idleErrorListener: ((error: Error) => void) | undefined;
 
   class FixturePool implements NodePostgresPoolLike {
     constructor(configuration: Readonly<{ connectionString: string }>) {
       constructedWith(configuration);
+    }
+
+    on(event: 'error', listener: (error: Error) => void): this {
+      on(event, listener);
+      idleErrorListener = listener;
+      return this;
     }
 
     async query<Row>(
@@ -45,11 +62,15 @@ function fixture(): {
     constructedWith,
     query,
     end,
+    on,
+    emitIdleError(error: Error): void {
+      idleErrorListener?.(error);
+    },
   };
 }
 
 describe('Integration-owned node-postgres Plugin pool', () => {
-  it('constructs node-postgres only from the already-validated Integration connection string', () => {
+  it('constructs node-postgres with finite service-owned pool lifecycle bounds', () => {
     const test = fixture();
 
     createNodePostgresPluginPool(
@@ -61,7 +82,49 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     expect(test.constructedWith).toHaveBeenCalledWith({
       connectionString:
         'postgresql://integration:secret@db.example.test:5432/life_os',
+      max: 10,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+      maxLifetimeSeconds: 300,
     });
+  });
+
+  it('registers a credential-free idle-client error boundary before the pool is returned', () => {
+    const test = fixture();
+    const records: IdleErrorRecord[] = [];
+    const createWithLogger = createNodePostgresPluginPool as unknown as (
+      connectionString: string,
+      constructor: NodePostgresPoolConstructor,
+      logError: (record: IdleErrorRecord) => void,
+    ) => NodePostgresPoolLike;
+
+    createWithLogger(
+      'postgresql://integration:secret@db.example.test:5432/life_os',
+      test.constructor,
+      (record) => records.push(record),
+    );
+
+    expect(test.on).toHaveBeenCalledTimes(1);
+    expect(test.on).toHaveBeenCalledWith('error', expect.any(Function));
+
+    const nativeError = Object.assign(
+      new Error('password=must-not-enter-logs'),
+      {
+        name: 'DatabaseError',
+        code: '57P01',
+      },
+    );
+    test.emitIdleError(nativeError);
+
+    expect(records).toEqual([
+      {
+        message: 'Integration PostgreSQL pool reported an idle client error',
+        context: 'IntegrationPluginPostgresRuntime',
+        errorName: 'DatabaseError',
+        postgresCode: '57P01',
+      },
+    ]);
+    expect(JSON.stringify(records)).not.toContain('must-not-enter-logs');
   });
 
   it.each([
