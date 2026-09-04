@@ -43,6 +43,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Google Calendar OAuth authorization state now binds each five-minute PKCE ceremony to trusted workspace/user authority, one exact configured HTTPS callback, and purpose/lifetime-scoped secret access; consumed persistence rows are treated as untrusted dependency evidence and throwing or malformed fields fail closed before verifier materialization.
 - Hosted multi-user Calendar bootstrap now rejects deployment-wide Google access-token authority and fails closed until authenticated user-owned connection evidence and scoped credential materialization are composed end to end; explicit standalone Google adapter composition remains available.
 - Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
