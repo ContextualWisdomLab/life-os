@@ -40,6 +40,15 @@ function yamlJobBlock(source, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
+function assertDraftReadyPullRequestTrigger(path, workflow) {
+  const triggerBlock = yamlTopLevelBlock(workflow, 'on');
+  assert.match(
+    triggerBlock,
+    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
+    `${path} must reacquire exact-head evidence when a draft becomes ready`,
+  );
+}
+
 describe('commercial readiness workflow contract', () => {
   it('runs hourly at a non-round minute and keeps writes off pull requests', async () => {
     const workflow = await repositoryFile(
@@ -74,6 +83,27 @@ describe('commercial readiness workflow contract', () => {
   });
 
   it('keeps draft pull requests off LifeOS-owned hosted runners and reruns when review starts', async () => {
+    const malformedTriggerFixture = [
+      'name: false-positive-trigger-fixture',
+      '',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      '  workflow_dispatch:',
+      '    types: [opened, synchronize, reopened, ready_for_review]',
+      '',
+      'jobs:',
+    ].join('\n');
+    assert.throws(
+      () =>
+        assertDraftReadyPullRequestTrigger(
+          'false-positive-trigger-fixture.yml',
+          malformedTriggerFixture,
+        ),
+      { name: 'AssertionError' },
+      'trigger contract must reject ready-for-review types declared outside pull_request',
+    );
+
     const workflows = [
       {
         path: '.github/workflows/appguardrail.yml',
@@ -96,12 +126,7 @@ describe('commercial readiness workflow contract', () => {
 
     for (const { path, jobs } of workflows) {
       const workflow = await repositoryFile(path);
-      const triggerBlock = yamlTopLevelBlock(workflow, 'on');
-      assert.match(
-        triggerBlock,
-        /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
-        `${path} must reacquire exact-head evidence when a draft becomes ready`,
-      );
+      assertDraftReadyPullRequestTrigger(path, workflow);
       for (const job of jobs) {
         assert.match(
           yamlJobBlock(workflow, job),
