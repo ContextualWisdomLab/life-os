@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now ignores malformed decisive review evidence with a blank reviewer identity or invalid submission timestamp, so malformed approvals cannot satisfy the merge gate.
 - Commercial Readiness merge automation now fails closed when the latest decisive review set contains no approval, instead of allowing otherwise-GREEN zero-review or COMMENTED-only evidence to reach the merge path; exact-head approval freshness remains governed by the active stale-review-dismissal rule until immutable review-head identity is carried locally.
 - The public Gateway Today endpoint now fails explicitly with bounded `today_composition_unavailable` problem details instead of returning fabricated successful composition data while authenticated Planning/Habit integration is absent; issue #163 remains open for the real composition path.
 - Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
