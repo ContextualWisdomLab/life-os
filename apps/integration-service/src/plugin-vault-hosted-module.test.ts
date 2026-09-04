@@ -5,10 +5,27 @@ import {
   createPluginVaultHostedModule,
   PLUGIN_VAULT_HOSTED_RUNTIME,
 } from './plugin-vault-hosted-module';
-import type { PluginVaultHostedRuntime } from './plugin-vault-hosted-runtime';
+import {
+  PluginVaultHostedRuntimeError,
+  type PluginVaultHostedRuntime,
+} from './plugin-vault-hosted-runtime';
 import { PLUGIN_OPERATOR_APPLICATION } from './main';
 
 describe('Integration hosted Plugin runtime module', () => {
+  it.each([
+    null,
+    undefined,
+    {},
+    { operator: null, close: vi.fn() },
+    { operator: {}, close: null },
+  ])('rejects malformed runtime envelope %j', (malformed) => {
+    expect(() =>
+      createPluginVaultHostedModule(
+        malformed as unknown as PluginVaultHostedRuntime,
+      ),
+    ).toThrow(PluginVaultHostedRuntimeError);
+  });
+
   it('registers the composed operator and closes its owned runtime exactly once on application shutdown', async () => {
     const close = vi.fn(async () => undefined);
     const operator = {} as PluginOperatorApplication;
