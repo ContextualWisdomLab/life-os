@@ -65,7 +65,12 @@ function requireEnvironment(value: unknown): PluginVaultOperatorEnvironment {
 
 /** Requires one exact Integration-owned database setting and rejects generic aliases. */
 function databaseUrl(environment: PluginVaultOperatorEnvironment): string {
-  const value = environment.INTEGRATION_DATABASE_URL;
+  let value: unknown;
+  try {
+    value = environment.INTEGRATION_DATABASE_URL;
+  } catch {
+    return unavailable();
+  }
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
@@ -76,30 +81,57 @@ function databaseUrl(environment: PluginVaultOperatorEnvironment): string {
   return value;
 }
 
-/** Requires enough pool behavior to satisfy all Integration-owned Plugin repositories. */
+/** Requires stable pool behavior to satisfy all Integration-owned Plugin repositories. */
 function requirePool(value: unknown): PluginHostedPostgresPool {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    typeof (value as PluginHostedPostgresPool).query !== 'function' ||
-    typeof (value as PluginHostedPostgresPool).end !== 'function'
-  ) {
+  if (value === null || typeof value !== 'object') {
     return unavailable();
   }
-  return value as PluginHostedPostgresPool;
+
+  let query: unknown;
+  let end: unknown;
+  try {
+    query = (value as PluginHostedPostgresPool).query;
+    end = (value as PluginHostedPostgresPool).end;
+  } catch {
+    return unavailable();
+  }
+  if (typeof query !== 'function' || typeof end !== 'function') {
+    return unavailable();
+  }
+
+  const receiver = value as object;
+  return Object.freeze({
+    query<Row>(
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<PluginHostedPostgresResult<Row>> {
+      return Reflect.apply(query, receiver, [text, values]) as Promise<
+        PluginHostedPostgresResult<Row>
+      >;
+    },
+    end(): Promise<void> {
+      return Reflect.apply(end, receiver, []) as Promise<void>;
+    },
+  });
 }
 
 /** Best-effort cleanup for an acquired value before it has been accepted as a pool. */
 async function closeAcquired(value: unknown): Promise<void> {
-  if (
-    value === null ||
-    typeof value !== 'object' ||
-    typeof (value as { end?: unknown }).end !== 'function'
-  ) {
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+
+  let end: unknown;
+  try {
+    end = (value as { end?: unknown }).end;
+  } catch {
+    return;
+  }
+  if (typeof end !== 'function') {
     return;
   }
   try {
-    await (value as { end(): Promise<void> }).end();
+    await Reflect.apply(end, value, []);
   } catch {
     // Startup still collapses to the fixed credential-free runtime error below.
   }
@@ -124,6 +156,10 @@ async function closePool(pool: PluginHostedPostgresPool): Promise<void> {
  * after the pool and all three Integration-owned adapters exist. If subsequent
  * composition fails, the newly acquired pool is closed before the fixed startup
  * failure is returned.
+ *
+ * Pool methods are captured once after validation rather than repeatedly read from
+ * an injected object. This keeps hostile or stateful accessors from becoming later
+ * SQL/shutdown authority after the resource has crossed the hosted-runtime boundary.
  *
  * The returned `close()` operation is concurrency-safe and idempotent: all callers
  * observe the same shutdown promise and the owned pool receives exactly one `end`.
