@@ -24,6 +24,13 @@ export type PluginVaultHostedNestApplicationFactory = (
   module: DynamicModule,
 ) => Promise<PluginVaultHostedNestApplication>;
 
+interface AcceptedNestApplication {
+  readonly application: PluginVaultHostedNestApplication;
+  enableShutdownHooks(): void;
+  listen(port: number, host: string): Promise<unknown>;
+  close(): Promise<void>;
+}
+
 /** Requires a bounded environment mapping before startup configuration is read. */
 function requireEnvironment(value: unknown): PluginVaultOperatorEnvironment {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -34,7 +41,12 @@ function requireEnvironment(value: unknown): PluginVaultOperatorEnvironment {
 
 /** Resolves one canonical listener port before any database or Vault resource is acquired. */
 function listenerPort(environment: PluginVaultOperatorEnvironment): number {
-  const configured = environment.INTEGRATION_SERVICE_PORT;
+  let configured: unknown;
+  try {
+    configured = environment.INTEGRATION_SERVICE_PORT;
+  } catch {
+    throw new PluginVaultHostedRuntimeError();
+  }
   if (configured === undefined) {
     return DEFAULT_INTEGRATION_SERVICE_PORT;
   }
@@ -46,6 +58,68 @@ function listenerPort(environment: PluginVaultOperatorEnvironment): number {
     throw new PluginVaultHostedRuntimeError();
   }
   return port;
+}
+
+/** Captures one stable Nest lifecycle surface before listener authority is exercised. */
+function requireApplication(value: unknown): AcceptedNestApplication {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new PluginVaultHostedRuntimeError();
+  }
+
+  let enableShutdownHooks: unknown;
+  let listen: unknown;
+  let close: unknown;
+  try {
+    enableShutdownHooks = (value as PluginVaultHostedNestApplication)
+      .enableShutdownHooks;
+    listen = (value as PluginVaultHostedNestApplication).listen;
+    close = (value as PluginVaultHostedNestApplication).close;
+  } catch {
+    throw new PluginVaultHostedRuntimeError();
+  }
+  if (
+    typeof enableShutdownHooks !== 'function' ||
+    typeof listen !== 'function' ||
+    typeof close !== 'function'
+  ) {
+    throw new PluginVaultHostedRuntimeError();
+  }
+
+  const application = value as PluginVaultHostedNestApplication;
+  return Object.freeze({
+    application,
+    enableShutdownHooks(): void {
+      Reflect.apply(enableShutdownHooks, application, []);
+    },
+    listen(port: number, host: string): Promise<unknown> {
+      return Reflect.apply(listen, application, [port, host]) as Promise<unknown>;
+    },
+    close(): Promise<void> {
+      return Reflect.apply(close, application, []) as Promise<void>;
+    },
+  });
+}
+
+/** Best-effort cleanup when application validation failed before method capture completed. */
+async function closeUnacceptedApplication(value: unknown): Promise<void> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return;
+  }
+
+  let close: unknown;
+  try {
+    close = (value as { close?: unknown }).close;
+  } catch {
+    return;
+  }
+  if (typeof close !== 'function') {
+    return;
+  }
+  try {
+    await Reflect.apply(close, value, []);
+  } catch {
+    // Runtime cleanup remains authoritative after a malformed Nest application.
+  }
 }
 
 /** Default Nest application construction over the runtime-owning dynamic module. */
@@ -64,6 +138,10 @@ async function createNestApplication(
  * module before `listen` executes. Startup failure closes both Nest state (when it
  * exists) and the idempotent runtime, so no acquired PostgreSQL pool is orphaned.
  *
+ * Environment and Nest application properties are untrusted runtime evidence. The
+ * bootstrap therefore bounds property access and captures accepted lifecycle methods
+ * once before they can authorize hook registration, listener start, or cleanup.
+ *
  * A concrete PostgreSQL driver factory is deliberately supplied by the deployment
  * composition root; this boundary does not reach into another service's pool or
  * persistence implementation.
@@ -79,29 +157,24 @@ export async function startPluginVaultHostedService(
   const environment = requireEnvironment(environmentInput);
   const port = listenerPort(environment);
   const runtime = await createPluginVaultHostedRuntime(createPool, environment);
-  let app: PluginVaultHostedNestApplication | undefined;
+  let applicationValue: unknown;
+  let acceptedApplication: AcceptedNestApplication | undefined;
 
   try {
-    app = await createApplication(createPluginVaultHostedModule(runtime));
-    if (
-      app === null ||
-      typeof app !== 'object' ||
-      typeof app.enableShutdownHooks !== 'function' ||
-      typeof app.listen !== 'function' ||
-      typeof app.close !== 'function'
-    ) {
-      throw new PluginVaultHostedRuntimeError();
-    }
-    app.enableShutdownHooks();
-    await app.listen(port, '0.0.0.0');
-    return app;
+    applicationValue = await createApplication(createPluginVaultHostedModule(runtime));
+    acceptedApplication = requireApplication(applicationValue);
+    acceptedApplication.enableShutdownHooks();
+    await acceptedApplication.listen(port, '0.0.0.0');
+    return acceptedApplication.application;
   } catch {
-    if (app && typeof app.close === 'function') {
+    if (acceptedApplication !== undefined) {
       try {
-        await app.close();
+        await acceptedApplication.close();
       } catch {
         // Runtime cleanup below remains authoritative when Nest cleanup fails.
       }
+    } else {
+      await closeUnacceptedApplication(applicationValue);
     }
     try {
       await runtime.close();
