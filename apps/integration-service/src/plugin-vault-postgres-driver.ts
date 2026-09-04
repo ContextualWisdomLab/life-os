@@ -210,35 +210,28 @@ function capturePoolQuery(pool: NodePostgresPoolLike): NodePostgresPoolLike['que
 
 /** Accepts only the exact one-row result emitted by the fixed readiness statement. */
 function hasCanonicalReadinessEvidence(value: unknown): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
-  }
-
-  let rows: unknown;
-  let rowCount: unknown;
   try {
-    rows = (value as { readonly rows?: unknown }).rows;
-    rowCount = (value as { readonly rowCount?: unknown }).rowCount;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+
+    const rows = (value as { readonly rows?: unknown }).rows;
+    const rowCount = (value as { readonly rowCount?: unknown }).rowCount;
+    if (!Array.isArray(rows) || rows.length !== 1 || rowCount !== 1) {
+      return false;
+    }
+
+    const row = rows[0];
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+      return false;
+    }
+
+    return (
+      (row as PluginPostgresReadinessRow).integration_plugin_runtime_ready === 1
+    );
   } catch {
     return false;
   }
-  if (!Array.isArray(rows) || rows.length !== 1 || rowCount !== 1) {
-    return false;
-  }
-
-  const row = rows[0];
-  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
-    return false;
-  }
-
-  let ready: unknown;
-  try {
-    ready = (row as PluginPostgresReadinessRow)
-      .integration_plugin_runtime_ready;
-  } catch {
-    return false;
-  }
-  return ready === 1;
 }
 
 /**
