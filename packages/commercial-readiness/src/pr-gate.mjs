@@ -1,7 +1,21 @@
+/** Canonical 40-hex Git commit identity required for exact-head evidence. */
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+/** GitHub success state accepted as passing workflow or status evidence. */
 const SUCCESS = 'success';
+/** Review states that can grant or revoke merge approval authority. */
 const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);
 
+/**
+ * Reduce untrusted GitHub review records to the latest valid decisive review per actor.
+ *
+ * Non-array input, missing records, non-decisive states, blank reviewer identities, and
+ * invalid or missing submission timestamps are excluded. When one actor has multiple
+ * decisive reviews, the chronologically latest valid review wins; equal timestamps use
+ * the later record in input order.
+ *
+ * @param {unknown} reviews Untrusted review records collected for one pull request.
+ * @returns {Map<string, {state: string, timestamp: number}>} Latest decisive review by normalized actor.
+ */
 function latestReviewsByActor(reviews) {
   const latest = new Map();
   for (const review of Array.isArray(reviews) ? reviews : []) {
@@ -23,6 +37,13 @@ function latestReviewsByActor(reviews) {
   return latest;
 }
 
+/**
+ * Evaluate exact-head workflow evidence for one required workflow name.
+ *
+ * @param {object} pr Pull-request snapshot containing exact-head workflow runs.
+ * @param {string} requiredName Required workflow display name.
+ * @returns {{blocker?: string}} Empty evidence on success or one fail-closed blocker.
+ */
 function workflowEvidence(pr, requiredName) {
   const named = (Array.isArray(pr.workflows) ? pr.workflows : []).filter(
     (item) => item?.name === requiredName,
@@ -39,6 +60,13 @@ function workflowEvidence(pr, requiredName) {
     : { blocker: `workflow-not-successful:${requiredName}` };
 }
 
+/**
+ * Evaluate exact-head commit-status evidence for one required status context.
+ *
+ * @param {object} pr Pull-request snapshot containing exact-head commit statuses.
+ * @param {string} requiredContext Required status context.
+ * @returns {{blocker?: string}} Empty evidence on success or one fail-closed blocker.
+ */
 function statusEvidence(pr, requiredContext) {
   const named = (Array.isArray(pr.statuses) ? pr.statuses : []).filter(
     (item) => item?.context === requiredContext,
@@ -52,6 +80,20 @@ function statusEvidence(pr, requiredContext) {
     : { blocker: `status-not-successful:${requiredContext}` };
 }
 
+/**
+ * Evaluate a collected pull-request snapshot against the active local merge policy.
+ *
+ * The decision fails closed for malformed PR identity, wrong repository/base provenance,
+ * merge conflicts or stale base ancestry, unresolved review threads, missing decisive
+ * approval, any latest decisive change request, and missing/stale/non-successful required
+ * workflow or status evidence. Reviewer records with invalid actor or timestamp evidence
+ * never contribute to approval. `eligible` is true only when the de-duplicated `blockers`
+ * array is empty.
+ *
+ * @param {object} pr Collected pull-request evidence for one exact head.
+ * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
+ * @returns {{eligible: boolean, blockers: string[]}} Fail-closed merge decision and blocker codes.
+ */
 export function evaluatePullRequestForMerge(pr, policy) {
   const blockers = [];
   if (!pr || typeof pr !== 'object') {
