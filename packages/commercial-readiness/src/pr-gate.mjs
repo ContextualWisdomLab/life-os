@@ -79,12 +79,15 @@ export function evaluatePullRequestForMerge(pr, policy) {
     blockers.push('unresolved-review-thread');
   }
 
-  for (const review of latestReviewsByActor(pr.reviews).values()) {
+  const decisiveReviews = latestReviewsByActor(pr.reviews);
+  let hasApproval = false;
+  for (const review of decisiveReviews.values()) {
+    if (review.state === 'APPROVED') hasApproval = true;
     if (review.state === 'CHANGES_REQUESTED') {
       blockers.push('changes-requested');
-      break;
     }
   }
+  if (!hasApproval) blockers.push('missing-approval');
 
   for (const workflow of policy.required_workflows) {
     const evidence = workflowEvidence(pr, workflow);
