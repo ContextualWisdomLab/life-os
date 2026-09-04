@@ -45,6 +45,7 @@ function registrationFailurePool(options: {
 function readinessFailurePool(options: {
   readonly cleanupRejects: boolean;
   readonly malformedResult?: boolean;
+  readonly throwingRowsAccessor?: boolean;
 }): {
   readonly constructor: NodePostgresPoolConstructor;
   readonly endCalls: () => number;
@@ -63,6 +64,25 @@ function readinessFailurePool(options: {
       readonly rowCount: number | null;
     }> {
       queryCalls.push(text);
+      if (options.throwingRowsAccessor) {
+        const rows = new Proxy(
+          [{ integration_plugin_runtime_ready: 1 }],
+          {
+            get(target, property, receiver) {
+              if (property === 'length') {
+                throw new Error(
+                  'password=must-not-escape-readiness-array-accessor',
+                );
+              }
+              return Reflect.get(target, property, receiver);
+            },
+          },
+        );
+        return {
+          rows: rows as unknown as readonly Row[],
+          rowCount: 1,
+        };
+      }
       if (options.malformedResult) {
         return {
           rows: [
@@ -167,6 +187,27 @@ describe('Integration PostgreSQL pool acquisition boundary', () => {
     await expect(acquisition).rejects.toBeInstanceOf(
       PluginNodePostgresConfigurationError,
     );
+    expect(test.queryCalls()).toEqual([READINESS_SQL]);
+    expect(test.endCalls()).toBe(1);
+  });
+
+  it('bounds throwing readiness collection accessors and closes the acquired pool', async () => {
+    const test = readinessFailurePool({
+      cleanupRejects: false,
+      throwingRowsAccessor: true,
+    });
+
+    const acquisition = Promise.resolve(
+      createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.test:5432/life_os',
+        test.constructor,
+      ),
+    );
+
+    await expect(acquisition).rejects.toBeInstanceOf(
+      PluginNodePostgresConfigurationError,
+    );
+    await expect(acquisition).rejects.not.toThrow(/must-not-escape/u);
     expect(test.queryCalls()).toEqual([READINESS_SQL]);
     expect(test.endCalls()).toBe(1);
   });
