@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createNodePostgresPluginPool,
@@ -93,5 +95,38 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     await pool.end();
 
     expect(test.end).toHaveBeenCalledTimes(1);
+  });
+
+  it('declares the concrete PostgreSQL driver in both the service manifest and frozen-lock importer', () => {
+    const packageJson = JSON.parse(
+      readFileSync(resolve(__dirname, '../package.json'), 'utf8'),
+    ) as {
+      readonly dependencies?: Readonly<Record<string, string>>;
+      readonly devDependencies?: Readonly<Record<string, string>>;
+    };
+    const lockfile = readFileSync(
+      resolve(__dirname, '../../../pnpm-lock.yaml'),
+      'utf8',
+    );
+    const importerMarker = '  apps/integration-service:\n';
+    const importerStart = lockfile.indexOf(importerMarker);
+
+    expect(packageJson.dependencies?.pg).toBe('^8.22.0');
+    expect(packageJson.devDependencies?.['@types/pg']).toBe('^8.20.0');
+    expect(importerStart).toBeGreaterThanOrEqual(0);
+
+    const importerTail = lockfile.slice(importerStart + importerMarker.length);
+    const nextImporter = importerTail.indexOf('\n  apps/');
+    const importer = importerTail.slice(
+      0,
+      nextImporter === -1 ? undefined : nextImporter,
+    );
+
+    expect(importer).toContain(
+      '      pg:\n        specifier: ^8.22.0\n        version: 8.22.0',
+    );
+    expect(importer).toContain(
+      "      '@types/pg':\n        specifier: ^8.20.0\n        version: 8.20.3",
+    );
   });
 });
