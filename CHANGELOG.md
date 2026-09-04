@@ -11,6 +11,7 @@ All notable changes to LifeOS are documented in this file.
 ### Added
 
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.
+- A host-owned `life-os.plugin-delivery-origin.v1` authority boundary that accepts only exact normalized HTTPS origins after active installation evidence, scopes grant lifecycle to installation/workspace/granting-user identity, revalidates current active installation authority before exposing an active grant so installation revocation fences future origin use, and keeps manifest intent separate from network authority.
 - An authenticated calendar-connection disconnect application and optional hosted HTTP composition boundary that derives workspace and requesting-user authority only from the signed `life-os.calendar-user.v1` context and returns credential-free local revocation evidence.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
 - Migration `0006_data_rights_request_ledger.sql` for the service-owned identity ledger, retaining only bounded opaque authority references and digest/status/timestamp evidence rather than exported personal payloads.
