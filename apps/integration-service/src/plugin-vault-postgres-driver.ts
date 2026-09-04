@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import type {
   PluginHostedPostgresPool,
@@ -5,9 +6,26 @@ import type {
 } from './plugin-vault-hosted-runtime';
 
 const POSTGRES_PROTOCOLS = new Set(['postgres:', 'postgresql:']);
+const PLUGIN_POSTGRES_POOL_MAX = 10;
+const PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS = 5_000;
+const PLUGIN_POSTGRES_IDLE_TIMEOUT_MS = 30_000;
+const PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS = 300;
+const PLUGIN_POSTGRES_POOL_ERROR_MESSAGE =
+  'Integration PostgreSQL pool reported an idle client error';
+const POOL_ERROR_CLASSIFICATION_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/u;
+
+/** Exact node-postgres lifecycle configuration owned by the Integration runtime. */
+export interface NodePostgresPluginPoolConfiguration {
+  readonly connectionString: string;
+  readonly max: number;
+  readonly connectionTimeoutMillis: number;
+  readonly idleTimeoutMillis: number;
+  readonly maxLifetimeSeconds: number;
+}
 
 /** Minimal node-postgres pool surface retained behind the Integration runtime port. */
 export interface NodePostgresPoolLike {
+  on(event: 'error', listener: (error: Error) => void): unknown;
   query<Row>(
     text: string,
     values?: readonly unknown[],
@@ -17,8 +35,21 @@ export interface NodePostgresPoolLike {
 
 /** Constructor seam used to verify exact connection authority without opening a socket. */
 export type NodePostgresPoolConstructor = new (
-  configuration: Readonly<{ connectionString: string }>,
+  configuration: Readonly<NodePostgresPluginPoolConfiguration>,
 ) => NodePostgresPoolLike;
+
+/** Credential-free evidence retained when an idle PostgreSQL client fails. */
+export interface PluginPostgresPoolErrorRecord {
+  readonly message: string;
+  readonly context: 'IntegrationPluginPostgresRuntime';
+  readonly errorName: string;
+  readonly postgresCode: string | null;
+}
+
+/** Error-observation seam used to prove idle-client failures cannot serialize native detail. */
+export type PluginPostgresPoolErrorLogger = (
+  record: PluginPostgresPoolErrorRecord,
+) => void;
 
 /** Fixed driver-boundary failure that never reflects connection material. */
 export class PluginNodePostgresConfigurationError extends Error {
@@ -32,6 +63,44 @@ export class PluginNodePostgresConfigurationError extends Error {
 /** Fails closed without returning malformed PostgreSQL connection material. */
 function unavailable(): never {
   throw new PluginNodePostgresConfigurationError();
+}
+
+/** Retains only bounded classification tokens from a native PostgreSQL error. */
+function safePoolErrorClassification(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return POOL_ERROR_CLASSIFICATION_PATTERN.test(value) ? value : null;
+}
+
+/** Emits one structured pool-failure record without serializing the native database error. */
+function defaultPluginPostgresPoolErrorLogger(
+  record: PluginPostgresPoolErrorRecord,
+): void {
+  Logger.error(record, record.context);
+}
+
+/** Registers the idle-client failure boundary before a pool becomes runtime authority. */
+export function registerPluginPostgresPoolErrorHandler(
+  pool: NodePostgresPoolLike,
+  logError: PluginPostgresPoolErrorLogger = defaultPluginPostgresPoolErrorLogger,
+): void {
+  pool.on('error', (error) => {
+    let errorName: unknown;
+    let postgresCode: unknown;
+    try {
+      errorName = error.name;
+      postgresCode = (error as { readonly code?: unknown }).code;
+    } catch {
+      errorName = undefined;
+      postgresCode = undefined;
+    }
+
+    logError({
+      message: PLUGIN_POSTGRES_POOL_ERROR_MESSAGE,
+      context: 'IntegrationPluginPostgresRuntime',
+      errorName: safePoolErrorClassification(errorName) ?? 'Error',
+      postgresCode: safePoolErrorClassification(postgresCode),
+    });
+  });
 }
 
 /**
@@ -84,18 +153,26 @@ function requireConnectionString(value: string): string {
  *
  * The connection string is supplied explicitly by the already-validated hosted runtime and is
  * required to carry complete target/credential authority before the node-postgres constructor is
- * invoked. The constructor therefore cannot fill missing core connection fields from generic
- * libpq-style `PG*` process settings or accept query-string transport overrides. Parameter arrays
- * are copied because node-postgres accepts mutable arrays while Integration repositories expose
- * readonly fixed-query values.
+ * invoked. Finite acquisition, idle, lifetime, and pool-size bounds are explicit because the
+ * node-postgres connection-acquisition timeout otherwise defaults to no timeout. An idle-client
+ * error listener is registered before the pool crosses the runtime boundary so native errors do
+ * not become uncaught process failures or credential-bearing logs. Parameter arrays are copied
+ * because node-postgres accepts mutable arrays while Integration repositories expose readonly
+ * fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
   PoolConstructor: NodePostgresPoolConstructor = Pool as unknown as NodePostgresPoolConstructor,
+  logError: PluginPostgresPoolErrorLogger = defaultPluginPostgresPoolErrorLogger,
 ): PluginHostedPostgresPool {
   const pool = new PoolConstructor({
     connectionString: requireConnectionString(connectionString),
+    max: PLUGIN_POSTGRES_POOL_MAX,
+    connectionTimeoutMillis: PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS,
+    idleTimeoutMillis: PLUGIN_POSTGRES_IDLE_TIMEOUT_MS,
+    maxLifetimeSeconds: PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS,
   });
+  registerPluginPostgresPoolErrorHandler(pool, logError);
 
   return Object.freeze({
     async query<Row>(
