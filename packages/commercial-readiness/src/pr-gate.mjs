@@ -9,14 +9,18 @@ const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);
  * Reduce untrusted GitHub review records to the latest valid decisive review per actor.
  *
  * Non-array input, missing records, non-decisive states, blank reviewer identities, and
- * invalid or missing submission timestamps are excluded. When one actor has multiple
- * decisive reviews, the chronologically latest valid review wins; equal timestamps use
- * the later record in input order.
+ * invalid or missing submission timestamps are excluded. Approval records additionally
+ * must bind the exact current pull-request head; stale or malformed approval commit
+ * identities are ignored before they can replace a current change request. Change-request
+ * evidence remains fail-closed regardless of commit binding. When one actor has multiple
+ * remaining decisive reviews, the chronologically latest valid review wins; equal
+ * timestamps use the later record in input order.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
+ * @param {string} headSha Exact current pull-request head that an approval must bind.
  * @returns {Map<string, {state: string, timestamp: number}>} Latest decisive review by normalized actor.
  */
-function latestReviewsByActor(reviews) {
+function latestReviewsByActor(reviews, headSha) {
   const latest = new Map();
   for (const review of Array.isArray(reviews) ? reviews : []) {
     if (
@@ -29,6 +33,7 @@ function latestReviewsByActor(reviews) {
     const actor = review.actor.trim();
     const timestamp = Date.parse(review.submitted_at ?? '');
     if (!actor || !Number.isFinite(timestamp)) continue;
+    if (review.state === 'APPROVED' && review.commit_id !== headSha) continue;
     const current = latest.get(actor);
     if (!current || timestamp >= current.timestamp) {
       latest.set(actor, { state: review.state, timestamp });
@@ -85,10 +90,10 @@ function statusEvidence(pr, requiredContext) {
  *
  * The decision fails closed for malformed PR identity, wrong repository/base provenance,
  * merge conflicts or stale base ancestry, unresolved review threads, missing decisive
- * approval, any latest decisive change request, and missing/stale/non-successful required
- * workflow or status evidence. Reviewer records with invalid actor or timestamp evidence
- * never contribute to approval. `eligible` is true only when the de-duplicated `blockers`
- * array is empty.
+ * exact-head approval, any latest decisive change request, and missing/stale/non-successful
+ * required workflow or status evidence. Reviewer records with invalid actor or timestamp
+ * evidence never contribute to approval, and approvals bound to another commit are stale.
+ * `eligible` is true only when the de-duplicated `blockers` array is empty.
  *
  * @param {object} pr Collected pull-request evidence for one exact head.
  * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
@@ -123,7 +128,7 @@ export function evaluatePullRequestForMerge(pr, policy) {
     blockers.push('unresolved-review-thread');
   }
 
-  const decisiveReviews = latestReviewsByActor(pr.reviews);
+  const decisiveReviews = latestReviewsByActor(pr.reviews, pr.head_sha);
   let hasApproval = false;
   for (const review of decisiveReviews.values()) {
     if (review.state === 'APPROVED') hasApproval = true;
