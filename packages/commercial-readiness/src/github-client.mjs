@@ -5,6 +5,9 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const API_PAGE_SIZE = 100;
 const MAX_API_PAGES = 10;
+const MAX_READ_ATTEMPTS = 3;
+const READ_RETRY_DELAYS_MS = [100, 250];
+const READ_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
@@ -41,6 +44,11 @@ async function readBoundedText(response, maxBytes) {
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(merged);
+}
+
+function waitForReadRetry(attempt) {
+  const delay = READ_RETRY_DELAYS_MS[attempt - 1];
+  return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
 export class GitHubApiClient {
@@ -85,45 +93,55 @@ export class GitHubApiClient {
     ) {
       throw new Error('Invalid GitHub API path');
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await this.fetchImpl(`${API_ORIGIN}${path}`, {
-        method,
-        redirect: 'error',
-        signal: controller.signal,
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${this.token}`,
-          'user-agent': 'life-os-commercial-readiness',
-          'x-github-api-version': '2022-11-28',
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...headers,
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.toLowerCase().includes('json')) {
-        throw new Error('GitHub API response was invalid');
-      }
-      const text = await readBoundedText(response, this.maxResponseBytes);
-      if (!response.ok) {
-        throw new Error(
-          `GitHub API request failed with status ${response.status}`,
-        );
-      }
+    const maximumAttempts = method === 'GET' ? MAX_READ_ATTEMPTS : 1;
+    for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      let shouldRetry = false;
       try {
-        return text ? JSON.parse(text) : null;
-      } catch {
-        throw new Error('GitHub API response was invalid');
+        const response = await this.fetchImpl(`${API_ORIGIN}${path}`, {
+          method,
+          redirect: 'error',
+          signal: controller.signal,
+          headers: {
+            accept: 'application/vnd.github+json',
+            authorization: `Bearer ${this.token}`,
+            'user-agent': 'life-os-commercial-readiness',
+            'x-github-api-version': '2022-11-28',
+            ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+            ...headers,
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        const text = await readBoundedText(response, this.maxResponseBytes);
+        shouldRetry =
+          attempt < maximumAttempts &&
+          READ_RETRYABLE_STATUSES.has(response.status);
+        if (shouldRetry) continue;
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.toLowerCase().includes('json')) {
+          throw new Error('GitHub API response was invalid');
+        }
+        if (!response.ok) {
+          throw new Error(
+            `GitHub API request failed with status ${response.status}`,
+          );
+        }
+        try {
+          return text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error('GitHub API response was invalid');
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError')
+          throw new Error('GitHub API request timed out');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        if (shouldRetry) await waitForReadRetry(attempt);
       }
-    } catch (error) {
-      if (error?.name === 'AbortError')
-        throw new Error('GitHub API request timed out');
-      throw error;
-    } finally {
-      clearTimeout(timer);
     }
+    throw new Error('GitHub API request retry invariant failed');
   }
 }
 
