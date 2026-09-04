@@ -40,6 +40,7 @@ function pullRequest(overrides = {}) {
         actor: 'reviewer-a',
         state: 'APPROVED',
         submitted_at: '2026-08-03T06:00:00Z',
+        commit_id: HEAD_SHA,
       },
     ],
     unresolved_threads: 0,
@@ -108,27 +109,51 @@ describe('evaluatePullRequestForMerge', () => {
     }
   });
 
+  it('requires approval evidence to bind the exact current pull-request head', () => {
+    for (const commitId of ['b'.repeat(40), null, 'not-a-commit-sha']) {
+      const result = evaluatePullRequestForMerge(
+        pullRequest({
+          reviews: [
+            {
+              actor: 'reviewer-a',
+              state: 'APPROVED',
+              submitted_at: '2026-08-03T06:00:00Z',
+              commit_id: commitId,
+            },
+          ],
+        }),
+        policy(),
+      );
+      assert.equal(result.eligible, false);
+      assert.ok(result.blockers.includes('missing-approval'));
+    }
+  });
+
   it('rejects malformed reviewer identity or timestamp as approval evidence', () => {
     const malformedReviews = [
       {
         actor: '',
         state: 'APPROVED',
         submitted_at: '2026-08-03T06:00:00Z',
+        commit_id: HEAD_SHA,
       },
       {
         actor: '   ',
         state: 'APPROVED',
         submitted_at: '2026-08-03T06:00:00Z',
+        commit_id: HEAD_SHA,
       },
       {
         actor: 'reviewer-a',
         state: 'APPROVED',
         submitted_at: null,
+        commit_id: HEAD_SHA,
       },
       {
         actor: 'reviewer-a',
         state: 'APPROVED',
         submitted_at: 'not-a-timestamp',
+        commit_id: HEAD_SHA,
       },
     ];
     for (const review of malformedReviews) {
@@ -170,6 +195,7 @@ describe('evaluatePullRequestForMerge', () => {
               actor: 'reviewer-a',
               state: 'CHANGES_REQUESTED',
               submitted_at: '2026-08-03T06:00:00Z',
+              commit_id: HEAD_SHA,
             },
           ],
         }),
@@ -238,11 +264,13 @@ describe('evaluatePullRequestForMerge', () => {
           actor: 'reviewer-a',
           state: 'CHANGES_REQUESTED',
           submitted_at: '2026-08-03T05:00:00Z',
+          commit_id: HEAD_SHA,
         },
         {
           actor: 'reviewer-a',
           state: 'APPROVED',
           submitted_at: '2026-08-03T06:00:00Z',
+          commit_id: HEAD_SHA,
         },
       ],
     });
@@ -252,6 +280,37 @@ describe('evaluatePullRequestForMerge', () => {
     );
   });
 
+  it('does not let a stale approval clear current requested changes', () => {
+    const staleApprovalAfterChanges = pullRequest({
+      reviews: [
+        {
+          actor: 'reviewer-a',
+          state: 'CHANGES_REQUESTED',
+          submitted_at: '2026-08-03T05:00:00Z',
+          commit_id: HEAD_SHA,
+        },
+        {
+          actor: 'reviewer-a',
+          state: 'APPROVED',
+          submitted_at: '2026-08-03T06:00:00Z',
+          commit_id: 'b'.repeat(40),
+        },
+        {
+          actor: 'reviewer-b',
+          state: 'APPROVED',
+          submitted_at: '2026-08-03T06:30:00Z',
+          commit_id: HEAD_SHA,
+        },
+      ],
+    });
+    const result = evaluatePullRequestForMerge(
+      staleApprovalAfterChanges,
+      policy(),
+    );
+    assert.equal(result.eligible, false);
+    assert.ok(result.blockers.includes('changes-requested'));
+  });
+
   it('does not let a non-decisive comment clear requested changes', () => {
     const commentedAfterChanges = pullRequest({
       reviews: [
@@ -259,11 +318,13 @@ describe('evaluatePullRequestForMerge', () => {
           actor: 'reviewer-a',
           state: 'CHANGES_REQUESTED',
           submitted_at: '2026-08-03T05:00:00Z',
+          commit_id: HEAD_SHA,
         },
         {
           actor: 'reviewer-a',
           state: 'COMMENTED',
           submitted_at: '2026-08-03T06:00:00Z',
+          commit_id: HEAD_SHA,
         },
       ],
     });
