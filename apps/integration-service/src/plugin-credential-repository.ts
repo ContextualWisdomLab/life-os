@@ -75,7 +75,11 @@ function storedUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
   }
-  return value.toLowerCase();
+  const canonical = value.toLowerCase();
+  if (value !== canonical) {
+    return invalidEvidence();
+  }
+  return canonical;
 }
 
 function inputInstant(value: unknown): string {
@@ -90,12 +94,17 @@ function inputInstant(value: unknown): string {
 }
 
 function storedInstant(value: unknown): string {
-  const candidate =
-    value instanceof Date
-      ? value.toISOString()
-      : typeof value === 'string'
-        ? value
-        : '';
+  let candidate: string;
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) {
+      return invalidEvidence();
+    }
+    candidate = value.toISOString();
+  } else if (typeof value === 'string') {
+    candidate = value;
+  } else {
+    return invalidEvidence();
+  }
   if (!ISO_INSTANT_PATTERN.test(candidate)) {
     return invalidEvidence();
   }
@@ -144,8 +153,30 @@ function storedSecretReference(value: unknown): string {
   return value;
 }
 
-function oneOrUndefined<Row>(rows: readonly Row[]): Row | undefined {
-  if (rows.length > 1) {
+/**
+ * Accepts only an internally consistent zero-or-one-row SQL result. Exact zero-row
+ * results map to `undefined`; malformed envelopes, mismatched row counts, and a
+ * declared row without row evidence are corrupted persistence evidence.
+ */
+function oneOrUndefined<Row>(
+  result: PluginCredentialSqlResult<Row>,
+): Row | undefined {
+  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+    return invalidEvidence();
+  }
+  const rows = result.rows;
+  const rowCount = result.rowCount;
+  if (
+    !Array.isArray(rows) ||
+    typeof rowCount !== 'number' ||
+    !Number.isInteger(rowCount) ||
+    rowCount < 0 ||
+    rowCount !== rows.length ||
+    rows.length > 1
+  ) {
+    return invalidEvidence();
+  }
+  if (rows.length === 1 && rows[0] === undefined) {
     return invalidEvidence();
   }
   return rows[0];
@@ -154,6 +185,9 @@ function oneOrUndefined<Row>(rows: readonly Row[]): Row | undefined {
 function validateCreate(
   record: PluginCredentialBindingRecord,
 ): PluginCredentialBindingRecord {
+  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+    return invalidInput();
+  }
   if (record.status !== 'active' || record.revokedAt !== null) {
     return invalidInput();
   }
@@ -171,6 +205,9 @@ function validateCreate(
 }
 
 function validateRevocation(input: RevokePluginCredential): RevokePluginCredential {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    return invalidInput();
+  }
   return Object.freeze({
     credentialBindingId: inputUuid(input.credentialBindingId),
     workspaceId: inputUuid(input.workspaceId),
@@ -179,14 +216,24 @@ function validateRevocation(input: RevokePluginCredential): RevokePluginCredenti
   });
 }
 
-function parseRow(row: PluginCredentialRow): PluginCredentialBindingRecord {
+/**
+ * Converts one returned SQL row into canonical durable binding evidence. Every
+ * identity, lifecycle instant, status transition, credential name, and opaque
+ * secret reference is validated before the row can become application authority.
+ */
+function parseRow(row: unknown): PluginCredentialBindingRecord {
+  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+    return invalidEvidence();
+  }
+  const candidate = row as PluginCredentialRow;
   const status =
-    row.credential_status === 'active' || row.credential_status === 'revoked'
-      ? row.credential_status
+    candidate.credential_status === 'active' ||
+    candidate.credential_status === 'revoked'
+      ? candidate.credential_status
       : invalidEvidence();
-  const boundAt = storedInstant(row.bound_at);
+  const boundAt = storedInstant(candidate.bound_at);
   const revokedAt =
-    row.revoked_at === null ? null : storedInstant(row.revoked_at);
+    candidate.revoked_at === null ? null : storedInstant(candidate.revoked_at);
   if (
     (status === 'active' && revokedAt !== null) ||
     (status === 'revoked' && revokedAt === null) ||
@@ -196,12 +243,12 @@ function parseRow(row: PluginCredentialRow): PluginCredentialBindingRecord {
     return invalidEvidence();
   }
   return Object.freeze({
-    credentialBindingId: storedUuid(row.credential_binding_id),
-    installationId: storedUuid(row.installation_id),
-    workspaceId: storedUuid(row.workspace_id),
-    installedByUserId: storedUuid(row.installed_by_user_id),
-    credentialName: storedCredentialName(row.credential_name),
-    secretReference: storedSecretReference(row.secret_reference),
+    credentialBindingId: storedUuid(candidate.credential_binding_id),
+    installationId: storedUuid(candidate.installation_id),
+    workspaceId: storedUuid(candidate.workspace_id),
+    installedByUserId: storedUuid(candidate.installed_by_user_id),
+    credentialName: storedCredentialName(candidate.credential_name),
+    secretReference: storedSecretReference(candidate.secret_reference),
     status,
     boundAt,
     revokedAt,
@@ -242,8 +289,8 @@ export class PostgresPluginCredentialBindingStore
         safe.boundAt,
       ],
     );
-    let row = oneOrUndefined(inserted.rows);
-    if (!row) {
+    let row = oneOrUndefined(inserted);
+    if (row === undefined) {
       const existing = await this.client.query<PluginCredentialRow>(
         `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_credential_binding_record
@@ -253,9 +300,9 @@ export class PostgresPluginCredentialBindingStore
          LIMIT 2`,
         [safe.credentialBindingId, safe.workspaceId, safe.installedByUserId],
       );
-      row = oneOrUndefined(existing.rows);
+      row = oneOrUndefined(existing);
     }
-    if (!row) {
+    if (row === undefined) {
       return invalidEvidence();
     }
     return parseRow(row);
@@ -279,8 +326,8 @@ export class PostgresPluginCredentialBindingStore
        LIMIT 2`,
       [credentialBindingId, workspaceId, installedByUserId],
     );
-    const row = oneOrUndefined(result.rows);
-    if (!row) {
+    const row = oneOrUndefined(result);
+    if (row === undefined) {
       return undefined;
     }
     const durable = parseRow(row);
@@ -316,8 +363,8 @@ export class PostgresPluginCredentialBindingStore
         safe.revokedAt,
       ],
     );
-    let row = oneOrUndefined(updated.rows);
-    if (!row) {
+    let row = oneOrUndefined(updated);
+    if (row === undefined) {
       const replay = await this.client.query<PluginCredentialRow>(
         `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_credential_binding_record
@@ -328,9 +375,9 @@ export class PostgresPluginCredentialBindingStore
          LIMIT 2`,
         [safe.credentialBindingId, safe.workspaceId, safe.installedByUserId],
       );
-      row = oneOrUndefined(replay.rows);
+      row = oneOrUndefined(replay);
     }
-    if (!row) {
+    if (row === undefined) {
       return undefined;
     }
     const durable = parseRow(row);

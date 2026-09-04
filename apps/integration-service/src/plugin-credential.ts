@@ -5,6 +5,8 @@ import type {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const ISO_INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CREDENTIAL_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const MAXIMUM_SECRET_LENGTH = 8192;
@@ -112,13 +114,77 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
-function requireContext(
-  context: PluginInstallationContext,
-): PluginInstallationContext {
+/**
+ * Accepts only a UUIDv4 that is already stored in canonical lowercase form.
+ * Persisted identity is evidence, so normalization is rejected rather than hidden.
+ */
+function requireStoredUuid(value: unknown): string {
+  const canonical = requireUuidV4(value);
+  if (value !== canonical) {
+    return invalid();
+  }
+  return canonical;
+}
+
+/**
+ * Bounds the trusted runtime context before field access and returns canonical
+ * workspace/user UUIDv4 authority. Malformed envelopes fail without I/O.
+ */
+function requireContext(value: unknown): PluginInstallationContext {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  const context = value as PluginInstallationContext;
   return Object.freeze({
     workspaceId: requireUuidV4(context.workspaceId),
     actorUserId: requireUuidV4(context.actorUserId),
   });
+}
+
+/** Rejects malformed bind command envelopes before secret or persistence authority is touched. */
+function requireBindInput(value: unknown): BindPluginCredentialInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  return value as BindPluginCredentialInput;
+}
+
+/** Captures one canonical operation instant before any authority, persistence, or secret I/O. */
+function currentInstant(now: () => Date): string {
+  let value: unknown;
+  try {
+    value = now();
+  } catch {
+    return invalid();
+  }
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    return invalid();
+  }
+  try {
+    return value.toISOString();
+  } catch {
+    return invalid();
+  }
+}
+
+/**
+ * Requires persisted lifecycle time to be the canonical millisecond UTC instant
+ * representation used by credential authority; equivalent alternate text is rejected.
+ */
+function requireStoredInstant(value: unknown): string {
+  if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
+    return invalid();
+  }
+  const instant = new Date(value);
+  if (!Number.isFinite(instant.getTime()) || instant.toISOString() !== value) {
+    return invalid();
+  }
+  return value;
+}
+
+/** Converts an already-validated canonical instant to epoch milliseconds for ordering only. */
+function instantMilliseconds(value: string): number {
+  return new Date(value).getTime();
 }
 
 function requireCredentialName(value: unknown): string {
@@ -153,6 +219,42 @@ function requireSecretReference(value: unknown): string {
   return value;
 }
 
+/** Validates the complete durable binding lifecycle before any record becomes application authority. */
+function requireBindingRecord(value: unknown): PluginCredentialBindingRecord {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return invalid();
+  }
+  const candidate = value as PluginCredentialBindingRecord;
+  const status =
+    candidate.status === 'active' || candidate.status === 'revoked'
+      ? candidate.status
+      : invalid();
+  const boundAt = requireStoredInstant(candidate.boundAt);
+  const revokedAt =
+    candidate.revokedAt === null
+      ? null
+      : requireStoredInstant(candidate.revokedAt);
+  if (
+    (status === 'active' && revokedAt !== null) ||
+    (status === 'revoked' && revokedAt === null) ||
+    (revokedAt !== null &&
+      instantMilliseconds(revokedAt) < instantMilliseconds(boundAt))
+  ) {
+    return invalid();
+  }
+  return Object.freeze({
+    credentialBindingId: requireStoredUuid(candidate.credentialBindingId),
+    installationId: requireStoredUuid(candidate.installationId),
+    workspaceId: requireStoredUuid(candidate.workspaceId),
+    installedByUserId: requireStoredUuid(candidate.installedByUserId),
+    credentialName: requireCredentialName(candidate.credentialName),
+    secretReference: requireSecretReference(candidate.secretReference),
+    status,
+    boundAt,
+    revokedAt,
+  });
+}
+
 function sameBindingAuthority(
   record: PluginCredentialBindingRecord,
   input: {
@@ -169,6 +271,22 @@ function sameBindingAuthority(
     record.workspaceId === input.workspaceId &&
     record.installedByUserId === input.installedByUserId &&
     record.credentialName === input.credentialName
+  );
+}
+
+/**
+ * Tests whether a validated durable binding can be observed at the captured
+ * operation instant: binding must already exist and any revocation must not be future-dated.
+ */
+function bindingVisibleAt(
+  record: PluginCredentialBindingRecord,
+  operationAt: string,
+): boolean {
+  const operationMilliseconds = instantMilliseconds(operationAt);
+  return (
+    instantMilliseconds(record.boundAt) <= operationMilliseconds &&
+    (record.revokedAt === null ||
+      instantMilliseconds(record.revokedAt) <= operationMilliseconds)
   );
 }
 
@@ -199,6 +317,22 @@ function revokedBinding(
     record.status === 'revoked' &&
     record.revokedAt !== null &&
     requireSecretReference(record.secretReference) === record.secretReference
+  );
+}
+
+/**
+ * Keeps a revoke winner tied to the exact immutable binding evidence that was
+ * validated before the durable mutation. A store cannot redirect provider
+ * deletion by changing installation, credential, secret reference, or bound time.
+ */
+function sameImmutableBindingEvidence(
+  durable: PluginCredentialBindingRecord,
+  existing: PluginCredentialBindingRecord,
+): boolean {
+  return (
+    sameBindingAuthority(durable, existing) &&
+    durable.secretReference === existing.secretReference &&
+    durable.boundAt === existing.boundAt
   );
 }
 
@@ -234,11 +368,13 @@ export class PluginCredentialApplication {
    * persists only the opaque reference returned by the external secret store.
    */
   async bind(input: BindPluginCredentialInput): Promise<PluginCredentialBindingView> {
-    const context = requireContext(input.trustedContext);
-    const installationId = requireUuidV4(input.installationId);
-    const credentialBindingId = requireUuidV4(input.credentialBindingId);
-    const credentialName = requireCredentialName(input.credentialName);
-    const secretValue = requireSecretValue(input.secretValue);
+    const request = requireBindInput(input);
+    const context = requireContext(request.trustedContext);
+    const installationId = requireUuidV4(request.installationId);
+    const credentialBindingId = requireUuidV4(request.credentialBindingId);
+    const credentialName = requireCredentialName(request.credentialName);
+    const secretValue = requireSecretValue(request.secretValue);
+    const boundAt = currentInstant(this.now);
     const installation = await this.installationAuthority.getInstallation(
       context,
       installationId,
@@ -246,10 +382,15 @@ export class PluginCredentialApplication {
     if (
       !installation ||
       installation.status !== 'active' ||
+      installation.revokedAt !== null ||
       installation.workspaceId !== context.workspaceId ||
       installation.installedByUserId !== context.actorUserId ||
       installation.installationId !== installationId
     ) {
+      return invalid();
+    }
+    const installedAt = requireStoredInstant(installation.installedAt);
+    if (instantMilliseconds(installedAt) > instantMilliseconds(boundAt)) {
       return invalid();
     }
 
@@ -260,13 +401,18 @@ export class PluginCredentialApplication {
       installedByUserId: context.actorUserId,
       credentialName,
     } as const;
-    const existing = await this.bindingStore.findById(
+    const existingEvidence = await this.bindingStore.findById(
       credentialBindingId,
       context.workspaceId,
       context.actorUserId,
     );
-    if (existing) {
-      if (!activeBinding(existing, authority)) {
+    if (existingEvidence !== undefined) {
+      const existing = requireBindingRecord(existingEvidence);
+      if (
+        !activeBinding(existing, authority) ||
+        !bindingVisibleAt(existing, boundAt) ||
+        instantMilliseconds(existing.boundAt) < instantMilliseconds(installedAt)
+      ) {
         return invalid();
       }
       return view(existing);
@@ -292,12 +438,14 @@ export class PluginCredentialApplication {
       ...authority,
       secretReference,
       status: 'active',
-      boundAt: this.now().toISOString(),
+      boundAt,
       revokedAt: null,
     });
     let durable: PluginCredentialBindingRecord;
     try {
-      durable = await this.bindingStore.createIfAbsent(candidate);
+      durable = requireBindingRecord(
+        await this.bindingStore.createIfAbsent(candidate),
+      );
     } catch {
       try {
         await this.secretStore.deleteSecret(secretReference);
@@ -307,7 +455,11 @@ export class PluginCredentialApplication {
       }
       return invalid();
     }
-    if (!activeBinding(durable, authority)) {
+    if (
+      !activeBinding(durable, authority) ||
+      !bindingVisibleAt(durable, boundAt) ||
+      instantMilliseconds(durable.boundAt) < instantMilliseconds(installedAt)
+    ) {
       try {
         await this.secretStore.deleteSecret(secretReference);
       } catch {
@@ -335,32 +487,44 @@ export class PluginCredentialApplication {
   ): Promise<PluginCredentialBindingView> {
     const context = requireContext(trustedContext);
     const credentialBindingId = requireUuidV4(credentialBindingIdInput);
-    const existing = await this.bindingStore.findById(
+    const revokedAt = currentInstant(this.now);
+    const existingEvidence = await this.bindingStore.findById(
       credentialBindingId,
       context.workspaceId,
       context.actorUserId,
     );
+    if (existingEvidence === undefined) {
+      return invalid();
+    }
+    const existing = requireBindingRecord(existingEvidence);
     if (
-      !existing ||
+      existing.credentialBindingId !== credentialBindingId ||
       existing.workspaceId !== context.workspaceId ||
-      existing.installedByUserId !== context.actorUserId
+      existing.installedByUserId !== context.actorUserId ||
+      !bindingVisibleAt(existing, revokedAt)
     ) {
       return invalid();
     }
-    const revokedAt = this.now().toISOString();
-    const durable = await this.bindingStore.revokeActive({
+    const durableEvidence = await this.bindingStore.revokeActive({
       credentialBindingId,
       workspaceId: context.workspaceId,
       installedByUserId: context.actorUserId,
       revokedAt,
     });
+    if (durableEvidence === undefined) {
+      return invalid();
+    }
+    const durable = requireBindingRecord(durableEvidence);
     if (
-      !durable ||
       !revokedBinding(durable, {
         credentialBindingId,
         workspaceId: context.workspaceId,
         installedByUserId: context.actorUserId,
-      })
+      }) ||
+      !sameImmutableBindingEvidence(durable, existing) ||
+      (existing.status === 'revoked' &&
+        durable.revokedAt !== existing.revokedAt) ||
+      !bindingVisibleAt(durable, revokedAt)
     ) {
       return invalid();
     }
