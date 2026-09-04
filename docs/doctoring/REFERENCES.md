@@ -19,6 +19,10 @@ NestJS. (n.d.). *Lifecycle events.* Retrieved September 4, 2026, from https://do
 
 Node.js. (n.d.). *Undici: Specification compliance—Garbage collection.* Retrieved September 4, 2026, from https://undici.nodejs.org/#/?id=garbage-collection
 
+node-postgres. (n.d.). *Connecting.* Retrieved September 4, 2026, from https://node-postgres.com/features/connecting
+
+node-postgres. (n.d.). *pg.Client API.* Retrieved September 4, 2026, from https://node-postgres.com/apis/client
+
 node-postgres. (n.d.). *pg.Pool API.* Retrieved September 4, 2026, from https://node-postgres.com/apis/pool
 
 node-postgres. (n.d.). *Pooling.* Retrieved September 4, 2026, from https://node-postgres.com/features/pooling
@@ -56,6 +60,7 @@ Locke, E. A., & Latham, G. P. (2002). Building a practically useful theory of go
 - PostgreSQL 18 Section 13.3 is the authority for #235's row-lock serialization: `FOR SHARE` conflicts with concurrent `UPDATE`, `DELETE`, `SELECT FOR UPDATE`, and `SELECT FOR NO KEY UPDATE` on the selected installation row. Section 41.9 is the authority for bounded PL/pgSQL `RAISE` metadata. These citations support the mechanism; they are not execution evidence that the migration passed on a database.
 - WHATWG Streams defines readable-stream cancellation as consumer loss of interest that closes the stream, discards queued chunks, and invokes the underlying source cancellation mechanism. Node.js Undici additionally warns that leaving response-body resource release to garbage collection can reduce connection reuse and cause stalls or deadlocks; #242 therefore requires every acquired Vault replay body to be consumed or cancelled on abnormal exit. These references justify the transport-cleanup contract but are not package or integration execution evidence.
 - NestJS lifecycle documentation states that registered `onApplicationShutdown` hooks run during explicit application close and, after `enableShutdownHooks`, signal-driven termination. node-postgres documents `pool.end()` as draining active clients, disconnecting clients, and stopping pool timers. #244 uses those primary contracts to bind the Integration-owned Plugin pool to the Nest application lifecycle. They support the ownership mechanism but do not prove real PostgreSQL/Vault acceptance or establish a production pool-size choice.
+- node-postgres documents that missing client connection fields are supplied from libpq-style process environment variables such as `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGPORT`, and `PGDATABASE`. The concrete Plugin PostgreSQL successor therefore rejects an incomplete or delegated core URI before constructing `pg.Pool`; the URI must own scheme, user, password, host, port, and database, and may not delegate those fields through query aliases, service configuration, or passfile authority. This source supports the driver-boundary rationale; it is not frozen-lock, package, TLS-policy, or real-database execution evidence.
 - SLSA claims must state the exact track and attained level with verifiable provenance; “SLSA compliant” is not an acceptable unqualified product claim.
 - SPDX is used for SBOM exchange. An SBOM does not replace vulnerability assessment or license review.
 - Goal-setting, implementation-intention, and habit research informs interaction design guardrails; LifeOS is not a medical or psychological treatment and does not diagnose users.
