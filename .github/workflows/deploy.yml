@@ -34,7 +34,7 @@ env:
 jobs:
   validate:
     name: Validate immutable deployment
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout exact revision
@@ -75,7 +75,7 @@ jobs:
   deploy:
     name: Apply protected production rollout
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
     env:
