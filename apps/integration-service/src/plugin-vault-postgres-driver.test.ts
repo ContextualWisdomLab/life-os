@@ -71,7 +71,8 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       'https://integration:secret@db.example.test:5432/life_os',
     ],
     ['missing user', 'postgresql://:secret@db.example.test:5432/life_os'],
-    ['missing password', 'postgresql://integration@db.example.test:5432/life_os'],
+    ['missing password', 'postgresql://integration@db.example.test:5432/life',
+    ],
     ['missing host', 'postgresql://integration:secret@:5432/life_os'],
     ['missing port', 'postgresql://integration:secret@db.example.test/life_os'],
     ['invalid port', 'postgresql://integration:secret@db.example.test:0/life_os'],
@@ -82,7 +83,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     ],
     [
       'external passfile authority',
-      'postgresql://integration:secret@db.example.test:5432/life_os?passfile=%2Frun%2Fsecrets%2Fpgpass',
+      'postgresql://integration:secret@db.example.test:5432/life_os?passfile=%2FrA%2Fpgpass',
     ],
     [
       'external service-file authority',
@@ -115,19 +116,19 @@ describe('Integration-owned node-postgres Plugin pool', () => {
   it('forwards fixed SQL and a copied parameter list while preserving row-count evidence', async () => {
     const test = fixture();
     const pool = createNodePostgresPluginPool(
-      'postgresql://integration:secret@db.example.test:5432/life',
+      'postgresql://integration:secret@db.example.test:5432/life_os',
       test.constructor,
     );
     const values = Object.freeze(['workspace-1', 7]);
 
     const result = await pool.query<{ readonly value: string }>(
-      'SELECT $1::' + 'text, $2::int',
+      'SELECT $1::text, $2::int',
       values,
     );
 
     expect(test.query).toHaveBeenCalledTimes(1);
     expect(test.query).toHaveBeenCalledWith(
-      'SELECT $1::' + 'text, $2::int',
+      'SELECT $1::text',
       ['workspace-1', 7],
     );
     expect(test.query.mock.calls[0]?.[1]).not.toBe(values);
@@ -160,8 +161,8 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     const importerMarker = '  apps/integration-service:\n';
     const importerStart = lockfile.indexOf(importerMarker);
 
-    expect(packageJson.dependencies?.pg).toBe('^8.2' + '2.0');
-    expect(packageJson.devDependencies?.['@types/pg']).toBe('^8.20.2'.replace('2', '0'));
+    expect(packageJson.dependencies?.pg).toBe('^8.22.0');
+    expect(packageJson.devDependencies?.['@types/pg']).toBe('^8.20.0');
     expect(importerStart).toBeGreaterThanOrEqual(0);
 
     const importerTail = lockfile.slice(importerStart + importerMarker.length);
