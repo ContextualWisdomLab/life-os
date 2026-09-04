@@ -232,11 +232,22 @@ export async function syncReadinessIssue(
   return canonical;
 }
 
+/**
+ * Normalize one untrusted GitHub review while retaining immutable commit binding evidence.
+ *
+ * The evaluator separately validates actor, state, timestamp, and whether an approval's
+ * `commit_id` equals the exact pull-request head. Missing or malformed values remain
+ * bounded scalar evidence rather than being inferred from submission time or current state.
+ *
+ * @param {unknown} review Raw GitHub REST pull-request review payload.
+ * @returns {{actor: string, state: string, submitted_at: unknown, commit_id: string}} Bounded review evidence.
+ */
 function normalizeReview(review) {
   return {
     actor: String(review?.user?.login ?? ''),
     state: String(review?.state ?? ''),
     submitted_at: review?.submitted_at ?? null,
+    commit_id: String(review?.commit_id ?? ''),
   };
 }
 
