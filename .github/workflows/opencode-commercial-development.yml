@@ -15,7 +15,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   OPENCODE_PACKAGE_VERSION: '1.18.9'
   POLICY_PATH: product/opencode-commercial-development-policy.json
-  NIM_BRIDGE_PORT: '8765'
+  LIFEOS_ORCHESTRATOR_GATEWAY_PORT: '8000'
 
 jobs:
   develop:
@@ -69,17 +69,8 @@ jobs:
       - name: Verify the exact OpenCode installation
         run: |
           set -Eeuo pipefail
-          version="$(pnpm --filter @life-os/commercial-development-agent exec opencode --version | head -n 1 | tr -d '\r')"
-          case "$version" in
-            *"$OPENCODE_PACKAGE_VERSION"*) ;;
-            *)
-              echo '::error::Installed OpenCode version does not match the reviewed package pin.'
-              exit 1
-              ;;
-          esac
-          help="$(pnpm --filter @life-os/commercial-development-agent exec opencode --help)"
-          grep -F -- '--pure' <<<"$help" > /dev/null
-          pnpm --filter @life-os/commercial-development-agent exec opencode run --help > /dev/null
+          unset NODE_OPTIONS
+          node packages/commercial-development-agent/src/verify-opencode-identity.mjs
 
       - name: Prepare private evidence directory
         run: |
@@ -151,8 +142,6 @@ jobs:
       - name: Create the isolated UUIDv4 feature branch
         id: branch
         if: steps.selection.outputs.selected == 'true' && steps.github_evidence.outputs.open_pull_requests == '0'
-        env:
-          CONFIGURED_MODEL: ${{ vars.OPENCODE_NVIDIA_MODEL }}
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
@@ -162,9 +151,7 @@ jobs:
           from datetime import datetime, timezone
 
           run_id = str(uuid.uuid4())
-          configured = os.environ.get('CONFIGURED_MODEL', '').strip()
-          provider_model = configured or 'meta/llama-3.3-70b-instruct'
-          model_label = provider_model if provider_model.startswith('nvidia/') else f'nvidia/{provider_model}'
+          model_label = 'contextual_orchestrator_gateway/orchestrator/free'
           run = {
               'schema': 'life-os.opencode-commercial-development-run.v1',
               'run_id': run_id,
@@ -211,15 +198,26 @@ jobs:
           command -v iptables > /dev/null
           command -v ip6tables > /dev/null
           sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_model
-          sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_bridge
+          sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin opencode_gateway
           run_id="$(jq -r '.run_id' "$RECEIPT_DIR/run.json")"
           model_workspace="$RUNNER_TEMP/opencode-model-${run_id}"
           model_home="$RUNNER_TEMP/opencode-model-home-${run_id}"
           model_store="$RUNNER_TEMP/opencode-pnpm-store-${run_id}"
           trusted_corepack_home="$RUNNER_TEMP/opencode-trusted-corepack-${run_id}"
+          orchestrator_sidecar_root="$RUNNER_TEMP/lifeos-contextual-orchestrator-${run_id}"
+          gateway_token="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          echo "::add-mask::$gateway_token"
           install -d -m 0755 "$model_workspace" "$trusted_corepack_home"
           install -d -m 0700 "$model_home" "$model_store"
-          echo "TRUSTED_COREPACK_HOME=$trusted_corepack_home" >> "$GITHUB_ENV"
+          sudo install -d -m 0700 -o opencode_gateway -g opencode_gateway "$orchestrator_sidecar_root"
+          sudo install -m 0500 -o opencode_gateway -g opencode_gateway \
+            "$GITHUB_WORKSPACE/scripts/ci/lifeos_contextual_orchestrator_sidecar.sh" \
+            "$orchestrator_sidecar_root/bootstrap.sh"
+          {
+            echo "TRUSTED_COREPACK_HOME=$trusted_corepack_home"
+            echo "CONTEXTUAL_ORCHESTRATOR_TOKEN=$gateway_token"
+            echo "ORCHESTRATOR_SIDECAR_ROOT=$orchestrator_sidecar_root"
+          } >> "$GITHUB_ENV"
           rsync -a \
             --exclude='.git' \
             --exclude='node_modules' \
@@ -242,7 +240,12 @@ jobs:
           COREPACK_HOME="$trusted_corepack_home" \
             corepack install --global "$package_manager"
           chmod -R u=rwX,go=rX "$trusted_corepack_home"
-          MODEL_HOME="$model_home" MODEL_WORKSPACE="$model_workspace" NIM_BRIDGE_PORT="$NIM_BRIDGE_PORT" RECEIPT_DIR="$RECEIPT_DIR" python3 - <<'PYCONFIG'
+          MODEL_HOME="$model_home" \
+            MODEL_WORKSPACE="$model_workspace" \
+            GATEWAY_PORT="$LIFEOS_ORCHESTRATOR_GATEWAY_PORT" \
+            GATEWAY_TOKEN="$gateway_token" \
+            RECEIPT_DIR="$RECEIPT_DIR" \
+            python3 - <<'PYCONFIG'
           import json
           import os
           from pathlib import Path
@@ -252,8 +255,12 @@ jobs:
           )
           model_label = run['model_label']
           provider_id, separator, model_id = model_label.partition('/')
-          if provider_id != 'nvidia' or separator != '/' or not model_id:
-              raise SystemExit('invalid_nvidia_model_label')
+          if (
+              provider_id != 'contextual_orchestrator_gateway'
+              or separator != '/'
+              or model_id != 'orchestrator/free'
+          ):
+              raise SystemExit('invalid_contextual_orchestrator_model_label')
           model_workspace_path = Path(os.environ['MODEL_WORKSPACE'])
           instruction_files = [
               model_workspace_path / 'AGENTS.md',
@@ -267,19 +274,19 @@ jobs:
               '$schema': 'https://opencode.ai/config.json',
               'autoupdate': False,
               'share': 'disabled',
-              'enabled_providers': ['nvidia'],
+              'enabled_providers': ['contextual_orchestrator_gateway'],
               'model': model_label,
               'small_model': model_label,
               'instructions': instruction_paths,
               'provider': {
-                  'nvidia': {
+                  'contextual_orchestrator_gateway': {
+                      'npm': '@ai-sdk/openai-compatible',
+                      'name': 'Contextual Orchestrator Gateway',
                       'whitelist': [model_id],
-                      'models': {model_id: {'name': model_id}},
+                      'models': {model_id: {'name': 'governed zero-cost orchestration'}},
                       'options': {
-                          'baseURL': f"http://127.0.0.1:{os.environ['NIM_BRIDGE_PORT']}/v1",
-                          'apiKey': 'local-loopback-placeholder',
-                          'timeout': 60_000,
-                          'chunkTimeout': 30_000,
+                          'baseURL': f"http://127.0.0.1:{os.environ['GATEWAY_PORT']}/v1",
+                          'apiKey': os.environ['GATEWAY_TOKEN'],
                       },
                   },
               },
@@ -310,7 +317,7 @@ jobs:
           chmod 0700 "$GITHUB_WORKSPACE"
           model_uid="$(id -u opencode_model)"
           sudo iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -j REJECT
-          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT
+          sudo iptables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -d 127.0.0.1 -p tcp --dport "$LIFEOS_ORCHESTRATOR_GATEWAY_PORT" -j ACCEPT
           sudo ip6tables -I OUTPUT 1 -m owner --uid-owner "$model_uid" -j REJECT
           sudo -u opencode_model env -i \
             HOME="$model_home" \
@@ -344,138 +351,61 @@ jobs:
             OPENCODE_DISABLE_AUTOUPDATE=true \
             OPENCODE_DISABLE_MODELS_FETCH=true \
             OPENCODE_DISABLE_PROJECT_CONFIG=true \
-            NVIDIA_API_KEY=local-loopback-placeholder \
-            bash -c 'cd "$1" && catalog="$(pnpm --filter @life-os/commercial-development-agent exec opencode models nvidia)" && test "$catalog" = "$2"' \
+            bash -c 'cd "$1" && catalog="$(pnpm --filter @life-os/commercial-development-agent exec -- opencode models contextual_orchestrator_gateway)" && test "$catalog" = "$2"' \
               _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL"
 
-      - name: Start loopback NVIDIA credential bridge
+      - name: Start contextual-orchestrator free gateway
         id: bridge
         if: steps.model_catalog.outcome == 'success'
         env:
+          BYTEZ_API_KEY: ${{ secrets.BYTEZ_API_KEY }}
           NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+          NVIDIA_NIM_API_KEY_SUB: ${{ secrets.NVIDIA_NIM_API_KEY_SUB }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -Eeuo pipefail
-          if [ -z "$NVIDIA_NIM_API_KEY" ]; then
+          credential_available=false
+          for credential_name in \
+            BYTEZ_API_KEY \
+            NVIDIA_NIM_API_KEY \
+            NVIDIA_NIM_API_KEY_SUB \
+            OPENROUTER_API_KEY \
+            OPENAI_API_KEY
+          do
+            if [ -n "${!credential_name:-}" ]; then
+              credential_available=true
+              break
+            fi
+          done
+          if [ "$credential_available" != true ]; then
             echo 'available=false' >> "$GITHUB_OUTPUT"
             echo 'reason=provider_credential_missing' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          bridge_home="$RUNNER_TEMP/opencode-bridge-${{ steps.branch.outputs.run_id }}"
-          echo "BRIDGE_HOME=$bridge_home" >> "$GITHUB_ENV"
-          sudo install -d -m 0700 -o opencode_bridge -g opencode_bridge "$bridge_home"
-          cat > "$RECEIPT_DIR/nim-bridge.py" <<'PY'
-          import http.client
-          import os
-          import threading
-          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-          LISTEN_HOST = '127.0.0.1'
-          UPSTREAM_HOST = 'integrate.api.nvidia.com'
-          UPSTREAM_PATH = '/v1/chat/completions'
-          MAX_REQUEST_BYTES = 1_048_576
-          MAX_RESPONSE_BYTES = 8_388_608
-          MAX_PROVIDER_REQUESTS = 64
-          UPSTREAM_TIMEOUT_SECONDS = 60
-          API_KEY = os.environ.get('NVIDIA_NIM_API_KEY', '')
-          if not API_KEY:
-              raise SystemExit('provider_credential_missing')
-
-          class Handler(BaseHTTPRequestHandler):
-              request_count = 0
-              request_lock = threading.Lock()
-
-              def log_message(self, _format, *args):
-                  return
-
-              def send_empty(self, status):
-                  self.send_response(status)
-                  self.send_header('Content-Length', '0')
-                  self.end_headers()
-
-              def do_GET(self):
-                  if self.path == '/healthz':
-                      self.send_empty(204)
-                  else:
-                      self.send_empty(404)
-
-              def do_POST(self):
-                  if self.path != UPSTREAM_PATH:
-                      self.send_empty(404)
-                      return
-                  with self.request_lock:
-                      if self.request_count >= MAX_PROVIDER_REQUESTS:
-                          self.send_empty(429)
-                          return
-                      type(self).request_count += 1
-                  raw_length = self.headers.get('Content-Length', '')
-                  if not raw_length.isdigit():
-                      self.send_empty(411)
-                      return
-                  length = int(raw_length)
-                  if length > MAX_REQUEST_BYTES:
-                      self.send_empty(413)
-                      return
-                  body = self.rfile.read(length)
-                  if len(body) != length:
-                      self.send_empty(400)
-                      return
-                  connection = http.client.HTTPSConnection(
-                      UPSTREAM_HOST,
-                      443,
-                      timeout=UPSTREAM_TIMEOUT_SECONDS,
-                  )
-                  try:
-                      connection.request(
-                          'POST',
-                          UPSTREAM_PATH,
-                          body=body,
-                          headers={
-                              'Authorization': f'Bearer {API_KEY}',
-                              'Content-Type': self.headers.get('Content-Type', 'application/json'),
-                              'Accept': self.headers.get('Accept', 'application/json'),
-                          },
-                      )
-                      response = connection.getresponse()
-                      payload = response.read(MAX_RESPONSE_BYTES + 1)
-                      if len(payload) > MAX_RESPONSE_BYTES:
-                          self.send_empty(502)
-                          return
-                      self.send_response(response.status)
-                      self.send_header(
-                          'Content-Type',
-                          response.getheader('Content-Type', 'application/json'),
-                      )
-                      self.send_header('Content-Length', str(len(payload)))
-                      self.end_headers()
-                      self.wfile.write(payload)
-                  except (OSError, http.client.HTTPException, TimeoutError):
-                      self.send_empty(502)
-                  finally:
-                      connection.close()
-
-          port = int(os.environ['NIM_BRIDGE_PORT'])
-          server = ThreadingHTTPServer((LISTEN_HOST, port), Handler)
-          server.serve_forever(poll_interval=0.25)
-          PY
-          chmod 0600 "$RECEIPT_DIR/nim-bridge.py"
-          sudo install -m 0500 -o opencode_bridge -g opencode_bridge \
-            "$RECEIPT_DIR/nim-bridge.py" "$bridge_home/nim-bridge.py"
-          export NIM_BRIDGE_PORT
-          sudo --preserve-env=NVIDIA_NIM_API_KEY,NIM_BRIDGE_PORT \
-            -u opencode_bridge \
-            python3 "$bridge_home/nim-bridge.py" </dev/null >/dev/null 2>&1 &
-          unset NVIDIA_NIM_API_KEY
-          for _ in $(seq 1 20); do
+          sudo --preserve-env=CONTEXTUAL_ORCHESTRATOR_TOKEN,BYTEZ_API_KEY,NVIDIA_NIM_API_KEY,NVIDIA_NIM_API_KEY_SUB,OPENROUTER_API_KEY,OPENAI_API_KEY \
+            -u opencode_gateway \
+            env \
+              RUNNER_TEMP="$RUNNER_TEMP" \
+              LIFEOS_ORCHESTRATOR_SIDECAR_ROOT="$ORCHESTRATOR_SIDECAR_ROOT" \
+              LIFEOS_ORCHESTRATOR_GATEWAY_PORT="$LIFEOS_ORCHESTRATOR_GATEWAY_PORT" \
+              bash "$ORCHESTRATOR_SIDECAR_ROOT/bootstrap.sh" \
+            </dev/null >/dev/null 2>&1 &
+          for _ in $(seq 1 60); do
             if curl --fail --silent --show-error --max-time 1 \
-              "http://127.0.0.1:${NIM_BRIDGE_PORT}/healthz" >/dev/null; then
-              bridge_pid="$(pgrep -u opencode_bridge -f "$bridge_home/nim-bridge.py" | head -n 1)"
-              test -n "$bridge_pid"
-              echo "BRIDGE_PID=$bridge_pid" >> "$GITHUB_ENV"
+              "http://127.0.0.1:${LIFEOS_ORCHESTRATOR_GATEWAY_PORT}/healthz" >/dev/null; then
+              gateway_pid="$(pgrep -u opencode_gateway -f 'serve_seeded_gateway' | head -n 1)"
+              test -n "$gateway_pid"
+              echo "GATEWAY_PID=$gateway_pid" >> "$GITHUB_ENV"
               echo 'available=true' >> "$GITHUB_OUTPUT"
               echo 'reason=completed' >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            sleep 0.25
+            if ! pgrep --euid opencode_gateway >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
           done
           echo 'available=false' >> "$GITHUB_OUTPUT"
           echo 'reason=provider_unavailable' >> "$GITHUB_OUTPUT"
@@ -496,8 +426,7 @@ jobs:
             OPENCODE_DISABLE_AUTOUPDATE=true \
             OPENCODE_DISABLE_MODELS_FETCH=true \
             OPENCODE_DISABLE_PROJECT_CONFIG=true \
-            NVIDIA_API_KEY=local-loopback-placeholder \
-            bash -c 'cd "$1" && timeout --signal=TERM --kill-after=30s 90m pnpm --filter @life-os/commercial-development-agent exec opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
+            bash -c 'cd "$1" && pnpm --filter @life-os/commercial-development-agent exec -- opencode run --pure --auto --model "$2" --format json --file .opencode-task.md "Execute the attached policy-isolated LifeOS task."' \
               _ "$MODEL_WORKSPACE" "$OPENCODE_MODEL" \
             > "$RECEIPT_DIR/opencode.log" 2>&1
           status=$?
@@ -516,8 +445,8 @@ jobs:
             sudo pkill --signal KILL --euid opencode_model 2>/dev/null || true
             status=70
           fi
-          sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true
-          sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT
+          sudo pkill --signal TERM --euid opencode_gateway 2>/dev/null || true
+          sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$LIFEOS_ORCHESTRATOR_GATEWAY_PORT" -j ACCEPT
           sudo iptables -I OUTPUT 1 -m owner --uid-owner "$MODEL_UID" -d 127.0.0.0/8 -j REJECT
           sudo iptables -I OUTPUT 1 -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport 5432 -j ACCEPT
           echo 'MODEL_NETWORK_PHASE=verification' >> "$GITHUB_ENV"
@@ -939,7 +868,7 @@ jobs:
           OPEN_PULL_REQUESTS: ${{ steps.github_evidence.outputs.open_pull_requests }}
           SELECTED: ${{ steps.selection.outputs.selected }}
           MODEL_CATALOG_OUTCOME: ${{ steps.model_catalog.outcome }}
-          BRIDGE_REASON: ${{ steps.bridge.outputs.reason }}
+          GATEWAY_REASON: ${{ steps.bridge.outputs.reason }}
           MODEL_REASON: ${{ steps.model.outputs.reason }}
           DIFF_ACCEPTED: ${{ steps.diff.outputs.accepted }}
           VERIFICATION_PASSED: ${{ steps.verification.outputs.passed }}
@@ -967,7 +896,7 @@ jobs:
                   'repository': os.environ['GITHUB_REPOSITORY'],
                   'base_sha': os.environ.get('BASE_SHA', os.environ['GITHUB_SHA']),
                   'started_at': datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
-                  'model_label': 'nvidia/default-chat-model',
+                  'model_label': 'contextual_orchestrator_gateway/orchestrator/free',
                   'reasoning_effort': 'high',
                   'recursive_depth': 1,
                   'decomposition_steps': 8,
@@ -981,7 +910,7 @@ jobs:
           open_prs = os.environ.get('OPEN_PULL_REQUESTS', '0')
           selected = os.environ.get('SELECTED', 'false') == 'true'
           model_catalog_outcome = os.environ.get('MODEL_CATALOG_OUTCOME', '')
-          bridge_reason = os.environ.get('BRIDGE_REASON', '')
+          gateway_reason = os.environ.get('GATEWAY_REASON', '')
           model_reason = os.environ.get('MODEL_REASON', '')
           diff_accepted = os.environ.get('DIFF_ACCEPTED', '') == 'true'
           source_verification = os.environ.get('VERIFICATION_PASSED', '') == 'true'
@@ -994,9 +923,9 @@ jobs:
               status, reason = 'unavailable', 'no_eligible_issue'
           elif model_catalog_outcome != 'success':
               status, reason = 'failed', 'invalid_configuration'
-          elif bridge_reason == 'provider_credential_missing':
+          elif gateway_reason == 'provider_credential_missing':
               status, reason = 'unavailable', 'provider_credential_missing'
-          elif bridge_reason != 'completed' or model_reason != 'completed':
+          elif gateway_reason != 'completed' or model_reason != 'completed':
               status, reason = 'unavailable', 'provider_unavailable'
           elif not diff_accepted:
               status, reason = 'rejected', 'diff_rejected'
@@ -1013,9 +942,9 @@ jobs:
               {'name': 'open_pull_request_drain', 'status': 'passed' if open_prs == '0' else 'failed'},
               {'name': 'issue_policy', 'status': 'passed' if selected else 'skipped'},
               {'name': 'model_catalog', 'status': 'skipped' if not selected or open_prs != '0' else 'passed' if model_catalog_outcome == 'success' else 'failed'},
-              {'name': 'credential_bridge', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if bridge_reason == 'completed' else 'failed'},
-              {'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'},
-              {'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or bridge_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'},
+              {'name': 'orchestrator_gateway', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' else 'passed' if gateway_reason == 'completed' else 'failed'},
+              {'name': 'provider_run', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or gateway_reason != 'completed' else 'passed' if model_reason == 'completed' else 'failed'},
+              {'name': 'diff_policy', 'status': 'skipped' if not selected or open_prs != '0' or model_catalog_outcome != 'success' or gateway_reason != 'completed' or model_reason != 'completed' else 'passed' if diff_accepted else 'failed'},
               {'name': 'repository_verification', 'status': 'passed' if source_verification else 'skipped' if not diff_accepted else 'failed'},
               {'name': 'compose_configuration', 'status': 'passed' if compose_configuration else 'skipped' if not source_verification else 'failed'},
               {'name': 'base_sha', 'status': 'passed' if base_matched else 'skipped' if not verification else 'failed'},
@@ -1060,14 +989,14 @@ jobs:
         if: always()
         run: |
           set +e
-          sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true
+          sudo pkill --signal TERM --euid opencode_gateway 2>/dev/null || true
           sudo pkill --signal TERM --euid opencode_model 2>/dev/null || true
           if [ -n "${MODEL_UID:-}" ]; then
             if [ "${MODEL_NETWORK_PHASE:-}" = 'verification' ]; then
               sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport 5432 -j ACCEPT 2>/dev/null || true
               sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.0/8 -j REJECT 2>/dev/null || true
             fi
-            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$NIM_BRIDGE_PORT" -j ACCEPT 2>/dev/null || true
+            sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -d 127.0.0.1 -p tcp --dport "$LIFEOS_ORCHESTRATOR_GATEWAY_PORT" -j ACCEPT 2>/dev/null || true
             sudo iptables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT 2>/dev/null || true
             sudo ip6tables -D OUTPUT -m owner --uid-owner "$MODEL_UID" -j REJECT 2>/dev/null || true
           fi
@@ -1077,14 +1006,13 @@ jobs:
             "${MODEL_HOME:-$RUNNER_TEMP/nonexistent-model-home}" \
             "${MODEL_STORE:-$RUNNER_TEMP/nonexistent-model-store}" \
             "${TRUSTED_COREPACK_HOME:-$RUNNER_TEMP/nonexistent-trusted-corepack}" \
-            "${BRIDGE_HOME:-$RUNNER_TEMP/nonexistent-bridge-home}"
+            "${ORCHESTRATOR_SIDECAR_ROOT:-$RUNNER_TEMP/nonexistent-orchestrator-sidecar}"
           rm -rf \
             "$RECEIPT_DIR/prompt.json" \
             "$RECEIPT_DIR/prompt.txt" \
             "$RECEIPT_DIR/opencode.log" \
             "$RECEIPT_DIR/verification.log" \
             "$RECEIPT_DIR/compose-validation.log" \
-            "$RECEIPT_DIR/nim-bridge.py" \
             "$RECEIPT_DIR/issues.json" \
             "$RECEIPT_DIR/pulls.json" \
             "$RECEIPT_DIR/selected-issue.json" \
