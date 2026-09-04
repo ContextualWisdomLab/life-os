@@ -44,7 +44,53 @@ function capabilityLifetimePool(): {
   };
 }
 
-function transactionAuthority(runtime: ReturnType<typeof createPlanningRuntime>): TodayTransactionalSqlClient {
+function parameterCapturePool(): {
+  readonly pool: PlanningPool;
+  readonly releaseFirstQuery: () => void;
+  readonly observedSecondValue: () => unknown;
+} {
+  let releaseFirstQuery = (): void => {
+    throw new Error('First Planning query has not been admitted');
+  };
+  const firstQueryGate = new Promise<void>((resolve) => {
+    releaseFirstQuery = resolve;
+  });
+  let observedSecondValue: unknown;
+
+  const connection: PlanningPoolConnection = {
+    async query<Row>(
+      text: string,
+      values: readonly unknown[] = [],
+    ): Promise<{ rows: Row[] }> {
+      if (text === 'SELECT first') {
+        await firstQueryGate;
+      }
+      if (text === 'SELECT second') {
+        observedSecondValue = values[0];
+      }
+      return { rows: [] };
+    },
+    release(): void {},
+  };
+
+  return {
+    pool: {
+      async query<Row>(): Promise<{ rows: Row[] }> {
+        return { rows: [] };
+      },
+      async connect(): Promise<PlanningPoolConnection> {
+        return connection;
+      },
+      async end(): Promise<void> {},
+    },
+    releaseFirstQuery,
+    observedSecondValue: () => observedSecondValue,
+  };
+}
+
+function transactionAuthority(
+  runtime: ReturnType<typeof createPlanningRuntime>,
+): TodayTransactionalSqlClient {
   const authority = Reflect.get(runtime.dataRightsContributor, 'client');
   if (
     typeof authority !== 'object' ||
@@ -75,6 +121,29 @@ describe('Planning transaction SQL capability lifetime', () => {
         'Planning transaction SQL capability is closed',
       );
       expect(fixture.postReleaseQueries()).toBe(0);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it('captures query parameters when work is admitted to the serialized queue', async () => {
+    const fixture = parameterCapturePool();
+    const runtime = createPlanningRuntime(
+      { PLANNING_DATABASE_URL: TEST_DATABASE_URL },
+      () => fixture.pool,
+    );
+
+    try {
+      await transactionAuthority(runtime).transaction(async (client) => {
+        const first = client.query('SELECT first', []);
+        const values: unknown[] = ['original'];
+        const second = client.query('SELECT second', values);
+        values[0] = 'mutated-after-admission';
+        fixture.releaseFirstQuery();
+        await Promise.all([first, second]);
+      });
+
+      expect(fixture.observedSecondValue()).toBe('original');
     } finally {
       await runtime.close();
     }
