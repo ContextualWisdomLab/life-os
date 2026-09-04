@@ -428,7 +428,12 @@ export class CalendarAppModule {
   }
 }
 
-/** Creates the configured production adapter from secret-backed values. */
+/**
+ * Creates an explicitly requested standalone adapter from operator-owned
+ * process configuration. Google composition here uses a process-local access
+ * token and therefore is not an authorization boundary for the hosted
+ * multi-user service.
+ */
 export function createCalendarProviderFromEnvironment(
   environment: NodeJS.ProcessEnv,
 ): CalendarProvider {
@@ -461,8 +466,26 @@ export function createCalendarProviderFromEnvironment(
   });
 }
 
+/**
+ * Rejects process-wide provider credentials at the hosted multi-user boundary.
+ *
+ * Both Google and CalDAV synchronization require authenticated user-owned
+ * connection evidence plus scoped secret materialization before hosted request
+ * authority can exist. Standalone operator-owned composition remains available
+ * through `createCalendarProviderFromEnvironment` only.
+ */
+export function createHostedCalendarProviderFromEnvironment(
+  environment: NodeJS.ProcessEnv,
+): CalendarProvider {
+  const providerName = environment.CALENDAR_PROVIDER ?? 'caldav';
+  if (providerName === 'google' || providerName === 'caldav') {
+    throw new Error('Hosted Calendar requires user-scoped credential authority');
+  }
+  throw new Error('Calendar provider configuration is unsupported');
+}
+
 async function bootstrap(): Promise<void> {
-  const provider = createCalendarProviderFromEnvironment(process.env);
+  const provider = createHostedCalendarProviderFromEnvironment(process.env);
   const app = await NestFactory.create(CalendarAppModule.register(provider));
   app.enableShutdownHooks();
   await app.listen(
