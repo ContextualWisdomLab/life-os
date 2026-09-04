@@ -5,7 +5,7 @@ import {
   type DynamicModule,
   type OnApplicationShutdown,
 } from '@nestjs/common';
-import type { PluginOperatorApplication } from './plugin-operator-application';
+import { PluginOperatorApplication } from './plugin-operator-application';
 import {
   PluginVaultHostedRuntimeError,
   type PluginVaultHostedRuntime,
@@ -49,8 +49,7 @@ function requireRuntime(value: unknown): PluginVaultHostedRuntime {
     throw new PluginVaultHostedRuntimeError();
   }
   if (
-    operator === null ||
-    typeof operator !== 'object' ||
+    !(operator instanceof PluginOperatorApplication) ||
     typeof close !== 'function'
   ) {
     throw new PluginVaultHostedRuntimeError();
@@ -58,7 +57,7 @@ function requireRuntime(value: unknown): PluginVaultHostedRuntime {
 
   const receiver = value as object;
   return Object.freeze({
-    operator: operator as PluginOperatorApplication,
+    operator,
     close(): Promise<void> {
       return Reflect.apply(close, receiver, []) as Promise<void>;
     },
@@ -73,6 +72,11 @@ function requireRuntime(value: unknown): PluginVaultHostedRuntime {
  * closes the accepted runtime authority. Runtime properties are captured once before
  * registration so throwing or stateful accessors cannot replace operator/shutdown
  * authority after the dependency has crossed the composition boundary.
+ *
+ * Only the concrete `PluginOperatorApplication` produced by the Integration-owned
+ * authenticated composition may cross this boundary. An object-shaped impostor is
+ * rejected before Nest registration and can never defer a missing-method failure to
+ * the first operator request after the listener has already started.
  */
 export function createPluginVaultHostedModule(
   runtimeInput: PluginVaultHostedRuntime,
