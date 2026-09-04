@@ -83,7 +83,7 @@ function databaseUrl(environment: PluginVaultOperatorEnvironment): string {
 
 /** Requires stable pool behavior to satisfy all Integration-owned Plugin repositories. */
 function requirePool(value: unknown): PluginHostedPostgresPool {
-  if (value === null || typeof value !== 'object') {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return unavailable();
   }
 

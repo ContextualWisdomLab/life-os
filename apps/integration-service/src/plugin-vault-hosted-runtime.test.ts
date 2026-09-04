@@ -221,6 +221,20 @@ describe('Plugin Vault hosted runtime', () => {
     );
   });
 
+  it('rejects array-shaped SQL authority even when it carries callable query and end properties', async () => {
+    const end = vi.fn(async () => undefined);
+    const malformed = [] as unknown as PluginHostedPostgresPool & unknown[];
+    Object.assign(malformed, {
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+      end,
+    });
+
+    await expectRuntimeFailure(
+      createPluginVaultHostedRuntime(() => malformed, environment()),
+    );
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects generic database aliases instead of accepting cross-service persistence authority', async () => {
     const createPool = vi.fn(() => pool());
     const env = Object.freeze({
