@@ -237,27 +237,34 @@ function requireConnectionString(value: string): string {
  * policy. Connection acquisition and database work are both finite: PostgreSQL receives a five-
  * second `statement_timeout`, while node-postgres retains a six-second `query_timeout` fallback so
  * the server-side cancellation has a bounded interval to arrive before the client call fails closed.
- * Idle, lifetime, and pool-size bounds are explicit as well. An idle-client error listener is
- * registered before the pool crosses the runtime boundary; if registration itself fails, the newly
- * constructed pool is closed before a bounded failure is returned. Parameter arrays are copied
- * because node-postgres accepts mutable arrays while Integration repositories expose readonly
- * fixed-query values.
+ * Idle, lifetime, and pool-size bounds are explicit as well. Pool construction itself is part of the
+ * credential boundary: a constructor failure is reduced to the same fixed configuration error before
+ * native driver detail can become startup evidence. An idle-client error listener is registered before
+ * the pool crosses the runtime boundary; if registration itself fails, the newly constructed pool is
+ * closed before a bounded failure is returned. Parameter arrays are copied because node-postgres
+ * accepts mutable arrays while Integration repositories expose readonly fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
   PoolConstructor: NodePostgresPoolConstructor = Pool as unknown as NodePostgresPoolConstructor,
   logError: PluginPostgresPoolErrorLogger = defaultPluginPostgresPoolErrorLogger,
 ): PluginHostedPostgresPool | Promise<PluginHostedPostgresPool> {
-  const pool = new PoolConstructor({
-    connectionString: requireConnectionString(connectionString),
-    ssl: { rejectUnauthorized: true },
-    max: PLUGIN_POSTGRES_POOL_MAX,
-    connectionTimeoutMillis: PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS,
-    statement_timeout: PLUGIN_POSTGRES_STATEMENT_TIMEOUT_MS,
-    query_timeout: PLUGIN_POSTGRES_QUERY_TIMEOUT_MS,
-    idleTimeoutMillis: PLUGIN_POSTGRES_IDLE_TIMEOUT_MS,
-    maxLifetimeSeconds: PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS,
-  });
+  let pool: NodePostgresPoolLike;
+  try {
+    pool = new PoolConstructor({
+      connectionString: requireConnectionString(connectionString),
+      ssl: { rejectUnauthorized: true },
+      max: PLUGIN_POSTGRES_POOL_MAX,
+      connectionTimeoutMillis: PLUGIN_POSTGRES_CONNECTION_TIMEOUT_MS,
+      statement_timeout: PLUGIN_POSTGRES_STATEMENT_TIMEOUT_MS,
+      query_timeout: PLUGIN_POSTGRES_QUERY_TIMEOUT_MS,
+      idleTimeoutMillis: PLUGIN_POSTGRES_IDLE_TIMEOUT_MS,
+      maxLifetimeSeconds: PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS,
+    });
+  } catch {
+    return unavailable();
+  }
+
   try {
     registerPluginPostgresPoolErrorHandler(pool, logError);
   } catch {
