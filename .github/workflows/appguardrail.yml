@@ -5,13 +5,13 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore:
-      - "docs/**"
-      - "*.md"
+      - docs/**
+      - '*.md'
   push:
     branches: [main]
     paths-ignore:
-      - "docs/**"
-      - "*.md"
+      - docs/**
+      - '*.md'
   workflow_dispatch:
 
 permissions:
