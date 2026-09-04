@@ -71,8 +71,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       'https://integration:secret@db.example.test:5432/life_os',
     ],
     ['missing user', 'postgresql://:secret@db.example.test:5432/life_os'],
-    ['missing password', 'postgresql://integration@db.example.test:5432/life',
-    ],
+    ['missing password', 'postgresql://integration@db.example.test:5432/life_os'],
     ['missing host', 'postgresql://integration:secret@:5432/life_os'],
     ['missing port', 'postgresql://integration:secret@db.example.test/life_os'],
     ['invalid port', 'postgresql://integration:secret@db.example.test:0/life_os'],
@@ -83,7 +82,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     ],
     [
       'external passfile authority',
-      'postgresql://integration:secret@db.example.test:5432/life_os?passfile=%2FrA%2Fpgpass',
+      'postgresql://integration:secret@db.example.test:5432/life_os?passfile=%2Frun%2Fsecrets%2Fpgpass',
     ],
     [
       'external service-file authority',
@@ -128,7 +127,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
 
     expect(test.query).toHaveBeenCalledTimes(1);
     expect(test.query).toHaveBeenCalledWith(
-      'SELECT $1::text',
+      'SELECT $1::text, $2:'.concat(':int'),
       ['workspace-1', 7],
     );
     expect(test.query.mock.calls[0]?.[1]).not.toBe(values);
