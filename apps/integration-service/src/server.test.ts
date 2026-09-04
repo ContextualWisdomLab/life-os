@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PluginVaultHostedNestApplication } from './plugin-vault-hosted-bootstrap';
 import { createNodePostgresPluginPool } from './plugin-vault-postgres-driver';
-import { startIntegrationService } from './server';
+import {
+  runIntegrationServiceEntrypoint,
+  startIntegrationService,
+} from './server';
 
 const environment = Object.freeze({
   INTEGRATION_DATABASE_URL: 'postgresql://integration.example.test/life_os',
@@ -24,5 +27,36 @@ describe('Integration service production entrypoint', () => {
       environment,
     );
     expect(result).toBe(application);
+  });
+
+  it('turns startup rejection into one credential-free nonzero process failure', async () => {
+    const vaultToken = 'vault-token-that-must-never-enter-startup-output';
+    const startupEnvironment = Object.freeze({
+      ...environment,
+      INTEGRATION_PLUGIN_VAULT_TOKEN: vaultToken,
+    });
+    const startHosted = vi.fn(async () => {
+      throw new Error(`provider detail leaked ${vaultToken}`);
+    });
+    const writes: string[] = [];
+    const runtime = {
+      exitCode: undefined as number | undefined,
+      stderr: {
+        write(chunk: string): boolean {
+          writes.push(chunk);
+          return true;
+        },
+      },
+    };
+
+    await runIntegrationServiceEntrypoint(
+      startupEnvironment,
+      startHosted,
+      runtime,
+    );
+
+    expect(runtime.exitCode).toBe(1);
+    expect(writes).toEqual(['Integration service startup failed.\n']);
+    expect(writes.join('')).not.toContain(vaultToken);
   });
 });
