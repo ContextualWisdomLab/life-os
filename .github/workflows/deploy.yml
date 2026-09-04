@@ -135,6 +135,8 @@ jobs:
           HABIT_DATABASE_URL: ${{ secrets.HABIT_DATABASE_URL }}
           AI_DATABASE_URL: ${{ secrets.AI_DATABASE_URL }}
           REVIEW_DATABASE_URL: ${{ secrets.REVIEW_DATABASE_URL }}
+          NOTIFICATION_MIGRATION_DATABASE_URL: ${{ secrets.NOTIFICATION_MIGRATION_DATABASE_URL }}
+          NOTIFICATION_DATABASE_RUNTIME_ROLE: ${{ vars.NOTIFICATION_DATABASE_RUNTIME_ROLE }}
         shell: bash
         run: |
           set -Eeuo pipefail

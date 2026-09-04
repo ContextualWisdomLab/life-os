@@ -10,6 +10,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- A Notification-owned `life-os.data-rights-contributor.v1` boundary for deterministic tenant export pages, destructive-erasure preflight, atomic workspace erasure, exact replay, and post-erasure verification without exporting claim or raw idempotency material.
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.
 - An authenticated calendar-connection disconnect application and optional hosted HTTP composition boundary that derives workspace and requesting-user authority only from the signed `life-os.calendar-user.v1` context and returns credential-free local revocation evidence.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
@@ -31,6 +32,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Notification forward migrations now reject a changed migration owner before later DDL executes instead of attempting an unsupported implicit `OWNER TO CURRENT_USER` handoff against objects owned by the established migration authority.
 - The public Gateway Today endpoint now fails explicitly with bounded `today_composition_unavailable` problem details instead of returning fabricated successful composition data while authenticated Planning/Habit integration is absent; issue #163 remains open for the real composition path.
 - Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
 - The OpenCode development loop now prevents project settings from overriding its pinned offline NVIDIA model, records catalog failures accurately, parses the accepted candidate's exact Compose file outside the model account, and requires digest-pinned PostgreSQL queries plus NATS JetStream probes in pull-request CI.
@@ -43,6 +45,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Notification migration credentials remain the established schema owner while the service runtime uses a separate least-privilege PostgreSQL role; owner-only erasure tables stay unavailable to the runtime and destructive deletion is reachable only through the reviewed function/replay contract.
 - Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
 - Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.

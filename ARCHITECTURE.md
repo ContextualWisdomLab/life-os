@@ -31,6 +31,7 @@ flowchart LR
     P --> PDB
     H --> HDB
     A --> ADB
+    NO[Notification service] --> NDB
 ```
 
 ### Required invariants
@@ -129,3 +130,31 @@ The pinned OpenCode configuration disables project-local overrides, explicitly r
 8. `CHANGELOG.md` — user-visible unreleased and released changes.
 
 A behavior or boundary change is incomplete until the relevant level is updated and executable tests prove the claim.
+
+## 7. Notification data-rights authority boundary
+
+Notification owns its reminder occurrences, immutable outcome history, in-app inbox messages, and the data-rights evidence needed to erase those records. A data-rights orchestrator may call the private versioned contributor contract, but it does not receive direct SQL authority over `notification_service` tables.
+
+```mermaid
+sequenceDiagram
+    participant O as Data-rights orchestrator
+    participant H as Notification private HTTP boundary
+    participant C as Notification contributor
+    participant DB as Notification PostgreSQL
+
+    O->>H: Signed method/path/workspace/user/request context
+    H->>H: Verify bounded authority and replay evidence
+    H->>C: Normalized contributor request
+    C->>DB: Tenant-scoped export/preflight/erase/verify query
+    DB-->>C: Bounded evidence or owner-controlled erasure receipt
+    C-->>H: Credential-free versioned response
+    H-->>O: Export page / blocker / erasure / verification evidence
+```
+
+The migration authority and Notification runtime identity are deliberately separate. The connection behind `NOTIFICATION_MIGRATION_DATABASE_URL` remains the established owner of the Notification schema and existing objects; later migrations fail closed if that ownership no longer matches. The runtime role owns no schema or erasure-control table and receives only reviewed table privileges plus the explicit erasure function/replay-store permissions needed by the contributor.
+
+Normal Notification inserts and updates take shared workspace advisory locks. Data-rights erasure takes the corresponding exclusive transaction lock, persists a terminal workspace fence before deletion, and uses backend+transaction+workspace-scoped authorization to permit the otherwise append-only outcome deletion. A write racing the erasure therefore either completes before the exclusive lock or observes the terminal fence and fails; it cannot survive after a committed erase.
+
+Export pagination is deterministic and bounded, but its current cursor is a live keyset position rather than a transactionally frozen snapshot. No documentation or API may claim snapshot-consistent multi-page portability until a durable export-session or equivalent versioned snapshot contract exists with concurrency tests.
+
+The repository contains a production-composable Notification server/runtime and Compose path. The current Kubernetes production reference still deploys only the web and gateway workloads; therefore this contributor is not evidence that Notification is deployed in the production reference. A release claiming end-to-end Notification data-rights support must first add and verify the corresponding workload, secret/configuration, network-policy, migration, rollout, and recovery path.

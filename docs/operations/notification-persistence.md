@@ -2,40 +2,61 @@
 
 ## Purpose
 
-The notification service owns the `notification_service` PostgreSQL schema. The schema persists reminder occurrences, expiring worker claims, immutable scheduler outcomes, and credential-free in-app inbox messages. It is an independent bounded context and must not read or mutate another service's tables.
+The notification service owns the `notification_service` PostgreSQL schema. The schema persists reminder occurrences, expiring worker claims, immutable scheduler outcomes, credential-free in-app inbox messages, and the bounded authority/receipt evidence needed to execute Notification-owned data-rights erasure. It is an independent bounded context and must not read or mutate another service's tables.
 
 This design provides at-least-once scheduler execution with atomic claims and idempotent delivery evidence. It does not claim distributed exactly-once execution. Safe replay depends on the repository transition checks and the in-app gateway's persisted SHA-256 idempotency digest.
 
 ## Migration
 
-Apply `apps/notification-service/migrations/0001_durable_reminder_inbox.sql` before starting a runtime that uses `PostgresReminderRepository`.
+Apply the Notification migrations in numeric order through `infra/kubernetes/run-migrations.sh`. `0001_durable_reminder_inbox.sql` establishes the schema and its original object owner. `0002_data_rights_erasure.sql` adds the terminal workspace-erasure fence, transaction-local delete authorization, replay receipts, and owner-controlled erasure procedure. `0003_data_rights_authority_replay.sql` adds the bounded runtime replay store used by the authenticated internal data-rights boundary.
 
-The migration creates:
+The connection behind `NOTIFICATION_MIGRATION_DATABASE_URL` is the stable migration authority. It must remain the owner of the existing `notification_service` schema, legacy reminder tables, and mutation-guard function when later migrations run. The migration runner verifies that ownership before applying migration 0002 or later and fails closed with `notification_migration_owner_mismatch` rather than attempting an implicit ownership transfer. If an operator intentionally rotates the migration owner, perform a separately authorized database-administration ownership handoff first, verify the resulting owners, then rerun the forward migration. Do not grant the application runtime ownership merely to make a migration pass.
 
-- `notification_service.reminder_occurrences` for policy, attempts, and lease state;
-- `notification_service.reminder_outcomes` for immutable delivery, deferral, and failure evidence;
-- `notification_service.inbox_messages` for durable in-app messages;
-- bounded indexes for due work, expired claims, tenant reads, delivered-date counts, and idempotency;
-- mutation guards that reject update, delete, and truncate operations against outcome history with SQLSTATE `55000`.
+The runtime identity named by `NOTIFICATION_DATABASE_RUNTIME_ROLE` must be distinct from the migration authority. After migration, the runner removes broad privileges and grants only the Notification runtime permissions needed by the repository and data-rights adapter. The owner-only erasure tables remain inaccessible to the runtime except for the narrowly required authority-replay table operations and the explicit `erase_workspace_data` function execution path.
 
-Run the migration through the normal release migration job using a role with schema DDL rights. The application role should receive only the table and sequence privileges required by the repository. Do not grant the application role ownership of the schema or the mutation-guard function.
+### Existing local Compose volumes
+
+Local PostgreSQL volumes created by earlier LifeOS `main` revisions were initialized with the development administrator credential `lifeos`/`lifeos`. PostgreSQL stores that role password inside the initialized volume; changing `POSTGRES_PASSWORD` later does not rotate it. For that reason, `compose.yaml` keeps `${POSTGRES_PASSWORD:-lifeos}` only as an upgrade-compatible local administrator fallback. Do not delete an existing development volume merely to introduce the Notification runtime role.
+
+For an existing volume, leave `POSTGRES_PASSWORD` unset when the stored administrator password is still `lifeos`, or supply the actual administrator password already stored by that volume. Keep `NOTIFICATION_RUNTIME_DATABASE_PASSWORD` explicit and fresh: the Notification provisioner uses it only for the distinct least-privilege runtime role. Start PostgreSQL, run the idempotent one-shot provisioner, then start the remaining services:
+
+```bash
+docker compose up -d postgres
+docker compose run --rm --no-deps notification-db-provision
+docker compose up -d
+```
+
+Fresh local installations should copy `.env.example` and replace its placeholder credentials before startup. Production and shared deployments must not rely on the local `lifeos` compatibility fallback; supply administrator or migration authority through the deployment's managed-secret boundary and keep runtime credentials separate.
 
 Before rollout, verify that the target database is PostgreSQL 16 or a compatibility-tested later release and that the connection uses TLS outside a private development environment.
 
 ## Runtime configuration
 
-The service validates all configuration before allocating a pool.
+The service validates all runtime configuration before allocating a pool. Migration credentials are consumed only by the forward-migration job and are not passed to the Notification process.
 
-| Variable                                   | Default | Accepted boundary                         |
-| ------------------------------------------ | ------: | ----------------------------------------- |
-| `NOTIFICATION_DATABASE_URL`                |    none | required `postgres:` or `postgresql:` URL |
-| `NOTIFICATION_DATABASE_POOL_MAX`           |    `10` | integer `1`–`32`                          |
-| `NOTIFICATION_DATABASE_CONNECT_TIMEOUT_MS` |  `5000` | integer `100`–`30000`                     |
-| `NOTIFICATION_DATABASE_IDLE_TIMEOUT_MS`    | `30000` | integer `1000`–`300000`                   |
-| `NOTIFICATION_CLAIM_LEASE_SECONDS`         |   `300` | integer `30`–`3600`                       |
-| `NOTIFICATION_REMINDER_BATCH_SIZE`         |    `50` | integer `1`–`100`                         |
+| Variable                                   | Default | Accepted boundary                                      |
+| ------------------------------------------ | ------: | ------------------------------------------------------ |
+| `NOTIFICATION_MIGRATION_DATABASE_URL`      |    none | migration-only `postgres:` or `postgresql:` URL        |
+| `NOTIFICATION_DATABASE_RUNTIME_ROLE`       |    none | existing least-privilege PostgreSQL role name          |
+| `NOTIFICATION_DATABASE_URL`                |    none | runtime-only `postgres:` or `postgresql:` URL          |
+| `NOTIFICATION_DATA_RIGHTS_CONTEXT_SECRET`  |    none | distinct secret used only for signed internal context  |
+| `NOTIFICATION_DATABASE_POOL_MAX`           |    `10` | integer `1`–`32`                                       |
+| `NOTIFICATION_DATABASE_CONNECT_TIMEOUT_MS` |  `5000` | integer `100`–`30000`                                  |
+| `NOTIFICATION_DATABASE_IDLE_TIMEOUT_MS`    | `30000` | integer `1000`–`300000`                                |
+| `NOTIFICATION_CLAIM_LEASE_SECONDS`         |   `300` | integer `30`–`3600`                                    |
+| `NOTIFICATION_REMINDER_BATCH_SIZE`         |    `50` | integer `1`–`100`                                      |
 
-The pool sets `application_name` to `life-os-notification-service`. Use this value to distinguish service connections in PostgreSQL activity and connection metrics.
+The runtime pool sets `application_name` to `life-os-notification-service`. Use this value to distinguish service connections in PostgreSQL activity and connection metrics.
+
+## Data-rights boundary
+
+`POST /v1/internal/data-rights/contributor` is a private Notification-owned endpoint. It accepts only a valid signed `life-os.data-rights-context.v1` envelope whose method, path, workspace, requesting user, and issuance time match the request. The service never accepts browser cookies, bearer tokens, or a client-selected workspace as data-rights authority.
+
+The contributor supports `export`, `erase_preflight`, `erase`, and `verify_erased`. Export uses deterministic cross-table keyset pagination and returns an opaque continuation cursor when another page exists. Claim digests and raw idempotency material are deliberately excluded from portable output. A cursor is ordering evidence, not a durable snapshot token: callers must not claim transactionally frozen multi-page export semantics until a versioned snapshot/export-session contract is implemented and tested.
+
+Erasure is serialized per workspace with an exclusive transaction-scoped advisory lock. The owner-controlled procedure persists a terminal workspace fence before deleting Notification-owned records, creates transaction-local authorization for append-only outcome deletion, removes that authorization before the transaction completes, and writes a replay-safe SHA-256 receipt. Ordinary runtime writes take the corresponding shared workspace lock and reject a persisted erasure fence, so a write that races erasure cannot survive after the erasure commits.
+
+The runtime replay store validates reuse of `(workspace_id, request_id, requested_by_user_id)` only for the exact same payload digest and bounded TTL. Conflicting authority or payload reuse fails closed. The signing secret and replay semantics are service-owned control-plane state and are not portable user data.
 
 ## Claim and recovery model
 
@@ -70,7 +91,7 @@ WHERE occurrence_status = 'pending'
   AND claim_expires_at <= clock_timestamp();
 ```
 
-Do not log `reminder_title`, raw idempotency keys, database URLs, or provider credentials while investigating claims.
+Do not log `reminder_title`, raw idempotency keys, database URLs, signing material, or provider credentials while investigating claims or data-rights requests.
 
 ## Delivery replay
 
@@ -84,7 +105,7 @@ A provider success followed by a repository failure can therefore be retried saf
 
 Every delivered, deferred, retryable-failed, or terminal-failed transition is written in the same PostgreSQL statement as the corresponding occurrence mutation. The statement fails closed unless the worker owns the exact claim digest and the occurrence still has the expected due instant and attempt count.
 
-Outcome history is append-only. Direct update, delete, and truncate operations are rejected. Administrative corrections must be represented as a new, separately reviewed migration or compensating evidence record; never disable the mutation guard in place.
+Outcome history is append-only for ordinary callers. Direct update, delete, and truncate operations are rejected. The only destructive exception is the reviewed owner-controlled data-rights erasure procedure, whose transaction-local authorization is scoped to one backend, transaction, and workspace. Administrative corrections outside that data-rights contract must be represented as a new, separately reviewed migration or compensating evidence record; never disable the mutation guard in place.
 
 ## Privacy and security boundaries
 
@@ -93,10 +114,11 @@ The persistence layer stores reminder titles and scheduling metadata because the
 Operational controls should include:
 
 - encrypted database transport and encrypted storage;
-- least-privilege application and migration roles;
+- a stable migration owner separated from the least-privilege runtime role;
 - tenant-scoped repository methods with fixed parameterized SQL;
 - database backups and restore tests that include the `notification_service` schema;
 - restricted access to inbox content and query logs;
+- purpose-bound access and audited data-rights execution;
 - retention and deletion policy approval before exposing user-facing history controls.
 
 Database statement logging can capture bound reminder titles depending on PostgreSQL and proxy configuration. Keep production statement logging at a privacy-reviewed level and prohibit query logging in application error payloads.
@@ -105,12 +127,12 @@ Database statement logging can capture bound reminder titles depending on Postgr
 
 Application rollback is safe only while the prior version can ignore the new schema. Do not roll back the schema destructively while any runtime may still use it.
 
-The forward migration has no automatic down migration because reminder outcomes and inbox messages are durable user evidence. A rollback should:
+The forward migrations have no automatic down migration because reminder outcomes, inbox messages, erasure fences, and receipts are durable user/control evidence. A rollback should:
 
-1. stop new notification scheduling and delivery;
+1. stop new notification scheduling, delivery, and data-rights execution;
 2. drain or terminate notification workers;
-3. deploy the prior application version;
-4. retain the `notification_service` schema intact;
+3. deploy the prior application version only if it safely ignores the newer schema;
+4. retain the `notification_service` schema, erasure fences, and receipts intact;
 5. verify no prior process attempts incompatible writes;
 6. prepare a separately reviewed forward repair migration.
 
@@ -120,11 +142,17 @@ Dropping the schema is destructive and is permitted only in disposable developme
 
 Verify all of the following on the deployed release:
 
-- the migration completed once without partial objects;
+- migrations completed once without partial objects and the configured migration login still owns the established Notification objects;
+- the runtime role is distinct from the migration owner and has no owner-only erasure-table privileges;
 - the application pool is bounded and identified by `application_name`;
+- the private data-rights endpoint rejects unsigned, stale, replayed, and mismatched authority before contributor execution;
+- a bounded export page returns deterministic evidence and an opaque cursor only when another page exists;
+- erasure preflight reports missing runtime privileges without exposing database details;
+- an erase/replay/verify lifecycle removes exactly one workspace and preserves another tenant;
+- same-workspace writes cannot survive a committed erasure fence;
 - one due occurrence produces one successful claim;
 - an expired test claim can be recovered;
-- one exact replay produces one inbox message;
+- one exact delivery replay produces one inbox message;
 - tenant-scoped reads never return another workspace's records;
-- outcome mutation attempts fail with SQLSTATE `55000`;
+- ordinary outcome mutation attempts fail with SQLSTATE `55000`;
 - shutdown closes the pool without leaving persistent idle connections.
