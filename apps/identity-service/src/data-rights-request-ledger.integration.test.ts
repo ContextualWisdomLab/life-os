@@ -9,6 +9,7 @@ import {
   type DataRightsRequestSqlClient,
   type DataRightsRequestSqlResult,
 } from './data-rights-request-ledger';
+import { applyIdentityMigration } from './tests/identity-migration-test-support';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
@@ -28,8 +29,8 @@ class NodePostgresDataRightsClient implements DataRightsRequestSqlClient {
     text: string,
     values: readonly unknown[] = [],
   ): Promise<DataRightsRequestSqlResult<Row>> {
-    const result = await this.pool.query(text, [...values]);
-    return { rows: result.rows as Row[], rowCount: result.rowCount };
+    const queryResult = await this.pool.query(text, [...values]);
+    return { rows: queryResult.rows as Row[], rowCount: queryResult.rowCount };
   }
 }
 
@@ -56,10 +57,11 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     testUrl.pathname = `/${TEST_DATABASE_NAME}`;
     pool = new Pool({ connectionString: testUrl.toString() });
     const migrationFiles = (await readdir(MIGRATION_DIRECTORY))
-      .filter((file) => file.endsWith('.sql'))
+      .filter((migrationFile) => migrationFile.endsWith('.sql'))
       .sort();
     for (const migrationFile of migrationFiles) {
-      await pool.query(
+      applyIdentityMigration(
+        testUrl.toString(),
         await readFile(resolve(MIGRATION_DIRECTORY, migrationFile), 'utf8'),
       );
     }
@@ -91,12 +93,14 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     const requestDigest = 'a'.repeat(64);
     const receiptDigest = 'b'.repeat(64);
     await pool.query(
-      `INSERT INTO identity.users (id, display_name) VALUES ($1::uuid, $2)`,
+      `INSERT INTO identity.user_accounts (user_account_id, display_name)
+       VALUES ($1::uuid, $2)`,
       [userId, 'Data rights integration user'],
     );
     await pool.query(
-      `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
-       VALUES ($1::uuid, $2::uuid, $3, 'personal')`,
+      `INSERT INTO identity.identity_workspaces (
+         identity_workspace_id, owner_user_account_id, workspace_name, workspace_kind
+       ) VALUES ($1::uuid, $2::uuid, $3, 'personal')`,
       [workspaceId, userId, 'Data rights integration workspace'],
     );
 
@@ -158,12 +162,15 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     );
     expect(blockedMutation.rowCount).toBe(0);
 
-    await pool.query(`DELETE FROM identity.workspaces WHERE id = $1::uuid`, [
-      workspaceId,
-    ]);
-    await pool.query(`DELETE FROM identity.users WHERE id = $1::uuid`, [
-      userId,
-    ]);
+    await pool.query(
+      `DELETE FROM identity.identity_workspaces
+       WHERE identity_workspace_id = $1::uuid`,
+      [workspaceId],
+    );
+    await pool.query(
+      `DELETE FROM identity.user_accounts WHERE user_account_id = $1::uuid`,
+      [userId],
+    );
 
     const retained = await pool.query<{
       request_id: string;
@@ -190,12 +197,14 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
     const requestId = randomUUID();
     const firstIdempotencyKey = randomUUID();
     await pool.query(
-      `INSERT INTO identity.users (id, display_name) VALUES ($1::uuid, $2)`,
+      `INSERT INTO identity.user_accounts (user_account_id, display_name)
+       VALUES ($1::uuid, $2)`,
       [userId, 'Request collision integration user'],
     );
     await pool.query(
-      `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
-       VALUES ($1::uuid, $2::uuid, $3, 'personal')`,
+      `INSERT INTO identity.identity_workspaces (
+         identity_workspace_id, owner_user_account_id, workspace_name, workspace_kind
+       ) VALUES ($1::uuid, $2::uuid, $3, 'personal')`,
       [workspaceId, userId, 'Request collision integration workspace'],
     );
     const ledger = new PostgresDataRightsRequestLedger(
@@ -226,10 +235,10 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
   });
 
   it('enforces request kind, digest, completion consistency, receipt digest, and time ordering constraints', async () => {
-    const base = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    const baseValues = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
     const invalidRows: ReadonlyArray<readonly unknown[]> = [
       [
-        ...base,
+        ...baseValues,
         'invalid-kind',
         'a'.repeat(64),
         'pending',
@@ -238,7 +247,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         null,
       ],
       [
-        ...base,
+        ...baseValues,
         'export',
         'not-a-digest',
         'pending',
@@ -247,7 +256,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         null,
       ],
       [
-        ...base,
+        ...baseValues,
         'export',
         'a'.repeat(64),
         'completed',
@@ -256,7 +265,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         '2026-08-09T20:01:00.000Z',
       ],
       [
-        ...base,
+        ...baseValues,
         'export',
         'a'.repeat(64),
         'completed',
@@ -265,7 +274,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
         '2026-08-09T20:01:00.000Z',
       ],
       [
-        ...base,
+        ...baseValues,
         'export',
         'a'.repeat(64),
         'completed',
@@ -275,7 +284,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
       ],
     ];
 
-    for (const values of invalidRows) {
+    for (const invalidRowValues of invalidRows) {
       await expect(
         pool.query(
           `INSERT INTO identity.data_rights_requests (
@@ -286,7 +295,7 @@ describeWithDatabase('PostgreSQL data-rights request ledger', () => {
              $1::uuid, $2::uuid, $3::uuid, $4::uuid,
              $5, $6, $7, $8, $9::timestamptz, $10::timestamptz
            )`,
-          [...values],
+          [...invalidRowValues],
         ),
       ).rejects.toThrow();
     }

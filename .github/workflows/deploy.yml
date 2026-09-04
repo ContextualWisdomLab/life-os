@@ -20,6 +20,11 @@ on:
         required: true
         default: false
         type: boolean
+      identity_service_drained:
+        description: Confirm Identity traffic is stopped and all old replicas are terminated before an incompatible schema rename
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -130,6 +135,7 @@ jobs:
         if: ${{ inputs.run_migrations }}
         env:
           LIFE_OS_MIGRATION_CONFIRMATION: apply-forward-only
+          PGOPTIONS: ${{ inputs.identity_service_drained && '-c life_os.identity_schema_rename_confirmation=identity-service-drained' || '' }}
           IDENTITY_DATABASE_URL: ${{ secrets.IDENTITY_DATABASE_URL }}
           PLANNING_DATABASE_URL: ${{ secrets.PLANNING_DATABASE_URL }}
           HABIT_DATABASE_URL: ${{ secrets.HABIT_DATABASE_URL }}

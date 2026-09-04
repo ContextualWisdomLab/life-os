@@ -17,6 +17,7 @@ import {
   type SqlQueryResult,
 } from './postgres-security-repositories';
 import { AesGcmSecretBox } from './secret-box';
+import { applyIdentityMigration } from './tests/identity-migration-test-support';
 
 const DATABASE_URL = process.env.IDENTITY_DATABASE_URL;
 const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
@@ -29,10 +30,10 @@ class NodePostgresTransaction implements SqlTransaction {
     text: string,
     values: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    const result = await this.client.query(text, [...values]);
+    const queryResult = await this.client.query(text, [...values]);
     return {
-      rows: result.rows as Row[],
-      rowCount: result.rowCount,
+      rows: queryResult.rows as Row[],
+      rowCount: queryResult.rowCount,
     };
   }
 
@@ -48,10 +49,10 @@ class NodePostgresSqlClient implements SqlClient, TransactionalSqlClient {
     text: string,
     values: readonly unknown[] = [],
   ): Promise<SqlQueryResult<Row>> {
-    const result = await this.pool.query(text, [...values]);
+    const queryResult = await this.pool.query(text, [...values]);
     return {
-      rows: result.rows as Row[],
-      rowCount: result.rowCount,
+      rows: queryResult.rows as Row[],
+      rowCount: queryResult.rowCount,
     };
   }
 
@@ -85,11 +86,14 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
 
     const migrationDirectory = resolve(process.cwd(), 'migrations');
     const migrationFiles = (await readdir(migrationDirectory))
-      .filter((file) => file.endsWith('.sql'))
+      .filter((migrationFile) => migrationFile.endsWith('.sql'))
       .sort();
     for (const migrationFile of migrationFiles) {
-      const migration = await readFile(resolve(migrationDirectory, migrationFile), 'utf8');
-      await pool.query(migration);
+      const migrationSql = await readFile(
+        resolve(migrationDirectory, migrationFile),
+        'utf8',
+      );
+      applyIdentityMigration(DATABASE_URL, migrationSql);
     }
 
     sqlClient = new NodePostgresSqlClient(pool);
@@ -107,55 +111,57 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     const repository = new PostgresIdentityRepository(sqlClient);
     const firstService = new IdentityService(repository);
     const secondService = new IdentityService(repository);
-    const input = {
+    const signInInput = {
       provider: 'github' as const,
       providerSubject,
       displayName: 'Integration Identity',
     };
 
     const [first, concurrent] = await Promise.all([
-      firstService.signInWithExternalIdentity(input),
-      secondService.signInWithExternalIdentity(input),
+      firstService.signInWithExternalIdentity(signInInput),
+      secondService.signInWithExternalIdentity(signInInput),
     ]);
     const repeated = await firstService.signInWithExternalIdentity({
-      ...input,
+      ...signInInput,
       displayName: 'Ignored Replacement Name',
     });
 
     expect(concurrent).toEqual(first);
     expect(repeated).toEqual(first);
-    const stored = await pool.query<{
-      user_id: string;
+    const storedIdentity = await pool.query<{
+      user_account_id: string;
       external_identity_id: string;
-      workspace_id: string;
+      identity_workspace_id: string;
       display_name: string;
-      workspace_owner_user_id: string;
+      workspace_owner_user_account_id: string;
     }>(
       `SELECT
-         users.id AS user_id,
-         external_identities.id AS external_identity_id,
-         workspaces.id AS workspace_id,
-         users.display_name,
-         workspaces.owner_user_id AS workspace_owner_user_id
+         user_accounts.user_account_id,
+         external_identities.external_identity_id,
+         identity_workspaces.identity_workspace_id,
+         user_accounts.display_name,
+         identity_workspaces.owner_user_account_id AS workspace_owner_user_account_id
        FROM identity.external_identities
-       JOIN identity.users ON identity.users.id = identity.external_identities.user_id
-       JOIN identity.workspaces ON identity.workspaces.owner_user_id = identity.users.id
-       WHERE identity.external_identities.provider = $1
+       JOIN identity.user_accounts
+         ON user_accounts.user_account_id = external_identities.user_account_id
+       JOIN identity.identity_workspaces
+         ON identity_workspaces.owner_user_account_id = user_accounts.user_account_id
+       WHERE identity.external_identities.identity_provider = $1
          AND identity.external_identities.provider_subject = $2`,
       ['github', providerSubject],
     );
-    expect(stored.rowCount).toBe(1);
-    expect(stored.rows[0]).toEqual({
-      user_id: first.user.id,
+    expect(storedIdentity.rowCount).toBe(1);
+    expect(storedIdentity.rows[0]).toEqual({
+      user_account_id: first.user.id,
       external_identity_id: first.externalIdentity.id,
-      workspace_id: first.workspace.id,
+      identity_workspace_id: first.workspace.id,
       display_name: 'Integration Identity',
-      workspace_owner_user_id: first.user.id,
+      workspace_owner_user_account_id: first.user.id,
     });
 
     await expect(
       pool.query(
-        `INSERT INTO identity.users (id, display_name)
+        `INSERT INTO identity.user_accounts (user_account_id, display_name)
          VALUES ($1, $2)`,
         ['00000000-0000-1000-8000-000000000000', 'Sequential Identifier'],
       ),
@@ -176,7 +182,7 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
       redirectUri: 'https://life.example.com/v1/auth/google/callback',
     });
 
-    const stored = await pool.query<{
+    const storedTransaction = await pool.query<{
       state_hash: string;
       browser_session_hash: string;
       code_verifier_ciphertext: Buffer;
@@ -192,22 +198,22 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
          nonce_ciphertext,
          nonce_key_version
        FROM identity.oauth_transactions
-       WHERE id = $1`,
+       WHERE oauth_transaction_id = $1`,
       [started.id],
     );
-    const row = stored.rows[0];
-    expect(row).toBeDefined();
-    if (!row) {
+    const transactionRow = storedTransaction.rows[0];
+    expect(transactionRow).toBeDefined();
+    if (!transactionRow) {
       throw new Error('Expected persisted OAuth transaction');
     }
 
-    expect(row.state_hash).toBe(sha256Hex(started.state));
-    expect(row.browser_session_hash).toBe(sha256Hex(browserSessionId));
-    expect(row.code_verifier_ciphertext).toBeInstanceOf(Buffer);
-    expect(row.code_verifier_ciphertext.length).toBeGreaterThanOrEqual(28);
-    expect(row.code_verifier_key_version).toBe('v1');
-    expect(row.nonce_ciphertext).toBeInstanceOf(Buffer);
-    expect(row.nonce_key_version).toBe('v1');
+    expect(transactionRow.state_hash).toBe(sha256Hex(started.state));
+    expect(transactionRow.browser_session_hash).toBe(sha256Hex(browserSessionId));
+    expect(transactionRow.code_verifier_ciphertext).toBeInstanceOf(Buffer);
+    expect(transactionRow.code_verifier_ciphertext.length).toBeGreaterThanOrEqual(28);
+    expect(transactionRow.code_verifier_key_version).toBe('v1');
+    expect(transactionRow.nonce_ciphertext).toBeInstanceOf(Buffer);
+    expect(transactionRow.nonce_key_version).toBe('v1');
 
     const consumed = await service.consume('google', started.state, browserSessionId);
     expect(createHash('sha256').update(consumed.codeVerifier).digest('base64url')).toBe(
@@ -224,13 +230,14 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     const otherUserId = randomUUID();
     const workspaceId = randomUUID();
     await pool.query(
-      `INSERT INTO identity.users (id, display_name)
+      `INSERT INTO identity.user_accounts (user_account_id, display_name)
        VALUES ($1, $2), ($3, $4)`,
       [userId, 'Integration User', otherUserId, 'Other User'],
     );
     await pool.query(
-      `INSERT INTO identity.workspaces (id, owner_user_id, name, kind)
-       VALUES ($1, $2, $3, 'personal')`,
+      `INSERT INTO identity.identity_workspaces (
+         identity_workspace_id, owner_user_account_id, workspace_name, workspace_kind
+       ) VALUES ($1, $2, $3, 'personal')`,
       [workspaceId, userId, 'Integration workspace'],
     );
 
@@ -242,26 +249,26 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     });
     const issued = await service.create(userId, workspaceId);
 
-    const stored = await pool.query<{
+    const storedSession = await pool.query<{
       token_hash: string;
-      workspace_id: string;
+      identity_workspace_id: string;
       authenticated_at: Date;
       created_at: Date;
       revoked_at: Date | null;
     }>(
-      `SELECT token_hash, workspace_id, authenticated_at, created_at, revoked_at
-       FROM identity.sessions
-       WHERE id = $1`,
+      `SELECT token_hash, identity_workspace_id, authenticated_at, created_at, revoked_at
+       FROM identity.authentication_sessions
+       WHERE authentication_session_id = $1`,
       [issued.session.id],
     );
-    expect(stored.rows[0]).toMatchObject({
+    expect(storedSession.rows[0]).toMatchObject({
       token_hash: sha256Hex(issued.token),
-      workspace_id: workspaceId,
+      identity_workspace_id: workspaceId,
       authenticated_at: new Date(issued.session.authenticatedAt),
       created_at: new Date(issued.session.createdAt),
       revoked_at: null,
     });
-    expect(stored.rows[0]?.token_hash).not.toBe(issued.token);
+    expect(storedSession.rows[0]?.token_hash).not.toBe(issued.token);
     await expect(service.authenticate(issued.token)).resolves.toEqual(issued.session);
 
     now = new Date('2026-08-03T01:45:00.000Z');
@@ -272,25 +279,27 @@ describeWithDatabase('PostgreSQL identity security repositories', () => {
     await expect(service.authenticate(rotated.token)).resolves.toEqual(rotated.session);
 
     const oldSession = await pool.query<{ revoked_at: Date | null }>(
-      'SELECT revoked_at FROM identity.sessions WHERE id = $1',
+      `SELECT revoked_at
+       FROM identity.authentication_sessions
+       WHERE authentication_session_id = $1`,
       [issued.session.id],
     );
-    const replacement = await pool.query<{
-      rotated_from_id: string | null;
+    const replacementSession = await pool.query<{
+      rotated_from_session_id: string | null;
       authenticated_at: Date;
       created_at: Date;
     }>(
-      `SELECT rotated_from_id, authenticated_at, created_at
-       FROM identity.sessions
-       WHERE id = $1`,
+      `SELECT rotated_from_session_id, authenticated_at, created_at
+       FROM identity.authentication_sessions
+       WHERE authentication_session_id = $1`,
       [rotated.session.id],
     );
     expect(oldSession.rows[0]?.revoked_at).toBeInstanceOf(Date);
-    expect(replacement.rows[0]?.rotated_from_id).toBe(issued.session.id);
-    expect(replacement.rows[0]?.authenticated_at.toISOString()).toBe(
+    expect(replacementSession.rows[0]?.rotated_from_session_id).toBe(issued.session.id);
+    expect(replacementSession.rows[0]?.authenticated_at.toISOString()).toBe(
       issued.session.authenticatedAt,
     );
-    expect(replacement.rows[0]?.created_at.toISOString()).toBe(
+    expect(replacementSession.rows[0]?.created_at.toISOString()).toBe(
       rotated.session.createdAt,
     );
     expect(rotated.session.authenticatedAt).toBe(issued.session.authenticatedAt);

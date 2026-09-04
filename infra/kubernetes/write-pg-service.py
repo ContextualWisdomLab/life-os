@@ -23,7 +23,6 @@ ALLOWED_QUERY_PARAMETERS = {
     "hostaddr",
     "krbsrvname",
     "load_balance_hosts",
-    "options",
     "require_auth",
     "sslcert",
     "sslcertmode",
