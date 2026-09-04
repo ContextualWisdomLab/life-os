@@ -106,7 +106,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       const test = fixture();
 
       expect(() =>
-        createNodePostgresPool(connectionString, test.constructor),
+        createNodePostgresPluginPool(connectionString, test.constructor),
       ).toThrow();
       expect(test.constructedWith).not.toHaveBeenCalled();
     },
@@ -154,7 +154,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       readonly devDependencies?: Readonly<Record<string, string>>;
     };
     const lockfile = readFileSync(
-      resolve(__dirname, '../../../pnema-lock.yaml'),
+      resolve(__dirname, '../../../pnpm-lock.yaml'),
       'utf8',
     );
     const importerMarker = '  apps/integration-service:\n';
@@ -175,7 +175,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
       '      pg:\n        specifier: ^8.22.0\n        version: 8.22.0',
     );
     expect(importer).toContain(
-      "      '@types/pg':\n        specifier: ^8.20.0\n        version: 8.20.3",
+      "      '@types/pg':\n        specifier: ^8.20.0\n        version: 8.20.0",
     );
   });
 });
