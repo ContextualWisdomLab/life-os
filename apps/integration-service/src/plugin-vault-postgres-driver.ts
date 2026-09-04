@@ -13,7 +13,32 @@ const PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS = 300;
 const PLUGIN_POSTGRES_POOL_ERROR_MESSAGE =
   'Integration PostgreSQL pool reported an idle client error';
 const SAFE_POOL_ERROR_NAMES = new Set(['Error', 'DatabaseError']);
-const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/u;
+const SAFE_POSTGRES_SQLSTATES = new Set([
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+  '53000',
+  '53100',
+  '53200',
+  '53300',
+  '53400',
+  '57000',
+  '57014',
+  '57P01',
+  '57P02',
+  '57P03',
+  '57P04',
+  '57P05',
+  '58000',
+  '58030',
+  '58P01',
+  '58P02',
+  '58P03',
+]);
 
 /** Exact node-postgres lifecycle configuration owned by the Integration runtime. */
 export interface NodePostgresPluginPoolConfiguration {
@@ -79,10 +104,18 @@ function safePoolErrorName(value: unknown): string {
     : 'Error';
 }
 
-/** Retains only canonical five-character PostgreSQL SQLSTATE classification evidence. */
+/**
+ * Retains only PostgreSQL operational SQLSTATEs explicitly useful to pool health evidence.
+ *
+ * Five uppercase characters are merely the SQLSTATE wire shape, not proof that a value is a
+ * PostgreSQL-defined condition. A hostile or corrupted peer can otherwise place arbitrary data in
+ * the code field. The finite set is limited to connection exceptions, resource exhaustion,
+ * operator intervention, and external system errors that can explain an idle-client failure.
+ */
 function safePostgresCode(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  return POSTGRES_SQLSTATE_PATTERN.test(value) ? value : null;
+  return typeof value === 'string' && SAFE_POSTGRES_SQLSTATES.has(value)
+    ? value
+    : null;
 }
 
 /** Emits one structured pool-failure record without serializing the native database error. */
