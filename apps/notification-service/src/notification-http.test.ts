@@ -41,12 +41,13 @@ function request(options: {
 /** Captures status, headers, and JSON body written by the private adapter. */
 function response(): NotificationHttpResponse & {
   readonly headers: Map<string, string>;
-  body?: string;
+  body: string | undefined;
 } {
   const headers = new Map<string, string>();
   return {
     statusCode: 0,
     headers,
+    body: undefined,
     setHeader(name, value) {
       headers.set(name, value);
     },
