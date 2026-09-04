@@ -87,10 +87,13 @@ class ConnectionSqlClient implements PlanningSqlClient {
         new Error('Planning transaction SQL capability is closed'),
       );
     }
+    // Admission fixes the parameter evidence before queued work can be delayed;
+    // later caller mutation must not change SQL that already owns queue position.
+    const capturedValues = [...values];
     // A pg Client owns one PostgreSQL connection. Queue concurrent callers here
     // rather than relying on node-postgres's deprecated implicit serialization.
     const result = this.queryTail.then(
-      async () => await this.connection.query<Row>(text, values),
+      async () => await this.connection.query<Row>(text, capturedValues),
     );
     this.queryTail = result.then(
       () => undefined,
