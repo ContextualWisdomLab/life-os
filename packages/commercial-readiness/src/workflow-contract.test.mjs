@@ -73,6 +73,46 @@ describe('commercial readiness workflow contract', () => {
     }
   });
 
+  it('keeps draft pull requests off LifeOS-owned hosted runners and reruns when review starts', async () => {
+    const workflows = [
+      {
+        path: '.github/workflows/appguardrail.yml',
+        jobs: ['scan'],
+      },
+      {
+        path: '.github/workflows/ci.yml',
+        jobs: [
+          'compose_runtime',
+          'today-concurrency',
+          'validate',
+          'browser-acceptance',
+          'merge_compatibility',
+        ],
+      },
+      {
+        path: '.github/workflows/commercial-readiness.yml',
+        jobs: ['audit'],
+      },
+    ];
+
+    for (const { path, jobs } of workflows) {
+      const workflow = await repositoryFile(path);
+      const triggerBlock = yamlTopLevelBlock(workflow, 'on');
+      assert.match(
+        triggerBlock,
+        /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
+        `${path} must reacquire exact-head evidence when a draft becomes ready`,
+      );
+      for (const job of jobs) {
+        assert.match(
+          yamlJobBlock(workflow, job),
+          /^\s+if:\s*\$\{\{ github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.draft == false \}\}\s*$/mu,
+          `${path}:${job} must not allocate a hosted runner while the pull request is draft`,
+        );
+      }
+    }
+  });
+
   it('pins every external action to a full commit SHA and retains evidence for no more than seven days', async () => {
     const workflow = await repositoryFile(
       '.github/workflows/commercial-readiness.yml',
