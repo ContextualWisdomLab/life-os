@@ -5,13 +5,14 @@ import {
   type DynamicModule,
   type OnApplicationShutdown,
 } from '@nestjs/common';
+import type { PluginOperatorApplication } from './plugin-operator-application';
 import {
   PluginVaultHostedRuntimeError,
   type PluginVaultHostedRuntime,
 } from './plugin-vault-hosted-runtime';
 import { IntegrationAppModule } from './main';
 
-/** Host-runtime token retained so Nest shutdown owns the same runtime it serves. */
+/** Host-runtime token retained so Nest shutdown owns the same accepted runtime authority it serves. */
 export const PLUGIN_VAULT_HOSTED_RUNTIME = Symbol(
   'life-os.integration.plugin-vault-hosted-runtime',
 );
@@ -33,26 +34,50 @@ class PluginVaultHostedRuntimeShutdown implements OnApplicationShutdown {
 @Module({})
 class PluginVaultHostedModule {}
 
+/** Captures one stable runtime authority surface before it enters Nest dependency injection. */
+function requireRuntime(value: unknown): PluginVaultHostedRuntime {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new PluginVaultHostedRuntimeError();
+  }
+
+  let operator: unknown;
+  let close: unknown;
+  try {
+    operator = (value as PluginVaultHostedRuntime).operator;
+    close = (value as PluginVaultHostedRuntime).close;
+  } catch {
+    throw new PluginVaultHostedRuntimeError();
+  }
+  if (
+    operator === null ||
+    typeof operator !== 'object' ||
+    typeof close !== 'function'
+  ) {
+    throw new PluginVaultHostedRuntimeError();
+  }
+
+  const receiver = value as object;
+  return Object.freeze({
+    operator: operator as PluginOperatorApplication,
+    close(): Promise<void> {
+      return Reflect.apply(close, receiver, []) as Promise<void>;
+    },
+  });
+}
+
 /**
  * Registers one already-composed Plugin runtime before a Nest listener can start.
  *
  * The Integration module receives only the runtime's authenticated operator. Pool
  * ownership remains attached to the enclosing hosted module, whose shutdown hook
- * closes that exact runtime. This keeps controller authority and resource lifecycle
- * in one composition root without making controllers persistence owners.
+ * closes the accepted runtime authority. Runtime properties are captured once before
+ * registration so throwing or stateful accessors cannot replace operator/shutdown
+ * authority after the dependency has crossed the composition boundary.
  */
 export function createPluginVaultHostedModule(
-  runtime: PluginVaultHostedRuntime,
+  runtimeInput: PluginVaultHostedRuntime,
 ): DynamicModule {
-  if (
-    runtime === null ||
-    typeof runtime !== 'object' ||
-    runtime.operator === null ||
-    typeof runtime.operator !== 'object' ||
-    typeof runtime.close !== 'function'
-  ) {
-    throw new PluginVaultHostedRuntimeError();
-  }
+  const runtime = requireRuntime(runtimeInput);
 
   return {
     module: PluginVaultHostedModule,
