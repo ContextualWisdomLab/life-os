@@ -12,6 +12,8 @@ const PLUGIN_POSTGRES_STATEMENT_TIMEOUT_MS = 5_000;
 const PLUGIN_POSTGRES_QUERY_TIMEOUT_MS = 6_000;
 const PLUGIN_POSTGRES_IDLE_TIMEOUT_MS = 30_000;
 const PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS = 300;
+const PLUGIN_POSTGRES_READINESS_SQL =
+  'SELECT 1 AS integration_plugin_runtime_ready';
 const PLUGIN_POSTGRES_POOL_ERROR_MESSAGE =
   'Integration PostgreSQL pool reported an idle client error';
 const SAFE_POOL_ERROR_NAMES = new Set(['Error', 'DatabaseError']);
@@ -81,6 +83,10 @@ export interface PluginPostgresPoolErrorRecord {
 export type PluginPostgresPoolErrorLogger = (
   record: PluginPostgresPoolErrorRecord,
 ) => void;
+
+interface PluginPostgresReadinessRow {
+  readonly integration_plugin_runtime_ready?: unknown;
+}
 
 /** Fixed driver-boundary failure that never reflects connection material. */
 export class PluginNodePostgresConfigurationError extends Error {
@@ -163,22 +169,77 @@ export function registerPluginPostgresPoolErrorHandler(
 }
 
 /**
- * Discards a constructed pool that failed the mandatory idle-error registration boundary.
+ * Discards a constructed pool that cannot satisfy the mandatory acquisition contract.
  *
- * Listener registration is part of acquisition: the pool cannot become runtime authority without
- * its process-failure guard installed. Cleanup is therefore awaited before the fixed configuration
- * failure is returned, while cleanup detail is consumed so a driver or injected seam cannot reflect
- * connection material through the startup error surface.
+ * Listener registration and the initial readiness probe are both part of acquisition. Cleanup is
+ * awaited before the fixed configuration failure is returned, while cleanup detail is consumed so
+ * a driver or injected seam cannot reflect connection material through the startup error surface.
  */
-async function rejectPoolAfterRegistrationFailure(
-  pool: NodePostgresPoolLike,
-): Promise<never> {
+async function rejectAcquiredPool(pool: NodePostgresPoolLike): Promise<never> {
   try {
     await pool.end();
   } catch {
-    // Registration failure remains the authoritative bounded startup failure.
+    // The acquisition failure remains the authoritative bounded startup failure.
   }
   return unavailable();
+}
+
+/** Accepts only the exact one-row result emitted by the fixed readiness statement. */
+function hasCanonicalReadinessEvidence(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  let rows: unknown;
+  let rowCount: unknown;
+  try {
+    rows = (value as { readonly rows?: unknown }).rows;
+    rowCount = (value as { readonly rowCount?: unknown }).rowCount;
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1 || rowCount !== 1) {
+    return false;
+  }
+
+  const row = rows[0];
+  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+    return false;
+  }
+
+  let ready: unknown;
+  try {
+    ready = (row as PluginPostgresReadinessRow)
+      .integration_plugin_runtime_ready;
+  } catch {
+    return false;
+  }
+  return ready === 1;
+}
+
+/**
+ * Proves PostgreSQL authentication, verified TLS, and query execution before listener authority.
+ *
+ * node-postgres pools are lazy: constructing a Pool alone does not establish a database connection.
+ * The hosted runtime therefore cannot treat construction as durable acceptance. This fixed query is
+ * executed only after the idle-error handler is installed, and any query/result/cleanup failure is
+ * collapsed to the credential-free acquisition error before the pool can reach service adapters.
+ */
+async function requirePluginPostgresReadiness(
+  pool: NodePostgresPoolLike,
+): Promise<void> {
+  let result: unknown;
+  try {
+    result = await pool.query<PluginPostgresReadinessRow>(
+      PLUGIN_POSTGRES_READINESS_SQL,
+    );
+  } catch {
+    return rejectAcquiredPool(pool);
+  }
+
+  if (!hasCanonicalReadinessEvidence(result)) {
+    return rejectAcquiredPool(pool);
+  }
 }
 
 /**
@@ -240,9 +301,11 @@ function requireConnectionString(value: string): string {
  * Idle, lifetime, and pool-size bounds are explicit as well. Pool construction itself is part of the
  * credential boundary: a constructor failure is reduced to the same fixed configuration error before
  * native driver detail can become startup evidence. An idle-client error listener is registered before
- * the pool crosses the runtime boundary; if registration itself fails, the newly constructed pool is
- * closed before a bounded failure is returned. Parameter arrays are copied because node-postgres
- * accepts mutable arrays while Integration repositories expose readonly fixed-query values.
+ * the first query, then a fixed readiness statement must prove authenticated, verified-TLS query
+ * execution before the pool crosses the runtime boundary. Registration/readiness failure closes the
+ * newly constructed pool before returning the bounded configuration error. Parameter arrays are copied
+ * because node-postgres accepts mutable arrays while Integration repositories expose readonly fixed-query
+ * values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
@@ -268,22 +331,24 @@ export function createNodePostgresPluginPool(
   try {
     registerPluginPostgresPoolErrorHandler(pool, logError);
   } catch {
-    return rejectPoolAfterRegistrationFailure(pool);
+    return rejectAcquiredPool(pool);
   }
 
-  return Object.freeze({
-    async query<Row>(
-      text: string,
-      values: readonly unknown[] = [],
-    ): Promise<PluginHostedPostgresResult<Row>> {
-      const result = await pool.query<Row>(text, [...values]);
-      return Object.freeze({
-        rows: result.rows,
-        rowCount: result.rowCount,
-      });
-    },
-    async end(): Promise<void> {
-      await pool.end();
-    },
-  });
+  return requirePluginPostgresReadiness(pool).then(() =>
+    Object.freeze({
+      async query<Row>(
+        text: string,
+        values: readonly unknown[] = [],
+      ): Promise<PluginHostedPostgresResult<Row>> {
+        const result = await pool.query<Row>(text, [...values]);
+        return Object.freeze({
+          rows: result.rows,
+          rowCount: result.rowCount,
+        });
+      },
+      async end(): Promise<void> {
+        await pool.end();
+      },
+    }),
+  );
 }
