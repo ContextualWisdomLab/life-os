@@ -12,6 +12,18 @@ function hasContractDocstring(source, declarationPattern) {
 }
 
 describe('GitHubApiClient retry documentation contract', () => {
+  it('rejects an unrelated JSDoc attached to a retry declaration', () => {
+    const source = `/** Unrelated documentation. */\nconst MAX_READ_ATTEMPTS = 3;`;
+
+    assert.equal(
+      hasContractDocstring(source, String.raw`const MAX_READ_ATTEMPTS\s*=`, [
+        'idempotent GitHub GET',
+        'including the first request',
+      ]),
+      false,
+    );
+  });
+
   it('documents every production declaration introduced by bounded GET retry', async () => {
     const source = await readFile(sourceUrl, 'utf8');
     const declarations = [
