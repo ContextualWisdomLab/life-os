@@ -5,8 +5,11 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const API_PAGE_SIZE = 100;
 const MAX_API_PAGES = 10;
+/** Maximum number of attempts for one idempotent GitHub GET, including the first request. */
 const MAX_READ_ATTEMPTS = 3;
+/** Backoff delays after the first and second retryable GET failures, in milliseconds. */
 const READ_RETRY_DELAYS_MS = [100, 250];
+/** Transient server statuses that may be retried only when the request method is GET. */
 const READ_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
@@ -46,6 +49,12 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(merged);
 }
 
+/**
+ * Wait for the bounded backoff associated with a completed retryable GET attempt.
+ *
+ * @param {number} attempt One-based completed attempt; valid retry waits are attempts 1 and 2.
+ * @returns {Promise<void>} Resolves after the corresponding 100 ms or 250 ms delay.
+ */
 function waitForReadRetry(attempt) {
   const delay = READ_RETRY_DELAYS_MS[attempt - 1];
   return new Promise((resolve) => setTimeout(resolve, delay));
@@ -83,6 +92,17 @@ export class GitHubApiClient {
     this.maxResponseBytes = maxResponseBytes;
   }
 
+  /**
+   * Request bounded JSON from the GitHub API while preserving mutation exactly-once semantics.
+   *
+   * GET requests retry only HTTP 500, 502, 503, or 504 responses, for at most three total
+   * attempts with 100 ms then 250 ms backoff and a fresh configured timeout per attempt.
+   * Every non-GET request is attempted exactly once and is never replayed automatically.
+   *
+   * @param {string} path Absolute GitHub API path constrained to the configured API origin.
+   * @param {{method?: string, body?: unknown, headers?: Record<string, string>}} [options] Request options.
+   * @returns {Promise<unknown>} Parsed bounded JSON response, or null for an empty successful body.
+   */
   async requestJson(path, { method = 'GET', body, headers = {} } = {}) {
     if (
       typeof path !== 'string' ||
