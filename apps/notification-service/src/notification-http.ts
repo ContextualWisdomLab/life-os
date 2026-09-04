@@ -30,8 +30,8 @@ export type NotificationHttpEnvironment = Readonly<
 /** Minimal request shape consumed by the framework-free private HTTP adapter. */
 export interface NotificationHttpRequest
   extends AsyncIterable<Uint8Array | string> {
-  readonly method?: string;
-  readonly url?: string;
+  readonly method: string | undefined;
+  readonly url: string | undefined;
   readonly headers: IncomingHttpHeaders;
 }
 
