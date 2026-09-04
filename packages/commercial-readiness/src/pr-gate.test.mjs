@@ -88,6 +88,26 @@ describe('evaluatePullRequestForMerge', () => {
     });
   });
 
+  it('requires an explicit decisive approval before merge automation can proceed', () => {
+    for (const reviews of [
+      [],
+      [
+        {
+          actor: 'reviewer-a',
+          state: 'COMMENTED',
+          submitted_at: '2026-08-03T06:00:00Z',
+        },
+      ],
+    ]) {
+      const result = evaluatePullRequestForMerge(
+        pullRequest({ reviews }),
+        policy(),
+      );
+      assert.equal(result.eligible, false);
+      assert.ok(result.blockers.includes('missing-approval'));
+    }
+  });
+
   it('uses repository branch provenance instead of PR-opener association as source trust', () => {
     const candidate = pullRequest({ author_association: 'CONTRIBUTOR' });
     assert.deepEqual(evaluatePullRequestForMerge(candidate, policy()), {
