@@ -65,7 +65,9 @@ function readinessFailurePool(options: {
       queryCalls.push(text);
       if (options.malformedResult) {
         return {
-          rows: [{ integration_plugin_runtime_ready: 0 }] as readonly Row[],
+          rows: [
+            { integration_plugin_runtime_ready: 0 },
+          ] as unknown as readonly Row[],
           rowCount: 1,
         };
       }
