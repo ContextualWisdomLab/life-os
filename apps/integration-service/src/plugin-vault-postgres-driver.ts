@@ -159,6 +159,25 @@ export function registerPluginPostgresPoolErrorHandler(
 }
 
 /**
+ * Discards a constructed pool that failed the mandatory idle-error registration boundary.
+ *
+ * Listener registration is part of acquisition: the pool cannot become runtime authority without
+ * its process-failure guard installed. Cleanup is therefore awaited before the fixed configuration
+ * failure is returned, while cleanup detail is consumed so a driver or injected seam cannot reflect
+ * connection material through the startup error surface.
+ */
+async function rejectPoolAfterRegistrationFailure(
+  pool: NodePostgresPoolLike,
+): Promise<never> {
+  try {
+    await pool.end();
+  } catch {
+    // Registration failure remains the authoritative bounded startup failure.
+  }
+  return unavailable();
+}
+
+/**
  * Requires one self-contained PostgreSQL URI before node-postgres sees process state.
  *
  * node-postgres documents that missing connection fields can be supplied by libpq-style
@@ -213,16 +232,16 @@ function requireConnectionString(value: string): string {
  * connection-string query options are rejected, URI input cannot downgrade or replace this `ssl`
  * policy. Finite acquisition, idle, lifetime, and pool-size bounds are explicit because the
  * node-postgres connection-acquisition timeout otherwise defaults to no timeout. An idle-client
- * error listener is registered before the pool crosses the runtime boundary so native errors do
- * not become uncaught process failures or credential-bearing logs. Parameter arrays are copied
- * because node-postgres accepts mutable arrays while Integration repositories expose readonly
- * fixed-query values.
+ * error listener is registered before the pool crosses the runtime boundary; if registration
+ * itself fails, the newly constructed pool is closed before a bounded failure is returned.
+ * Parameter arrays are copied because node-postgres accepts mutable arrays while Integration
+ * repositories expose readonly fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
   PoolConstructor: NodePostgresPoolConstructor = Pool as unknown as NodePostgresPoolConstructor,
   logError: PluginPostgresPoolErrorLogger = defaultPluginPostgresPoolErrorLogger,
-): PluginHostedPostgresPool {
+): PluginHostedPostgresPool | Promise<PluginHostedPostgresPool> {
   const pool = new PoolConstructor({
     connectionString: requireConnectionString(connectionString),
     ssl: { rejectUnauthorized: true },
@@ -231,7 +250,11 @@ export function createNodePostgresPluginPool(
     idleTimeoutMillis: PLUGIN_POSTGRES_IDLE_TIMEOUT_MS,
     maxLifetimeSeconds: PLUGIN_POSTGRES_MAX_LIFETIME_SECONDS,
   });
-  registerPluginPostgresPoolErrorHandler(pool, logError);
+  try {
+    registerPluginPostgresPoolErrorHandler(pool, logError);
+  } catch {
+    return rejectPoolAfterRegistrationFailure(pool);
+  }
 
   return Object.freeze({
     async query<Row>(
