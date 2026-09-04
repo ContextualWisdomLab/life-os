@@ -70,7 +70,7 @@ function fixture(): {
 }
 
 describe('Integration-owned node-postgres Plugin pool', () => {
-  it('constructs node-postgres with finite service-owned pool lifecycle bounds', () => {
+  it('constructs node-postgres with verified TLS and finite service-owned pool lifecycle bounds', () => {
     const test = fixture();
 
     createNodePostgresPluginPool(
@@ -82,6 +82,7 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     expect(test.constructedWith).toHaveBeenCalledWith({
       connectionString:
         'postgresql://integration:secret@db.example.test:5432/life_os',
+      ssl: { rejectUnauthorized: true },
       max: 10,
       connectionTimeoutMillis: 5_000,
       idleTimeoutMillis: 30_000,
