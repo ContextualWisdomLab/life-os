@@ -86,7 +86,6 @@ describe('commercial readiness workflow contract', () => {
           'today-concurrency',
           'validate',
           'browser-acceptance',
-          'merge_compatibility',
         ],
       },
       {
@@ -111,6 +110,13 @@ describe('commercial readiness workflow contract', () => {
         );
       }
     }
+
+    const ciWorkflow = await repositoryFile('.github/workflows/ci.yml');
+    assert.match(
+      yamlJobBlock(ciWorkflow, 'merge_compatibility'),
+      /^\s+if:\s*\$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.draft == false \}\}\s*$/mu,
+      'merge compatibility must remain pull-request-only while skipping drafts',
+    );
   });
 
   it('pins every external action to a full commit SHA and retains evidence for no more than seven days', async () => {
