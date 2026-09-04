@@ -108,6 +108,39 @@ describe('evaluatePullRequestForMerge', () => {
     }
   });
 
+  it('rejects malformed reviewer identity or timestamp as approval evidence', () => {
+    const malformedReviews = [
+      {
+        actor: '',
+        state: 'APPROVED',
+        submitted_at: '2026-08-03T06:00:00Z',
+      },
+      {
+        actor: '   ',
+        state: 'APPROVED',
+        submitted_at: '2026-08-03T06:00:00Z',
+      },
+      {
+        actor: 'reviewer-a',
+        state: 'APPROVED',
+        submitted_at: null,
+      },
+      {
+        actor: 'reviewer-a',
+        state: 'APPROVED',
+        submitted_at: 'not-a-timestamp',
+      },
+    ];
+    for (const review of malformedReviews) {
+      const result = evaluatePullRequestForMerge(
+        pullRequest({ reviews: [review] }),
+        policy(),
+      );
+      assert.equal(result.eligible, false);
+      assert.ok(result.blockers.includes('missing-approval'));
+    }
+  });
+
   it('uses repository branch provenance instead of PR-opener association as source trust', () => {
     const candidate = pullRequest({ author_association: 'CONTRIBUTOR' });
     assert.deepEqual(evaluatePullRequestForMerge(candidate, policy()), {
