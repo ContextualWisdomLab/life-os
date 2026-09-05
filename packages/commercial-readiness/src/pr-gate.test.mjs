@@ -180,6 +180,15 @@ describe('evaluatePullRequestForMerge', () => {
     }
   });
 
+  it('rejects GitHub unstable mergeability even when every locally named gate is green', () => {
+    const result = evaluatePullRequestForMerge(
+      pullRequest({ mergeable_state: 'unstable' }),
+      policy(),
+    );
+    assert.equal(result.eligible, false);
+    assert.ok(result.blockers.includes('merge-state-not-passing'));
+  });
+
   it('uses repository branch provenance instead of PR-opener association as source trust', () => {
     const candidate = pullRequest({ author_association: 'CONTRIBUTOR' });
     assert.deepEqual(evaluatePullRequestForMerge(candidate, policy()), {
