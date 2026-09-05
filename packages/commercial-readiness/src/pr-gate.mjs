@@ -117,7 +117,7 @@ export function evaluatePullRequestForMerge(pr, policy) {
     return { eligible: false, blockers: ['invalid-pr'] };
   }
   if (pr.state !== 'open') blockers.push('not-open');
-  if (pr.draft === true) blockers.push('draft');
+  if (pr.draft === true || pr.mergeable_state === 'draft') blockers.push('draft');
   // Branch provenance, not the PR opener's mutable public association label,
   // defines source trust. Forks remain categorically ineligible, while an
   // exact branch already inside the governed repository must still satisfy
