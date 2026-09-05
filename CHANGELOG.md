@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now rejects GitHub `unstable` mergeability even when every locally named workflow/status is green; GitHub defines `UNSTABLE` as mergeable with non-passing commit status, so automation no longer risks relying on an administrator bypass for an unmodeled failing required check.
 - Commercial Readiness now revalidates the first workflow-run page after any multi-page Actions traversal, including the run state, attempt, timestamp and pull-request association used by merge evaluation, so count-preserving insertion/deletion or same-run mutation cannot leave a stale successful pagination snapshot eligible.
 - Commercial Readiness workflow-run collection now fails closed when GitHub's live offset pagination changes `total_count`, repeats a run ID across page boundaries, returns an invalid run ID, or ends before the original count is satisfied, preventing a newly inserted same-head failure from being skipped behind an older successful run.
 - Scheduled and manually dispatched Commercial Readiness merge drains now revalidate that the live protected default branch still equals the workflow's immutable `GITHUB_SHA` immediately before each merge API mutation, so a stale control-plane run cannot merge after `main` advances.
