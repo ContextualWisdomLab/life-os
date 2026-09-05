@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now treats GitHub `mergeable_state: draft` as authoritative Draft evidence even when the separate `draft` boolean is contradictory, preventing an inconsistent API snapshot from reaching merge eligibility.
 - Commercial Readiness workflow evidence now remains bound to the exact pull request as well as its head SHA, so a newer same-head run from a different base/PR cannot satisfy another PR's merge gate.
 - Commercial Readiness merge automation now fails closed when GitHub mergeability-state evidence is missing or outside the currently understood state set, so malformed or newly introduced states cannot become merge-eligible by omission.
 - AppGuardrail path filtering now treats `**.md` as the repository-wide Markdown ignore for pull-request and protected-main push events, so nested documentation-only changes do not allocate a scanner runner while source-bearing changes still trigger the gate.
