@@ -256,10 +256,10 @@ function normalizeReview(review) {
  * retained the same first-page authority from start to finish.
  *
  * The stability check is opt-in because not every collection participates in a merge decision.
- * Commit statuses opt in: GitHub documents them as reverse chronological, so a new status can
- * arrive at the front while page 2 is being read and otherwise shift the offset boundary enough
- * to omit the newest failure. Re-reading page 1 after any multi-page traversal makes that drift
- * explicit instead of allowing stale success to remain authoritative.
+ * Merge-authoritative pull-request reviews and commit statuses opt in: concurrent insertions,
+ * dismissals, or state changes can otherwise shift or mutate page-one authority while later
+ * pages are being read. Re-reading page 1 after any multi-page traversal makes that drift
+ * explicit instead of allowing stale approval or success evidence to remain authoritative.
  *
  * @param {object} client Bounded GitHub API client.
  * @param {string} path REST path before pagination parameters are appended.
@@ -671,6 +671,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
         client,
         `/repos/${repository}/pulls/${number}/reviews`,
         'GitHub review response was invalid',
+        'GitHub review response changed during pagination',
       ),
       collectWorkflowRuns(client, repository, headSha, number),
       collectPaginatedArray(
