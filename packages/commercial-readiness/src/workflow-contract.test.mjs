@@ -59,8 +59,8 @@ function assertDraftReadyPullRequestTrigger(path, workflow) {
   const pullRequestBlock = yamlChildBlock(triggerBlock, 'pull_request');
   assert.match(
     pullRequestBlock,
-    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
-    `${path} must reacquire exact-head evidence when a draft becomes ready`,
+    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review, converted_to_draft\]\s*$/mu,
+    `${path} must reacquire exact-head evidence when a draft becomes ready and cancel work when it returns to draft`,
   );
 }
 
@@ -105,7 +105,7 @@ describe('commercial readiness workflow contract', () => {
       '  pull_request:',
       '    branches: [main]',
       '  workflow_dispatch:',
-      '    types: [opened, synchronize, reopened, ready_for_review]',
+      '    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]',
       '',
       'jobs:',
     ].join('\n');
@@ -116,7 +116,7 @@ describe('commercial readiness workflow contract', () => {
           malformedTriggerFixture,
         ),
       { name: 'AssertionError' },
-      'trigger contract must reject ready-for-review types declared outside pull_request',
+      'trigger contract must reject draft-transition types declared outside pull_request',
     );
 
     const workflows = [
