@@ -390,8 +390,29 @@ function snapshotExternalNumber(value, label) {
   return value;
 }
 
+/**
+ * Preserve bounded review commit binding evidence, including an empty/malformed sentinel.
+ *
+ * The collector intentionally retains invalid `commit_id` values so the merge evaluator can
+ * fail closed with `missing-approval` rather than silently inferring the current head. Snapshot
+ * validation therefore bounds this untrusted scalar but does not rewrite it into a valid SHA.
+ *
+ * @param {unknown} value Raw normalized review commit binding.
+ * @returns {string} Bounded review commit evidence exactly as collected.
+ */
+function snapshotReviewCommitId(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length > 100 ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    failSnapshot('invalid review commit');
+  }
+  return value;
+}
+
 function validateSnapshotReview(value) {
-  const allowed = new Set(['actor', 'state', 'submitted_at']);
+  const allowed = new Set(['actor', 'state', 'submitted_at', 'commit_id']);
   if (!exactKeys(value, allowed)) failSnapshot('invalid review');
   const submittedAt = value.submitted_at;
   if (submittedAt !== null && !Number.isFinite(Date.parse(submittedAt))) {
@@ -401,6 +422,7 @@ function validateSnapshotReview(value) {
     actor: snapshotString(value.actor, 'invalid review actor', 100),
     state: snapshotString(value.state, 'invalid review state', 50),
     submitted_at: submittedAt,
+    commit_id: snapshotReviewCommitId(value.commit_id),
   });
 }
 
