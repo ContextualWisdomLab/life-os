@@ -539,6 +539,20 @@ function latestStatuses(statuses, headSha) {
     .sort((left, right) => left.context.localeCompare(right.context));
 }
 
+/**
+ * Preserve explicit GitHub Draft authority without converting malformed evidence to ready state.
+ *
+ * GitHub's REST contract exposes `draft` as a boolean. Missing or malformed upstream evidence
+ * is normalized to `null`, which the merge evaluator treats as `draft-state-unknown` rather
+ * than silently collapsing it to `false` and granting non-Draft authority.
+ *
+ * @param {unknown} value Raw `draft` field from the GitHub pull-request payload.
+ * @returns {boolean|null} Exact boolean authority or a bounded unknown sentinel.
+ */
+function normalizeDraftAuthority(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
 async function collectOnePullRequest(client, repository, summary, policy) {
   const number = summary.number;
   const detail = await client.requestJson(
@@ -573,7 +587,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
     number,
     title: String(detail.title ?? ''),
     state: String(detail.state ?? ''),
-    draft: detail.draft === true,
+    draft: normalizeDraftAuthority(detail.draft),
     mergeable: detail.mergeable === true,
     mergeable_state: String(detail.mergeable_state ?? 'unknown'),
     base_ref: String(detail.base?.ref ?? ''),
