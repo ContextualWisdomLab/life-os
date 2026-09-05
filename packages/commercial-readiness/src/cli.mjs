@@ -274,6 +274,52 @@ function assertMergeExecutionContext(policy) {
   }
 }
 
+/**
+ * Verifies that a merge drain still runs from the exact protected default-branch commit.
+ *
+ * Scheduled and manual jobs can outlive the commit that started them. Immediately before
+ * any merge mutation, this check reads the live default-branch head and requires it to
+ * match the workflow's immutable `GITHUB_SHA`; malformed or moved branch evidence fails
+ * closed so stale control-plane code or policy cannot merge a current pull request.
+ *
+ * @param {{requestJson: (path: string) => Promise<unknown>}} client Bounded GitHub API client.
+ * @param {string} repository Canonical owner/repository identifier already validated by snapshot collection.
+ * @param {string} defaultBranch Protected default branch from the validated merge policy.
+ * @param {string} expectedCommitSha Immutable workflow commit that must still own merge authority.
+ * @returns {Promise<void>} Resolves only while the live protected default branch is unchanged.
+ */
+export async function assertDefaultBranchHead(
+  client,
+  repository,
+  defaultBranch,
+  expectedCommitSha,
+) {
+  if (
+    !client ||
+    typeof client.requestJson !== 'function' ||
+    typeof repository !== 'string' ||
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
+    typeof defaultBranch !== 'string' ||
+    !defaultBranch ||
+    defaultBranch.length > 255 ||
+    /[\u0000-\u001f\u007f\\]/.test(defaultBranch) ||
+    typeof expectedCommitSha !== 'string' ||
+    !/^[0-9a-f]{40}$/i.test(expectedCommitSha)
+  ) {
+    throw new Error('Merge drain default-branch evidence is invalid');
+  }
+  const payload = await client.requestJson(
+    `/repos/${repository}/branches/${encodeURIComponent(defaultBranch)}`,
+  );
+  const liveHead = String(payload?.commit?.sha ?? '');
+  if (
+    !/^[0-9a-f]{40}$/i.test(liveHead) ||
+    liveHead.toLowerCase() !== expectedCommitSha.toLowerCase()
+  ) {
+    throw new Error('Protected default branch changed during merge drain');
+  }
+}
+
 async function commandDrain(options) {
   requireOptions(options, ['repository', 'policy', 'output']);
   const policy = await loadPolicy(options.policy);
@@ -298,14 +344,21 @@ async function commandDrain(options) {
     policy,
     dryRun: !execute,
     collectPullRequests,
-    mergePullRequest: async (number, expectedHeadSha, mergeMethod) =>
-      await mergePullRequestThroughApi(
+    mergePullRequest: async (number, expectedHeadSha, mergeMethod) => {
+      await assertDefaultBranchHead(
+        client,
+        options.repository,
+        policy.default_branch,
+        commitSha,
+      );
+      return await mergePullRequestThroughApi(
         client,
         options.repository,
         number,
         expectedHeadSha,
         mergeMethod,
-      ),
+      );
+    },
   });
   const payload = {
     schema: 'life-os.pr-drain.v1',
