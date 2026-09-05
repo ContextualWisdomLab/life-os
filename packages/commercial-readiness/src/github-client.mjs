@@ -291,8 +291,10 @@ function workflowRunBelongsToPullRequest(run, pullRequestNumber) {
  *
  * The Actions endpoint is queried by head SHA for pagination efficiency, then every result
  * is constrained by GitHub's immutable pull-request association before it can reach merge
- * evaluation. Same-head runs belonging only to another PR are discarded rather than used
- * as substitute evidence.
+ * evaluation. Because the endpoint uses offset pagination over a live newest-first list,
+ * the traversal also requires a stable `total_count` and unique positive run IDs across
+ * every page. Concurrent insertion/deletion that could shift a page boundary therefore
+ * fails closed instead of allowing an older successful run to hide newer evidence.
  *
  * @param {object} client Bounded GitHub API client.
  * @param {string} repository Canonical owner/repository identifier.
@@ -307,6 +309,7 @@ async function collectWorkflowRuns(
   pullRequestNumber,
 ) {
   const values = [];
+  const seenRunIds = new Set();
   let expectedTotal = null;
   let collectionComplete = false;
   for (let page = 1; page <= MAX_API_PAGES; page += 1) {
@@ -316,22 +319,38 @@ async function collectWorkflowRuns(
       )}&event=pull_request&per_page=${API_PAGE_SIZE}&page=${page}`,
     );
     const pageValues = payload?.workflow_runs;
-    if (!Array.isArray(pageValues) || pageValues.length > API_PAGE_SIZE) {
+    if (
+      !Array.isArray(pageValues) ||
+      pageValues.length > API_PAGE_SIZE ||
+      !Number.isSafeInteger(payload?.total_count) ||
+      payload.total_count < 0
+    ) {
       throw new Error('GitHub workflow run response was invalid');
     }
-    if (
-      Number.isSafeInteger(payload?.total_count) &&
-      payload.total_count >= 0
-    ) {
+    if (expectedTotal === null) {
       expectedTotal = payload.total_count;
+    } else if (payload.total_count !== expectedTotal) {
+      throw new Error('GitHub workflow run response changed during pagination');
+    }
+    for (const run of pageValues) {
+      if (!Number.isSafeInteger(run?.id) || run.id <= 0) {
+        throw new Error('GitHub workflow run response was invalid');
+      }
+      if (seenRunIds.has(run.id)) {
+        throw new Error('GitHub workflow run response changed during pagination');
+      }
+      seenRunIds.add(run.id);
     }
     values.push(...pageValues);
-    if (
-      pageValues.length < API_PAGE_SIZE ||
-      (expectedTotal !== null && values.length >= expectedTotal)
-    ) {
+    if (values.length > expectedTotal) {
+      throw new Error('GitHub workflow run response changed during pagination');
+    }
+    if (values.length === expectedTotal) {
       collectionComplete = true;
       break;
+    }
+    if (pageValues.length < API_PAGE_SIZE) {
+      throw new Error('GitHub workflow run response changed during pagination');
     }
   }
   if (!collectionComplete) {
