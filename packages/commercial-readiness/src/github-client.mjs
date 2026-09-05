@@ -292,9 +292,10 @@ function workflowRunBelongsToPullRequest(run, pullRequestNumber) {
  * The Actions endpoint is queried by head SHA for pagination efficiency, then every result
  * is constrained by GitHub's immutable pull-request association before it can reach merge
  * evaluation. Because the endpoint uses offset pagination over a live newest-first list,
- * the traversal also requires a stable `total_count` and unique positive run IDs across
- * every page. Concurrent insertion/deletion that could shift a page boundary therefore
- * fails closed instead of allowing an older successful run to hide newer evidence.
+ * the traversal requires a stable `total_count`, unique positive run IDs, exact cardinality,
+ * and—after any multi-page traversal—an unchanged first-page evidence anchor. Concurrent
+ * insertion/deletion or same-run state changes therefore fail closed instead of allowing a
+ * stale successful run to hide newer or mutated evidence.
  *
  * @param {object} client Bounded GitHub API client.
  * @param {string} repository Canonical owner/repository identifier.
@@ -311,7 +312,9 @@ async function collectWorkflowRuns(
   const values = [];
   const seenRunIds = new Set();
   let expectedTotal = null;
+  let firstPageAnchor = null;
   let collectionComplete = false;
+  let pagesRead = 0;
   for (let page = 1; page <= MAX_API_PAGES; page += 1) {
     const payload = await client.requestJson(
       `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
@@ -341,7 +344,23 @@ async function collectWorkflowRuns(
       }
       seenRunIds.add(run.id);
     }
+    if (page === 1) {
+      firstPageAnchor = pageValues.map((run) => ({
+        id: run.id,
+        name: run?.name ?? null,
+        status: run?.status ?? null,
+        conclusion: run?.conclusion ?? null,
+        head_sha: run?.head_sha ?? null,
+        run_attempt: run?.run_attempt ?? null,
+        updated_at: run?.updated_at ?? null,
+        pull_requests: (Array.isArray(run?.pull_requests)
+          ? run.pull_requests
+          : []
+        ).map((pullRequest) => pullRequest?.number ?? null),
+      }));
+    }
     values.push(...pageValues);
+    pagesRead = page;
     if (values.length > expectedTotal) {
       throw new Error('GitHub workflow run response changed during pagination');
     }
@@ -355,6 +374,39 @@ async function collectWorkflowRuns(
   }
   if (!collectionComplete) {
     throw new Error('GitHub workflow run response exceeded the page limit');
+  }
+  if (pagesRead > 1) {
+    const confirmation = await client.requestJson(
+      `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+        headSha,
+      )}&event=pull_request&per_page=${API_PAGE_SIZE}&page=1`,
+    );
+    const confirmationValues = confirmation?.workflow_runs;
+    if (
+      !Array.isArray(confirmationValues) ||
+      confirmationValues.length > API_PAGE_SIZE ||
+      confirmation?.total_count !== expectedTotal ||
+      confirmationValues.some(
+        (run) => !Number.isSafeInteger(run?.id) || run.id <= 0,
+      )
+    ) {
+      throw new Error('GitHub workflow run response changed during pagination');
+    }
+    const confirmationAnchor = confirmationValues.map((run) => ({
+      id: run.id,
+      name: run?.name ?? null,
+      status: run?.status ?? null,
+      conclusion: run?.conclusion ?? null,
+      head_sha: run?.head_sha ?? null,
+      run_attempt: run?.run_attempt ?? null,
+      updated_at: run?.updated_at ?? null,
+      pull_requests: (Array.isArray(run?.pull_requests) ? run.pull_requests : []).map(
+        (pullRequest) => pullRequest?.number ?? null,
+      ),
+    }));
+    if (JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)) {
+      throw new Error('GitHub workflow run response changed during pagination');
+    }
   }
   return values.filter((run) =>
     workflowRunBelongsToPullRequest(run, pullRequestNumber),
