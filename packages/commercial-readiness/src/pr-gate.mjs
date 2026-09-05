@@ -103,9 +103,9 @@ function statusEvidence(pr, requiredContext) {
 /**
  * Evaluate a collected pull-request snapshot against the active local merge policy.
  *
- * The decision fails closed for malformed PR identity, wrong repository/base provenance,
- * missing or unrecognized mergeability-state evidence, GitHub-reported non-passing commit
- * status, merge conflicts or stale base ancestry, malformed or unresolved review-thread
+ * The decision fails closed for malformed PR identity or Draft authority, wrong repository/base
+ * provenance, missing or unrecognized mergeability-state evidence, GitHub-reported non-passing
+ * commit status, merge conflicts or stale base ancestry, malformed or unresolved review-thread
  * counts, malformed decisive review authority, missing decisive exact-head approval, any latest
  * decisive change request, and missing/stale/non-successful required workflow or status evidence.
  * Reviewer records with malformed actor or timestamp authority become explicit blockers rather
@@ -122,6 +122,7 @@ export function evaluatePullRequestForMerge(pr, policy) {
     return { eligible: false, blockers: ['invalid-pr'] };
   }
   if (pr.state !== 'open') blockers.push('not-open');
+  if (typeof pr.draft !== 'boolean') blockers.push('draft-state-unknown');
   if (pr.draft === true || pr.mergeable_state === 'draft') blockers.push('draft');
   // Branch provenance, not the PR opener's mutable public association label,
   // defines source trust. Forks remain categorically ineligible, while an
