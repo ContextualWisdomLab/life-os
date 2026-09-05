@@ -166,6 +166,35 @@ describe('evaluatePullRequestForMerge', () => {
     }
   });
 
+  it('fails closed when change-request evidence has malformed actor or timestamp authority', () => {
+    for (const malformedChangeRequest of [
+      {
+        actor: '',
+        state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-08-03T07:00:00Z',
+        commit_id: HEAD_SHA,
+      },
+      {
+        actor: 'reviewer-b',
+        state: 'CHANGES_REQUESTED',
+        submitted_at: 'not-a-timestamp',
+        commit_id: HEAD_SHA,
+      },
+    ]) {
+      const result = evaluatePullRequestForMerge(
+        pullRequest({
+          reviews: [
+            pullRequest().reviews[0],
+            malformedChangeRequest,
+          ],
+        }),
+        policy(),
+      );
+      assert.equal(result.eligible, false);
+      assert.ok(result.blockers.includes('review-evidence-invalid'));
+    }
+  });
+
   it('fails closed on missing or unrecognized mergeability-state evidence', () => {
     for (const mergeableState of ['', null, 'future-state']) {
       const result = evaluatePullRequestForMerge(
