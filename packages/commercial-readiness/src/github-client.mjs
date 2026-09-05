@@ -477,23 +477,54 @@ function runIsNewer(candidate, current) {
   return candidateTime > currentTime;
 }
 
-function latestWorkflowRuns(runs) {
+/**
+ * Reduce pull-request workflow runs without allowing contradictory head provenance to disappear.
+ *
+ * A run may create workflow authority only when its own `head_sha` equals the exact pull-request
+ * head. A mismatched run cannot create authority; when the same workflow name also has valid
+ * exact-head evidence, that contradiction taints the workflow with an exact-head invalid sentinel
+ * so an older or newer successful run cannot remain merge-authoritative by ordering alone.
+ *
+ * @param {unknown} runs Untrusted workflow-run records already associated with the pull request.
+ * @param {string} headSha Exact current pull-request head SHA.
+ * @returns {Array<{name: string, status: string, conclusion: unknown, head_sha: string, run_attempt: number, updated_at: unknown}>} Latest exact-head workflow evidence or invalid sentinel by name.
+ */
+function latestWorkflowRuns(runs, headSha) {
   const latest = new Map();
+  const mismatchedNames = new Set();
   for (const run of Array.isArray(runs) ? runs : []) {
+    const name = String(run?.name ?? '');
+    if (!name) continue;
+    const runHeadSha = String(run?.head_sha ?? '');
+    if (runHeadSha !== headSha) {
+      mismatchedNames.add(name);
+      continue;
+    }
     const normalized = {
       id: Number.isSafeInteger(run?.id) ? run.id : 0,
-      name: String(run?.name ?? ''),
+      name,
       status: String(run?.status ?? ''),
       conclusion: run?.conclusion ?? null,
-      head_sha: String(run?.head_sha ?? ''),
+      head_sha: runHeadSha,
       run_attempt: Number(run?.run_attempt ?? 0),
       updated_at: run?.updated_at ?? null,
     };
-    if (!normalized.name) continue;
     const current = latest.get(normalized.name);
     if (!current || runIsNewer(normalized, current)) {
       latest.set(normalized.name, normalized);
     }
+  }
+  for (const name of mismatchedNames) {
+    if (!latest.has(name)) continue;
+    latest.set(name, {
+      id: 0,
+      name,
+      status: 'invalid',
+      conclusion: null,
+      head_sha: headSha,
+      run_attempt: 0,
+      updated_at: null,
+    });
   }
   return [...latest.values()]
     .map(({ id: _id, ...run }) => run)
@@ -633,7 +664,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       : -1,
     reviews: reviews.map(normalizeReview),
     unresolved_threads: unresolvedThreads,
-    workflows: latestWorkflowRuns(workflowRuns),
+    workflows: latestWorkflowRuns(workflowRuns, headSha),
     statuses: latestStatuses(statuses, headSha),
   };
   return { ...pull, ...evaluatePullRequestForMerge(pull, policy) };
