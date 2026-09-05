@@ -18,6 +18,50 @@ function workflowRun(id, conclusion = 'success') {
   };
 }
 
+function pullRequestEvidence(path) {
+  if (path.startsWith('/repos/o/r/pulls?')) return [{ number: 7 }];
+  if (path.startsWith('/repos/o/r/issues?')) return [];
+  if (path === '/repos/o/r/pulls/7') {
+    return {
+      number: 7,
+      title: 'fix: reject moving workflow pagination',
+      state: 'open',
+      draft: false,
+      mergeable: true,
+      mergeable_state: 'clean',
+      base: { ref: 'main', sha: BASE_SHA },
+      head: { sha: HEAD_SHA, repo: { full_name: 'o/r' } },
+    };
+  }
+  if (path.startsWith('/repos/o/r/pulls/7/reviews?')) {
+    return [
+      {
+        user: { login: 'reviewer-a' },
+        state: 'APPROVED',
+        submitted_at: '2026-09-05T01:00:00Z',
+        commit_id: HEAD_SHA,
+      },
+    ];
+  }
+  if (path.startsWith(`/repos/o/r/commits/${HEAD_SHA}/statuses?`)) return [];
+  if (path.startsWith('/repos/o/r/compare/')) return { behind_by: 0 };
+  if (path === '/graphql') {
+    return {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        },
+      },
+    };
+  }
+  return undefined;
+}
+
 /**
  * Simulate a same-head pull-request run arriving between REST offset pages.
  *
@@ -36,51 +80,56 @@ function movingWorkflowPaginationFixture() {
 
   return {
     async requestJson(path) {
-      if (path.startsWith('/repos/o/r/pulls?')) return [{ number: 7 }];
-      if (path.startsWith('/repos/o/r/issues?')) return [];
-      if (path === '/repos/o/r/pulls/7') {
+      const evidence = pullRequestEvidence(path);
+      if (evidence !== undefined) return evidence;
+      if (path.includes('/actions/runs?') && /(?:[?&])page=1(?:&|$)/u.test(path)) {
         return {
-          number: 7,
-          title: 'fix: reject moving workflow pagination',
-          state: 'open',
-          draft: false,
-          mergeable: true,
-          mergeable_state: 'clean',
-          base: { ref: 'main', sha: BASE_SHA },
-          head: { sha: HEAD_SHA, repo: { full_name: 'o/r' } },
+          total_count: originalRuns.length,
+          workflow_runs: originalRuns.slice(0, 100),
         };
       }
-      if (path.startsWith('/repos/o/r/pulls/7/reviews?')) {
-        return [
-          {
-            user: { login: 'reviewer-a' },
-            state: 'APPROVED',
-            submitted_at: '2026-09-05T01:00:00Z',
-            commit_id: HEAD_SHA,
-          },
-        ];
-      }
-      if (path.includes('/actions/runs?') && path.includes('page=1')) {
-        return { total_count: originalRuns.length, workflow_runs: originalRuns.slice(0, 100) };
-      }
-      if (path.includes('/actions/runs?') && path.includes('page=2')) {
-        return { total_count: movedRuns.length, workflow_runs: movedRuns.slice(100, 200) };
-      }
-      if (path.startsWith(`/repos/o/r/commits/${HEAD_SHA}/statuses?`)) return [];
-      if (path.startsWith('/repos/o/r/compare/')) return { behind_by: 0 };
-      if (path === '/graphql') {
+      if (path.includes('/actions/runs?') && /(?:[?&])page=2(?:&|$)/u.test(path)) {
         return {
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  nodes: [],
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                },
-              },
-            },
-          },
+          total_count: movedRuns.length,
+          workflow_runs: movedRuns.slice(100, 200),
         };
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    },
+  };
+}
+
+/**
+ * Simulate insertion and deletion that preserve total count while moving offset pages.
+ *
+ * The first page comes from 101 successful runs. Before page 2, a newer failing run is
+ * inserted at the front while an older run from the first page is deleted, keeping
+ * `total_count` at 101 and avoiding a duplicate at the page boundary. A stable collector
+ * must revalidate the first-page anchor after traversal so run 201 cannot be omitted.
+ *
+ * @returns {{requestJson(path: string): Promise<unknown>}} Deterministic GitHub API fixture.
+ */
+function countPreservingWorkflowPaginationFixture() {
+  const originalRuns = Array.from({ length: 101 }, (_, index) =>
+    workflowRun(200 - index),
+  );
+  const movedRuns = [
+    workflowRun(201, 'failure'),
+    ...originalRuns.filter((run) => run.id !== 150),
+  ];
+  let firstPageReads = 0;
+
+  return {
+    async requestJson(path) {
+      const evidence = pullRequestEvidence(path);
+      if (evidence !== undefined) return evidence;
+      if (path.includes('/actions/runs?') && /(?:[?&])page=1(?:&|$)/u.test(path)) {
+        firstPageReads += 1;
+        const source = firstPageReads === 1 ? originalRuns : movedRuns;
+        return { total_count: 101, workflow_runs: source.slice(0, 100) };
+      }
+      if (path.includes('/actions/runs?') && /(?:[?&])page=2(?:&|$)/u.test(path)) {
+        return { total_count: 101, workflow_runs: movedRuns.slice(100, 200) };
       }
       throw new Error(`Unexpected path: ${path}`);
     },
@@ -100,6 +149,26 @@ describe('workflow-run pagination stability', () => {
         commitSha: 'c'.repeat(40),
         generatedAt: '2026-09-05T01:05:00Z',
       }),
+      /GitHub workflow run response changed during pagination/u,
+    );
+  });
+
+  it('fails closed when insertion and deletion preserve the pagination count', async () => {
+    await assert.rejects(
+      collectRepositorySnapshot(
+        countPreservingWorkflowPaginationFixture(),
+        'o/r',
+        {
+          policy: {
+            default_branch: 'main',
+            required_workflows: ['CI'],
+            required_statuses: [],
+            merge_method: 'squash',
+          },
+          commitSha: 'c'.repeat(40),
+          generatedAt: '2026-09-05T01:05:00Z',
+        },
+      ),
       /GitHub workflow run response changed during pagination/u,
     );
   });
