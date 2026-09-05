@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- CI merge-compatibility evidence now uses bounded transient retries for all four idempotent GitHub GETs that resolve and revalidate pull-request/base identities; mutation semantics remain unchanged, so temporary GitHub read failures no longer cause an immediate false RED while stale source/base movement still fails closed.
 - Commercial Readiness merge drains now require an explicit boolean GitHub merge outcome before recording a result; successful `merged:true` evidence must also carry a canonical merge-commit SHA, so malformed or partial mutation responses cannot become durable `merged` receipts by omission while explicit `merged:false` remains a bounded rejection outcome.
 - Commercial Readiness now rejects GitHub `unstable` mergeability even when every locally named workflow/status is green; GitHub defines `UNSTABLE` as mergeable with non-passing commit status, so automation no longer risks relying on an administrator bypass for an unmodeled failing required check.
 - Commercial Readiness now revalidates the first workflow-run page after any multi-page Actions traversal, including the run state, attempt, timestamp and pull-request association used by merge evaluation, so count-preserving insertion/deletion or same-run mutation cannot leave a stale successful pagination snapshot eligible.
