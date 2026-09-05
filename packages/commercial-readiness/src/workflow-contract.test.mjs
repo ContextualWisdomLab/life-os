@@ -54,13 +54,13 @@ function yamlJobBlock(source, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-function assertDraftReadyPullRequestTrigger(path, workflow) {
+function assertUsefulPullRequestTrigger(path, workflow) {
   const triggerBlock = yamlTopLevelBlock(workflow, 'on');
   const pullRequestBlock = yamlChildBlock(triggerBlock, 'pull_request');
   assert.match(
     pullRequestBlock,
-    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review, converted_to_draft\]\s*$/mu,
-    `${path} must reacquire exact-head evidence when a draft becomes ready and cancel work when it returns to draft`,
+    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
+    `${path} must reacquire exact-head evidence when a draft becomes ready without creating a no-op draft-transition run`,
   );
 }
 
@@ -105,13 +105,13 @@ describe('commercial readiness workflow contract', () => {
       '  pull_request:',
       '    branches: [main]',
       '  workflow_dispatch:',
-      '    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]',
+      '    types: [opened, synchronize, reopened, ready_for_review]',
       '',
       'jobs:',
     ].join('\n');
     assert.throws(
       () =>
-        assertDraftReadyPullRequestTrigger(
+        assertUsefulPullRequestTrigger(
           'false-positive-trigger-fixture.yml',
           malformedTriggerFixture,
         ),
@@ -141,7 +141,12 @@ describe('commercial readiness workflow contract', () => {
 
     for (const { path, jobs } of workflows) {
       const workflow = await repositoryFile(path);
-      assertDraftReadyPullRequestTrigger(path, workflow);
+      assertUsefulPullRequestTrigger(path, workflow);
+      assert.doesNotMatch(
+        yamlChildBlock(yamlTopLevelBlock(workflow, 'on'), 'pull_request'),
+        /converted_to_draft/u,
+        `${path} must not create a workflow run solely to skip draft work`,
+      );
       for (const job of jobs) {
         assert.match(
           yamlJobBlock(workflow, job),
