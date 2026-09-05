@@ -361,7 +361,18 @@ async function unresolvedThreadCount(client, repository, number) {
       throw new Error('GitHub review thread response was invalid');
     }
     count += threads.nodes.filter((node) => node?.isResolved === false).length;
-    cursor = threads.pageInfo?.hasNextPage ? threads.pageInfo.endCursor : null;
+    const pageInfo = threads.pageInfo;
+    if (!pageInfo || typeof pageInfo.hasNextPage !== 'boolean') {
+      throw new Error('GitHub review thread response pagination was invalid');
+    }
+    if (pageInfo.hasNextPage) {
+      if (typeof pageInfo.endCursor !== 'string' || !pageInfo.endCursor) {
+        throw new Error('GitHub review thread response pagination was invalid');
+      }
+      cursor = pageInfo.endCursor;
+    } else {
+      cursor = null;
+    }
     pages += 1;
     if (pages > MAX_API_PAGES) {
       throw new Error('GitHub review thread response exceeded the page limit');
