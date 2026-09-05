@@ -508,13 +508,14 @@ function statusIsNewer(candidate, current) {
 }
 
 /**
- * Reduce exact-head commit statuses without allowing malformed ordering evidence to disappear.
+ * Reduce exact-head commit statuses without allowing malformed provenance or ordering evidence to disappear.
  *
  * A status may participate in latest-per-context reduction only when its own SHA binds the exact
  * pull-request head, its context is non-empty, its GitHub status identifier is a positive safe
- * integer, and `created_at` is a finite timestamp. Once an exact-head context contains malformed
- * identity or ordering evidence, that context remains fail-closed even if an older valid success
- * is also present; otherwise corrupted evidence could be dropped and stale success could survive.
+ * integer, and `created_at` is a finite timestamp. A mismatched-SHA record cannot create status
+ * authority; if the same context also contains otherwise valid exact-head evidence, the mismatch
+ * taints that context so stale success cannot remain merge-authoritative. Once an exact-head
+ * context contains malformed identity or ordering evidence, that context also remains fail-closed.
  *
  * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
  * @param {string} headSha Exact current pull-request head SHA.
@@ -523,10 +524,15 @@ function statusIsNewer(candidate, current) {
 function latestStatuses(statuses, headSha) {
   const latest = new Map();
   const invalidContexts = new Set();
+  const mismatchedContexts = new Set();
   for (const status of Array.isArray(statuses) ? statuses : []) {
     const context = String(status?.context ?? '');
     const sha = String(status?.sha ?? '');
-    if (!context || sha !== headSha) continue;
+    if (!context) continue;
+    if (sha !== headSha) {
+      mismatchedContexts.add(context);
+      continue;
+    }
     const id = status?.id;
     const createdAt = status?.created_at ?? null;
     if (
@@ -548,6 +554,9 @@ function latestStatuses(statuses, headSha) {
     if (!current || statusIsNewer(normalized, current)) {
       latest.set(context, normalized);
     }
+  }
+  for (const context of mismatchedContexts) {
+    if (latest.has(context)) invalidContexts.add(context);
   }
   for (const context of invalidContexts) {
     latest.set(context, {
