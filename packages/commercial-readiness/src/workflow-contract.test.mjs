@@ -26,6 +26,20 @@ function yamlTopLevelBlock(source, key) {
   return lines.slice(start, end).join('\n');
 }
 
+function yamlChildBlock(source, key) {
+  const lines = source.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === `  ${key}:`);
+  assert.notEqual(start, -1, `missing YAML child key: ${key}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
 function yamlJobBlock(source, jobName) {
   const lines = source.split(/\r?\n/u);
   const start = lines.findIndex((line) => line === `  ${jobName}:`);
@@ -38,6 +52,16 @@ function yamlJobBlock(source, jobName) {
     }
   }
   return lines.slice(start, end).join('\n');
+}
+
+function assertDraftLifecyclePullRequestTrigger(path, workflow) {
+  const triggerBlock = yamlTopLevelBlock(workflow, 'on');
+  const pullRequestBlock = yamlChildBlock(triggerBlock, 'pull_request');
+  assert.match(
+    pullRequestBlock,
+    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review, converted_to_draft\]\s*$/mu,
+    `${path} must reacquire exact-head evidence when a draft becomes ready and emit the same-PR cancellation signal when it returns to draft`,
+  );
 }
 
 describe('commercial readiness workflow contract', () => {
@@ -71,6 +95,68 @@ describe('commercial readiness workflow contract', () => {
         path,
       );
     }
+  });
+
+  it('keeps drafts off hosted runners, cancels prior Ready work when redrafted, and reruns when review starts', async () => {
+    const malformedTriggerFixture = [
+      'name: false-positive-trigger-fixture',
+      '',
+      'on:',
+      '  pull_request:',
+      '    branches: [main]',
+      '  workflow_dispatch:',
+      '    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]',
+      '',
+      'jobs:',
+    ].join('\n');
+    assert.throws(
+      () =>
+        assertDraftLifecyclePullRequestTrigger(
+          'false-positive-trigger-fixture.yml',
+          malformedTriggerFixture,
+        ),
+      { name: 'AssertionError' },
+      'trigger contract must reject draft-transition types declared outside pull_request',
+    );
+
+    const workflows = [
+      {
+        path: '.github/workflows/appguardrail.yml',
+        jobs: ['scan'],
+      },
+      {
+        path: '.github/workflows/ci.yml',
+        jobs: [
+          'compose_runtime',
+          'today-concurrency',
+          'validate',
+          'browser-acceptance',
+        ],
+      },
+      {
+        path: '.github/workflows/commercial-readiness.yml',
+        jobs: ['audit'],
+      },
+    ];
+
+    for (const { path, jobs } of workflows) {
+      const workflow = await repositoryFile(path);
+      assertDraftLifecyclePullRequestTrigger(path, workflow);
+      for (const job of jobs) {
+        assert.match(
+          yamlJobBlock(workflow, job),
+          /^\s+if:\s*\$\{\{ github\.event_name != 'pull_request' \|\| github\.event\.pull_request\.draft == false \}\}\s*$/mu,
+          `${path}:${job} must not allocate a hosted runner while the pull request is draft`,
+        );
+      }
+    }
+
+    const ciWorkflow = await repositoryFile('.github/workflows/ci.yml');
+    assert.match(
+      yamlJobBlock(ciWorkflow, 'merge_compatibility'),
+      /^\s+if:\s*\$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.draft == false \}\}\s*$/mu,
+      'merge compatibility must remain pull-request-only while skipping drafts',
+    );
   });
 
   it('pins every external action to a full commit SHA and retains evidence for no more than seven days', async () => {
@@ -133,7 +219,7 @@ describe('commercial readiness workflow contract', () => {
     ];
     for (const path of hostedRunnerWorkflows) {
       const workflow = await repositoryFile(path);
-      const runners = [...workflow.matchAll(/^\s+runs-on:\s*(\S+)\s*$/gmu)].map(
+      const runners = [...workflow.matchAll(/^\s*runs-on:\s*(\S+)\s*$/gmu)].map(
         ([, runner]) => runner,
       );
       assert.ok(runners.length > 0, `${path} must define a hosted runner`);

@@ -126,7 +126,7 @@ describe('readiness issue synchronization', () => {
 });
 
 describe('repository snapshot evidence', () => {
-  it('uses the newest workflow run and commit status instead of older successful evidence', async () => {
+  it('uses current review commit identity plus newest workflow and status evidence', async () => {
     const headSha = 'a'.repeat(40);
     const baseSha = 'b'.repeat(40);
     const client = {
@@ -146,7 +146,16 @@ describe('repository snapshot evidence', () => {
             head: { sha: headSha, repo: { full_name: 'o/r' } },
           };
         }
-        if (path.startsWith('/repos/o/r/pulls/7/reviews?')) return [];
+        if (path.startsWith('/repos/o/r/pulls/7/reviews?')) {
+          return [
+            {
+              user: { login: 'reviewer-a' },
+              state: 'APPROVED',
+              submitted_at: '2026-08-03T07:30:00Z',
+              commit_id: headSha,
+            },
+          ];
+        }
         if (path.startsWith('/repos/o/r/actions/runs?')) {
           return {
             total_count: 2,
@@ -159,6 +168,7 @@ describe('repository snapshot evidence', () => {
                 head_sha: headSha,
                 run_attempt: 2,
                 updated_at: '2026-08-03T07:00:00Z',
+                pull_requests: [{ number: 7 }],
               },
               {
                 id: 101,
@@ -168,6 +178,7 @@ describe('repository snapshot evidence', () => {
                 head_sha: headSha,
                 run_attempt: 1,
                 updated_at: '2026-08-03T06:00:00Z',
+                pull_requests: [{ number: 7 }],
               },
             ],
           };
@@ -220,6 +231,7 @@ describe('repository snapshot evidence', () => {
       generatedAt: '2026-08-03T08:00:00Z',
     });
     const pullRequest = snapshot.pull_requests[0];
+    assert.equal(pullRequest.reviews[0].commit_id, headSha);
     assert.equal(pullRequest.workflows[0].conclusion, 'failure');
     assert.equal(pullRequest.statuses[0].state, 'pending');
     assert.equal(pullRequest.eligible, false);
@@ -302,7 +314,14 @@ describe('mergeEligiblePullRequests', () => {
       repository: 'o/r',
       author_association: 'OWNER',
       behind_by: 0,
-      reviews: [],
+      reviews: [
+        {
+          actor: 'reviewer-a',
+          state: 'APPROVED',
+          submitted_at: '2026-08-03T06:00:00Z',
+          commit_id: headSha,
+        },
+      ],
       unresolved_threads: 0,
       workflows: [],
       statuses: [],
@@ -349,7 +368,14 @@ describe('mergeEligiblePullRequests', () => {
       repository: 'o/r',
       author_association: 'OWNER',
       behind_by: 0,
-      reviews: [],
+      reviews: [
+        {
+          actor: 'reviewer-a',
+          state: 'APPROVED',
+          submitted_at: '2026-08-03T06:00:00Z',
+          commit_id: 'a'.repeat(40),
+        },
+      ],
       unresolved_threads: 0,
       workflows: [],
       statuses: [],

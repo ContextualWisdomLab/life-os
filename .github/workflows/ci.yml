@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read
@@ -15,6 +16,7 @@ concurrency:
 
 jobs:
   compose_runtime:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -49,6 +51,7 @@ jobs:
               >/dev/null
 
   today-concurrency:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -91,6 +94,7 @@ jobs:
           tests/postgres-today-lock-order.integration.test.ts
 
   validate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     needs: compose_runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -175,6 +179,7 @@ jobs:
         run: docker compose config --quiet
 
   browser-acceptance:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -202,7 +207,7 @@ jobs:
         run: pnpm --filter @life-os/web test:e2e
 
   merge_compatibility:
-    if: github.event_name == 'pull_request'
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -241,9 +246,11 @@ jobs:
           api_version="X-GitHub-Api-Version: 2022-11-28"
 
           current_source="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/pulls/${{ github.event.pull_request.number }}" | jq -er '.head.sha')"
           current_base="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/commits/${{ github.event.pull_request.base.ref }}" | jq -er '.sha')"
 
@@ -296,9 +303,11 @@ jobs:
             merge --no-commit --no-ff "$current_source"
 
           latest_source="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/pulls/${{ github.event.pull_request.number }}" | jq -er '.head.sha')"
           latest_base="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/commits/${{ github.event.pull_request.base.ref }}" | jq -er '.sha')"
           if [ "$latest_source" != "$current_source" ] || [ "$latest_base" != "$current_base" ]; then

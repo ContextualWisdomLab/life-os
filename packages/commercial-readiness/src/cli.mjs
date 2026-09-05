@@ -274,6 +274,76 @@ function assertMergeExecutionContext(policy) {
   }
 }
 
+/**
+ * Verifies that a merge drain still runs from the exact protected default-branch commit.
+ *
+ * Scheduled and manual jobs can outlive the commit that started them. Immediately before
+ * any merge mutation, this check reads the live default-branch head and requires it to
+ * match the workflow's immutable `GITHUB_SHA`; malformed or moved branch evidence fails
+ * closed so stale control-plane code or policy cannot merge a current pull request.
+ *
+ * @param {{requestJson: (path: string) => Promise<unknown>}} client Bounded GitHub API client.
+ * @param {string} repository Canonical owner/repository identifier already validated by snapshot collection.
+ * @param {string} defaultBranch Protected default branch from the validated merge policy.
+ * @param {string} expectedCommitSha Immutable workflow commit that must still own merge authority.
+ * @returns {Promise<void>} Resolves only while the live protected default branch is unchanged.
+ */
+export async function assertDefaultBranchHead(
+  client,
+  repository,
+  defaultBranch,
+  expectedCommitSha,
+) {
+  if (
+    !client ||
+    typeof client.requestJson !== 'function' ||
+    typeof repository !== 'string' ||
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
+    typeof defaultBranch !== 'string' ||
+    !defaultBranch ||
+    defaultBranch.length > 255 ||
+    /[\u0000-\u001f\u007f\\]/.test(defaultBranch) ||
+    typeof expectedCommitSha !== 'string' ||
+    !/^[0-9a-f]{40}$/i.test(expectedCommitSha)
+  ) {
+    throw new Error('Merge drain default-branch evidence is invalid');
+  }
+  const payload = await client.requestJson(
+    `/repos/${repository}/branches/${encodeURIComponent(defaultBranch)}`,
+  );
+  const liveHead = String(payload?.commit?.sha ?? '');
+  if (
+    !/^[0-9a-f]{40}$/i.test(liveHead) ||
+    liveHead.toLowerCase() !== expectedCommitSha.toLowerCase()
+  ) {
+    throw new Error('Protected default branch changed during merge drain');
+  }
+}
+
+/**
+ * Requires explicit GitHub merge-result evidence before a drain may record a mutation outcome.
+ *
+ * A malformed JSON response must never be interpreted as a successful merge by omission.
+ * Successful responses additionally carry the canonical merge-commit SHA so the durable drain
+ * receipt can be traced to an immutable repository state; explicit `merged:false` remains a
+ * valid GitHub rejection result for the caller to classify as blocked.
+ *
+ * @param {unknown} value Untrusted GitHub merge API response.
+ * @returns {object} The validated merge response object.
+ */
+export function assertMergeResponseEvidence(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    typeof value.merged !== 'boolean' ||
+    (value.merged === true &&
+      (typeof value.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(value.sha)))
+  ) {
+    throw new Error('GitHub merge response was invalid');
+  }
+  return value;
+}
+
 async function commandDrain(options) {
   requireOptions(options, ['repository', 'policy', 'output']);
   const policy = await loadPolicy(options.policy);
@@ -298,14 +368,23 @@ async function commandDrain(options) {
     policy,
     dryRun: !execute,
     collectPullRequests,
-    mergePullRequest: async (number, expectedHeadSha, mergeMethod) =>
-      await mergePullRequestThroughApi(
+    mergePullRequest: async (number, expectedHeadSha, mergeMethod) => {
+      await assertDefaultBranchHead(
         client,
         options.repository,
-        number,
-        expectedHeadSha,
-        mergeMethod,
-      ),
+        policy.default_branch,
+        commitSha,
+      );
+      return assertMergeResponseEvidence(
+        await mergePullRequestThroughApi(
+          client,
+          options.repository,
+          number,
+          expectedHeadSha,
+          mergeMethod,
+        ),
+      );
+    },
   });
   const payload = {
     schema: 'life-os.pr-drain.v1',
