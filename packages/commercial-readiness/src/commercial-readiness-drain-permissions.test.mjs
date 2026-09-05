@@ -16,9 +16,17 @@ async function workflowSource() {
 }
 
 function drainJobBlock(source) {
-  const match = source.match(/^  drain:\n([\s\S]*?)(?=^  [A-Za-z0-9_.-]+:\n|\z)/mu);
-  assert.ok(match, 'commercial readiness workflow must define the drain job');
-  return match[0];
+  const lines = source.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === '  drain:');
+  assert.notEqual(start, -1, 'commercial readiness workflow must define the drain job');
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
 }
 
 describe('commercial readiness merge-drain permissions', () => {
