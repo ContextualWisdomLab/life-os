@@ -342,6 +342,18 @@ async function collectWorkflowRuns(
   );
 }
 
+/**
+ * Count unresolved GitHub review threads without treating ambiguous GraphQL evidence as resolved.
+ *
+ * Every returned thread must expose an explicit boolean `isResolved`. Pagination must expose
+ * a boolean `hasNextPage`, and any claimed next page must provide a non-empty string cursor.
+ * Malformed thread or pagination evidence throws before it can reduce the merge blocker count.
+ *
+ * @param {object} client Bounded GitHub API client used for GraphQL requests.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {number} number Repository-local pull request number.
+ * @returns {Promise<number>} Exact unresolved-thread count from a complete bounded traversal.
+ */
 async function unresolvedThreadCount(client, repository, number) {
   const [owner, name] = repository.split('/');
   const query = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}`;
@@ -360,7 +372,10 @@ async function unresolvedThreadCount(client, repository, number) {
     if (!threads || !Array.isArray(threads.nodes)) {
       throw new Error('GitHub review thread response was invalid');
     }
-    count += threads.nodes.filter((node) => node?.isResolved === false).length;
+    if (threads.nodes.some((node) => typeof node?.isResolved !== 'boolean')) {
+      throw new Error('GitHub review thread response was invalid');
+    }
+    count += threads.nodes.filter((node) => node.isResolved === false).length;
     const pageInfo = threads.pageInfo;
     if (!pageInfo || typeof pageInfo.hasNextPage !== 'boolean') {
       throw new Error('GitHub review thread response pagination was invalid');
