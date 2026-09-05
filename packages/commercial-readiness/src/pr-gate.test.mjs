@@ -191,6 +191,7 @@ describe('evaluatePullRequestForMerge', () => {
   it('rejects every unsafe or incomplete merge condition', () => {
     const cases = [
       [pullRequest({ draft: true }), 'draft'],
+      [pullRequest({ draft: false, mergeable_state: 'draft' }), 'draft'],
       [pullRequest({ head_repo: 'fork/life-os' }), 'fork'],
       [
         pullRequest({ mergeable: false, mergeable_state: 'dirty' }),
