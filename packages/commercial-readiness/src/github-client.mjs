@@ -502,37 +502,61 @@ function latestWorkflowRuns(runs) {
 
 function statusIsNewer(candidate, current) {
   if (candidate.id !== current.id) return candidate.id > current.id;
-  const candidateTime = Date.parse(candidate.created_at ?? '') || 0;
-  const currentTime = Date.parse(current.created_at ?? '') || 0;
+  const candidateTime = Date.parse(candidate.created_at);
+  const currentTime = Date.parse(current.created_at);
   return candidateTime > currentTime;
 }
 
 /**
- * Retain only status records that explicitly bind the exact pull-request head SHA.
+ * Reduce exact-head commit statuses without allowing malformed ordering evidence to disappear.
  *
- * Missing status SHA provenance is not inferred from the commit-scoped endpoint path. A
- * malformed or stale status is discarded before latest-per-context reduction so it cannot
- * satisfy a required exact-head status gate by omission.
+ * A status may participate in latest-per-context reduction only when its own SHA binds the exact
+ * pull-request head, its context is non-empty, its GitHub status identifier is a positive safe
+ * integer, and `created_at` is a finite timestamp. Once an exact-head context contains malformed
+ * identity or ordering evidence, that context remains fail-closed even if an older valid success
+ * is also present; otherwise corrupted evidence could be dropped and stale success could survive.
  *
  * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
  * @param {string} headSha Exact current pull-request head SHA.
- * @returns {Array<{context: string, state: string, sha: string}>} Latest exact-head status by context.
+ * @returns {Array<{context: string, state: string, sha: string}>} Latest exact-head status or invalid sentinel by context.
  */
 function latestStatuses(statuses, headSha) {
   const latest = new Map();
+  const invalidContexts = new Set();
   for (const status of Array.isArray(statuses) ? statuses : []) {
-    const normalized = {
-      id: Number.isSafeInteger(status?.id) ? status.id : 0,
-      context: String(status?.context ?? ''),
-      state: String(status?.state ?? ''),
-      sha: String(status?.sha ?? ''),
-      created_at: status?.created_at ?? null,
-    };
-    if (!normalized.context || normalized.sha !== headSha) continue;
-    const current = latest.get(normalized.context);
-    if (!current || statusIsNewer(normalized, current)) {
-      latest.set(normalized.context, normalized);
+    const context = String(status?.context ?? '');
+    const sha = String(status?.sha ?? '');
+    if (!context || sha !== headSha) continue;
+    const id = status?.id;
+    const createdAt = status?.created_at ?? null;
+    if (
+      !Number.isSafeInteger(id) ||
+      id <= 0 ||
+      !Number.isFinite(Date.parse(createdAt ?? ''))
+    ) {
+      invalidContexts.add(context);
+      continue;
     }
+    const normalized = {
+      id,
+      context,
+      state: String(status?.state ?? ''),
+      sha,
+      created_at: createdAt,
+    };
+    const current = latest.get(context);
+    if (!current || statusIsNewer(normalized, current)) {
+      latest.set(context, normalized);
+    }
+  }
+  for (const context of invalidContexts) {
+    latest.set(context, {
+      id: 0,
+      context,
+      state: 'invalid',
+      sha: headSha,
+      created_at: null,
+    });
   }
   return [...latest.values()]
     .map(({ id: _id, created_at: _createdAt, ...status }) => status)
