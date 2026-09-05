@@ -105,12 +105,12 @@ function statusEvidence(pr, requiredContext) {
  *
  * The decision fails closed for malformed PR identity, wrong repository/base provenance,
  * missing or unrecognized mergeability-state evidence, GitHub-reported non-passing commit
- * status, merge conflicts or stale base ancestry, unresolved review threads, malformed
- * decisive review authority, missing decisive exact-head approval, any latest decisive change
- * request, and missing/stale/non-successful required workflow or status evidence. Reviewer
- * records with malformed actor or timestamp authority become explicit blockers rather than
- * disappearing from the decision; approvals bound to another commit remain stale. `eligible`
- * is true only when the de-duplicated `blockers` array is empty.
+ * status, merge conflicts or stale base ancestry, malformed or unresolved review-thread
+ * counts, malformed decisive review authority, missing decisive exact-head approval, any latest
+ * decisive change request, and missing/stale/non-successful required workflow or status evidence.
+ * Reviewer records with malformed actor or timestamp authority become explicit blockers rather
+ * than disappearing from the decision; approvals bound to another commit remain stale.
+ * `eligible` is true only when the de-duplicated `blockers` array is empty.
  *
  * @param {object} pr Collected pull-request evidence for one exact head.
  * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
@@ -145,7 +145,10 @@ export function evaluatePullRequestForMerge(pr, policy) {
   if (pr.behind_by !== 0 || pr.mergeable_state === 'behind') {
     blockers.push('base-out-of-date');
   }
-  if (!Number.isSafeInteger(pr.unresolved_threads)) {
+  if (
+    !Number.isSafeInteger(pr.unresolved_threads) ||
+    pr.unresolved_threads < 0
+  ) {
     blockers.push('review-thread-state-unknown');
   } else if (pr.unresolved_threads > 0) {
     blockers.push('unresolved-review-thread');
