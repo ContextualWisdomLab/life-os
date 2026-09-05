@@ -31,6 +31,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Scheduled/manual Commercial Readiness merge drains now have the read-only pull-request authority required to reacquire current PR metadata, reviews, and review threads before any merge mutation; no additional write scope was granted.
+- Scheduled/manual Commercial Readiness merge drains now wait for readiness-issue publication to settle without treating that reporting write as merge authority; `always()` re-evaluates the drain after publish failure or skip while `needs.audit.result == 'success'` remains mandatory.
 - Commercial Readiness now revalidates page-one pull-request review evidence after multi-page traversal, so a mid-pagination approval dismissal or review mutation fails closed instead of leaving stale merge-authoritative review state.
 - Commercial Readiness snapshot validation now preserves bounded review `commit_id` evidence emitted by the collector, so exact-head approval provenance survives collector → schema serialization instead of causing valid reviewed snapshots to fail validation.
 - Commercial Readiness now revalidates the first page after multi-page commit-status collection, preventing a newly inserted reverse-chronological failure from being skipped by a moving offset boundary while an older success remains merge-authoritative.
