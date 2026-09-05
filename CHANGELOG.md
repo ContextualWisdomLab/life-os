@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now revalidates the first page after multi-page commit-status collection, preventing a newly inserted reverse-chronological failure from being skipped by a moving offset boundary while an older success remains merge-authoritative.
 - Commercial Readiness now taints an otherwise valid exact-head workflow name when the head-filtered Actions response also carries that name with mismatched per-run `head_sha` provenance, preventing contradictory workflow evidence from disappearing behind a successful run while a mismatch alone still cannot create workflow authority.
 - Commercial Readiness now taints an otherwise valid exact-head commit-status context when the commit-scoped GitHub endpoint also returns the same context with mismatched SHA provenance, preventing a stale successful status from remaining merge-authoritative beside contradictory provenance while a mismatched record alone still cannot create status authority.
 - Commercial Readiness now fails closed when exact-head commit-status ordering evidence has a malformed or non-positive GitHub status ID or an invalid `created_at`; the affected status context remains invalid even when an older valid success exists, so corrupted evidence cannot disappear and leave stale success merge-authoritative.
