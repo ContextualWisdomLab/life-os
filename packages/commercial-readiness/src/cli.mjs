@@ -320,6 +320,30 @@ export async function assertDefaultBranchHead(
   }
 }
 
+/**
+ * Requires explicit GitHub merge-result evidence before a drain may record a mutation outcome.
+ *
+ * A malformed JSON response must never be interpreted as a successful merge by omission.
+ * Successful responses additionally carry the canonical merge-commit SHA so the durable drain
+ * receipt can be traced to an immutable repository state; explicit `merged:false` remains a
+ * valid GitHub rejection result for the caller to classify as blocked.
+ *
+ * @param {unknown} value Untrusted GitHub merge API response.
+ * @returns {object} The validated merge response object.
+ */
+export function assertMergeResponseEvidence(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    typeof value.merged !== 'boolean' ||
+    (value.merged === true &&
+      (typeof value.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(value.sha)))
+  ) {
+    throw new Error('GitHub merge response was invalid');
+  }
+  return value;
+}
+
 async function commandDrain(options) {
   requireOptions(options, ['repository', 'policy', 'output']);
   const policy = await loadPolicy(options.policy);
@@ -351,12 +375,14 @@ async function commandDrain(options) {
         policy.default_branch,
         commitSha,
       );
-      return await mergePullRequestThroughApi(
-        client,
-        options.repository,
-        number,
-        expectedHeadSha,
-        mergeMethod,
+      return assertMergeResponseEvidence(
+        await mergePullRequestThroughApi(
+          client,
+          options.repository,
+          number,
+          expectedHeadSha,
+          mergeMethod,
+        ),
       );
     },
   });
