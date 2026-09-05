@@ -27,6 +27,7 @@ function movingStatusPaginationFixture() {
     status(201, 'CodeRabbit', 'failure'),
     ...originalStatuses.filter((item) => item.id !== 150),
   ];
+  let firstPageReads = 0;
 
   return {
     async requestJson(path) {
@@ -59,8 +60,14 @@ function movingStatusPaginationFixture() {
         return { total_count: 0, workflow_runs: [] };
       }
       if (path.startsWith(`/repos/o/r/commits/${HEAD_SHA}/statuses?`)) {
-        const page = Number(new URL(`https://fixture.invalid${path}`).searchParams.get('page'));
-        if (page === 1) return originalStatuses.slice(0, 100);
+        const page = Number(
+          new URL(`https://fixture.invalid${path}`).searchParams.get('page'),
+        );
+        if (page === 1) {
+          firstPageReads += 1;
+          const source = firstPageReads === 1 ? originalStatuses : movedStatuses;
+          return source.slice(0, 100);
+        }
         if (page === 2) return movedStatuses.slice(100, 200);
       }
       if (path.startsWith('/repos/o/r/compare/')) return { behind_by: 0 };
