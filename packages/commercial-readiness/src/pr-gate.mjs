@@ -100,12 +100,12 @@ function statusEvidence(pr, requiredContext) {
  * Evaluate a collected pull-request snapshot against the active local merge policy.
  *
  * The decision fails closed for malformed PR identity, wrong repository/base provenance,
- * missing or unrecognized mergeability-state evidence, merge conflicts or stale base
- * ancestry, unresolved review threads, missing decisive exact-head approval, any latest
- * decisive change request, and missing/stale/non-successful required workflow or status
- * evidence. Reviewer records with invalid actor or timestamp evidence never contribute to
- * approval, and approvals bound to another commit are stale. `eligible` is true only when
- * the de-duplicated `blockers` array is empty.
+ * missing or unrecognized mergeability-state evidence, GitHub-reported non-passing commit
+ * status, merge conflicts or stale base ancestry, unresolved review threads, missing
+ * decisive exact-head approval, any latest decisive change request, and missing/stale/
+ * non-successful required workflow or status evidence. Reviewer records with invalid actor
+ * or timestamp evidence never contribute to approval, and approvals bound to another commit
+ * are stale. `eligible` is true only when the de-duplicated `blockers` array is empty.
  *
  * @param {object} pr Collected pull-request evidence for one exact head.
  * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
@@ -127,6 +127,9 @@ export function evaluatePullRequestForMerge(pr, policy) {
   if (!SHA_PATTERN.test(pr.head_sha ?? '')) blockers.push('invalid-head');
   if (!KNOWN_MERGEABLE_STATES.has(pr.mergeable_state)) {
     blockers.push('merge-state-unknown');
+  }
+  if (pr.mergeable_state === 'unstable') {
+    blockers.push('merge-state-not-passing');
   }
   if (
     pr.mergeable !== true ||
