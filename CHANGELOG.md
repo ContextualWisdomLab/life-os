@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- AppGuardrail path filtering now treats `**.md` as the repository-wide Markdown ignore for pull-request and protected-main push events, so nested documentation-only changes do not allocate a scanner runner while source-bearing changes still trigger the gate.
 - LifeOS-owned pull-request workflows now listen for `converted_to_draft`; the existing same-PR concurrency key can cancel superseded ready-PR work while job-level Draft guards keep the cancellation run off hosted runners.
 - Commercial Readiness now ignores malformed decisive review evidence with a blank reviewer identity or invalid submission timestamp, so malformed approvals cannot satisfy the merge gate.
 - Commercial Readiness merge automation now requires an approval bound by GitHub review `commit_id` to the exact pull-request head; stale, missing, or malformed approval bindings cannot satisfy `missing-approval` or replace a current change request in the per-reviewer decisive state.
