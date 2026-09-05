@@ -19,38 +19,42 @@ const KNOWN_MERGEABLE_STATES = new Set([
 /**
  * Reduce untrusted GitHub review records to the latest valid decisive review per actor.
  *
- * Non-array input, missing records, non-decisive states, blank reviewer identities, and
- * invalid or missing submission timestamps are excluded. Approval records additionally
- * must bind the exact current pull-request head; stale or malformed approval commit
- * identities are ignored before they can replace a current change request. Change-request
- * evidence remains fail-closed regardless of commit binding. When one actor has multiple
- * remaining decisive reviews, the chronologically latest valid review wins; equal
- * timestamps use the later record in input order.
+ * Non-decisive states are ignored. Decisive records with malformed reviewer identity or
+ * submission time are retained as invalid evidence so they cannot disappear from the merge
+ * decision by omission. Approval records additionally must bind the exact current pull-request
+ * head; stale or malformed approval commit identities cannot grant authority. Change-request
+ * evidence remains fail-closed regardless of commit binding. When one actor has multiple valid
+ * decisive reviews, the chronologically latest review wins; equal timestamps use the later
+ * record in input order.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
- * @returns {Map<string, {state: string, timestamp: number}>} Latest decisive review by normalized actor.
+ * @returns {{latest: Map<string, {state: string, timestamp: number}>, invalid: boolean}} Latest decisive reviews plus malformed-evidence state.
  */
 function latestReviewsByActor(reviews, headSha) {
   const latest = new Map();
+  let invalid = false;
   for (const review of Array.isArray(reviews) ? reviews : []) {
-    if (
-      !review ||
-      typeof review.actor !== 'string' ||
-      !DECISIVE_REVIEW_STATES.has(review.state)
-    ) {
+    if (!review || !DECISIVE_REVIEW_STATES.has(review.state)) {
+      continue;
+    }
+    if (typeof review.actor !== 'string') {
+      invalid = true;
       continue;
     }
     const actor = review.actor.trim();
     const timestamp = Date.parse(review.submitted_at ?? '');
-    if (!actor || !Number.isFinite(timestamp)) continue;
+    if (!actor || !Number.isFinite(timestamp)) {
+      invalid = true;
+      continue;
+    }
     if (review.state === 'APPROVED' && review.commit_id !== headSha) continue;
     const current = latest.get(actor);
     if (!current || timestamp >= current.timestamp) {
       latest.set(actor, { state: review.state, timestamp });
     }
   }
-  return latest;
+  return { latest, invalid };
 }
 
 /**
@@ -101,11 +105,12 @@ function statusEvidence(pr, requiredContext) {
  *
  * The decision fails closed for malformed PR identity, wrong repository/base provenance,
  * missing or unrecognized mergeability-state evidence, GitHub-reported non-passing commit
- * status, merge conflicts or stale base ancestry, unresolved review threads, missing
- * decisive exact-head approval, any latest decisive change request, and missing/stale/
- * non-successful required workflow or status evidence. Reviewer records with invalid actor
- * or timestamp evidence never contribute to approval, and approvals bound to another commit
- * are stale. `eligible` is true only when the de-duplicated `blockers` array is empty.
+ * status, merge conflicts or stale base ancestry, unresolved review threads, malformed
+ * decisive review authority, missing decisive exact-head approval, any latest decisive change
+ * request, and missing/stale/non-successful required workflow or status evidence. Reviewer
+ * records with malformed actor or timestamp authority become explicit blockers rather than
+ * disappearing from the decision; approvals bound to another commit remain stale. `eligible`
+ * is true only when the de-duplicated `blockers` array is empty.
  *
  * @param {object} pr Collected pull-request evidence for one exact head.
  * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
@@ -146,9 +151,12 @@ export function evaluatePullRequestForMerge(pr, policy) {
     blockers.push('unresolved-review-thread');
   }
 
-  const decisiveReviews = latestReviewsByActor(pr.reviews, pr.head_sha);
+  const decisiveReviewEvidence = latestReviewsByActor(pr.reviews, pr.head_sha);
+  if (decisiveReviewEvidence.invalid) {
+    blockers.push('review-evidence-invalid');
+  }
   let hasApproval = false;
-  for (const review of decisiveReviews.values()) {
+  for (const review of decisiveReviewEvidence.latest.values()) {
     if (review.state === 'APPROVED') hasApproval = true;
     if (review.state === 'CHANGES_REQUESTED') {
       blockers.push('changes-requested');
