@@ -436,6 +436,17 @@ function statusIsNewer(candidate, current) {
   return candidateTime > currentTime;
 }
 
+/**
+ * Retain only status records that explicitly bind the exact pull-request head SHA.
+ *
+ * Missing status SHA provenance is not inferred from the commit-scoped endpoint path. A
+ * malformed or stale status is discarded before latest-per-context reduction so it cannot
+ * satisfy a required exact-head status gate by omission.
+ *
+ * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
+ * @param {string} headSha Exact current pull-request head SHA.
+ * @returns {Array<{context: string, state: string, sha: string}>} Latest exact-head status by context.
+ */
 function latestStatuses(statuses, headSha) {
   const latest = new Map();
   for (const status of Array.isArray(statuses) ? statuses : []) {
@@ -443,7 +454,7 @@ function latestStatuses(statuses, headSha) {
       id: Number.isSafeInteger(status?.id) ? status.id : 0,
       context: String(status?.context ?? ''),
       state: String(status?.state ?? ''),
-      sha: String(status?.sha ?? headSha),
+      sha: String(status?.sha ?? ''),
       created_at: status?.created_at ?? null,
     };
     if (!normalized.context || normalized.sha !== headSha) continue;
