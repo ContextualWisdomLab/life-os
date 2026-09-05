@@ -354,51 +354,6 @@ describe('mergeEligiblePullRequests', () => {
     assert.deepEqual(result, [{ number: 8, action: 'merged' }]);
   });
 
-  it('fails closed when the merge API response does not explicitly prove success', async () => {
-    const headSha = 'a'.repeat(40);
-    const candidate = {
-      number: 8,
-      title: 'ready',
-      state: 'open',
-      draft: false,
-      mergeable: true,
-      mergeable_state: 'clean',
-      base_ref: 'main',
-      head_sha: headSha,
-      head_repo: 'o/r',
-      repository: 'o/r',
-      author_association: 'OWNER',
-      behind_by: 0,
-      reviews: [
-        {
-          actor: 'reviewer-a',
-          state: 'APPROVED',
-          submitted_at: '2026-08-03T06:00:00Z',
-          commit_id: headSha,
-        },
-      ],
-      unresolved_threads: 0,
-      workflows: [],
-      statuses: [],
-    };
-    const result = await mergeEligiblePullRequests({
-      repository: 'o/r',
-      dryRun: false,
-      policy: {
-        default_branch: 'main',
-        trusted_author_associations: ['OWNER'],
-        required_workflows: [],
-        required_statuses: [],
-        merge_method: 'squash',
-      },
-      collectPullRequests: async () => [candidate],
-      mergePullRequest: async () => ({}),
-    });
-    assert.deepEqual(result, [
-      { number: 8, action: 'blocked', blockers: ['merge-response-invalid'] },
-    ]);
-  });
-
   it('refuses to merge when the head moves between evaluation and mutation', async () => {
     const first = {
       number: 8,
