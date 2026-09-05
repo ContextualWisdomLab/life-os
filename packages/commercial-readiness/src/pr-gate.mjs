@@ -4,6 +4,14 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const SUCCESS = 'success';
 /** Review states that can grant or revoke merge approval authority. */
 const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);
+/** GitHub REST pull-request review states understood by this evaluator. */
+const KNOWN_REVIEW_STATES = new Set([
+  'APPROVED',
+  'CHANGES_REQUESTED',
+  'COMMENTED',
+  'DISMISSED',
+  'PENDING',
+]);
 /** Mergeability states currently emitted by GitHub and understood by this evaluator. */
 const KNOWN_MERGEABLE_STATES = new Set([
   'clean',
@@ -19,13 +27,14 @@ const KNOWN_MERGEABLE_STATES = new Set([
 /**
  * Reduce untrusted GitHub review records to the latest valid decisive review per actor.
  *
- * Non-decisive states are ignored. Decisive records with malformed reviewer identity or
- * submission time are retained as invalid evidence so they cannot disappear from the merge
- * decision by omission. Approval records additionally must bind the exact current pull-request
- * head; stale or malformed approval commit identities cannot grant authority. Change-request
- * evidence remains fail-closed regardless of commit binding. When one actor has multiple valid
- * decisive reviews, the chronologically latest review wins; equal timestamps use the later
- * record in input order.
+ * Known non-decisive GitHub states are ignored. Missing, malformed, or unknown review states
+ * are retained as invalid evidence so an API-contract change cannot silently erase a future
+ * decisive state from the merge decision. Decisive records with malformed reviewer identity
+ * or submission time are likewise invalid. Approval records additionally must bind the exact
+ * current pull-request head; stale or malformed approval commit identities cannot grant
+ * authority. Change-request evidence remains fail-closed regardless of commit binding. When
+ * one actor has multiple valid decisive reviews, the chronologically latest review wins; equal
+ * timestamps use the later record in input order.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
@@ -35,9 +44,15 @@ function latestReviewsByActor(reviews, headSha) {
   const latest = new Map();
   let invalid = false;
   for (const review of Array.isArray(reviews) ? reviews : []) {
-    if (!review || !DECISIVE_REVIEW_STATES.has(review.state)) {
+    if (!review || typeof review !== 'object') {
+      invalid = true;
       continue;
     }
+    if (typeof review.state !== 'string' || !KNOWN_REVIEW_STATES.has(review.state)) {
+      invalid = true;
+      continue;
+    }
+    if (!DECISIVE_REVIEW_STATES.has(review.state)) continue;
     if (typeof review.actor !== 'string') {
       invalid = true;
       continue;
@@ -106,7 +121,7 @@ function statusEvidence(pr, requiredContext) {
  * The decision fails closed for malformed PR identity or Draft authority, wrong repository/base
  * provenance, missing or unrecognized mergeability-state evidence, GitHub-reported non-passing
  * commit status, merge conflicts or stale base ancestry, malformed or unresolved review-thread
- * counts, malformed decisive review authority, missing decisive exact-head approval, any latest
+ * counts, malformed or unknown review authority, missing decisive exact-head approval, any latest
  * decisive change request, and missing/stale/non-successful required workflow or status evidence.
  * Reviewer records with malformed actor or timestamp authority become explicit blockers rather
  * than disappearing from the decision; approvals bound to another commit remain stale.
