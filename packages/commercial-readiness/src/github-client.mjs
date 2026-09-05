@@ -251,9 +251,32 @@ function normalizeReview(review) {
   };
 }
 
-async function collectPaginatedArray(client, path, errorMessage) {
+/**
+ * Collect a bounded GitHub REST array and optionally verify that a multi-page offset traversal
+ * retained the same first-page authority from start to finish.
+ *
+ * The stability check is opt-in because not every collection participates in a merge decision.
+ * Commit statuses opt in: GitHub documents them as reverse chronological, so a new status can
+ * arrive at the front while page 2 is being read and otherwise shift the offset boundary enough
+ * to omit the newest failure. Re-reading page 1 after any multi-page traversal makes that drift
+ * explicit instead of allowing stale success to remain authoritative.
+ *
+ * @param {object} client Bounded GitHub API client.
+ * @param {string} path REST path before pagination parameters are appended.
+ * @param {string} errorMessage Error used for malformed page evidence.
+ * @param {string|null} [stabilityErrorMessage=null] Fail-closed error used when first-page authority moves.
+ * @returns {Promise<unknown[]>} Complete bounded array from one stable traversal.
+ */
+async function collectPaginatedArray(
+  client,
+  path,
+  errorMessage,
+  stabilityErrorMessage = null,
+) {
   const values = [];
   const separator = path.includes('?') ? '&' : '?';
+  let firstPage = null;
+  let pagesRead = 0;
   for (let page = 1; page <= MAX_API_PAGES; page += 1) {
     const payload = await client.requestJson(
       `${path}${separator}per_page=${API_PAGE_SIZE}&page=${page}`,
@@ -261,8 +284,24 @@ async function collectPaginatedArray(client, path, errorMessage) {
     if (!Array.isArray(payload) || payload.length > API_PAGE_SIZE) {
       throw new Error(errorMessage);
     }
+    if (page === 1) firstPage = payload;
     values.push(...payload);
-    if (payload.length < API_PAGE_SIZE) return values;
+    pagesRead = page;
+    if (payload.length < API_PAGE_SIZE) {
+      if (stabilityErrorMessage && pagesRead > 1) {
+        const confirmation = await client.requestJson(
+          `${path}${separator}per_page=${API_PAGE_SIZE}&page=1`,
+        );
+        if (
+          !Array.isArray(confirmation) ||
+          confirmation.length > API_PAGE_SIZE ||
+          JSON.stringify(confirmation) !== JSON.stringify(firstPage)
+        ) {
+          throw new Error(stabilityErrorMessage);
+        }
+      }
+      return values;
+    }
   }
   throw new Error(`${errorMessage} exceeded the page limit`);
 }
@@ -638,6 +677,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
         client,
         `/repos/${repository}/commits/${headSha}/statuses`,
         'GitHub status response was invalid',
+        'GitHub status response changed during pagination',
       ),
       client.requestJson(
         `/repos/${repository}/compare/${encodeURIComponent(
