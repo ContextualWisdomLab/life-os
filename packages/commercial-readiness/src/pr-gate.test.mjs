@@ -166,6 +166,20 @@ describe('evaluatePullRequestForMerge', () => {
     }
   });
 
+  it('fails closed on missing or unrecognized mergeability-state evidence', () => {
+    for (const mergeableState of ['', null, 'future-state']) {
+      const result = evaluatePullRequestForMerge(
+        pullRequest({ mergeable_state: mergeableState }),
+        policy(),
+      );
+      assert.equal(result.eligible, false, String(mergeableState));
+      assert.ok(
+        result.blockers.includes('merge-state-unknown'),
+        `${String(mergeableState)}: ${result.blockers.join(', ')}`,
+      );
+    }
+  });
+
   it('uses repository branch provenance instead of PR-opener association as source trust', () => {
     const candidate = pullRequest({ author_association: 'CONTRIBUTOR' });
     assert.deepEqual(evaluatePullRequestForMerge(candidate, policy()), {
