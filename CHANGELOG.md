@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Scheduled and manually dispatched Commercial Readiness merge drains now revalidate that the live protected default branch still equals the workflow's immutable `GITHUB_SHA` immediately before each merge API mutation, so a stale control-plane run cannot merge after `main` advances.
 - Commercial Readiness now requires each required commit-status record to carry its own exact-head SHA; missing SHA provenance is no longer inferred from the commit-scoped API endpoint and therefore cannot satisfy a status gate by omission.
 - Commercial Readiness now treats GitHub `mergeable_state: draft` as authoritative Draft evidence even when the separate `draft` boolean is contradictory, preventing an inconsistent API snapshot from reaching merge eligibility.
 - Commercial Readiness workflow evidence now remains bound to the exact pull request as well as its head SHA, so a newer same-head run from a different base/PR cannot satisfy another PR's merge gate.
