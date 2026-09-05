@@ -8,13 +8,55 @@ const expectedHead = 'a'.repeat(40);
 const advancedHead = 'b'.repeat(40);
 
 describe('merge-drain protected-default-branch provenance', () => {
-  it('requires an unchanged protected default branch immediately before merge mutation', async () => {
+  it('fails closed on malformed authority inputs and live branch evidence', async () => {
     assert.equal(
       typeof cliModule.assertDefaultBranchHead,
       'function',
       'merge drain must expose exact protected-default-branch validation',
     );
 
+    const validClient = {
+      async requestJson() {
+        return { commit: { sha: expectedHead } };
+      },
+    };
+    const invalidInputs = [
+      [null, repository, 'main', expectedHead],
+      [{}, repository, 'main', expectedHead],
+      [validClient, null, 'main', expectedHead],
+      [validClient, 'ContextualWisdomLab/life-os/extra', 'main', expectedHead],
+      [validClient, repository, null, expectedHead],
+      [validClient, repository, '', expectedHead],
+      [validClient, repository, 'm'.repeat(256), expectedHead],
+      [validClient, repository, 'main\\escape', expectedHead],
+      [validClient, repository, 'main', null],
+      [validClient, repository, 'main', 'not-a-sha'],
+    ];
+    for (const args of invalidInputs) {
+      await assert.rejects(
+        () => cliModule.assertDefaultBranchHead(...args),
+        /Merge drain default-branch evidence is invalid/,
+      );
+    }
+
+    const malformedLiveClient = {
+      async requestJson() {
+        return { commit: { sha: 'not-a-sha' } };
+      },
+    };
+    await assert.rejects(
+      () =>
+        cliModule.assertDefaultBranchHead(
+          malformedLiveClient,
+          repository,
+          'main',
+          expectedHead,
+        ),
+      /Protected default branch changed during merge drain/,
+    );
+  });
+
+  it('requires an unchanged protected default branch immediately before merge mutation', async () => {
     const requests = [];
     const movedClient = {
       async requestJson(path) {
