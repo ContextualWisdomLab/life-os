@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
-import * as githubClientModule from './github-client.mjs';
+import * as cliModule from './cli.mjs';
 
 const repository = 'ContextualWisdomLab/life-os';
 const expectedHead = 'a'.repeat(40);
@@ -10,7 +10,7 @@ const advancedHead = 'b'.repeat(40);
 describe('merge-drain protected-default-branch provenance', () => {
   it('requires an unchanged protected default branch immediately before merge mutation', async () => {
     assert.equal(
-      typeof githubClientModule.assertDefaultBranchHead,
+      typeof cliModule.assertDefaultBranchHead,
       'function',
       'merge drain must expose exact protected-default-branch validation',
     );
@@ -25,7 +25,7 @@ describe('merge-drain protected-default-branch provenance', () => {
 
     await assert.rejects(
       () =>
-        githubClientModule.assertDefaultBranchHead(
+        cliModule.assertDefaultBranchHead(
           movedClient,
           repository,
           'main',
@@ -42,7 +42,7 @@ describe('merge-drain protected-default-branch provenance', () => {
         return { commit: { sha: expectedHead.toUpperCase() } };
       },
     };
-    await githubClientModule.assertDefaultBranchHead(
+    await cliModule.assertDefaultBranchHead(
       exactClient,
       repository,
       'main',
