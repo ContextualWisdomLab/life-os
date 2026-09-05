@@ -246,9 +246,11 @@ jobs:
           api_version="X-GitHub-Api-Version: 2022-11-28"
 
           current_source="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/pulls/${{ github.event.pull_request.number }}" | jq -er '.head.sha')"
           current_base="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/commits/${{ github.event.pull_request.base.ref }}" | jq -er '.sha')"
 
@@ -301,9 +303,11 @@ jobs:
             merge --no-commit --no-ff "$current_source"
 
           latest_source="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/pulls/${{ github.event.pull_request.number }}" | jq -er '.head.sha')"
           latest_base="$(curl --fail --silent --show-error --max-time 15 \
+            --retry 2 --retry-delay 1 --retry-max-time 35 \
             -H "$auth_header" -H "$api_version" \
             "$api/commits/${{ github.event.pull_request.base.ref }}" | jq -er '.sha')"
           if [ "$latest_source" != "$current_source" ] || [ "$latest_base" != "$current_base" ]; then
