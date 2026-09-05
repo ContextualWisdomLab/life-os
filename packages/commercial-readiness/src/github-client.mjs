@@ -267,9 +267,48 @@ async function collectPaginatedArray(client, path, errorMessage) {
   throw new Error(`${errorMessage} exceeded the page limit`);
 }
 
-async function collectWorkflowRuns(client, repository, headSha) {
+/**
+ * Check whether one pull-request-triggered workflow run belongs to the evaluated PR.
+ *
+ * GitHub can return multiple pull-request runs for the same head SHA when one commit is
+ * proposed against different bases. Missing or malformed association evidence fails closed.
+ *
+ * @param {unknown} run Untrusted workflow-run payload from the GitHub Actions API.
+ * @param {number} pullRequestNumber Repository-local pull request number being evaluated.
+ * @returns {boolean} True only when GitHub explicitly associates the run with that PR.
+ */
+function workflowRunBelongsToPullRequest(run, pullRequestNumber) {
+  if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+    return false;
+  }
+  return (Array.isArray(run?.pull_requests) ? run.pull_requests : []).some(
+    (pullRequest) => pullRequest?.number === pullRequestNumber,
+  );
+}
+
+/**
+ * Collect bounded workflow-run evidence for one exact head and one exact pull request.
+ *
+ * The Actions endpoint is queried by head SHA for pagination efficiency, then every result
+ * is constrained by GitHub's immutable pull-request association before it can reach merge
+ * evaluation. Same-head runs belonging only to another PR are discarded rather than used
+ * as substitute evidence.
+ *
+ * @param {object} client Bounded GitHub API client.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {string} headSha Exact current pull-request head SHA.
+ * @param {number} pullRequestNumber Repository-local pull request number.
+ * @returns {Promise<unknown[]>} Workflow runs explicitly associated with the evaluated PR.
+ */
+async function collectWorkflowRuns(
+  client,
+  repository,
+  headSha,
+  pullRequestNumber,
+) {
   const values = [];
   let expectedTotal = null;
+  let collectionComplete = false;
   for (let page = 1; page <= MAX_API_PAGES; page += 1) {
     const payload = await client.requestJson(
       `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
@@ -291,10 +330,16 @@ async function collectWorkflowRuns(client, repository, headSha) {
       pageValues.length < API_PAGE_SIZE ||
       (expectedTotal !== null && values.length >= expectedTotal)
     ) {
-      return values;
+      collectionComplete = true;
+      break;
     }
   }
-  throw new Error('GitHub workflow run response exceeded the page limit');
+  if (!collectionComplete) {
+    throw new Error('GitHub workflow run response exceeded the page limit');
+  }
+  return values.filter((run) =>
+    workflowRunBelongsToPullRequest(run, pullRequestNumber),
+  );
 }
 
 async function unresolvedThreadCount(client, repository, number) {
@@ -402,7 +447,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
         `/repos/${repository}/pulls/${number}/reviews`,
         'GitHub review response was invalid',
       ),
-      collectWorkflowRuns(client, repository, headSha),
+      collectWorkflowRuns(client, repository, headSha, number),
       collectPaginatedArray(
         client,
         `/repos/${repository}/commits/${headSha}/statuses`,
