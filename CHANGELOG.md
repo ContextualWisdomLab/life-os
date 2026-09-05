@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now taints an otherwise valid exact-head commit-status context when the commit-scoped GitHub endpoint also returns the same context with mismatched SHA provenance, preventing a stale successful status from remaining merge-authoritative beside contradictory provenance while a mismatched record alone still cannot create status authority.
 - Commercial Readiness now fails closed when exact-head commit-status ordering evidence has a malformed or non-positive GitHub status ID or an invalid `created_at`; the affected status context remains invalid even when an older valid success exists, so corrupted evidence cannot disappear and leave stale success merge-authoritative.
 - Commercial Readiness now treats malformed or missing Draft boolean authority as `draft-state-unknown` instead of silently interpreting it as a non-Draft merge candidate.
 - Commercial Readiness now treats negative unresolved-review-thread counts as malformed authority instead of an empty thread set, preventing sentinel or corrupted count evidence from becoming merge-eligible by omission.
