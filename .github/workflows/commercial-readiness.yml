@@ -156,6 +156,7 @@ jobs:
       # GitHub's merge endpoint requires Contents: write; other scopes stay read-only.
       contents: write
       issues: read
+      pull-requests: read
       statuses: read
     steps:
       - name: Checkout repository
