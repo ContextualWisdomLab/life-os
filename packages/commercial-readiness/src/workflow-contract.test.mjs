@@ -54,13 +54,13 @@ function yamlJobBlock(source, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-function assertUsefulPullRequestTrigger(path, workflow) {
+function assertDraftLifecyclePullRequestTrigger(path, workflow) {
   const triggerBlock = yamlTopLevelBlock(workflow, 'on');
   const pullRequestBlock = yamlChildBlock(triggerBlock, 'pull_request');
   assert.match(
     pullRequestBlock,
-    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review\]\s*$/mu,
-    `${path} must reacquire exact-head evidence when a draft becomes ready without creating a no-op draft-transition run`,
+    /^\s+types:\s*\[opened, synchronize, reopened, ready_for_review, converted_to_draft\]\s*$/mu,
+    `${path} must reacquire exact-head evidence when a draft becomes ready and emit the same-PR cancellation signal when it returns to draft`,
   );
 }
 
@@ -97,7 +97,7 @@ describe('commercial readiness workflow contract', () => {
     }
   });
 
-  it('keeps draft pull requests off LifeOS-owned hosted runners and reruns when review starts', async () => {
+  it('keeps drafts off hosted runners, cancels prior Ready work when redrafted, and reruns when review starts', async () => {
     const malformedTriggerFixture = [
       'name: false-positive-trigger-fixture',
       '',
@@ -105,13 +105,13 @@ describe('commercial readiness workflow contract', () => {
       '  pull_request:',
       '    branches: [main]',
       '  workflow_dispatch:',
-      '    types: [opened, synchronize, reopened, ready_for_review]',
+      '    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]',
       '',
       'jobs:',
     ].join('\n');
     assert.throws(
       () =>
-        assertUsefulPullRequestTrigger(
+        assertDraftLifecyclePullRequestTrigger(
           'false-positive-trigger-fixture.yml',
           malformedTriggerFixture,
         ),
@@ -141,12 +141,7 @@ describe('commercial readiness workflow contract', () => {
 
     for (const { path, jobs } of workflows) {
       const workflow = await repositoryFile(path);
-      assertUsefulPullRequestTrigger(path, workflow);
-      assert.doesNotMatch(
-        yamlChildBlock(yamlTopLevelBlock(workflow, 'on'), 'pull_request'),
-        /converted_to_draft/u,
-        `${path} must not create a workflow run solely to skip draft work`,
-      );
+      assertDraftLifecyclePullRequestTrigger(path, workflow);
       for (const job of jobs) {
         assert.match(
           yamlJobBlock(workflow, job),
