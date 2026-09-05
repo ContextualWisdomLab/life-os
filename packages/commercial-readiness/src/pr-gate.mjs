@@ -4,6 +4,17 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const SUCCESS = 'success';
 /** Review states that can grant or revoke merge approval authority. */
 const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);
+/** Mergeability states currently emitted by GitHub and understood by this evaluator. */
+const KNOWN_MERGEABLE_STATES = new Set([
+  'clean',
+  'unstable',
+  'has_hooks',
+  'behind',
+  'dirty',
+  'blocked',
+  'draft',
+  'unknown',
+]);
 
 /**
  * Reduce untrusted GitHub review records to the latest valid decisive review per actor.
@@ -89,11 +100,12 @@ function statusEvidence(pr, requiredContext) {
  * Evaluate a collected pull-request snapshot against the active local merge policy.
  *
  * The decision fails closed for malformed PR identity, wrong repository/base provenance,
- * merge conflicts or stale base ancestry, unresolved review threads, missing decisive
- * exact-head approval, any latest decisive change request, and missing/stale/non-successful
- * required workflow or status evidence. Reviewer records with invalid actor or timestamp
- * evidence never contribute to approval, and approvals bound to another commit are stale.
- * `eligible` is true only when the de-duplicated `blockers` array is empty.
+ * missing or unrecognized mergeability-state evidence, merge conflicts or stale base
+ * ancestry, unresolved review threads, missing decisive exact-head approval, any latest
+ * decisive change request, and missing/stale/non-successful required workflow or status
+ * evidence. Reviewer records with invalid actor or timestamp evidence never contribute to
+ * approval, and approvals bound to another commit are stale. `eligible` is true only when
+ * the de-duplicated `blockers` array is empty.
  *
  * @param {object} pr Collected pull-request evidence for one exact head.
  * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
@@ -113,6 +125,9 @@ export function evaluatePullRequestForMerge(pr, policy) {
   if (pr.repository !== pr.head_repo) blockers.push('fork');
   if (pr.base_ref !== policy.default_branch) blockers.push('wrong-base');
   if (!SHA_PATTERN.test(pr.head_sha ?? '')) blockers.push('invalid-head');
+  if (!KNOWN_MERGEABLE_STATES.has(pr.mergeable_state)) {
+    blockers.push('merge-state-unknown');
+  }
   if (
     pr.mergeable !== true ||
     ['dirty', 'blocked', 'unknown'].includes(pr.mergeable_state)
