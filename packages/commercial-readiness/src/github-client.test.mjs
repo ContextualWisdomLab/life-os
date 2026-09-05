@@ -168,6 +168,7 @@ describe('repository snapshot evidence', () => {
                 head_sha: headSha,
                 run_attempt: 2,
                 updated_at: '2026-08-03T07:00:00Z',
+                pull_requests: [{ number: 7 }],
               },
               {
                 id: 101,
@@ -177,6 +178,7 @@ describe('repository snapshot evidence', () => {
                 head_sha: headSha,
                 run_attempt: 1,
                 updated_at: '2026-08-03T06:00:00Z',
+                pull_requests: [{ number: 7 }],
               },
             ],
           };
