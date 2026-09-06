@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now validates the pull request base commit as a canonical string SHA before constructing live-base comparison evidence; malformed array or object `base.sha` values can no longer gain base-freshness authority through URL-encoding coercion.
 - Scheduled/manual Commercial Readiness merge drains now preserve the live protected-branch SHA scalar type instead of coercing arrays or objects through `String(...)`; malformed branch-head evidence cannot masquerade as the workflow's exact `GITHUB_SHA` immediately before a merge mutation.
 - Commercial Readiness now preserves GitHub JSON scalar types across merge-authoritative pull-request, workflow-run, and commit-status identity instead of coercing arrays or objects through `String(...)`; malformed PR state/base/repository/head evidence, workflow name/status/head evidence, and status context/state/SHA evidence fail closed instead of becoming syntactically valid exact-head success authority.
 - Commercial Readiness now preserves raw review identity types instead of coercing arrays or objects through `String(...)`; malformed decisive reviewer, state, or approval `commit_id` evidence becomes fail-closed invalid review authority and cannot satisfy an exact-head approval.
