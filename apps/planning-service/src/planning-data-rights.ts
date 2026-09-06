@@ -4,6 +4,7 @@ import type {
   PlanningSqlQueryResult,
 } from './postgres-planning-repository';
 import type { TodayTransactionalSqlClient } from './postgres-today-repository';
+import { canonicalTodayDraft } from './today-invariants';
 
 /** Must remain byte-for-byte aligned with packages/contracts/src/data-rights.ts. */
 export const DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION =
@@ -13,6 +14,7 @@ const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v1' as const;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
+const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n;
 const MAXIMUM_JSON_DEPTH = 20;
 const MAXIMUM_ARRAY_ITEMS = 10_000;
 const MAXIMUM_OBJECT_KEYS = 10_000;
@@ -152,9 +154,26 @@ function requireUuidV4(value: unknown, field: string): string {
   return value.toLowerCase();
 }
 
+/** Requires PostgreSQL UUID evidence to already be in canonical lowercase form. */
+function requireCanonicalUuidV4(value: unknown, field: string): string {
+  const candidate = requireUuidV4(value, field);
+  if (candidate !== value) {
+    throw new PlanningDataRightsError(`${field} must be a canonical UUIDv4`);
+  }
+  return candidate;
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new PlanningDataRightsError(`${field} is invalid`);
+  }
+  return value;
+}
+
+/** Requires the exact persisted task discriminator enforced by the Planning schema. */
+function requireTaskStatus(value: unknown): 'todo' | 'done' {
+  if (value !== 'todo' && value !== 'done') {
+    throw new PlanningDataRightsError('task.status is invalid');
   }
   return value;
 }
@@ -163,12 +182,18 @@ function requireTimestamp(value: unknown, field: string): string | null {
   if (value === null) {
     return null;
   }
-  const parsed =
-    value instanceof Date ? value : new Date(requireString(value, field));
-  if (Number.isNaN(parsed.getTime())) {
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) {
+      throw new PlanningDataRightsError(`${field} is invalid`);
+    }
+    return value.toISOString();
+  }
+  const text = requireString(value, field);
+  const parsed = new Date(text);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== text) {
     throw new PlanningDataRightsError(`${field} is invalid`);
   }
-  return parsed.toISOString();
+  return text;
 }
 
 function requireDate(value: unknown): string {
@@ -176,27 +201,52 @@ function requireDate(value: unknown): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
     throw new PlanningDataRightsError('local_date is invalid');
   }
+  const parsed = new Date(`${text}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== text
+  ) {
+    throw new PlanningDataRightsError('local_date is invalid');
+  }
   return text;
 }
 
 function requireNonnegativeInteger(value: unknown, field: string): number {
-  const numeric = typeof value === 'string' ? Number(value) : value;
   if (
-    typeof numeric !== 'number' ||
-    !Number.isSafeInteger(numeric) ||
-    numeric < 0
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0
   ) {
     throw new PlanningDataRightsError(`${field} is invalid`);
   }
-  return numeric;
+  return value;
+}
+
+/** Requires canonical text emitted by PostgreSQL for a positive bigint. */
+function requirePositiveBigintText(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !/^[1-9][0-9]{0,18}$/.test(value)) {
+    throw new PlanningDataRightsError(`${field} is invalid`);
+  }
+  if (BigInt(value) > POSTGRES_BIGINT_MAX) {
+    throw new PlanningDataRightsError(`${field} is invalid`);
+  }
+  return value;
 }
 
 function requireSha256(value: unknown): string {
-  const candidate = requireString(value, 'sha256').toLowerCase();
+  const candidate = requireString(value, 'sha256');
   if (!SHA_256_PATTERN.test(candidate)) {
     throw new PlanningDataRightsError('sha256 is invalid');
   }
   return candidate;
+}
+
+/** Requires the exact persisted discriminator enforced by the Today schema. */
+function requireTodayResultKind(value: unknown): 'created' | 'updated' {
+  if (value !== 'created' && value !== 'updated') {
+    throw new PlanningDataRightsError('today.result_kind is invalid');
+  }
+  return value;
 }
 
 function normalizeJson(value: unknown, depth = 0): DataRightsJsonValue {
@@ -263,8 +313,48 @@ function canonicalJson(value: DataRightsJsonValue): string {
     .join(',')}}`;
 }
 
+/** Requires persisted Today JSON to already satisfy its domain contract without repair. */
+function requireCanonicalTodayPayload(
+  value: unknown,
+  expectedDate?: string,
+): DataRightsJsonValue {
+  const normalized = normalizeJson(value);
+  const canonical = canonicalTodayDraft(
+    normalized,
+    () => {
+      throw new PlanningDataRightsError('today.payload_json is invalid');
+    },
+    expectedDate,
+  );
+  const canonicalEvidence = normalizeJson(canonical);
+  if (canonicalJson(normalized) !== canonicalJson(canonicalEvidence)) {
+    throw new PlanningDataRightsError('today.payload_json is invalid');
+  }
+  return normalized;
+}
+
 function digest(value: DataRightsJsonValue): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
+}
+
+/** Computes the canonical digest that binds one durable Planning erasure receipt. */
+function digestErasureReceipt(
+  workspaceId: string,
+  requestedByUserId: string,
+  requestId: string,
+  idempotencyKey: string,
+  erasedRecords: number,
+): string {
+  return digest(
+    normalizeJson({
+      contributor: CONTRIBUTOR_NAME,
+      workspaceId,
+      requestedByUserId,
+      requestId,
+      idempotencyKey,
+      erasedRecords,
+    }),
+  );
 }
 
 function normalizeRequest(request: DataRightsContributorRequest): {
@@ -476,57 +566,63 @@ export class PlanningDataRightsContributor {
 
       const data: DataRightsJsonObject = Object.freeze({
         goals: normalizeExportRows(goals, (row) => ({
-          id: requireUuidV4(row.id, 'goal.id'),
+          id: requireCanonicalUuidV4(row.id, 'goal.id'),
           title: requireString(row.title, 'goal.title'),
           createdAt: requireTimestamp(row.created_at, 'goal.created_at'),
         })),
         projects: normalizeExportRows(projects, (row) => ({
-          id: requireUuidV4(row.id, 'project.id'),
-          goalId: requireUuidV4(row.goal_id, 'project.goal_id'),
+          id: requireCanonicalUuidV4(row.id, 'project.id'),
+          goalId: requireCanonicalUuidV4(row.goal_id, 'project.goal_id'),
           title: requireString(row.title, 'project.title'),
           createdAt: requireTimestamp(row.created_at, 'project.created_at'),
         })),
         tasks: normalizeExportRows(tasks, (row) => ({
-          id: requireUuidV4(row.id, 'task.id'),
-          projectId: requireUuidV4(row.project_id, 'task.project_id'),
+          id: requireCanonicalUuidV4(row.id, 'task.id'),
+          projectId: requireCanonicalUuidV4(row.project_id, 'task.project_id'),
           title: requireString(row.title, 'task.title'),
-          status: requireString(row.status, 'task.status'),
+          status: requireTaskStatus(row.status),
           completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
           createdAt: requireTimestamp(row.created_at, 'task.created_at'),
         })),
-        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({
-          localDate: requireDate(row.local_date),
-          aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
-          revisionNumber: requireString(
-            row.revision_number,
-            'today.revision_number',
-          ),
-          revisionToken: requireUuidV4(
-            row.revision_token,
-            'today.revision_token',
-          ),
-          payload: normalizeJson(row.payload_json),
-          createdAt: requireTimestamp(row.created_at, 'today.created_at'),
-          updatedAt: requireTimestamp(row.updated_at, 'today.updated_at'),
-        })),
+        todayAggregates: normalizeExportRows(todayAggregates, (row) => {
+          const localDate = requireDate(row.local_date);
+          return {
+            localDate,
+            aggregateId: requireCanonicalUuidV4(
+              row.aggregate_id,
+              'today.aggregate_id',
+            ),
+            revisionNumber: requirePositiveBigintText(
+              row.revision_number,
+              'today.revision_number',
+            ),
+            revisionToken: requireCanonicalUuidV4(
+              row.revision_token,
+              'today.revision_token',
+            ),
+            payload: requireCanonicalTodayPayload(row.payload_json, localDate),
+            createdAt: requireTimestamp(row.created_at, 'today.created_at'),
+            updatedAt: requireTimestamp(row.updated_at, 'today.updated_at'),
+          };
+        }),
         todayIdempotencyRecords: normalizeExportRows(
           todayIdempotency,
           (row) => ({
-            idempotencyKey: requireUuidV4(
+            idempotencyKey: requireCanonicalUuidV4(
               row.idempotency_key,
               'today.idempotency_key',
             ),
             requestDigest: requireSha256(row.request_digest),
-            resultKind: requireString(row.result_kind, 'today.result_kind'),
-            aggregateId: requireUuidV4(
+            resultKind: requireTodayResultKind(row.result_kind),
+            aggregateId: requireCanonicalUuidV4(
               row.aggregate_id,
               'today.aggregate_id',
             ),
-            revisionToken: requireUuidV4(
+            revisionToken: requireCanonicalUuidV4(
               row.revision_token,
               'today.revision_token',
             ),
-            payload: normalizeJson(row.payload_json),
+            payload: requireCanonicalTodayPayload(row.payload_json),
             createdAt: requireTimestamp(row.created_at, 'today.created_at'),
           }),
         ),
@@ -594,12 +690,31 @@ export class PlanningDataRightsContributor {
       if (existing.rows[0]) {
         const row = existing.rows[0];
         if (
-          requireUuidV4(row.requested_by_user_id, 'requested_by_user_id') !==
-            requestedByUserId ||
-          requireUuidV4(row.request_id, 'request_id') !== requestId
+          requireCanonicalUuidV4(
+            row.requested_by_user_id,
+            'requested_by_user_id',
+          ) !== requestedByUserId ||
+          requireCanonicalUuidV4(row.request_id, 'request_id') !== requestId
         ) {
           throw new PlanningDataRightsError(
             'Planning erasure idempotency key conflicts with prior authority',
+          );
+        }
+        const erasedRecords = requireNonnegativeInteger(
+          row.erased_records,
+          'erased_records',
+        );
+        const receiptSha256 = requireSha256(row.receipt_sha256);
+        const expectedReceiptSha256 = digestErasureReceipt(
+          workspaceId,
+          requestedByUserId,
+          requestId,
+          idempotencyKey,
+          erasedRecords,
+        );
+        if (receiptSha256 !== expectedReceiptSha256) {
+          throw new PlanningDataRightsError(
+            'Planning erasure receipt digest is invalid',
           );
         }
         return Object.freeze({
@@ -607,11 +722,8 @@ export class PlanningDataRightsContributor {
           operation: 'erase',
           contributor: CONTRIBUTOR_NAME,
           requestId,
-          erasedRecords: requireNonnegativeInteger(
-            row.erased_records,
-            'erased_records',
-          ),
-          receiptSha256: requireSha256(row.receipt_sha256),
+          erasedRecords,
+          receiptSha256,
         });
       }
 
@@ -619,15 +731,12 @@ export class PlanningDataRightsContributor {
       for (const table of ERASURE_TABLES) {
         erasedRecords += await countDeleted(transaction, table, workspaceId);
       }
-      const receiptSha256 = digest(
-        normalizeJson({
-          contributor: CONTRIBUTOR_NAME,
-          workspaceId,
-          requestedByUserId,
-          requestId,
-          idempotencyKey,
-          erasedRecords,
-        }),
+      const receiptSha256 = digestErasureReceipt(
+        workspaceId,
+        requestedByUserId,
+        requestId,
+        idempotencyKey,
+        erasedRecords,
       );
       await transaction.query(
         `INSERT INTO planning.data_rights_erasure_receipts

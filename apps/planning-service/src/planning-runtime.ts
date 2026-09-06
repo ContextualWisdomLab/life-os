@@ -73,13 +73,56 @@ class NodePostgresPlanningPool implements PlanningPool {
 }
 
 class ConnectionSqlClient implements PlanningSqlClient {
+  private queryTail: Promise<void> = Promise.resolve();
+  private queryFailure: { readonly error: unknown } | null = null;
+  private closed = false;
+
   constructor(private readonly connection: PlanningPoolConnection) {}
 
-  async query<Row>(
+  query<Row>(
     text: string,
     values: readonly unknown[],
   ): Promise<PlanningSqlQueryResult<Row>> {
-    return await this.connection.query<Row>(text, values);
+    if (this.closed) {
+      return Promise.reject(
+        new Error('Planning transaction SQL capability is closed'),
+      );
+    }
+    // Admission fixes the parameter evidence before queued work can be delayed;
+    // later caller mutation must not change SQL that already owns queue position.
+    const capturedValues = [...values];
+    // A pg Client owns one PostgreSQL connection. Queue concurrent callers here
+    // rather than relying on node-postgres's deprecated implicit serialization.
+    const result = this.queryTail.then(
+      async () => await this.connection.query<Row>(text, capturedValues),
+    );
+    this.queryTail = result.then(
+      () => undefined,
+      (error) => {
+        if (this.queryFailure === null) {
+          this.queryFailure = { error };
+        }
+      },
+    );
+    return result;
+  }
+
+  /** Prevents callers from admitting SQL after the transaction callback settles. */
+  close(): void {
+    this.closed = true;
+  }
+
+  /**
+   * Waits until every query already admitted to this transaction connection has
+   * settled. The original query promises still reject independently. By default
+   * the first admitted query failure is also rethrown here so a callback cannot
+   * report transaction success merely by returning before it observes that query.
+   */
+  async drain(propagateFailure = true): Promise<void> {
+    await this.queryTail;
+    if (propagateFailure && this.queryFailure !== null) {
+      throw this.queryFailure.error;
+    }
   }
 }
 
@@ -97,14 +140,28 @@ class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
     operation: (client: PlanningSqlClient) => Promise<Result>,
   ): Promise<Result> {
     const connection = await this.pool.connect();
+    const transactionClient = new ConnectionSqlClient(connection);
     let destroyConnection = false;
     try {
       await connection.query('BEGIN');
-      const result = await operation(new ConnectionSqlClient(connection));
+      let result: Result;
+      try {
+        result = await operation(transactionClient);
+      } finally {
+        // The callback owns this capability only for its lexical transaction
+        // lifetime. Revoke new admissions before draining and transaction control.
+        transactionClient.close();
+      }
+      await transactionClient.drain();
       await connection.query('COMMIT');
       return result;
     } catch (error) {
+      transactionClient.close();
       try {
+        // A query failure may be the reason this catch path was entered. Wait for
+        // every admitted query without rethrowing it again, then explicitly roll
+        // back the connection before releasing it to the pool.
+        await transactionClient.drain(false);
         await connection.query('ROLLBACK');
       } catch {
         destroyConnection = true;
@@ -194,7 +251,7 @@ function defaultPoolFactory(configuration: PoolConfig): PlanningPool {
 }
 
 export class PlanningRuntime implements OnApplicationShutdown {
-  private closed = false;
+  private closePromise: Promise<void> | null = null;
 
   constructor(
     private readonly pool: PlanningPool,
@@ -204,12 +261,18 @@ export class PlanningRuntime implements OnApplicationShutdown {
     readonly dataRightsContributor: PlanningDataRightsContributor,
   ) {}
 
-  async close(): Promise<void> {
-    if (this.closed) {
-      return;
+  /**
+   * Returns the one PostgreSQL shutdown authority to every lifecycle caller.
+   * node-postgres pool shutdown is one-shot once `end()` begins, so both success
+   * and failure remain the canonical settled result rather than invoking `end()` again.
+   */
+  close(): Promise<void> {
+    if (this.closePromise) {
+      return this.closePromise;
     }
-    this.closed = true;
-    await this.pool.end();
+    const attempt = Promise.resolve().then(async () => await this.pool.end());
+    this.closePromise = attempt;
+    return attempt;
   }
 
   async onApplicationShutdown(): Promise<void> {
