@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Scheduled/manual Commercial Readiness merge drains now require the live default-branch endpoint to report the exact boolean `protected: true` as well as the immutable workflow `GITHUB_SHA` immediately before merge mutation, so removing branch/ruleset protection without moving the branch cannot leave stale merge authority active.
 - Commercial Readiness now validates the pull request base commit as a canonical string SHA before constructing live-base comparison evidence; malformed array or object `base.sha` values can no longer gain base-freshness authority through URL-encoding coercion.
 - Scheduled/manual Commercial Readiness merge drains now preserve the live protected-branch SHA scalar type instead of coercing arrays or objects through `String(...)`; malformed branch-head evidence cannot masquerade as the workflow's exact `GITHUB_SHA` immediately before a merge mutation.
 - Commercial Readiness now preserves GitHub JSON scalar types across merge-authoritative pull-request, workflow-run, and commit-status identity instead of coercing arrays or objects through `String(...)`; malformed PR state/base/repository/head evidence, workflow name/status/head evidence, and status context/state/SHA evidence fail closed instead of becoming syntactically valid exact-head success authority.
