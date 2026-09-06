@@ -28,19 +28,39 @@ const KNOWN_MERGEABLE_STATES = new Set([
 ]);
 
 /**
+ * Parse one GitHub review timestamp only when syntax and Gregorian calendar value are canonical.
+ *
+ * JavaScript normalizes some impossible ISO-looking dates, such as February 31, into a later
+ * calendar date. GitHub review authority must therefore round-trip through `Date` unchanged at
+ * the API's documented UTC second precision instead of trusting parser finiteness alone.
+ *
+ * @param {unknown} value Untrusted `submitted_at` review evidence.
+ * @returns {number|null} Epoch milliseconds for canonical GitHub evidence, otherwise null.
+ */
+function parseCanonicalGitHubReviewTimestamp(value) {
+  if (typeof value !== 'string' || !GITHUB_REVIEW_TIMESTAMP_PATTERN.test(value)) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  const roundTrip = new Date(timestamp).toISOString();
+  return roundTrip === `${value.slice(0, -1)}.000Z` ? timestamp : null;
+}
+
+/**
  * Reduce untrusted GitHub review records to the latest valid decisive review per actor.
  *
  * Known non-decisive GitHub states are ignored. Missing, malformed, or unknown review states
  * are retained as invalid evidence so an API-contract change cannot silently erase a future
  * decisive state from the merge decision. Decisive records with malformed reviewer identity
  * or submission time are likewise invalid. Review timestamps must preserve GitHub's canonical
- * UTC REST shape rather than becoming authority merely because JavaScript can parse them.
- * Approval records additionally must bind the exact current pull-request head. A later stale
- * approval revokes an older exact-head approval for the same actor, but never clears a current
- * change request; a still-later exact-head approval may supersede that stale approval. GitHub
- * timestamps have finite precision, so equal timestamps use input order for both exact-head and
- * stale approval evidence. This preserves chronological review authority without allowing stale
- * commit evidence to grant approval.
+ * UTC REST shape and calendar value rather than becoming authority merely because JavaScript can
+ * parse or normalize them. Approval records additionally must bind the exact current pull-request
+ * head. A later stale approval revokes an older exact-head approval for the same actor, but never
+ * clears a current change request; a still-later exact-head approval may supersede that stale
+ * approval. GitHub timestamps have finite precision, so equal timestamps use input order for both
+ * exact-head and stale approval evidence. This preserves chronological review authority without
+ * allowing stale commit evidence to grant approval.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
@@ -67,15 +87,8 @@ function latestReviewsByActor(reviews, headSha) {
       continue;
     }
     const actor = review.actor.trim();
-    if (
-      typeof review.submitted_at !== 'string' ||
-      !GITHUB_REVIEW_TIMESTAMP_PATTERN.test(review.submitted_at)
-    ) {
-      invalid = true;
-      continue;
-    }
-    const timestamp = Date.parse(review.submitted_at);
-    if (!actor || !Number.isFinite(timestamp)) {
+    const timestamp = parseCanonicalGitHubReviewTimestamp(review.submitted_at);
+    if (!actor || timestamp === null) {
       invalid = true;
       continue;
     }
