@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now binds `behind_by` base-freshness authority to GitHub's exact compare-response provenance: the canonical requested compare URL and scalar `base_commit.sha` must match the evaluated pair, and zero-behind authority additionally requires `merge_base_commit.sha` to equal the requested base; malformed or mismatched compare evidence fails closed as out-of-date.
 - Scheduled/manual Commercial Readiness merge drains now require the live default-branch endpoint to report the exact boolean `protected: true` as well as the immutable workflow `GITHUB_SHA` immediately before merge mutation, so removing branch/ruleset protection without moving the branch cannot leave stale merge authority active.
 - Commercial Readiness now validates the pull request base commit as a canonical string SHA before constructing live-base comparison evidence; malformed array or object `base.sha` values can no longer gain base-freshness authority through URL-encoding coercion.
 - Scheduled/manual Commercial Readiness merge drains now preserve the live protected-branch SHA scalar type instead of coercing arrays or objects through `String(...)`; malformed branch-head evidence cannot masquerade as the workflow's exact `GITHUB_SHA` immediately before a merge mutation.
