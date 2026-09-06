@@ -31,6 +31,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now requires merge-authoritative commit-status `created_at` evidence to use GitHub's UTC second-precision timestamp shape and survive an unchanged UTC calendar round-trip, so date-only, impossible-calendar, or otherwise parser-normalized ordering evidence taints the affected status context instead of granting success authority.
+- Commercial Readiness now requires decisive-review `submitted_at` evidence to use GitHub's UTC second-precision timestamp shape and survive an unchanged UTC calendar round-trip, preventing date-only, impossible-calendar, or otherwise parser-normalized timestamps from becoming approval chronology authority.
 - Commercial Readiness now preserves per-reviewer chronology when GitHub reports a later approval for a stale commit: that stale approval revokes an older exact-head approval for the same actor, cannot clear a current change request, and may itself be superseded only by a still-later exact-head approval.
 - Commercial Readiness now rejects non-string decisive-review `submitted_at` evidence before `Date.parse`, preventing numeric or otherwise malformed scalar timestamps from becoming approval authority through JavaScript coercion.
 - Scheduled/manual Commercial Readiness merge drains now pin at most one already-evaluated eligible pull request per mutating default-branch run; after a successful squash advances protected `main`, later candidates wait for a fresh run instead of losing the first merge receipt when stale control-plane authority correctly fails closed on a second mutation attempt. Dry-run evidence still covers the complete pull-request set.
