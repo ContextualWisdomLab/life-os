@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Planning data-rights export now requires persisted task status to already be the Planning domain discriminator `todo` or `done`; malformed, padded, or case-variant status evidence fails closed instead of entering buyer-visible export and digest evidence.
 - Planning data-rights erasure replay now recomputes the canonical receipt digest from the exact workspace, requesting user, request, idempotency key, and erased-record count before returning persisted evidence; a syntactically valid but unbound SHA-256 value fails closed instead of becoming buyer-visible erasure authority.
 - Planning data-rights export and erasure replay now require PostgreSQL UUID evidence to already be canonical lowercase UUIDv4 text; uppercase or mixed-case durable identifiers fail closed instead of being silently lowercased into valid-looking buyer-visible evidence, while untrusted request identifiers retain their existing normalization behavior.
 - Planning data-rights export now accepts only the exact persisted Today idempotency result kinds `created` and `updated`; malformed or padded discriminator strings fail closed instead of entering export and digest evidence.
