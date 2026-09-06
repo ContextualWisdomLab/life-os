@@ -14,6 +14,7 @@ const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v1' as const;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
+const POSTGRES_BIGINT_MAX = 9_223_372_036_854_775_807n;
 const MAXIMUM_JSON_DEPTH = 20;
 const MAXIMUM_ARRAY_ITEMS = 10_000;
 const MAXIMUM_OBJECT_KEYS = 10_000;
@@ -216,6 +217,17 @@ function requireNonnegativeInteger(value: unknown, field: string): number {
     !Number.isSafeInteger(value) ||
     value < 0
   ) {
+    throw new PlanningDataRightsError(`${field} is invalid`);
+  }
+  return value;
+}
+
+/** Requires canonical text emitted by PostgreSQL for a positive bigint. */
+function requirePositiveBigintText(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !/^[1-9][0-9]{0,18}$/.test(value)) {
+    throw new PlanningDataRightsError(`${field} is invalid`);
+  }
+  if (BigInt(value) > POSTGRES_BIGINT_MAX) {
     throw new PlanningDataRightsError(`${field} is invalid`);
   }
   return value;
@@ -580,7 +592,7 @@ export class PlanningDataRightsContributor {
               row.aggregate_id,
               'today.aggregate_id',
             ),
-            revisionNumber: requireString(
+            revisionNumber: requirePositiveBigintText(
               row.revision_number,
               'today.revision_number',
             ),
