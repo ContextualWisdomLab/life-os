@@ -317,6 +317,26 @@ function digest(value: DataRightsJsonValue): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
 }
 
+/** Computes the canonical digest that binds one durable Planning erasure receipt. */
+function digestErasureReceipt(
+  workspaceId: string,
+  requestedByUserId: string,
+  requestId: string,
+  idempotencyKey: string,
+  erasedRecords: number,
+): string {
+  return digest(
+    normalizeJson({
+      contributor: CONTRIBUTOR_NAME,
+      workspaceId,
+      requestedByUserId,
+      requestId,
+      idempotencyKey,
+      erasedRecords,
+    }),
+  );
+}
+
 function normalizeRequest(request: DataRightsContributorRequest): {
   readonly request: DataRightsContributorRequest;
   readonly workspaceId: string;
@@ -660,16 +680,30 @@ export class PlanningDataRightsContributor {
             'Planning erasure idempotency key conflicts with prior authority',
           );
         }
+        const erasedRecords = requireNonnegativeInteger(
+          row.erased_records,
+          'erased_records',
+        );
+        const receiptSha256 = requireSha256(row.receipt_sha256);
+        const expectedReceiptSha256 = digestErasureReceipt(
+          workspaceId,
+          requestedByUserId,
+          requestId,
+          idempotencyKey,
+          erasedRecords,
+        );
+        if (receiptSha256 !== expectedReceiptSha256) {
+          throw new PlanningDataRightsError(
+            'Planning erasure receipt digest is invalid',
+          );
+        }
         return Object.freeze({
           contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
           operation: 'erase',
           contributor: CONTRIBUTOR_NAME,
           requestId,
-          erasedRecords: requireNonnegativeInteger(
-            row.erased_records,
-            'erased_records',
-          ),
-          receiptSha256: requireSha256(row.receipt_sha256),
+          erasedRecords,
+          receiptSha256,
         });
       }
 
@@ -677,15 +711,12 @@ export class PlanningDataRightsContributor {
       for (const table of ERASURE_TABLES) {
         erasedRecords += await countDeleted(transaction, table, workspaceId);
       }
-      const receiptSha256 = digest(
-        normalizeJson({
-          contributor: CONTRIBUTOR_NAME,
-          workspaceId,
-          requestedByUserId,
-          requestId,
-          idempotencyKey,
-          erasedRecords,
-        }),
+      const receiptSha256 = digestErasureReceipt(
+        workspaceId,
+        requestedByUserId,
+        requestId,
+        idempotencyKey,
+        erasedRecords,
       );
       await transaction.query(
         `INSERT INTO planning.data_rights_erasure_receipts
