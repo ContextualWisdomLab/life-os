@@ -39,21 +39,30 @@ describe('merge-drain protected-default-branch provenance', () => {
       );
     }
 
-    const malformedLiveClient = {
-      async requestJson() {
-        return { commit: { sha: 'not-a-sha' } };
+    const malformedLiveClients = [
+      {
+        async requestJson() {
+          return { commit: { sha: 'not-a-sha' } };
+        },
       },
-    };
-    await assert.rejects(
-      () =>
-        cliModule.assertDefaultBranchHead(
-          malformedLiveClient,
-          repository,
-          'main',
-          expectedHead,
-        ),
-      /Protected default branch changed during merge drain/,
-    );
+      {
+        async requestJson() {
+          return { commit: { sha: [expectedHead] } };
+        },
+      },
+    ];
+    for (const malformedLiveClient of malformedLiveClients) {
+      await assert.rejects(
+        () =>
+          cliModule.assertDefaultBranchHead(
+            malformedLiveClient,
+            repository,
+            'main',
+            expectedHead,
+          ),
+        /Protected default branch changed during merge drain/,
+      );
+    }
   });
 
   it('requires an unchanged protected default branch immediately before merge mutation', async () => {
