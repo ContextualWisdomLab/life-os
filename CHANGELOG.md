@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Planning data-rights export and erasure replay now require PostgreSQL UUID evidence to already be canonical lowercase UUIDv4 text; uppercase or mixed-case durable identifiers fail closed instead of being silently lowercased into valid-looking buyer-visible evidence, while untrusted request identifiers retain their existing normalization behavior.
 - Planning data-rights export now accepts only the exact persisted Today idempotency result kinds `created` and `updated`; malformed or padded discriminator strings fail closed instead of entering export and digest evidence.
 - Planning data-rights export now requires persisted Today aggregate and idempotency payloads to already satisfy the same durable Today domain invariants used by the runtime; contradictory dates or payloads that only become valid after application canonicalization fail closed instead of entering export and digest evidence.
 - Planning data-rights replay now accepts only canonical lowercase SHA-256 digest evidence; malformed uppercase or mixed-case persisted digests are rejected instead of being recanonicalized into valid-looking erasure or Today idempotency evidence.
