@@ -153,6 +153,15 @@ function requireUuidV4(value: unknown, field: string): string {
   return value.toLowerCase();
 }
 
+/** Requires PostgreSQL UUID evidence to already be in canonical lowercase form. */
+function requireCanonicalUuidV4(value: unknown, field: string): string {
+  const candidate = requireUuidV4(value, field);
+  if (candidate !== value) {
+    throw new PlanningDataRightsError(`${field} must be a canonical UUIDv4`);
+  }
+  return candidate;
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new PlanningDataRightsError(`${field} is invalid`);
@@ -517,19 +526,19 @@ export class PlanningDataRightsContributor {
 
       const data: DataRightsJsonObject = Object.freeze({
         goals: normalizeExportRows(goals, (row) => ({
-          id: requireUuidV4(row.id, 'goal.id'),
+          id: requireCanonicalUuidV4(row.id, 'goal.id'),
           title: requireString(row.title, 'goal.title'),
           createdAt: requireTimestamp(row.created_at, 'goal.created_at'),
         })),
         projects: normalizeExportRows(projects, (row) => ({
-          id: requireUuidV4(row.id, 'project.id'),
-          goalId: requireUuidV4(row.goal_id, 'project.goal_id'),
+          id: requireCanonicalUuidV4(row.id, 'project.id'),
+          goalId: requireCanonicalUuidV4(row.goal_id, 'project.goal_id'),
           title: requireString(row.title, 'project.title'),
           createdAt: requireTimestamp(row.created_at, 'project.created_at'),
         })),
         tasks: normalizeExportRows(tasks, (row) => ({
-          id: requireUuidV4(row.id, 'task.id'),
-          projectId: requireUuidV4(row.project_id, 'task.project_id'),
+          id: requireCanonicalUuidV4(row.id, 'task.id'),
+          projectId: requireCanonicalUuidV4(row.project_id, 'task.project_id'),
           title: requireString(row.title, 'task.title'),
           status: requireString(row.status, 'task.status'),
           completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
@@ -539,12 +548,15 @@ export class PlanningDataRightsContributor {
           const localDate = requireDate(row.local_date);
           return {
             localDate,
-            aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
+            aggregateId: requireCanonicalUuidV4(
+              row.aggregate_id,
+              'today.aggregate_id',
+            ),
             revisionNumber: requireString(
               row.revision_number,
               'today.revision_number',
             ),
-            revisionToken: requireUuidV4(
+            revisionToken: requireCanonicalUuidV4(
               row.revision_token,
               'today.revision_token',
             ),
@@ -556,17 +568,17 @@ export class PlanningDataRightsContributor {
         todayIdempotencyRecords: normalizeExportRows(
           todayIdempotency,
           (row) => ({
-            idempotencyKey: requireUuidV4(
+            idempotencyKey: requireCanonicalUuidV4(
               row.idempotency_key,
               'today.idempotency_key',
             ),
             requestDigest: requireSha256(row.request_digest),
             resultKind: requireTodayResultKind(row.result_kind),
-            aggregateId: requireUuidV4(
+            aggregateId: requireCanonicalUuidV4(
               row.aggregate_id,
               'today.aggregate_id',
             ),
-            revisionToken: requireUuidV4(
+            revisionToken: requireCanonicalUuidV4(
               row.revision_token,
               'today.revision_token',
             ),
@@ -638,9 +650,11 @@ export class PlanningDataRightsContributor {
       if (existing.rows[0]) {
         const row = existing.rows[0];
         if (
-          requireUuidV4(row.requested_by_user_id, 'requested_by_user_id') !==
-            requestedByUserId ||
-          requireUuidV4(row.request_id, 'request_id') !== requestId
+          requireCanonicalUuidV4(
+            row.requested_by_user_id,
+            'requested_by_user_id',
+          ) !== requestedByUserId ||
+          requireCanonicalUuidV4(row.request_id, 'request_id') !== requestId
         ) {
           throw new PlanningDataRightsError(
             'Planning erasure idempotency key conflicts with prior authority',
