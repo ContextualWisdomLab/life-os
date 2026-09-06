@@ -249,6 +249,11 @@ export class PlanningRuntime implements OnApplicationShutdown {
     readonly dataRightsContributor: PlanningDataRightsContributor,
   ) {}
 
+  /**
+   * Returns the one in-flight PostgreSQL shutdown authority to every lifecycle caller.
+   * A successful close remains reusable and idempotent; a rejected close clears only
+   * that failed attempt so a later lifecycle request may retry cleanup.
+   */
   close(): Promise<void> {
     if (this.closePromise) {
       return this.closePromise;
