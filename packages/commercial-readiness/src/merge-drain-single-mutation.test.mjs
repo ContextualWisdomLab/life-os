@@ -1,71 +1,48 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { mergeEligiblePullRequests } from './github-client.mjs';
+import { createDrainPullRequestSelector } from './cli.mjs';
 
-const policy = {
-  default_branch: 'main',
-  trusted_author_associations: ['OWNER'],
-  required_workflows: [],
-  required_statuses: [],
-  merge_method: 'squash',
-};
-
-function eligiblePullRequest(number, headSha) {
-  return {
-    number,
-    title: `ready-${number}`,
-    state: 'open',
-    draft: false,
-    mergeable: true,
-    mergeable_state: 'clean',
-    base_ref: 'main',
-    head_sha: headSha,
-    head_repo: 'o/r',
-    repository: 'o/r',
-    author_association: 'OWNER',
-    behind_by: 0,
-    reviews: [
-      {
-        actor: 'reviewer-a',
-        state: 'APPROVED',
-        submitted_at: '2026-09-06T00:00:00Z',
-        commit_id: headSha,
-      },
-    ],
-    unresolved_threads: 0,
-    workflows: [],
-    statuses: [],
-  };
+function pullRequest(number, eligible) {
+  return { number, eligible };
 }
 
 describe('merge drain mutation authority', () => {
-  it('records one successful merge and defers later eligible PRs after main advances', async () => {
-    const first = eligiblePullRequest(301, 'a'.repeat(40));
-    const second = eligiblePullRequest(302, 'b'.repeat(40));
-    let mergeCalls = 0;
+  it('pins one eligible merge candidate for the lifetime of one mutating drain run', () => {
+    const select = createDrainPullRequestSelector(true);
+    const firstSnapshot = [
+      pullRequest(300, false),
+      pullRequest(301, true),
+      pullRequest(302, true),
+    ];
 
-    const result = await mergeEligiblePullRequests({
-      repository: 'o/r',
-      policy,
-      dryRun: false,
-      collectPullRequests: async () => [first, second],
-      mergePullRequest: async () => {
-        mergeCalls += 1;
-        if (mergeCalls > 1) {
-          throw new Error('a drain run must not mutate main twice');
-        }
-        return { merged: true, sha: 'c'.repeat(40) };
-      },
-    });
+    assert.deepEqual(select(firstSnapshot), [pullRequest(301, true)]);
 
-    assert.equal(mergeCalls, 1);
-    assert.deepEqual(result, [
-      { number: 301, action: 'merged' },
-      {
-        number: 302,
-        action: 'blocked',
-        blockers: ['default-branch-advanced'],
-      },
-    ]);
+    const refreshedSnapshot = [
+      pullRequest(299, true),
+      pullRequest(301, true),
+      pullRequest(302, true),
+    ];
+    assert.deepEqual(
+      select(refreshedSnapshot),
+      [pullRequest(301, true)],
+      'newly eligible or earlier PRs must wait for a fresh default-branch run',
+    );
+
+    assert.deepEqual(
+      select([pullRequest(302, true)]),
+      [],
+      'the selector must not substitute a different PR if the pinned candidate disappears',
+    );
+  });
+
+  it('preserves the complete candidate set for dry-run evidence', () => {
+    const select = createDrainPullRequestSelector(false);
+    const snapshot = [pullRequest(300, false), pullRequest(301, true)];
+    assert.equal(select(snapshot), snapshot);
+  });
+
+  it('rejects malformed candidate collections', () => {
+    const select = createDrainPullRequestSelector(true);
+    assert.throws(() => select(null), /Pull request snapshot is invalid/);
   });
 });
