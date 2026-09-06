@@ -344,6 +344,41 @@ export function assertMergeResponseEvidence(value) {
   return value;
 }
 
+/**
+ * Pins at most one already-evaluated eligible PR for one mutating drain invocation.
+ *
+ * A successful squash merge necessarily advances the protected default branch and invalidates
+ * the workflow commit whose code and policy authorized that mutation. Merge mode therefore keeps
+ * one PR number for the lifetime of this process; later eligible PRs wait for a fresh scheduled or
+ * manual run from the new protected head. Dry-run mode preserves the complete snapshot because it
+ * performs no repository mutation.
+ *
+ * @param {boolean} execute Whether this selector is used by merge mode.
+ * @returns {(pullRequests: unknown[]) => unknown[]} Stateful snapshot selector.
+ */
+export function createDrainPullRequestSelector(execute) {
+  let selectedNumber = null;
+  return (pullRequests) => {
+    if (!Array.isArray(pullRequests)) {
+      throw new Error('Pull request snapshot is invalid');
+    }
+    if (!execute) return pullRequests;
+    if (selectedNumber === null) {
+      const candidate = pullRequests.find(
+        (pullRequest) =>
+          pullRequest?.eligible === true &&
+          Number.isSafeInteger(pullRequest?.number) &&
+          pullRequest.number > 0,
+      );
+      selectedNumber = candidate?.number ?? 0;
+    }
+    if (selectedNumber === 0) return [];
+    return pullRequests.filter(
+      (pullRequest) => pullRequest?.number === selectedNumber,
+    );
+  };
+}
+
 async function commandDrain(options) {
   requireOptions(options, ['repository', 'policy', 'output']);
   const policy = await loadPolicy(options.policy);
@@ -353,6 +388,7 @@ async function commandDrain(options) {
   const commitSha = process.env.GITHUB_SHA;
   if (typeof commitSha !== 'string')
     throw new Error('GitHub commit SHA is required');
+  const selectPullRequests = createDrainPullRequestSelector(execute);
   const collectPullRequests = async () => {
     const snapshot = validateGitHubSnapshot(
       await collectRepositorySnapshot(client, options.repository, {
@@ -361,7 +397,7 @@ async function commandDrain(options) {
         generatedAt: new Date().toISOString(),
       }),
     );
-    return snapshot.pull_requests;
+    return selectPullRequests(snapshot.pull_requests);
   };
   const results = await mergeEligiblePullRequests({
     repository: options.repository,
