@@ -169,6 +169,14 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+/** Requires the exact persisted task discriminator enforced by the Planning schema. */
+function requireTaskStatus(value: unknown): 'todo' | 'done' {
+  if (value !== 'todo' && value !== 'done') {
+    throw new PlanningDataRightsError('task.status is invalid');
+  }
+  return value;
+}
+
 function requireTimestamp(value: unknown, field: string): string | null {
   if (value === null) {
     return null;
@@ -560,7 +568,7 @@ export class PlanningDataRightsContributor {
           id: requireCanonicalUuidV4(row.id, 'task.id'),
           projectId: requireCanonicalUuidV4(row.project_id, 'task.project_id'),
           title: requireString(row.title, 'task.title'),
-          status: requireString(row.status, 'task.status'),
+          status: requireTaskStatus(row.status),
           completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
           createdAt: requireTimestamp(row.created_at, 'task.created_at'),
         })),
