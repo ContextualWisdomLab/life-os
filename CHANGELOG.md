@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now preserves raw review identity types instead of coercing arrays or objects through `String(...)`; malformed decisive reviewer, state, or approval `commit_id` evidence becomes fail-closed invalid review authority and cannot satisfy an exact-head approval.
 - Commercial Readiness now requires merge-authoritative commit-status `created_at` evidence to use GitHub's UTC second-precision timestamp shape and survive an unchanged UTC calendar round-trip, so date-only, impossible-calendar, or otherwise parser-normalized ordering evidence taints the affected status context instead of granting success authority.
 - Commercial Readiness now requires decisive-review `submitted_at` evidence to use GitHub's UTC second-precision timestamp shape and survive an unchanged UTC calendar round-trip, preventing date-only, impossible-calendar, or otherwise parser-normalized timestamps from becoming approval chronology authority.
 - Commercial Readiness now preserves per-reviewer chronology when GitHub reports a later approval for a stale commit: that stale approval revokes an older exact-head approval for the same actor, cannot clear a current change request, and may itself be superseded only by a still-later exact-head approval.
