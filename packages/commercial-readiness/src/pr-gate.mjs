@@ -33,10 +33,9 @@ const KNOWN_MERGEABLE_STATES = new Set([
  * or submission time are likewise invalid. Approval records additionally must bind the exact
  * current pull-request head. A later stale approval revokes an older exact-head approval for
  * the same actor, but never clears a current change request; a still-later exact-head approval
- * may supersede that stale approval. This preserves chronological review authority without
- * allowing stale commit evidence to grant approval. When one actor has multiple valid decisive
- * reviews, the chronologically latest review wins; equal timestamps use the later record in
- * input order.
+ * may supersede that stale approval. GitHub timestamps have finite precision, so equal timestamps
+ * use input order for both exact-head and stale approval evidence. This preserves chronological
+ * review authority without allowing stale commit evidence to grant approval.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
@@ -44,9 +43,11 @@ const KNOWN_MERGEABLE_STATES = new Set([
  */
 function latestReviewsByActor(reviews, headSha) {
   const latest = new Map();
-  const staleApprovalTimestamps = new Map();
+  const staleApprovals = new Map();
   let invalid = false;
-  for (const review of Array.isArray(reviews) ? reviews : []) {
+  const input = Array.isArray(reviews) ? reviews : [];
+  for (let reviewOrder = 0; reviewOrder < input.length; reviewOrder += 1) {
+    const review = input[reviewOrder];
     if (!review || typeof review !== 'object') {
       invalid = true;
       continue;
@@ -71,28 +72,37 @@ function latestReviewsByActor(reviews, headSha) {
       continue;
     }
     if (review.state === 'APPROVED' && review.commit_id !== headSha) {
-      const currentStaleTimestamp = staleApprovalTimestamps.get(actor);
+      const currentStale = staleApprovals.get(actor);
       if (
-        currentStaleTimestamp === undefined ||
-        timestamp >= currentStaleTimestamp
+        !currentStale ||
+        timestamp > currentStale.timestamp ||
+        (timestamp === currentStale.timestamp && reviewOrder > currentStale.order)
       ) {
-        staleApprovalTimestamps.set(actor, timestamp);
+        staleApprovals.set(actor, { timestamp, order: reviewOrder });
       }
       continue;
     }
     const current = latest.get(actor);
-    if (!current || timestamp >= current.timestamp) {
-      latest.set(actor, { state: review.state, timestamp });
+    if (
+      !current ||
+      timestamp > current.timestamp ||
+      (timestamp === current.timestamp && reviewOrder > current.order)
+    ) {
+      latest.set(actor, { state: review.state, timestamp, order: reviewOrder });
     }
   }
-  for (const [actor, staleTimestamp] of staleApprovalTimestamps) {
+  for (const [actor, stale] of staleApprovals) {
     const current = latest.get(actor);
     if (
       current?.state === 'APPROVED' &&
-      staleTimestamp >= current.timestamp
+      (stale.timestamp > current.timestamp ||
+        (stale.timestamp === current.timestamp && stale.order > current.order))
     ) {
       latest.delete(actor);
     }
+  }
+  for (const [actor, current] of latest) {
+    latest.set(actor, { state: current.state, timestamp: current.timestamp });
   }
   return { latest, invalid };
 }
