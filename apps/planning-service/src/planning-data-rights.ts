@@ -193,15 +193,14 @@ function requireDate(value: unknown): string {
 }
 
 function requireNonnegativeInteger(value: unknown, field: string): number {
-  const numeric = typeof value === 'string' ? Number(value) : value;
   if (
-    typeof numeric !== 'number' ||
-    !Number.isSafeInteger(numeric) ||
-    numeric < 0
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0
   ) {
     throw new PlanningDataRightsError(`${field} is invalid`);
   }
-  return numeric;
+  return value;
 }
 
 function requireSha256(value: unknown): string {
