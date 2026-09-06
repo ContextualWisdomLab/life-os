@@ -38,7 +38,10 @@ const KNOWN_MERGEABLE_STATES = new Set([
  * @returns {number|null} Epoch milliseconds for canonical GitHub evidence, otherwise null.
  */
 function parseCanonicalGitHubReviewTimestamp(value) {
-  if (typeof value !== 'string' || !GITHUB_REVIEW_TIMESTAMP_PATTERN.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    !GITHUB_REVIEW_TIMESTAMP_PATTERN.test(value)
+  ) {
     return null;
   }
   const timestamp = Date.parse(value);
@@ -77,7 +80,10 @@ function latestReviewsByActor(reviews, headSha) {
       invalid = true;
       continue;
     }
-    if (typeof review.state !== 'string' || !KNOWN_REVIEW_STATES.has(review.state)) {
+    if (
+      typeof review.state !== 'string' ||
+      !KNOWN_REVIEW_STATES.has(review.state)
+    ) {
       invalid = true;
       continue;
     }
@@ -97,7 +103,8 @@ function latestReviewsByActor(reviews, headSha) {
       if (
         !currentStale ||
         timestamp > currentStale.timestamp ||
-        (timestamp === currentStale.timestamp && reviewOrder > currentStale.order)
+        (timestamp === currentStale.timestamp &&
+          reviewOrder > currentStale.order)
       ) {
         staleApprovals.set(actor, { timestamp, order: reviewOrder });
       }
@@ -194,7 +201,8 @@ export function evaluatePullRequestForMerge(pr, policy) {
   }
   if (pr.state !== 'open') blockers.push('not-open');
   if (typeof pr.draft !== 'boolean') blockers.push('draft-state-unknown');
-  if (pr.draft === true || pr.mergeable_state === 'draft') blockers.push('draft');
+  if (pr.draft === true || pr.mergeable_state === 'draft')
+    blockers.push('draft');
   // Branch provenance, not the PR opener's mutable public association label,
   // defines source trust. Forks remain categorically ineligible, while an
   // exact branch already inside the governed repository must still satisfy

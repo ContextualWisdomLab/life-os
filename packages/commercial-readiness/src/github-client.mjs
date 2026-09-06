@@ -35,7 +35,10 @@ function assertRepository(repository) {
  * @returns {number|null} Epoch milliseconds for canonical GitHub evidence, otherwise null.
  */
 function parseCanonicalGitHubStatusTimestamp(value) {
-  if (typeof value !== 'string' || !GITHUB_STATUS_TIMESTAMP_PATTERN.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    !GITHUB_STATUS_TIMESTAMP_PATTERN.test(value)
+  ) {
     return null;
   }
   const timestamp = Date.parse(value);
@@ -152,7 +155,9 @@ export class GitHubApiClient {
             authorization: `Bearer ${this.token}`,
             'user-agent': 'life-os-commercial-readiness',
             'x-github-api-version': '2022-11-28',
-            ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+            ...(body === undefined
+              ? {}
+              : { 'content-type': 'application/json' }),
             ...headers,
           },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -433,7 +438,9 @@ async function collectWorkflowRuns(
         throw new Error('GitHub workflow run response was invalid');
       }
       if (seenRunIds.has(run.id)) {
-        throw new Error('GitHub workflow run response changed during pagination');
+        throw new Error(
+          'GitHub workflow run response changed during pagination',
+        );
       }
       seenRunIds.add(run.id);
     }
@@ -493,11 +500,14 @@ async function collectWorkflowRuns(
       head_sha: run?.head_sha ?? null,
       run_attempt: run?.run_attempt ?? null,
       updated_at: run?.updated_at ?? null,
-      pull_requests: (Array.isArray(run?.pull_requests) ? run.pull_requests : []).map(
-        (pullRequest) => pullRequest?.number ?? null,
-      ),
+      pull_requests: (Array.isArray(run?.pull_requests)
+        ? run.pull_requests
+        : []
+      ).map((pullRequest) => pullRequest?.number ?? null),
     }));
-    if (JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)) {
+    if (
+      JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)
+    ) {
       throw new Error('GitHub workflow run response changed during pagination');
     }
   }
@@ -828,8 +838,15 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       typeof detail?.author_association === 'string'
         ? detail.author_association
         : '',
-    behind_by: compareBehindAuthority(comparePayload, repository, baseSha, headSha),
-    reviews: reviews.map((review) => normalizeReview(review, pullRequestAuthor)),
+    behind_by: compareBehindAuthority(
+      comparePayload,
+      repository,
+      baseSha,
+      headSha,
+    ),
+    reviews: reviews.map((review) =>
+      normalizeReview(review, pullRequestAuthor),
+    ),
     unresolved_threads: unresolvedThreads,
     workflows: latestWorkflowRuns(workflowRuns, headSha),
     statuses: latestStatuses(statuses, headSha),

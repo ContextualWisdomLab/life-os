@@ -183,10 +183,7 @@ describe('evaluatePullRequestForMerge', () => {
     ]) {
       const result = evaluatePullRequestForMerge(
         pullRequest({
-          reviews: [
-            pullRequest().reviews[0],
-            malformedChangeRequest,
-          ],
+          reviews: [pullRequest().reviews[0], malformedChangeRequest],
         }),
         policy(),
       );
