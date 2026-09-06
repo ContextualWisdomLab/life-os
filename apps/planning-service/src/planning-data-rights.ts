@@ -212,6 +212,14 @@ function requireSha256(value: unknown): string {
   return candidate;
 }
 
+/** Requires the exact persisted discriminator enforced by the Today schema. */
+function requireTodayResultKind(value: unknown): 'created' | 'updated' {
+  if (value !== 'created' && value !== 'updated') {
+    throw new PlanningDataRightsError('today.result_kind is invalid');
+  }
+  return value;
+}
+
 function normalizeJson(value: unknown, depth = 0): DataRightsJsonValue {
   if (depth > MAXIMUM_JSON_DEPTH) {
     throw new PlanningDataRightsError('Planning export JSON is too deeply nested');
@@ -553,7 +561,7 @@ export class PlanningDataRightsContributor {
               'today.idempotency_key',
             ),
             requestDigest: requireSha256(row.request_digest),
-            resultKind: requireString(row.result_kind, 'today.result_kind'),
+            resultKind: requireTodayResultKind(row.result_kind),
             aggregateId: requireUuidV4(
               row.aggregate_id,
               'today.aggregate_id',
