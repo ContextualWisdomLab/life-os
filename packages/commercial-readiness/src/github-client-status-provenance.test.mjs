@@ -76,7 +76,9 @@ it('rejects a successful commit status that omits exact-head SHA provenance', as
 
   const [pullRequest] = snapshot.pull_requests;
   assert.equal(pullRequest.eligible, false);
-  assert.ok(pullRequest.blockers.includes('missing-status:CodeRabbit'));
+  assert.ok(
+    pullRequest.blockers.includes('status-not-successful:CodeRabbit'),
+  );
 });
 
 it('taints a required status context when the status endpoint returns mismatched SHA provenance', async () => {
