@@ -261,11 +261,13 @@ export async function syncReadinessIssue(
  *
  * The evaluator separately validates actor, state, timestamp, and whether an approval's
  * `commit_id` equals the exact pull-request head. GitHub does not allow a pull-request author to
- * approve their own pull request, so an author-matching decisive review is retained as invalid
- * evidence instead of becoming synthetic independent approval authority. JSON arrays or objects
- * must not become a valid reviewer, review state, or commit binding through JavaScript
- * `String(...)` coercion. Malformed decisive identity is represented by a bounded unknown state so
- * evaluation fails closed while ordinary non-decisive review evidence remains ignorable.
+ * approve their own pull request, so decisive review authority requires both reviewer and author
+ * logins to be non-empty canonical strings with no trimming normalization. An author-matching
+ * decisive review is retained as invalid evidence instead of becoming synthetic independent
+ * approval authority. JSON arrays, objects, or padded strings must not become a valid reviewer,
+ * author, review state, or commit binding through JavaScript normalization. Malformed decisive
+ * identity is represented by a bounded unknown state so evaluation fails closed while ordinary
+ * non-decisive review evidence remains ignorable.
  *
  * @param {unknown} review Raw GitHub REST pull-request review payload.
  * @param {unknown} pullRequestAuthor Raw GitHub REST pull-request author login.
@@ -276,13 +278,19 @@ function normalizeReview(review, pullRequestAuthor) {
   const state = review?.state;
   const commitId = review?.commit_id;
   const decisive = state === 'APPROVED' || state === 'CHANGES_REQUESTED';
+  const actorCanonical =
+    typeof actor === 'string' && actor.length > 0 && actor.trim() === actor;
+  const authorCanonical =
+    typeof pullRequestAuthor === 'string' &&
+    pullRequestAuthor.length > 0 &&
+    pullRequestAuthor.trim() === pullRequestAuthor;
   const selfReview =
     decisive &&
-    typeof actor === 'string' &&
-    typeof pullRequestAuthor === 'string' &&
+    actorCanonical &&
+    authorCanonical &&
     actor.toLowerCase() === pullRequestAuthor.toLowerCase();
   const decisiveActorInvalid =
-    decisive && (typeof actor !== 'string' || selfReview);
+    decisive && (!actorCanonical || !authorCanonical || selfReview);
   const approvalCommitInvalid =
     state === 'APPROVED' && typeof commitId !== 'string';
   const stateInvalid = typeof state !== 'string';
