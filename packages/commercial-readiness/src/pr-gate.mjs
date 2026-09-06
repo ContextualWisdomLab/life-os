@@ -1,5 +1,8 @@
 /** Canonical 40-hex Git commit identity required for exact-head evidence. */
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+/** Canonical UTC timestamp shape emitted by GitHub REST review responses. */
+const GITHUB_REVIEW_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 /** GitHub success state accepted as passing workflow or status evidence. */
 const SUCCESS = 'success';
 /** Review states that can grant or revoke merge approval authority. */
@@ -30,12 +33,14 @@ const KNOWN_MERGEABLE_STATES = new Set([
  * Known non-decisive GitHub states are ignored. Missing, malformed, or unknown review states
  * are retained as invalid evidence so an API-contract change cannot silently erase a future
  * decisive state from the merge decision. Decisive records with malformed reviewer identity
- * or submission time are likewise invalid. Approval records additionally must bind the exact
- * current pull-request head. A later stale approval revokes an older exact-head approval for
- * the same actor, but never clears a current change request; a still-later exact-head approval
- * may supersede that stale approval. GitHub timestamps have finite precision, so equal timestamps
- * use input order for both exact-head and stale approval evidence. This preserves chronological
- * review authority without allowing stale commit evidence to grant approval.
+ * or submission time are likewise invalid. Review timestamps must preserve GitHub's canonical
+ * UTC REST shape rather than becoming authority merely because JavaScript can parse them.
+ * Approval records additionally must bind the exact current pull-request head. A later stale
+ * approval revokes an older exact-head approval for the same actor, but never clears a current
+ * change request; a still-later exact-head approval may supersede that stale approval. GitHub
+ * timestamps have finite precision, so equal timestamps use input order for both exact-head and
+ * stale approval evidence. This preserves chronological review authority without allowing stale
+ * commit evidence to grant approval.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
@@ -62,7 +67,10 @@ function latestReviewsByActor(reviews, headSha) {
       continue;
     }
     const actor = review.actor.trim();
-    if (typeof review.submitted_at !== 'string') {
+    if (
+      typeof review.submitted_at !== 'string' ||
+      !GITHUB_REVIEW_TIMESTAMP_PATTERN.test(review.submitted_at)
+    ) {
       invalid = true;
       continue;
     }
