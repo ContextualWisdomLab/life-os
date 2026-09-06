@@ -4,18 +4,23 @@ import { describe, it } from 'node:test';
 
 const sourceUrl = new URL('./github-client.mjs', import.meta.url);
 
-function hasContractDocstring(source, declarationPattern, requiredSnippets) {
-  const match = new RegExp(
-    String.raw`(\/\*\*[\s\S]*?\*\/)[\t ]*\n[\t ]*${declarationPattern}`,
-    'm',
-  ).exec(source);
-  if (!match) return false;
-  return requiredSnippets.every((snippet) => match[1].includes(snippet));
+function hasContractDocstring(source, declaration, requiredSnippets) {
+  const declarationIndex = source.indexOf(declaration);
+  if (declarationIndex < 0) return false;
+
+  const prefix = source.slice(0, declarationIndex);
+  const docStart = prefix.lastIndexOf('/**');
+  if (docStart < 0) return false;
+  const docEnd = prefix.indexOf('*/', docStart);
+  if (docEnd < 0 || prefix.slice(docEnd + 2).trim()) return false;
+
+  const docstring = prefix.slice(docStart, docEnd + 2);
+  return requiredSnippets.every((snippet) => docstring.includes(snippet));
 }
 
 describe('GitHubApiClient retry documentation contract', () => {
   it('rejects empty or unrelated JSDoc attached to a retry declaration', () => {
-    const declaration = String.raw`const MAX_READ_ATTEMPTS\s*=`;
+    const declaration = 'const MAX_READ_ATTEMPTS =';
     const requiredSnippets = [
       'idempotent GitHub GET',
       'including the first request',
@@ -43,22 +48,22 @@ describe('GitHubApiClient retry documentation contract', () => {
     const source = await readFile(sourceUrl, 'utf8');
     const declarations = [
       {
-        pattern: String.raw`const MAX_READ_ATTEMPTS\s*=`,
+        declaration: 'const MAX_READ_ATTEMPTS =',
         requiredSnippets: [
           'idempotent GitHub GET',
           'including the first request',
         ],
       },
       {
-        pattern: String.raw`const READ_RETRY_DELAYS_MS\s*=`,
+        declaration: 'const READ_RETRY_DELAYS_MS =',
         requiredSnippets: ['Backoff delays', 'milliseconds'],
       },
       {
-        pattern: String.raw`const READ_RETRYABLE_STATUSES\s*=`,
+        declaration: 'const READ_RETRYABLE_STATUSES =',
         requiredSnippets: ['Transient server statuses', 'method is GET'],
       },
       {
-        pattern: String.raw`function waitForReadRetry\s*\(`,
+        declaration: 'function waitForReadRetry(',
         requiredSnippets: [
           'completed retryable GET attempt',
           '@param {number} attempt',
@@ -66,7 +71,7 @@ describe('GitHubApiClient retry documentation contract', () => {
         ],
       },
       {
-        pattern: String.raw`async requestJson\s*\(`,
+        declaration: 'async requestJson(',
         requiredSnippets: [
           'mutation exactly-once semantics',
           'HTTP 500, 502, 503, or 504',
@@ -77,11 +82,11 @@ describe('GitHubApiClient retry documentation contract', () => {
       },
     ];
 
-    for (const { pattern, requiredSnippets } of declarations) {
+    for (const { declaration, requiredSnippets } of declarations) {
       assert.equal(
-        hasContractDocstring(source, pattern, requiredSnippets),
+        hasContractDocstring(source, declaration, requiredSnippets),
         true,
-        `Missing explanatory JSDoc for ${pattern}`,
+        `Missing explanatory JSDoc for ${declaration}`,
       );
     }
   });
