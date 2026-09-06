@@ -47,12 +47,12 @@ function fixtureClient(review) {
   };
 }
 
-it('does not grant approval authority to a parseable non-GitHub review timestamp', async () => {
-  const snapshot = await collectRepositorySnapshot(
+async function collectWithSubmittedAt(submittedAt) {
+  return await collectRepositorySnapshot(
     fixtureClient({
       user: { login: 'reviewer-a' },
       state: 'APPROVED',
-      submitted_at: '2026-09-06',
+      submitted_at: submittedAt,
       commit_id: HEAD_SHA,
     }),
     'o/r',
@@ -67,9 +67,19 @@ it('does not grant approval authority to a parseable non-GitHub review timestamp
       generatedAt: '2026-09-06T02:55:00Z',
     },
   );
+}
 
+function assertRejectedApproval(snapshot) {
   const [pullRequest] = snapshot.pull_requests;
   assert.equal(pullRequest.eligible, false);
   assert.ok(pullRequest.blockers.includes('review-evidence-invalid'));
   assert.ok(pullRequest.blockers.includes('missing-approval'));
+}
+
+it('does not grant approval authority to a parseable non-GitHub review timestamp', async () => {
+  assertRejectedApproval(await collectWithSubmittedAt('2026-09-06'));
+});
+
+it('does not grant approval authority when Date.parse normalizes an impossible calendar date', async () => {
+  assertRejectedApproval(await collectWithSubmittedAt('2026-02-31T12:00:00Z'));
 });
