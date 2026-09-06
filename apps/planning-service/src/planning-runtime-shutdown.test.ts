@@ -9,6 +9,15 @@ const TEST_DATABASE_URL = ['postgresql:', '', '127.0.0.1', 'planning_test'].join
   '/',
 );
 
+function inertConnection(): PlanningPoolConnection {
+  return {
+    async query<Row>(): Promise<{ rows: Row[] }> {
+      return { rows: [] };
+    },
+    release(): void {},
+  };
+}
+
 function shutdownPool(): {
   readonly pool: PlanningPool;
   readonly releaseShutdown: () => void;
@@ -21,12 +30,7 @@ function shutdownPool(): {
     releaseShutdown = resolve;
   });
   let endCalls = 0;
-  const connection: PlanningPoolConnection = {
-    async query<Row>(): Promise<{ rows: Row[] }> {
-      return { rows: [] };
-    },
-    release(): void {},
-  };
+  const connection = inertConnection();
   return {
     pool: {
       async query<Row>(): Promise<{ rows: Row[] }> {
@@ -68,5 +72,34 @@ describe('Planning runtime shutdown authority', () => {
     await Promise.all([first, second]);
     expect(secondSettled).toBe(true);
     expect(fixture.endCalls()).toBe(1);
+  });
+
+  it('permits a later shutdown attempt when pool shutdown fails before completion', async () => {
+    let endCalls = 0;
+    const connection = inertConnection();
+    const pool: PlanningPool = {
+      async query<Row>(): Promise<{ rows: Row[] }> {
+        return { rows: [] };
+      },
+      async connect(): Promise<PlanningPoolConnection> {
+        return connection;
+      },
+      async end(): Promise<void> {
+        endCalls += 1;
+        if (endCalls === 1) {
+          throw new Error('transient planning pool shutdown failure');
+        }
+      },
+    };
+    const runtime = createPlanningRuntime(
+      { PLANNING_DATABASE_URL: TEST_DATABASE_URL },
+      () => pool,
+    );
+
+    await expect(runtime.close()).rejects.toThrow(
+      'transient planning pool shutdown failure',
+    );
+    await expect(runtime.close()).resolves.toBeUndefined();
+    expect(endCalls).toBe(2);
   });
 });
