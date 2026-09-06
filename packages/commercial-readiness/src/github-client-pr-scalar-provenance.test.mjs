@@ -83,6 +83,11 @@ it('does not coerce malformed pull-request authority scalars into merge eligibil
   }
 
   await assert.rejects(
+    evaluateDetail({ base: { ref: 'main', sha: [baseSha] } }),
+    /GitHub pull request base was invalid/,
+  );
+
+  await assert.rejects(
     evaluateDetail({ head: { sha: [headSha], repo: { full_name: 'o/r' } } }),
     /GitHub pull request head was invalid/,
   );
