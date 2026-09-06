@@ -723,6 +723,10 @@ async function collectOnePullRequest(client, repository, summary, policy) {
   if (typeof headSha !== 'string' || !SHA_PATTERN.test(headSha)) {
     throw new Error('GitHub pull request head was invalid');
   }
+  const baseSha = detail?.base?.sha;
+  if (typeof baseSha !== 'string' || !SHA_PATTERN.test(baseSha)) {
+    throw new Error('GitHub pull request base was invalid');
+  }
   const [reviews, workflowRuns, statuses, comparePayload, unresolvedThreads] =
     await Promise.all([
       collectPaginatedArray(
@@ -740,7 +744,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       ),
       client.requestJson(
         `/repos/${repository}/compare/${encodeURIComponent(
-          detail.base.sha,
+          baseSha,
         )}...${encodeURIComponent(headSha)}`,
       ),
       unresolvedThreadCount(client, repository, number),
