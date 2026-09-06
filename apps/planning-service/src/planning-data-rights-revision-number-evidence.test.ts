@@ -68,18 +68,25 @@ describe('Planning data-rights Today revision-number evidence', () => {
     ' 1 ',
     '9223372036854775808',
     'not-a-revision',
-  ])('rejects persisted revision number outside PostgreSQL bigint domain: %j', async (revisionNumber) => {
-    const contributor = new PlanningDataRightsContributor(exportClient(revisionNumber));
+  ])(
+    'rejects persisted revision number outside PostgreSQL bigint domain: %j',
+    async (revisionNumber) => {
+      const contributor = new PlanningDataRightsContributor(
+        exportClient(revisionNumber),
+      );
 
-    await expect(contributor.handle(exportRequest())).rejects.toBeInstanceOf(
-      PlanningDataRightsError,
-    );
-  });
+      await expect(contributor.handle(exportRequest())).rejects.toBeInstanceOf(
+        PlanningDataRightsError,
+      );
+    },
+  );
 
   it.each(['1', '9223372036854775807'])(
     'accepts canonical positive PostgreSQL bigint revision number %j',
     async (revisionNumber) => {
-      const contributor = new PlanningDataRightsContributor(exportClient(revisionNumber));
+      const contributor = new PlanningDataRightsContributor(
+        exportClient(revisionNumber),
+      );
 
       await expect(contributor.handle(exportRequest())).resolves.toMatchObject({
         operation: 'export',
