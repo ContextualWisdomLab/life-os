@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Planning data-rights export now requires persisted Today aggregate and idempotency payloads to already satisfy the same durable Today domain invariants used by the runtime; contradictory dates or payloads that only become valid after application canonicalization fail closed instead of entering export and digest evidence.
 - Planning data-rights replay now accepts only canonical lowercase SHA-256 digest evidence; malformed uppercase or mixed-case persisted digests are rejected instead of being recanonicalized into valid-looking erasure or Today idempotency evidence.
 - Planning data-rights erasure verification now accepts only actual JavaScript safe-integer values from its PostgreSQL `::integer` count and receipt columns; malformed string scalars are rejected instead of being coerced by `Number(...)` into synthetic zero or other valid-looking erasure evidence.
 - Planning data-rights export now rejects parser-normalized impossible persisted timestamps and calendar-impossible local dates instead of converting malformed temporal evidence into canonical-looking output.
