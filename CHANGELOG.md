@@ -31,7 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
-- Planning runtime shutdown now shares one pending pool-close authority across concurrent lifecycle callers and reopens shutdown authority after a failed pool close, so no caller can report shutdown complete while PostgreSQL cleanup is still pending and a transient cleanup failure does not permanently turn later shutdown requests into no-ops.
+- Planning runtime shutdown now shares one one-shot pool-close authority across all lifecycle callers and preserves the settled failure instead of retrying node-postgres `Pool.end()`, whose lifecycle rejects later `end()` calls once ending begins; no caller can report shutdown complete before PostgreSQL cleanup settles and ambiguous cleanup failure remains visible to every caller.
 - Planning transaction-scoped SQL capability is now revoked as soon as its callback settles, and serialized query parameter arrays are snapshotted when work is admitted to the queue, so neither retained callback references nor later caller mutation can issue or alter SQL after transaction/queue authority was established.
 - The public Gateway Today endpoint now fails explicitly with bounded `today_composition_unavailable` problem details instead of returning fabricated successful composition data while authenticated Planning/Habit integration is absent; issue #163 remains open for the real composition path.
 - Data-rights request-ID and idempotency collisions now resolve through stable credential-free domain conflicts instead of exposing raw PostgreSQL uniqueness errors, including ambiguous dual-collision evidence.
