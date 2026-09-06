@@ -74,9 +74,10 @@ describe('Planning runtime shutdown authority', () => {
     expect(fixture.endCalls()).toBe(1);
   });
 
-  it('permits a later shutdown attempt when pool shutdown fails before completion', async () => {
+  it('preserves one-shot pool shutdown failure instead of retrying end', async () => {
     let endCalls = 0;
     const connection = inertConnection();
+    const shutdownFailure = new Error('planning pool shutdown failed');
     const pool: PlanningPool = {
       async query<Row>(): Promise<{ rows: Row[] }> {
         return { rows: [] };
@@ -87,8 +88,9 @@ describe('Planning runtime shutdown authority', () => {
       async end(): Promise<void> {
         endCalls += 1;
         if (endCalls === 1) {
-          throw new Error('transient planning pool shutdown failure');
+          throw shutdownFailure;
         }
+        throw new Error('Called end on pool more than once');
       },
     };
     const runtime = createPlanningRuntime(
@@ -96,10 +98,11 @@ describe('Planning runtime shutdown authority', () => {
       () => pool,
     );
 
-    await expect(runtime.close()).rejects.toThrow(
-      'transient planning pool shutdown failure',
-    );
-    await expect(runtime.close()).resolves.toBeUndefined();
-    expect(endCalls).toBe(2);
+    const first = runtime.close();
+    await expect(first).rejects.toBe(shutdownFailure);
+    const second = runtime.close();
+    expect(second).toBe(first);
+    await expect(second).rejects.toBe(shutdownFailure);
+    expect(endCalls).toBe(1);
   });
 });
