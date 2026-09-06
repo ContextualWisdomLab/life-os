@@ -260,21 +260,29 @@ export async function syncReadinessIssue(
  * Normalize one untrusted GitHub review without coercing malformed identity scalars into authority.
  *
  * The evaluator separately validates actor, state, timestamp, and whether an approval's
- * `commit_id` equals the exact pull-request head. JSON arrays or objects must not become a valid
- * reviewer, review state, or commit binding through JavaScript `String(...)` coercion. Malformed
- * decisive identity is represented by a bounded unknown state so evaluation fails closed while
- * ordinary non-decisive review evidence remains ignorable.
+ * `commit_id` equals the exact pull-request head. GitHub does not allow a pull-request author to
+ * approve their own pull request, so an author-matching decisive review is retained as invalid
+ * evidence instead of becoming synthetic independent approval authority. JSON arrays or objects
+ * must not become a valid reviewer, review state, or commit binding through JavaScript
+ * `String(...)` coercion. Malformed decisive identity is represented by a bounded unknown state so
+ * evaluation fails closed while ordinary non-decisive review evidence remains ignorable.
  *
  * @param {unknown} review Raw GitHub REST pull-request review payload.
+ * @param {unknown} pullRequestAuthor Raw GitHub REST pull-request author login.
  * @returns {{actor: string, state: string, submitted_at: unknown, commit_id: string}} Bounded review evidence.
  */
-function normalizeReview(review) {
+function normalizeReview(review, pullRequestAuthor) {
   const actor = review?.user?.login;
   const state = review?.state;
   const commitId = review?.commit_id;
+  const decisive = state === 'APPROVED' || state === 'CHANGES_REQUESTED';
+  const selfReview =
+    decisive &&
+    typeof actor === 'string' &&
+    typeof pullRequestAuthor === 'string' &&
+    actor.toLowerCase() === pullRequestAuthor.toLowerCase();
   const decisiveActorInvalid =
-    (state === 'APPROVED' || state === 'CHANGES_REQUESTED') &&
-    typeof actor !== 'string';
+    decisive && (typeof actor !== 'string' || selfReview);
   const approvalCommitInvalid =
     state === 'APPROVED' && typeof commitId !== 'string';
   const stateInvalid = typeof state !== 'string';
@@ -796,6 +804,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       unresolvedThreadCount(client, repository, number),
     ]);
 
+  const pullRequestAuthor = detail?.user?.login;
   const pull = {
     number,
     title: typeof detail?.title === 'string' ? detail.title : '',
@@ -812,7 +821,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
         ? detail.author_association
         : '',
     behind_by: compareBehindAuthority(comparePayload, repository, baseSha, headSha),
-    reviews: reviews.map(normalizeReview),
+    reviews: reviews.map((review) => normalizeReview(review, pullRequestAuthor)),
     unresolved_threads: unresolvedThreads,
     workflows: latestWorkflowRuns(workflowRuns, headSha),
     statuses: latestStatuses(statuses, headSha),
