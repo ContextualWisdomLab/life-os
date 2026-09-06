@@ -239,7 +239,7 @@ function defaultPoolFactory(configuration: PoolConfig): PlanningPool {
 }
 
 export class PlanningRuntime implements OnApplicationShutdown {
-  private closed = false;
+  private closePromise: Promise<void> | null = null;
 
   constructor(
     private readonly pool: PlanningPool,
@@ -249,12 +249,20 @@ export class PlanningRuntime implements OnApplicationShutdown {
     readonly dataRightsContributor: PlanningDataRightsContributor,
   ) {}
 
-  async close(): Promise<void> {
-    if (this.closed) {
-      return;
+  close(): Promise<void> {
+    if (this.closePromise) {
+      return this.closePromise;
     }
-    this.closed = true;
-    await this.pool.end();
+    const attempt = Promise.resolve()
+      .then(async () => await this.pool.end())
+      .catch((error: unknown) => {
+        if (this.closePromise === attempt) {
+          this.closePromise = null;
+        }
+        throw error;
+      });
+    this.closePromise = attempt;
+    return attempt;
   }
 
   async onApplicationShutdown(): Promise<void> {
