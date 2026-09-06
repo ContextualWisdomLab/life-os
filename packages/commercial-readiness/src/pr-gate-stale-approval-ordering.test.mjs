@@ -78,6 +78,28 @@ describe('stale approval ordering', () => {
     assert.deepEqual(result, { eligible: true, blockers: [] });
   });
 
+  it('uses input order when stale and exact-head approvals share the same GitHub timestamp', () => {
+    const result = evaluatePullRequestForMerge(
+      pullRequest([
+        {
+          actor: 'reviewer-a',
+          state: 'APPROVED',
+          submitted_at: '2026-09-06T02:00:00Z',
+          commit_id: STALE_SHA,
+        },
+        {
+          actor: 'reviewer-a',
+          state: 'APPROVED',
+          submitted_at: '2026-09-06T02:00:00Z',
+          commit_id: HEAD_SHA,
+        },
+      ]),
+      policy,
+    );
+
+    assert.deepEqual(result, { eligible: true, blockers: [] });
+  });
+
   it('never lets a later stale approval clear current requested changes', () => {
     const result = evaluatePullRequestForMerge(
       pullRequest([
