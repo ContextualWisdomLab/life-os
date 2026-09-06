@@ -278,9 +278,10 @@ function assertMergeExecutionContext(policy) {
  * Verifies that a merge drain still runs from the exact protected default-branch commit.
  *
  * Scheduled and manual jobs can outlive the commit that started them. Immediately before
- * any merge mutation, this check reads the live default-branch head and requires it to
- * match the workflow's immutable `GITHUB_SHA`; malformed or moved branch evidence fails
- * closed so stale control-plane code or policy cannot merge a current pull request.
+ * any merge mutation, this check reads the live default-branch head and requires both explicit
+ * GitHub `protected: true` authority and an exact match to the workflow's immutable `GITHUB_SHA`;
+ * malformed, unprotected, or moved branch evidence fails closed so stale control-plane code,
+ * removed policy enforcement, or malformed API evidence cannot authorize a merge.
  *
  * @param {{requestJson: (path: string) => Promise<unknown>}} client Bounded GitHub API client.
  * @param {string} repository Canonical owner/repository identifier already validated by snapshot collection.
@@ -313,6 +314,7 @@ export async function assertDefaultBranchHead(
   );
   const liveHead = payload?.commit?.sha;
   if (
+    payload?.protected !== true ||
     typeof liveHead !== 'string' ||
     !/^[0-9a-f]{40}$/i.test(liveHead) ||
     liveHead.toLowerCase() !== expectedCommitSha.toLowerCase()
