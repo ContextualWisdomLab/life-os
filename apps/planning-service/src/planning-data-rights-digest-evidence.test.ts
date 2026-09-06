@@ -10,7 +10,8 @@ const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
 const IDEMPOTENCY_KEY = '44444444-4444-4444-8444-444444444444';
-const CANONICAL_RECEIPT_SHA256 = 'a'.repeat(64);
+const CANONICAL_RECEIPT_SHA256 =
+  '6b863f9fa8b16102cddbc752c9bc2d81467b456a434460310d09f107d3dcfafc';
 
 /** Replays one durable erasure receipt through the real idempotency path. */
 function receiptReplayClient(receiptSha256: unknown): TodayTransactionalSqlClient {
@@ -61,7 +62,17 @@ describe('Planning data-rights digest evidence', () => {
     );
   });
 
-  it('accepts the canonical lowercase durable receipt digest contract', async () => {
+  it('rejects canonical-looking receipt digests that do not bind the durable receipt fields', async () => {
+    const contributor = new PlanningDataRightsContributor(
+      receiptReplayClient('a'.repeat(64)),
+    );
+
+    await expect(contributor.handle(eraseRequest())).rejects.toBeInstanceOf(
+      PlanningDataRightsError,
+    );
+  });
+
+  it('accepts the canonical lowercase digest of the exact durable receipt contract', async () => {
     const contributor = new PlanningDataRightsContributor(
       receiptReplayClient(CANONICAL_RECEIPT_SHA256),
     );
