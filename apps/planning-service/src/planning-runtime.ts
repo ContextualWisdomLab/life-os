@@ -250,22 +250,15 @@ export class PlanningRuntime implements OnApplicationShutdown {
   ) {}
 
   /**
-   * Returns the one in-flight PostgreSQL shutdown authority to every lifecycle caller.
-   * A successful close remains reusable and idempotent; a rejected close clears only
-   * that failed attempt so a later lifecycle request may retry cleanup.
+   * Returns the one PostgreSQL shutdown authority to every lifecycle caller.
+   * node-postgres pool shutdown is one-shot once `end()` begins, so both success
+   * and failure remain the canonical settled result rather than invoking `end()` again.
    */
   close(): Promise<void> {
     if (this.closePromise) {
       return this.closePromise;
     }
-    const attempt = Promise.resolve()
-      .then(async () => await this.pool.end())
-      .catch((error: unknown) => {
-        if (this.closePromise === attempt) {
-          this.closePromise = null;
-        }
-        throw error;
-      });
+    const attempt = Promise.resolve().then(async () => await this.pool.end());
     this.closePromise = attempt;
     return attempt;
   }
