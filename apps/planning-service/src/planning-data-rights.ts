@@ -163,17 +163,30 @@ function requireTimestamp(value: unknown, field: string): string | null {
   if (value === null) {
     return null;
   }
-  const parsed =
-    value instanceof Date ? value : new Date(requireString(value, field));
-  if (Number.isNaN(parsed.getTime())) {
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) {
+      throw new PlanningDataRightsError(`${field} is invalid`);
+    }
+    return value.toISOString();
+  }
+  const text = requireString(value, field);
+  const parsed = new Date(text);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== text) {
     throw new PlanningDataRightsError(`${field} is invalid`);
   }
-  return parsed.toISOString();
+  return text;
 }
 
 function requireDate(value: unknown): string {
   const text = requireString(value, 'local_date');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw new PlanningDataRightsError('local_date is invalid');
+  }
+  const parsed = new Date(`${text}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== text
+  ) {
     throw new PlanningDataRightsError('local_date is invalid');
   }
   return text;
