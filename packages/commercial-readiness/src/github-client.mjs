@@ -13,12 +13,36 @@ const READ_RETRY_DELAYS_MS = [100, 250];
 const READ_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+/** Canonical UTC timestamp shape emitted by GitHub REST commit-status responses. */
+const GITHUB_STATUS_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 function assertRepository(repository) {
   if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
     throw new Error('Repository identifier is invalid');
   }
   return repository;
+}
+
+/**
+ * Parse one GitHub commit-status timestamp only when syntax and calendar value are canonical.
+ *
+ * JavaScript accepts broader date syntax and normalizes some impossible ISO-looking dates.
+ * Merge-authoritative status ordering therefore accepts only GitHub's UTC second-precision
+ * shape and requires an unchanged UTC round-trip before a status may participate in reduction.
+ *
+ * @param {unknown} value Untrusted `created_at` status evidence.
+ * @returns {number|null} Epoch milliseconds for canonical GitHub evidence, otherwise null.
+ */
+function parseCanonicalGitHubStatusTimestamp(value) {
+  if (typeof value !== 'string' || !GITHUB_STATUS_TIMESTAMP_PATTERN.test(value)) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString() === `${value.slice(0, -1)}.000Z`
+    ? timestamp
+    : null;
 }
 
 async function readBoundedText(response, maxBytes) {
@@ -582,10 +606,11 @@ function statusIsNewer(candidate, current) {
  *
  * A status may participate in latest-per-context reduction only when its own SHA binds the exact
  * pull-request head, its context is non-empty, its GitHub status identifier is a positive safe
- * integer, and `created_at` is a finite timestamp. A mismatched-SHA record cannot create status
- * authority; if the same context also contains otherwise valid exact-head evidence, the mismatch
- * taints that context so stale success cannot remain merge-authoritative. Once an exact-head
- * context contains malformed identity or ordering evidence, that context also remains fail-closed.
+ * integer, and `created_at` is a canonical UTC second-precision GitHub timestamp. A mismatched-SHA
+ * record cannot create status authority; if the same context also contains otherwise valid exact-head
+ * evidence, the mismatch taints that context so stale success cannot remain merge-authoritative.
+ * Once an exact-head context contains malformed identity or ordering evidence, that context also
+ * remains fail-closed.
  *
  * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
  * @param {string} headSha Exact current pull-request head SHA.
@@ -608,7 +633,7 @@ function latestStatuses(statuses, headSha) {
     if (
       !Number.isSafeInteger(id) ||
       id <= 0 ||
-      !Number.isFinite(Date.parse(createdAt ?? ''))
+      parseCanonicalGitHubStatusTimestamp(createdAt) === null
     ) {
       invalidContexts.add(context);
       continue;
