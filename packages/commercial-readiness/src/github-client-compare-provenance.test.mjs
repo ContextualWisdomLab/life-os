@@ -45,20 +45,10 @@ function compareFixtureClient({ baseSha, headSha, comparePayload }) {
   };
 }
 
-it('does not grant current-base authority to a compare response bound to another base commit', async () => {
+async function collectCompareFixture(comparePayload) {
   const headSha = 'a'.repeat(40);
   const baseSha = 'b'.repeat(40);
-  const client = compareFixtureClient({
-    baseSha,
-    headSha,
-    comparePayload: {
-      url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
-      base_commit: { sha: 'c'.repeat(40) },
-      merge_base_commit: { sha: baseSha },
-      behind_by: 0,
-    },
-  });
-
+  const client = compareFixtureClient({ baseSha, headSha, comparePayload });
   const snapshot = await collectRepositorySnapshot(client, 'o/r', {
     policy: {
       default_branch: 'main',
@@ -70,7 +60,60 @@ it('does not grant current-base authority to a compare response bound to another
     commitSha: 'd'.repeat(40),
     generatedAt: '2026-09-06T10:00:00Z',
   });
+  return { pullRequest: snapshot.pull_requests[0], baseSha, headSha };
+}
 
-  assert.equal(snapshot.pull_requests[0].behind_by, -1);
-  assert.ok(snapshot.pull_requests[0].blockers.includes('base-out-of-date'));
+it('does not grant current-base authority to a compare response bound to another base commit', async () => {
+  const baseSha = 'b'.repeat(40);
+  const headSha = 'a'.repeat(40);
+  const { pullRequest } = await collectCompareFixture({
+    url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
+    base_commit: { sha: 'c'.repeat(40) },
+    merge_base_commit: { sha: baseSha },
+    behind_by: 0,
+  });
+
+  assert.equal(pullRequest.behind_by, -1);
+  assert.ok(pullRequest.blockers.includes('base-out-of-date'));
+});
+
+it('does not grant current-base authority when the compare URL is bound to another head', async () => {
+  const baseSha = 'b'.repeat(40);
+  const { pullRequest } = await collectCompareFixture({
+    url: `https://api.github.com/repos/o/r/compare/${baseSha}...${'e'.repeat(40)}`,
+    base_commit: { sha: baseSha },
+    merge_base_commit: { sha: baseSha },
+    behind_by: 0,
+  });
+
+  assert.equal(pullRequest.behind_by, -1);
+  assert.ok(pullRequest.blockers.includes('base-out-of-date'));
+});
+
+it('does not grant zero-behind authority when the merge base is not the requested base', async () => {
+  const baseSha = 'b'.repeat(40);
+  const headSha = 'a'.repeat(40);
+  const { pullRequest } = await collectCompareFixture({
+    url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
+    base_commit: { sha: baseSha },
+    merge_base_commit: { sha: 'c'.repeat(40) },
+    behind_by: 0,
+  });
+
+  assert.equal(pullRequest.behind_by, -1);
+  assert.ok(pullRequest.blockers.includes('base-out-of-date'));
+});
+
+it('preserves zero-behind authority only for the exact requested comparison', async () => {
+  const baseSha = 'b'.repeat(40);
+  const headSha = 'a'.repeat(40);
+  const { pullRequest } = await collectCompareFixture({
+    url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
+    base_commit: { sha: baseSha },
+    merge_base_commit: { sha: baseSha },
+    behind_by: 0,
+  });
+
+  assert.equal(pullRequest.behind_by, 0);
+  assert.equal(pullRequest.blockers.includes('base-out-of-date'), false);
 });
