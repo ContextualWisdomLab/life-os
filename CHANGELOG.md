@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Scheduled/manual Commercial Readiness merge drains now pin at most one already-evaluated eligible pull request per mutating default-branch run; after a successful squash advances protected `main`, later candidates wait for a fresh run instead of losing the first merge receipt when stale control-plane authority correctly fails closed on a second mutation attempt. Dry-run evidence still covers the complete pull-request set.
 - Scheduled/manual Commercial Readiness merge drains now have the read-only pull-request authority required to reacquire current PR metadata, reviews, and review threads before any merge mutation; no additional write scope was granted.
 - Scheduled/manual Commercial Readiness merge drains now wait for readiness-issue publication to settle without treating that reporting write as merge authority; `always()` re-evaluates the drain after publish failure or skip while `needs.audit.result == 'success'` remains mandatory.
 - Commercial Readiness now revalidates page-one pull-request review evidence after multi-page traversal, so a mid-pagination approval dismissal or review mutation fails closed instead of leaving stale merge-authoritative review state.
