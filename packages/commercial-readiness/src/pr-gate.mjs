@@ -31,10 +31,12 @@ const KNOWN_MERGEABLE_STATES = new Set([
  * are retained as invalid evidence so an API-contract change cannot silently erase a future
  * decisive state from the merge decision. Decisive records with malformed reviewer identity
  * or submission time are likewise invalid. Approval records additionally must bind the exact
- * current pull-request head; stale or malformed approval commit identities cannot grant
- * authority. Change-request evidence remains fail-closed regardless of commit binding. When
- * one actor has multiple valid decisive reviews, the chronologically latest review wins; equal
- * timestamps use the later record in input order.
+ * current pull-request head. A later stale approval revokes an older exact-head approval for
+ * the same actor, but never clears a current change request; a still-later exact-head approval
+ * may supersede that stale approval. This preserves chronological review authority without
+ * allowing stale commit evidence to grant approval. When one actor has multiple valid decisive
+ * reviews, the chronologically latest review wins; equal timestamps use the later record in
+ * input order.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
@@ -42,6 +44,7 @@ const KNOWN_MERGEABLE_STATES = new Set([
  */
 function latestReviewsByActor(reviews, headSha) {
   const latest = new Map();
+  const staleApprovalTimestamps = new Map();
   let invalid = false;
   for (const review of Array.isArray(reviews) ? reviews : []) {
     if (!review || typeof review !== 'object') {
@@ -67,10 +70,28 @@ function latestReviewsByActor(reviews, headSha) {
       invalid = true;
       continue;
     }
-    if (review.state === 'APPROVED' && review.commit_id !== headSha) continue;
+    if (review.state === 'APPROVED' && review.commit_id !== headSha) {
+      const currentStaleTimestamp = staleApprovalTimestamps.get(actor);
+      if (
+        currentStaleTimestamp === undefined ||
+        timestamp >= currentStaleTimestamp
+      ) {
+        staleApprovalTimestamps.set(actor, timestamp);
+      }
+      continue;
+    }
     const current = latest.get(actor);
     if (!current || timestamp >= current.timestamp) {
       latest.set(actor, { state: review.state, timestamp });
+    }
+  }
+  for (const [actor, staleTimestamp] of staleApprovalTimestamps) {
+    const current = latest.get(actor);
+    if (
+      current?.state === 'APPROVED' &&
+      staleTimestamp >= current.timestamp
+    ) {
+      latest.delete(actor);
     }
   }
   return { latest, invalid };
