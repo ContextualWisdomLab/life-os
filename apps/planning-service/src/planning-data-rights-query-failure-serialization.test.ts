@@ -70,6 +70,46 @@ function failingSingleFlightPool(): {
   };
 }
 
+/**
+ * Models a callback that admits SQL and returns before observing the query promise.
+ * PostgreSQL aborts a transaction after a statement error, so transaction success must
+ * not depend on whether application code happened to await every already-admitted query.
+ */
+function unobservedFailurePool(): {
+  readonly pool: PlanningPool;
+  readonly commitObserved: () => boolean;
+  readonly rollbackObserved: () => boolean;
+} {
+  let sawCommit = false;
+  let sawRollback = false;
+
+  const connection: PlanningPoolConnection = {
+    async query<Row>(text: string): Promise<{ rows: Row[] }> {
+      if (text === 'SELECT synthetic_unobserved_failure') {
+        throw new Error('Synthetic unobserved Planning query failure');
+      }
+      if (text === 'COMMIT') sawCommit = true;
+      if (text === 'ROLLBACK') sawRollback = true;
+      return { rows: [] };
+    },
+    release(): void {},
+  };
+
+  return {
+    pool: {
+      async query<Row>(): Promise<{ rows: Row[] }> {
+        return { rows: [] };
+      },
+      async connect(): Promise<PlanningPoolConnection> {
+        return connection;
+      },
+      async end(): Promise<void> {},
+    },
+    commitObserved: () => sawCommit,
+    rollbackObserved: () => sawRollback,
+  };
+}
+
 describe('Planning data-rights failed-query sequencing', () => {
   it('drains queued transaction queries before issuing rollback', async () => {
     const fixture = failingSingleFlightPool();
@@ -91,6 +131,35 @@ describe('Planning data-rights failed-query sequencing', () => {
 
       expect(fixture.rollbackObserved()).toBe(true);
       expect(fixture.releasedWithDestroy()).toBe(false);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it('rejects transaction success when an already-admitted query fails unobserved', async () => {
+    const fixture = unobservedFailurePool();
+    const runtime = createPlanningRuntime(
+      { PLANNING_DATABASE_URL: TEST_DATABASE_URL },
+      () => fixture.pool,
+    );
+    const transactionalClient = runtime.dataRightsContributor['client'];
+    let admittedFailure: Promise<unknown> | undefined;
+
+    try {
+      const transaction = transactionalClient.transaction(async (client) => {
+        admittedFailure = client.query('SELECT synthetic_unobserved_failure', []);
+        void admittedFailure.catch(() => undefined);
+        return 'must-not-commit';
+      });
+
+      await expect(transaction).rejects.toThrow(
+        'Synthetic unobserved Planning query failure',
+      );
+      await expect(admittedFailure).rejects.toThrow(
+        'Synthetic unobserved Planning query failure',
+      );
+      expect(fixture.commitObserved()).toBe(false);
+      expect(fixture.rollbackObserved()).toBe(true);
     } finally {
       await runtime.close();
     }
