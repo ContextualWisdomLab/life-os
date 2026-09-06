@@ -257,21 +257,35 @@ export async function syncReadinessIssue(
 }
 
 /**
- * Normalize one untrusted GitHub review while retaining immutable commit binding evidence.
+ * Normalize one untrusted GitHub review without coercing malformed identity scalars into authority.
  *
  * The evaluator separately validates actor, state, timestamp, and whether an approval's
- * `commit_id` equals the exact pull-request head. Missing or malformed values remain
- * bounded scalar evidence rather than being inferred from submission time or current state.
+ * `commit_id` equals the exact pull-request head. JSON arrays or objects must not become a valid
+ * reviewer, review state, or commit binding through JavaScript `String(...)` coercion. Malformed
+ * decisive identity is represented by a bounded unknown state so evaluation fails closed while
+ * ordinary non-decisive review evidence remains ignorable.
  *
  * @param {unknown} review Raw GitHub REST pull-request review payload.
  * @returns {{actor: string, state: string, submitted_at: unknown, commit_id: string}} Bounded review evidence.
  */
 function normalizeReview(review) {
+  const actor = review?.user?.login;
+  const state = review?.state;
+  const commitId = review?.commit_id;
+  const decisiveActorInvalid =
+    (state === 'APPROVED' || state === 'CHANGES_REQUESTED') &&
+    typeof actor !== 'string';
+  const approvalCommitInvalid =
+    state === 'APPROVED' && typeof commitId !== 'string';
+  const stateInvalid = typeof state !== 'string';
   return {
-    actor: String(review?.user?.login ?? ''),
-    state: String(review?.state ?? ''),
+    actor: typeof actor === 'string' ? actor : '__invalid__',
+    state:
+      stateInvalid || decisiveActorInvalid || approvalCommitInvalid
+        ? '__invalid__'
+        : state,
     submitted_at: review?.submitted_at ?? null,
-    commit_id: String(review?.commit_id ?? ''),
+    commit_id: typeof commitId === 'string' ? commitId : '',
   };
 }
 
