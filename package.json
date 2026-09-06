@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "format:check": "prettier --single-quote --write packages/commercial-readiness/src/pr-gate.mjs packages/commercial-readiness/src/pr-gate.test.mjs packages/commercial-readiness/src/github-client.mjs && git --no-pager diff -- packages/commercial-readiness/src/pr-gate.mjs packages/commercial-readiness/src/pr-gate.test.mjs packages/commercial-readiness/src/github-client.mjs && false",
+    "format:check": "prettier --single-quote --check packages/commercial-readiness/src/pr-gate.mjs packages/commercial-readiness/src/pr-gate.test.mjs packages/commercial-readiness/src/github-client.mjs",
     "format": "prettier --single-quote --write ."
   },
   "devDependencies": {
