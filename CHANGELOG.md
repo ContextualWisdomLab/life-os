@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now requires decisive reviewer and pull-request author logins to remain non-empty canonical strings before independent-review authority is evaluated; padded reviewer identities and malformed or unverifiable author identity evidence fail closed instead of being trimmed or omitted into synthetic approval authority.
 - Commercial Readiness now rejects a decisive review whose reviewer login matches the pull-request author, preserving GitHub's independent-review contract so synthetic or malformed self-approval evidence cannot satisfy exact-head approval authority.
 - Commercial Readiness now binds `behind_by` base-freshness authority to GitHub's exact compare-response provenance: the canonical requested compare URL and scalar `base_commit.sha` must match the evaluated pair, and zero-behind authority additionally requires `merge_base_commit.sha` to equal the requested base; malformed or mismatched compare evidence fails closed as out-of-date.
 - Scheduled/manual Commercial Readiness merge drains now require the live default-branch endpoint to report the exact boolean `protected: true` as well as the immutable workflow `GITHUB_SHA` immediately before merge mutation, so removing branch/ruleset protection without moving the branch cannot leave stale merge authority active.
