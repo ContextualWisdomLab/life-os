@@ -74,6 +74,7 @@ class NodePostgresPlanningPool implements PlanningPool {
 
 class ConnectionSqlClient implements PlanningSqlClient {
   private queryTail: Promise<void> = Promise.resolve();
+  private queryFailure: { readonly error: unknown } | null = null;
   private closed = false;
 
   constructor(private readonly connection: PlanningPoolConnection) {}
@@ -97,7 +98,11 @@ class ConnectionSqlClient implements PlanningSqlClient {
     );
     this.queryTail = result.then(
       () => undefined,
-      () => undefined,
+      (error) => {
+        if (this.queryFailure === null) {
+          this.queryFailure = { error };
+        }
+      },
     );
     return result;
   }
@@ -109,11 +114,15 @@ class ConnectionSqlClient implements PlanningSqlClient {
 
   /**
    * Waits until every query already admitted to this transaction connection has
-   * settled. Individual query failures still reach their original callers; the
-   * tail intentionally remains usable so COMMIT/ROLLBACK never races queued work.
+   * settled. The original query promises still reject independently. By default
+   * the first admitted query failure is also rethrown here so a callback cannot
+   * report transaction success merely by returning before it observes that query.
    */
-  async drain(): Promise<void> {
+  async drain(propagateFailure = true): Promise<void> {
     await this.queryTail;
+    if (propagateFailure && this.queryFailure !== null) {
+      throw this.queryFailure.error;
+    }
   }
 }
 
@@ -149,7 +158,10 @@ class NodePostgresPlanningSqlClient implements TodayTransactionalSqlClient {
     } catch (error) {
       transactionClient.close();
       try {
-        await transactionClient.drain();
+        // A query failure may be the reason this catch path was entered. Wait for
+        // every admitted query without rethrowing it again, then explicitly roll
+        // back the connection before releasing it to the pool.
+        await transactionClient.drain(false);
         await connection.query('ROLLBACK');
       } catch {
         destroyConnection = true;
