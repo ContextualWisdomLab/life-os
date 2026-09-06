@@ -4,6 +4,7 @@ import type {
   PlanningSqlQueryResult,
 } from './postgres-planning-repository';
 import type { TodayTransactionalSqlClient } from './postgres-today-repository';
+import { canonicalTodayDraft } from './today-invariants';
 
 /** Must remain byte-for-byte aligned with packages/contracts/src/data-rights.ts. */
 export const DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION =
@@ -275,6 +276,26 @@ function canonicalJson(value: DataRightsJsonValue): string {
     .join(',')}}`;
 }
 
+/** Requires persisted Today JSON to already satisfy its domain contract without repair. */
+function requireCanonicalTodayPayload(
+  value: unknown,
+  expectedDate?: string,
+): DataRightsJsonValue {
+  const normalized = normalizeJson(value);
+  const canonical = canonicalTodayDraft(
+    normalized,
+    () => {
+      throw new PlanningDataRightsError('today.payload_json is invalid');
+    },
+    expectedDate,
+  );
+  const canonicalEvidence = normalizeJson(canonical);
+  if (canonicalJson(normalized) !== canonicalJson(canonicalEvidence)) {
+    throw new PlanningDataRightsError('today.payload_json is invalid');
+  }
+  return normalized;
+}
+
 function digest(value: DataRightsJsonValue): string {
   return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
 }
@@ -506,21 +527,24 @@ export class PlanningDataRightsContributor {
           completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
           createdAt: requireTimestamp(row.created_at, 'task.created_at'),
         })),
-        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({
-          localDate: requireDate(row.local_date),
-          aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
-          revisionNumber: requireString(
-            row.revision_number,
-            'today.revision_number',
-          ),
-          revisionToken: requireUuidV4(
-            row.revision_token,
-            'today.revision_token',
-          ),
-          payload: normalizeJson(row.payload_json),
-          createdAt: requireTimestamp(row.created_at, 'today.created_at'),
-          updatedAt: requireTimestamp(row.updated_at, 'today.updated_at'),
-        })),
+        todayAggregates: normalizeExportRows(todayAggregates, (row) => {
+          const localDate = requireDate(row.local_date);
+          return {
+            localDate,
+            aggregateId: requireUuidV4(row.aggregate_id, 'today.aggregate_id'),
+            revisionNumber: requireString(
+              row.revision_number,
+              'today.revision_number',
+            ),
+            revisionToken: requireUuidV4(
+              row.revision_token,
+              'today.revision_token',
+            ),
+            payload: requireCanonicalTodayPayload(row.payload_json, localDate),
+            createdAt: requireTimestamp(row.created_at, 'today.created_at'),
+            updatedAt: requireTimestamp(row.updated_at, 'today.updated_at'),
+          };
+        }),
         todayIdempotencyRecords: normalizeExportRows(
           todayIdempotency,
           (row) => ({
@@ -538,7 +562,7 @@ export class PlanningDataRightsContributor {
               row.revision_token,
               'today.revision_token',
             ),
-            payload: normalizeJson(row.payload_json),
+            payload: requireCanonicalTodayPayload(row.payload_json),
             createdAt: requireTimestamp(row.created_at, 'today.created_at'),
           }),
         ),
