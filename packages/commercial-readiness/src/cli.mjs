@@ -311,8 +311,9 @@ export async function assertDefaultBranchHead(
   const payload = await client.requestJson(
     `/repos/${repository}/branches/${encodeURIComponent(defaultBranch)}`,
   );
-  const liveHead = String(payload?.commit?.sha ?? '');
+  const liveHead = payload?.commit?.sha;
   if (
+    typeof liveHead !== 'string' ||
     !/^[0-9a-f]{40}$/i.test(liveHead) ||
     liveHead.toLowerCase() !== expectedCommitSha.toLowerCase()
   ) {
