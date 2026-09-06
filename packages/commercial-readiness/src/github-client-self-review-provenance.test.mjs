@@ -94,6 +94,15 @@ describe('pull request review independence provenance', () => {
     assert.ok(pullRequest.blockers.includes('missing-approval'));
   });
 
+  it('rejects padded author identity instead of trimming it into independent approval authority', async () => {
+    const snapshot = await snapshotForReviewer('author-a ');
+    const pullRequest = snapshot.pull_requests[0];
+
+    assert.equal(pullRequest.eligible, false);
+    assert.ok(pullRequest.blockers.includes('review-evidence-invalid'));
+    assert.ok(pullRequest.blockers.includes('missing-approval'));
+  });
+
   it('preserves exact-head approval from a distinct reviewer', async () => {
     const snapshot = await snapshotForReviewer('reviewer-b');
     assert.deepEqual(snapshot.pull_requests[0].blockers, []);
