@@ -58,7 +58,11 @@ function latestReviewsByActor(reviews, headSha) {
       continue;
     }
     const actor = review.actor.trim();
-    const timestamp = Date.parse(review.submitted_at ?? '');
+    if (typeof review.submitted_at !== 'string') {
+      invalid = true;
+      continue;
+    }
+    const timestamp = Date.parse(review.submitted_at);
     if (!actor || !Number.isFinite(timestamp)) {
       invalid = true;
       continue;
