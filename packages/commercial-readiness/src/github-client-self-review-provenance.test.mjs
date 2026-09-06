@@ -14,7 +14,7 @@ const policy = {
   merge_method: 'squash',
 };
 
-function clientWithReviewer(reviewerLogin) {
+function clientWithReviewer(reviewerLogin, authorLogin = 'author-a') {
   return {
     async requestJson(path) {
       if (path.startsWith('/repos/o/r/pulls?')) return [{ number: 7 }];
@@ -28,7 +28,7 @@ function clientWithReviewer(reviewerLogin) {
           mergeable: true,
           mergeable_state: 'clean',
           author_association: 'OWNER',
-          user: { login: 'author-a' },
+          user: { login: authorLogin },
           base: { ref: 'main', sha: BASE_SHA },
           head: { sha: HEAD_SHA, repo: { full_name: REPOSITORY } },
         };
@@ -76,12 +76,16 @@ function clientWithReviewer(reviewerLogin) {
   };
 }
 
-async function snapshotForReviewer(reviewerLogin) {
-  return await collectRepositorySnapshot(clientWithReviewer(reviewerLogin), REPOSITORY, {
-    policy,
-    commitSha: 'c'.repeat(40),
-    generatedAt: '2026-09-06T11:01:00Z',
-  });
+async function snapshotForReviewer(reviewerLogin, authorLogin = 'author-a') {
+  return await collectRepositorySnapshot(
+    clientWithReviewer(reviewerLogin, authorLogin),
+    REPOSITORY,
+    {
+      policy,
+      commitSha: 'c'.repeat(40),
+      generatedAt: '2026-09-06T11:01:00Z',
+    },
+  );
 }
 
 describe('pull request review independence provenance', () => {
@@ -96,6 +100,15 @@ describe('pull request review independence provenance', () => {
 
   it('rejects padded author identity instead of trimming it into independent approval authority', async () => {
     const snapshot = await snapshotForReviewer('author-a ');
+    const pullRequest = snapshot.pull_requests[0];
+
+    assert.equal(pullRequest.eligible, false);
+    assert.ok(pullRequest.blockers.includes('review-evidence-invalid'));
+    assert.ok(pullRequest.blockers.includes('missing-approval'));
+  });
+
+  it('rejects decisive review authority when the pull request author identity is malformed', async () => {
+    const snapshot = await snapshotForReviewer('reviewer-b', ['author-a']);
     const pullRequest = snapshot.pull_requests[0];
 
     assert.equal(pullRequest.eligible, false);
