@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Scheduled/manual Commercial Readiness merge drains now preserve the live protected-branch SHA scalar type instead of coercing arrays or objects through `String(...)`; malformed branch-head evidence cannot masquerade as the workflow's exact `GITHUB_SHA` immediately before a merge mutation.
 - Commercial Readiness now preserves GitHub JSON scalar types across merge-authoritative pull-request, workflow-run, and commit-status identity instead of coercing arrays or objects through `String(...)`; malformed PR state/base/repository/head evidence, workflow name/status/head evidence, and status context/state/SHA evidence fail closed instead of becoming syntactically valid exact-head success authority.
 - Commercial Readiness now preserves raw review identity types instead of coercing arrays or objects through `String(...)`; malformed decisive reviewer, state, or approval `commit_id` evidence becomes fail-closed invalid review authority and cannot satisfy an exact-head approval.
 - Commercial Readiness now requires merge-authoritative commit-status `created_at` evidence to use GitHub's UTC second-precision timestamp shape and survive an unchanged UTC calendar round-trip, so date-only, impossible-calendar, or otherwise parser-normalized ordering evidence taints the affected status context instead of granting success authority.
