@@ -1,5 +1,5 @@
 /** Canonical 40-hex Git commit identity required for exact-head evidence. */
-const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
 /** Canonical UTC timestamp shape emitted by GitHub REST review responses. */
 const GITHUB_REVIEW_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
