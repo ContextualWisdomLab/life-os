@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Planning data-rights export now rejects parser-normalized impossible persisted timestamps and calendar-impossible local dates instead of converting malformed temporal evidence into canonical-looking output.
 - Planning transaction completion now treats failure from every already-admitted SQL query as transaction failure even when callback code returns before awaiting that query; the queue still drains, the original query promise keeps its failure, and PostgreSQL is rolled back instead of allowing an unobserved statement failure to be reported as committed success.
 - Planning runtime shutdown now shares one one-shot pool-close authority across all lifecycle callers and preserves the settled failure instead of retrying node-postgres `Pool.end()`, whose lifecycle rejects later `end()` calls once ending begins; no caller can report shutdown complete before PostgreSQL cleanup settles and ambiguous cleanup failure remains visible to every caller.
 - Planning transaction-scoped SQL capability is now revoked as soon as its callback settles, and serialized query parameter arrays are snapshotted when work is admitted to the queue, so neither retained callback references nor later caller mutation can issue or alter SQL after transaction/queue authority was established.
