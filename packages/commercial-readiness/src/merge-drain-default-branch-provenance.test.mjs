@@ -17,7 +17,7 @@ describe('merge-drain protected-default-branch provenance', () => {
 
     const validClient = {
       async requestJson() {
-        return { commit: { sha: expectedHead } };
+        return { protected: true, commit: { sha: expectedHead } };
       },
     };
     const invalidInputs = [
@@ -42,12 +42,22 @@ describe('merge-drain protected-default-branch provenance', () => {
     const malformedLiveClients = [
       {
         async requestJson() {
-          return { commit: { sha: 'not-a-sha' } };
+          return { protected: true, commit: { sha: 'not-a-sha' } };
         },
       },
       {
         async requestJson() {
-          return { commit: { sha: [expectedHead] } };
+          return { protected: true, commit: { sha: [expectedHead] } };
+        },
+      },
+      {
+        async requestJson() {
+          return { protected: false, commit: { sha: expectedHead } };
+        },
+      },
+      {
+        async requestJson() {
+          return { protected: ['true'], commit: { sha: expectedHead } };
         },
       },
     ];
@@ -70,7 +80,7 @@ describe('merge-drain protected-default-branch provenance', () => {
     const movedClient = {
       async requestJson(path) {
         requests.push(path);
-        return { commit: { sha: advancedHead } };
+        return { protected: true, commit: { sha: advancedHead } };
       },
     };
 
@@ -90,7 +100,7 @@ describe('merge-drain protected-default-branch provenance', () => {
 
     const exactClient = {
       async requestJson() {
-        return { commit: { sha: expectedHead.toUpperCase() } };
+        return { protected: true, commit: { sha: expectedHead.toUpperCase() } };
       },
     };
     await cliModule.assertDefaultBranchHead(
