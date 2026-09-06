@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { it } from 'node:test';
 import { collectRepositorySnapshot } from './github-client.mjs';
 
 const HEAD_SHA = 'a'.repeat(40);
@@ -13,7 +13,7 @@ function fixtureClient(review) {
       if (path === '/repos/o/r/pulls/7') {
         return {
           number: 7,
-          title: 'fix: reject malformed review scalar authority',
+          title: 'fix: reject malformed review timestamp authority',
           state: 'open',
           draft: false,
           mergeable: true,
@@ -47,46 +47,29 @@ function fixtureClient(review) {
   };
 }
 
-async function collect(review) {
-  return await collectRepositorySnapshot(fixtureClient(review), 'o/r', {
-    policy: {
-      default_branch: 'main',
-      required_workflows: [],
-      required_statuses: [],
-      merge_method: 'squash',
-    },
-    commitSha: 'c'.repeat(40),
-    generatedAt: '2026-09-06T01:10:00Z',
-  });
-}
-
-function assertMalformedReviewBlocked(snapshot) {
-  const [pullRequest] = snapshot.pull_requests;
-  assert.equal(pullRequest.eligible, false);
-  assert.ok(pullRequest.blockers.includes('review-evidence-invalid'));
-  assert.ok(pullRequest.blockers.includes('missing-approval'));
-}
-
-describe('review scalar provenance', () => {
-  it('does not coerce a non-string reviewer login into approval authority', async () => {
-    const snapshot = await collect({
-      user: { login: 123 },
-      state: 'APPROVED',
-      submitted_at: '2026-09-06T01:00:00Z',
-      commit_id: HEAD_SHA,
-    });
-
-    assertMalformedReviewBlocked(snapshot);
-  });
-
-  it('does not parse a non-string submitted_at scalar into approval authority', async () => {
-    const snapshot = await collect({
+it('does not parse a non-string submitted_at scalar into approval authority', async () => {
+  const snapshot = await collectRepositorySnapshot(
+    fixtureClient({
       user: { login: 'reviewer-a' },
       state: 'APPROVED',
       submitted_at: 123,
       commit_id: HEAD_SHA,
-    });
+    }),
+    'o/r',
+    {
+      policy: {
+        default_branch: 'main',
+        required_workflows: [],
+        required_statuses: [],
+        merge_method: 'squash',
+      },
+      commitSha: 'c'.repeat(40),
+      generatedAt: '2026-09-06T01:10:00Z',
+    },
+  );
 
-    assertMalformedReviewBlocked(snapshot);
-  });
+  const [pullRequest] = snapshot.pull_requests;
+  assert.equal(pullRequest.eligible, false);
+  assert.ok(pullRequest.blockers.includes('review-evidence-invalid'));
+  assert.ok(pullRequest.blockers.includes('missing-approval'));
 });
