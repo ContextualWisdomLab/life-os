@@ -714,6 +714,52 @@ function stringAuthority(value) {
   return typeof value === 'string' ? value : '__invalid__';
 }
 
+/**
+ * Accept base-freshness evidence only when the compare response is bound to the requested pair.
+ *
+ * `behind_by: 0` is merge-authoritative, so a standalone number cannot prove which commits were
+ * actually compared. GitHub's compare response carries its canonical request URL, base commit,
+ * and merge-base commit. Missing, malformed, or mismatched provenance is reduced to `-1`, which
+ * the merge evaluator treats as out-of-date. When GitHub reports zero commits behind, the merge
+ * base must be the requested base commit as well.
+ *
+ * @param {unknown} payload Untrusted GitHub compare response.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {string} baseSha Exact pull-request base SHA used in the compare request.
+ * @param {string} headSha Exact pull-request head SHA used in the compare request.
+ * @returns {number} Non-negative behind count only for provenance-bound evidence; otherwise -1.
+ */
+function compareBehindAuthority(payload, repository, baseSha, headSha) {
+  const behindBy = payload?.behind_by;
+  if (!Number.isSafeInteger(behindBy) || behindBy < 0) return -1;
+
+  const expectedUrl = `${API_ORIGIN}/repos/${repository}/compare/${baseSha}...${headSha}`;
+  const responseUrl = payload?.url;
+  const responseBaseSha = payload?.base_commit?.sha;
+  if (
+    typeof responseUrl !== 'string' ||
+    responseUrl !== expectedUrl ||
+    typeof responseBaseSha !== 'string' ||
+    !SHA_PATTERN.test(responseBaseSha) ||
+    responseBaseSha.toLowerCase() !== baseSha.toLowerCase()
+  ) {
+    return -1;
+  }
+
+  if (behindBy === 0) {
+    const mergeBaseSha = payload?.merge_base_commit?.sha;
+    if (
+      typeof mergeBaseSha !== 'string' ||
+      !SHA_PATTERN.test(mergeBaseSha) ||
+      mergeBaseSha.toLowerCase() !== baseSha.toLowerCase()
+    ) {
+      return -1;
+    }
+  }
+
+  return behindBy;
+}
+
 async function collectOnePullRequest(client, repository, summary, policy) {
   const number = summary.number;
   const detail = await client.requestJson(
@@ -765,9 +811,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       typeof detail?.author_association === 'string'
         ? detail.author_association
         : '',
-    behind_by: Number.isSafeInteger(comparePayload?.behind_by)
-      ? comparePayload.behind_by
-      : -1,
+    behind_by: compareBehindAuthority(comparePayload, repository, baseSha, headSha),
     reviews: reviews.map(normalizeReview),
     unresolved_threads: unresolvedThreads,
     workflows: latestWorkflowRuns(workflowRuns, headSha),
