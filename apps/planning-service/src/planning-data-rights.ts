@@ -204,7 +204,7 @@ function requireNonnegativeInteger(value: unknown, field: string): number {
 }
 
 function requireSha256(value: unknown): string {
-  const candidate = requireString(value, 'sha256').toLowerCase();
+  const candidate = requireString(value, 'sha256');
   if (!SHA_256_PATTERN.test(candidate)) {
     throw new PlanningDataRightsError('sha256 is invalid');
   }
