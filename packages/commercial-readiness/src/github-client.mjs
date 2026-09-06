@@ -557,10 +557,11 @@ function runIsNewer(candidate, current) {
 /**
  * Reduce pull-request workflow runs without allowing contradictory head provenance to disappear.
  *
- * A run may create workflow authority only when its own `head_sha` equals the exact pull-request
- * head. A mismatched run cannot create authority; when the same workflow name also has valid
- * exact-head evidence, that contradiction taints the workflow with an exact-head invalid sentinel
- * so an older or newer successful run cannot remain merge-authoritative by ordering alone.
+ * A run may create workflow authority only when its own scalar `name`, `status`, and `head_sha`
+ * preserve GitHub's JSON types and `head_sha` equals the exact pull-request head. Arrays or objects
+ * must not become valid workflow identity through JavaScript coercion. A mismatched or malformed
+ * head cannot create authority; when the same valid workflow name also has exact-head evidence,
+ * contradictory provenance taints that workflow so success cannot remain merge-authoritative.
  *
  * @param {unknown} runs Untrusted workflow-run records already associated with the pull request.
  * @param {string} headSha Exact current pull-request head SHA.
@@ -570,17 +571,24 @@ function latestWorkflowRuns(runs, headSha) {
   const latest = new Map();
   const mismatchedNames = new Set();
   for (const run of Array.isArray(runs) ? runs : []) {
-    const name = String(run?.name ?? '');
-    if (!name) continue;
-    const runHeadSha = String(run?.head_sha ?? '');
+    const nameValue = run?.name;
+    if (typeof nameValue !== 'string' || !nameValue) continue;
+    const name = nameValue;
+    const runHeadShaValue = run?.head_sha;
+    if (typeof runHeadShaValue !== 'string') {
+      mismatchedNames.add(name);
+      continue;
+    }
+    const runHeadSha = runHeadShaValue;
     if (runHeadSha !== headSha) {
       mismatchedNames.add(name);
       continue;
     }
+    const statusValue = run?.status;
     const normalized = {
       id: Number.isSafeInteger(run?.id) ? run.id : 0,
       name,
-      status: String(run?.status ?? ''),
+      status: typeof statusValue === 'string' ? statusValue : 'invalid',
       conclusion: run?.conclusion ?? null,
       head_sha: runHeadSha,
       run_attempt: Number(run?.run_attempt ?? 0),
@@ -618,13 +626,12 @@ function statusIsNewer(candidate, current) {
 /**
  * Reduce exact-head commit statuses without allowing malformed provenance or ordering evidence to disappear.
  *
- * A status may participate in latest-per-context reduction only when its own SHA binds the exact
- * pull-request head, its context is non-empty, its GitHub status identifier is a positive safe
- * integer, and `created_at` is a canonical UTC second-precision GitHub timestamp. A mismatched-SHA
- * record cannot create status authority; if the same context also contains otherwise valid exact-head
- * evidence, the mismatch taints that context so stale success cannot remain merge-authoritative.
- * Once an exact-head context contains malformed identity or ordering evidence, that context also
- * remains fail-closed.
+ * A status may participate in latest-per-context reduction only when its scalar context, state,
+ * and SHA preserve GitHub's JSON types, its SHA binds the exact pull-request head, its context is
+ * non-empty, its GitHub status identifier is a positive safe integer, and `created_at` is a
+ * canonical UTC second-precision GitHub timestamp. Arrays or objects must not become a valid
+ * status context, success state, or exact-head binding through JavaScript coercion. Contradictory
+ * or malformed evidence for a known context remains fail-closed.
  *
  * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
  * @param {string} headSha Exact current pull-request head SHA.
@@ -635,18 +642,26 @@ function latestStatuses(statuses, headSha) {
   const invalidContexts = new Set();
   const mismatchedContexts = new Set();
   for (const status of Array.isArray(statuses) ? statuses : []) {
-    const context = String(status?.context ?? '');
-    const sha = String(status?.sha ?? '');
-    if (!context) continue;
+    const contextValue = status?.context;
+    if (typeof contextValue !== 'string' || !contextValue) continue;
+    const context = contextValue;
+    const shaValue = status?.sha;
+    if (typeof shaValue !== 'string') {
+      invalidContexts.add(context);
+      continue;
+    }
+    const sha = shaValue;
     if (sha !== headSha) {
       mismatchedContexts.add(context);
       continue;
     }
     const id = status?.id;
+    const stateValue = status?.state;
     const createdAt = status?.created_at ?? null;
     if (
       !Number.isSafeInteger(id) ||
       id <= 0 ||
+      typeof stateValue !== 'string' ||
       parseCanonicalGitHubStatusTimestamp(createdAt) === null
     ) {
       invalidContexts.add(context);
@@ -655,7 +670,7 @@ function latestStatuses(statuses, headSha) {
     const normalized = {
       id,
       context,
-      state: String(status?.state ?? ''),
+      state: stateValue,
       sha,
       created_at: createdAt,
     };
@@ -695,13 +710,17 @@ function normalizeDraftAuthority(value) {
   return typeof value === 'boolean' ? value : null;
 }
 
+function stringAuthority(value) {
+  return typeof value === 'string' ? value : '__invalid__';
+}
+
 async function collectOnePullRequest(client, repository, summary, policy) {
   const number = summary.number;
   const detail = await client.requestJson(
     `/repos/${repository}/pulls/${number}`,
   );
-  const headSha = String(detail?.head?.sha ?? '');
-  if (!SHA_PATTERN.test(headSha)) {
+  const headSha = detail?.head?.sha;
+  if (typeof headSha !== 'string' || !SHA_PATTERN.test(headSha)) {
     throw new Error('GitHub pull request head was invalid');
   }
   const [reviews, workflowRuns, statuses, comparePayload, unresolvedThreads] =
@@ -729,16 +748,19 @@ async function collectOnePullRequest(client, repository, summary, policy) {
 
   const pull = {
     number,
-    title: String(detail.title ?? ''),
-    state: String(detail.state ?? ''),
-    draft: normalizeDraftAuthority(detail.draft),
-    mergeable: detail.mergeable === true,
-    mergeable_state: String(detail.mergeable_state ?? 'unknown'),
-    base_ref: String(detail.base?.ref ?? ''),
+    title: typeof detail?.title === 'string' ? detail.title : '',
+    state: stringAuthority(detail?.state),
+    draft: normalizeDraftAuthority(detail?.draft),
+    mergeable: detail?.mergeable === true,
+    mergeable_state: stringAuthority(detail?.mergeable_state),
+    base_ref: stringAuthority(detail?.base?.ref),
     head_sha: headSha,
-    head_repo: String(detail.head?.repo?.full_name ?? ''),
+    head_repo: stringAuthority(detail?.head?.repo?.full_name),
     repository,
-    author_association: String(detail.author_association ?? ''),
+    author_association:
+      typeof detail?.author_association === 'string'
+        ? detail.author_association
+        : '',
     behind_by: Number.isSafeInteger(comparePayload?.behind_by)
       ? comparePayload.behind_by
       : -1,
