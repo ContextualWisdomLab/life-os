@@ -340,7 +340,7 @@ export function assertMergeResponseEvidence(value) {
     typeof value !== 'object' ||
     typeof value.merged !== 'boolean' ||
     (value.merged === true &&
-      (typeof value.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(value.sha)))
+      (typeof value.sha !== 'string' || !/^[0-9a-f]{40}$/.test(value.sha)))
   ) {
     throw new Error('GitHub merge response was invalid');
   }
