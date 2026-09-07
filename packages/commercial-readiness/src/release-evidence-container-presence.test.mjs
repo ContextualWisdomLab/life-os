@@ -32,6 +32,7 @@ function releaseIndex(includeContainer) {
   const checksumSha = digest('e');
   const containerSha = digest('b');
   const artifacts = [
+    artifact('life-os-migrations.tar', 'migration', digest('3')),
     artifact('life-os.spdx.json', 'sbom', digest('c'), {
       spec_version: '3.0.1',
     }),
