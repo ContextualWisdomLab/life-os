@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness merge receipts now require successful GitHub merge-result `sha` evidence to already be a canonical lowercase 40-hex identity; uppercase aliases can no longer be accepted as durable mutation evidence.
 - Scheduled/manual Commercial Readiness merge drains now require both the workflow `GITHUB_SHA` and the live protected-default-branch SHA to already be canonical lowercase 40-hex identities and compare them exactly; uppercase aliases can no longer be recanonicalized into merge-mutation authority.
 - Commercial Readiness workflow reduction now requires `run_attempt` to remain a positive safe integer exactly as returned by GitHub; numeric-looking strings and other malformed attempt evidence can no longer be coerced into exact-head workflow ordering or success authority.
 - Commercial Readiness final merge evaluation now requires decisive reviewer identity evidence to already be a non-empty canonical string; padded reviewer aliases can no longer be trimmed into exact-head approval authority from durable or replayed snapshots.
