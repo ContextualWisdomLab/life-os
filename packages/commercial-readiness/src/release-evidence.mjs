@@ -145,10 +145,6 @@ function compareReleaseVersions(left, right) {
   return 0;
 }
 
-function requireVersion(value, channel) {
-  return parseReleaseVersion(value, channel).value;
-}
-
 function requireOpenP0BuyerGaps(value, channel) {
   if (!Array.isArray(value) || value.length > MAXIMUM_P0_GAPS) return invalid();
   const normalized = value.map((issueNumber) => {
@@ -205,7 +201,7 @@ function requireFormatEvidence(record, evidenceType) {
   return Object.freeze({});
 }
 
-function requireMigrationCompatibility(record, evidenceType) {
+function requireMigrationCompatibility(record, evidenceType, releaseVersion) {
   const hasCompatibility = Object.hasOwn(record, 'compatibility');
   if (evidenceType !== 'migration') {
     if (hasCompatibility) return invalid();
@@ -218,6 +214,7 @@ function requireMigrationCompatibility(record, evidenceType) {
   const minimum = parseReleaseVersion(compatibility.minimum_source_version);
   const maximum = parseReleaseVersion(compatibility.maximum_source_version);
   if (compareReleaseVersions(minimum, maximum) > 0) return invalid();
+  if (compareReleaseVersions(maximum, releaseVersion) >= 0) return invalid();
   return Object.freeze({
     compatibility: Object.freeze({
       minimum_source_version: minimum.value,
@@ -240,7 +237,7 @@ function requireSignatureSubject(record, evidenceType) {
   return Object.freeze({});
 }
 
-function requireArtifact(value, sourceCommit) {
+function requireArtifact(value, sourceCommit, releaseVersion) {
   const record = requirePlainObject(value);
   const evidenceType = requireEvidenceType(record.evidence_type);
   const hasSpecVersion = Object.hasOwn(record, 'spec_version');
@@ -263,7 +260,7 @@ function requireArtifact(value, sourceCommit) {
   const artifactSourceCommit = requireSourceCommit(record.source_commit);
   if (artifactSourceCommit !== sourceCommit) return invalid();
   const formatEvidence = requireFormatEvidence(record, evidenceType);
-  const migrationCompatibility = requireMigrationCompatibility(record, evidenceType);
+  const migrationCompatibility = requireMigrationCompatibility(record, evidenceType, releaseVersion);
   const signatureSubject = requireSignatureSubject(record, evidenceType);
   return Object.freeze({
     artifact_name: requireArtifactName(record.artifact_name),
@@ -277,11 +274,11 @@ function requireArtifact(value, sourceCommit) {
   });
 }
 
-function requireArtifacts(value, sourceCommit) {
+function requireArtifacts(value, sourceCommit, releaseVersion) {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAXIMUM_ARTIFACTS) {
     return invalid();
   }
-  const artifacts = value.map((artifact) => requireArtifact(artifact, sourceCommit));
+  const artifacts = value.map((artifact) => requireArtifact(artifact, sourceCommit, releaseVersion));
   const byName = new Map();
   const evidenceTypes = new Set();
   for (const artifact of artifacts) {
@@ -365,7 +362,8 @@ async function verifyArtifactBytes(directory, artifact) {
  * unresolved P0 buyer gaps explicit, and prevents a `stable` channel assertion
  * while any P0 gap remains. SPDX `specVersion` and the SLSA in-toto provenance
  * predicate URI identify the expected evidence formats. Every migration artifact
- * must declare a bounded minimum/maximum source-release compatibility range.
+ * must declare a bounded minimum/maximum source-release compatibility range whose
+ * maximum source version is strictly older than the release being produced.
  * Signature evidence must identify an exact retained subject artifact and its
  * SHA-256 digest, and every retained container, checksum manifest, and provenance
  * artifact must have such structural signature coverage. Successful validation
@@ -390,14 +388,15 @@ function validateReleaseEvidenceIndexUnsafe(value) {
   if (record.schema_version !== RELEASE_SCHEMA_VERSION) return invalid();
   const channel = requireChannel(record.channel);
   const sourceCommit = requireSourceCommit(record.source_commit);
+  const releaseVersion = parseReleaseVersion(record.version, channel);
   return Object.freeze({
     schema_version: RELEASE_SCHEMA_VERSION,
     channel,
-    version: requireVersion(record.version, channel),
+    version: releaseVersion.value,
     source_commit: sourceCommit,
     generated_at: requireGeneratedAt(record.generated_at),
     open_p0_buyer_gaps: requireOpenP0BuyerGaps(record.open_p0_buyer_gaps, channel),
-    artifacts: requireArtifacts(record.artifacts, sourceCommit),
+    artifacts: requireArtifacts(record.artifacts, sourceCommit, releaseVersion),
   });
 }
 
