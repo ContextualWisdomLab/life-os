@@ -1,0 +1,113 @@
+name: Repair qs 6.16.0 lock graph
+
+on:
+  push:
+    branches:
+      - fix/qs-6-16-owner-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qs-6-16-owner-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact owner head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable exact package-manager authority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          test "$(node -p "require('./package.json').packageManager")" = 'pnpm@10.15.0'
+          test "$(pnpm --version)" = '10.15.0'
+
+      - name: Detect owner repair head
+        id: owner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [ "$(node -p "require('./package.json').pnpm?.overrides?.qs ?? ''")" = '6.16.0' ]; then
+            echo 'active=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'active=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Regenerate only the package-manager lock graph
+        if: steps.owner.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm install --lockfile-only
+          test "$(git diff --name-only)" = 'pnpm-lock.yaml'
+          git diff --check
+
+      - name: Prove no vulnerable qs snapshot remains
+        if: steps.owner.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          lock = pathlib.Path('pnpm-lock.yaml').read_text(encoding='utf-8')
+          versions = re.findall(r'^  qs@([^:(\s]+)', lock, flags=re.MULTILINE)
+          if not versions:
+              raise SystemExit('qs snapshot missing from regenerated lockfile')
+
+          parsed = []
+          for version in versions:
+              parts = version.split('.')
+              if len(parts) < 3 or not all(part.isdigit() for part in parts[:3]):
+                  raise SystemExit(f'non-canonical qs version in lockfile: {version}')
+              parsed.append(tuple(int(part) for part in parts[:3]))
+
+          if any(version < (6, 16, 0) for version in parsed):
+              raise SystemExit(f'vulnerable qs snapshot remains: {versions}')
+          if (6, 16, 0) not in parsed:
+              raise SystemExit(f'expected qs 6.16.0 snapshot missing: {versions}')
+          print('qs lock snapshots:', ', '.join(versions))
+          PY
+
+      - name: Prove frozen installation and repository behavior
+        if: steps.owner.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -rf node_modules
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+      - name: Publish repaired lock and remove one-shot writer
+        if: steps.owner.outputs.active == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/repair-qs-6-16-lock.yml
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' .github/workflows/repair-qs-6-16-lock.yml pnpm-lock.yaml | sort)"
+          test "$actual" = "$expected"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/repair-qs-6-16-lock.yml pnpm-lock.yaml
+          git commit -m 'fix(security): resolve qs 6.16.0 lock graph'
+          git push origin HEAD:fix/qs-6-16-owner-v1
