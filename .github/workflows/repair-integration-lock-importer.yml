@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   repair:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -25,8 +25,10 @@ jobs:
           fetch-depth: 0
 
       - name: Apply importer-only repair
-        shell: python
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
           from pathlib import Path
 
           path = Path('pnpm-lock.yaml')
@@ -78,6 +80,7 @@ jobs:
           if result.count("  apps/integration-service:\n") != 1:
               raise SystemExit('Integration importer cardinality changed')
           path.write_text(result, encoding='utf-8')
+          PY
 
       - name: Prove bounded lock delta
         shell: bash
