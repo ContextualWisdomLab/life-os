@@ -1,0 +1,61 @@
+name: Repair product gap currentness
+
+on:
+  push:
+    branches: [docs/product-gap-baseline-2026-08-20]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-product-gap-currentness-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout documentation branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: docs/product-gap-baseline-2026-08-20
+          fetch-depth: 1
+
+      - name: Replace bounded currentness override
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'docs/product-technical-gap-baseline.md';
+          const source = fs.readFileSync(path, 'utf8');
+          const start = source.indexOf('> **Currentness override — 2026-09-08 plugin credential replay revocation fence.**');
+          const endMarker = '\n\n## Canonical architecture and evidence rules';
+          const end = source.indexOf(endMarker, start);
+          if (start < 0 || end < 0) {
+            throw new Error('expected bounded currentness override was not found');
+          }
+          if (source.indexOf('> **Currentness override — 2026-09-08 plugin credential replay revocation fence.**', start + 1) >= 0) {
+            throw new Error('currentness override marker is not unique');
+          }
+          const replacement = `> **Currentness override — 2026-09-08 package graph and Integration acceptance.** Integration successor #245 is now exact \`c94caf3f6e468a59ab1ab3b7b7ffd51b6e9a8f7e\`, open Draft/mergeable on #244. Real composed Vault KV v2 + migrated PostgreSQL lifecycle acceptance reached terminal GREEN on ancestor \`21b5c206decf1ca6a9b337811a56bddce39ff730\` through hosted run \`34166380591\`; the purpose-complete proof workflow was then removed by normal descendant \`430a19b08d512d0b9ea1eb1aaf78268da1f9e9d7\`, and current #245 documents that evidence boundary without promoting it to protected-main truth. The next #130 network slice still requires released owner authority rather than copied mutable sibling source. Separately, root package-graph owner #249 is exact \`41e0e0fd10977ed6614bc45456caefd2c328c4de\`, open Draft/mergeable on protected main, and replaces shared \`qs@6.15.3\` with package-manager-owned \`qs@6.16.0\` for CVE-2026-82417/CVE-2026-82562. Purpose-writer run \`34169947462\`, job \`101888207216\`, completed exact \`pnpm@10.15.0\` lock regeneration, frozen install, typecheck, vulnerable-resolution absence, and temporary-workflow retirement before publishing bot descendant \`5dc01b64...\`; bot-triggered repository gates on that head were \`action_required\` with no jobs, so current user-authored descendant \`41e0e0fd...\` reacquired ordinary exact-head CI/Security/AppGuardrail/SAST/Commercial Readiness/CodeQL plus Noema/OpenCode/Strix review lanes. Those current runs remain non-terminal and are not GREEN. Both stacks remain unshipped until unchanged-head policy/review evidence integrates normally.`;
+          fs.writeFileSync(path, source.slice(0, start) + replacement + source.slice(end), 'utf8');
+          NODE
+          git diff --check
+          grep -Fq 'root package-graph owner #249 is exact `41e0e0fd10977ed6614bc45456caefd2c328c4de`' docs/product-technical-gap-baseline.md
+          grep -Fq 'Integration successor #245 is now exact `c94caf3f6e468a59ab1ab3b7b7ffd51b6e9a8f7e`' docs/product-technical-gap-baseline.md
+
+      - name: Publish currentness patch and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/repair-product-gap-currentness.yml
+          git add docs/product-technical-gap-baseline.md .github/workflows/repair-product-gap-currentness.yml
+          git diff --cached --check
+          git diff --cached --quiet && { echo '::error::currentness repair produced no retained delta'; exit 1; }
+          git commit -m 'docs: refresh LifeOS product gap currentness'
+          git push origin HEAD:docs/product-gap-baseline-2026-08-20
