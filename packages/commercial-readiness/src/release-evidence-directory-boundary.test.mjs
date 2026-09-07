@@ -34,7 +34,12 @@ function indexFor(bodies) {
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
       artifact('life-os-web.oci.json', 'container'),
-      artifact('life-os-migrations.tar', 'migration'),
+      artifact('life-os-migrations.tar', 'migration', {
+        compatibility: {
+          minimum_source_version: '0.1.0',
+          maximum_source_version: '0.1.0',
+        },
+      }),
       artifact('life-os.spdx.json', 'sbom', { spec_version: '3.0.1' }),
       artifact('life-os.intoto.jsonl', 'provenance', {
         predicate_type: 'https://slsa.dev/provenance/v1',
