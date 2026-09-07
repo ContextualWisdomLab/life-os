@@ -968,10 +968,19 @@ export async function mergeEligiblePullRequests({
       candidate.head_sha,
       policy.merge_method,
     );
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      typeof result.merged !== 'boolean' ||
+      (result.merged === true &&
+        (typeof result.sha !== 'string' || !SHA_PATTERN.test(result.sha)))
+    ) {
+      throw new Error('GitHub merge response was invalid');
+    }
     results.push({
       number: candidate.number,
-      action: result?.merged === false ? 'blocked' : 'merged',
-      ...(result?.merged === false
+      action: result.merged === false ? 'blocked' : 'merged',
+      ...(result.merged === false
         ? { blockers: ['github-rejected-merge'] }
         : { merge_sha: result.sha }),
     });
