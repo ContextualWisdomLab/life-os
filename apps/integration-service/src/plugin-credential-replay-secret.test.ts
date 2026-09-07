@@ -20,8 +20,12 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const BINDING_ID = '44444444-4444-4444-8444-444444444444';
 const BOUND_AT = '2026-09-08T00:00:00.000Z';
 const SECRET_VALUE = 'original-plugin-secret-value';
-const SECRET_REFERENCE = 'lifeos-plugin-vault://44444444-4444-4444-8444-444444444444';
-const CONTEXT = Object.freeze({ workspaceId: WORKSPACE_ID, actorUserId: USER_ID });
+const SECRET_REFERENCE =
+  'lifeos-plugin-vault://44444444-4444-4444-8444-444444444444';
+const CONTEXT = Object.freeze({
+  workspaceId: WORKSPACE_ID,
+  actorUserId: USER_ID,
+});
 
 const INSTALLATION: PluginInstallationRecord = Object.freeze({
   installationId: INSTALLATION_ID,
@@ -137,7 +141,9 @@ function bindInput(secretValue: string) {
 describe('Plugin credential replay secret authority', () => {
   it('requires provider-backed proof before accepting an exact durable replay', async () => {
     const secrets = new ExactSecretStore();
-    await expect(application(secrets).bind(bindInput(SECRET_VALUE))).resolves.toMatchObject({
+    await expect(
+      application(secrets).bind(bindInput(SECRET_VALUE)),
+    ).resolves.toMatchObject({
       credentialBindingId: BINDING_ID,
       status: 'active',
     });
