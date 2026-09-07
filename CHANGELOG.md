@@ -43,6 +43,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Release-evidence indexes now require at least one retained container descriptor, preventing a release-candidate evidence set from satisfying structural admission with no OCI image evidence at all.
 - Release-evidence indexes now require detached-signature coverage for every retained container image descriptor, checksum manifest, and SLSA provenance artifact, so one unrelated signature cannot satisfy release admission.
 - Nightly release-evidence versions now reject impossible `YYYYMMDD` calendar identities instead of accepting values such as February 30 or month 13 as valid release metadata.
 - Release-evidence validation now collapses hostile accessors and proxy enumeration failures into the fixed payload-free `ReleaseEvidenceValidationError`, preventing credential-bearing native exception detail from crossing the release-admission boundary.
