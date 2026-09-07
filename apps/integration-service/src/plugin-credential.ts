@@ -430,7 +430,27 @@ export class PluginCredentialApplication {
       } catch {
         return invalid();
       }
-      return view(existing);
+      let currentInstallation: PluginInstallationRecord | undefined;
+try {
+  currentInstallation = await this.installationAuthority.getInstallation(
+    context,
+    installationId,
+  );
+} catch {
+  return invalid();
+}
+if (
+  !currentInstallation ||
+  currentInstallation.status !== 'active' ||
+  currentInstallation.revokedAt !== null ||
+  currentInstallation.workspaceId !== context.workspaceId ||
+  currentInstallation.installedByUserId !== context.actorUserId ||
+  currentInstallation.installationId !== installationId ||
+  requireStoredInstant(currentInstallation.installedAt) !== installedAt
+) {
+  return invalid();
+}
+return view(existing);
     }
 
     let secretReference: string;
