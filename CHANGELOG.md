@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness GitHub collection and merge-mutation boundaries now require canonical lowercase 40-hex SHA evidence for snapshot commits, pull-request head/base commits, compare base/merge-base provenance, and expected merge heads; uppercase aliases can no longer be recanonicalized into base-freshness or mutation authority.
 - Commercial Readiness snapshot validation now requires root, pull-request, workflow, and commit-status SHA evidence to already be canonical lowercase 40-hex identities; uppercase aliases can no longer be lowercased into durable authority before merge evaluation.
 - Commercial Readiness now accepts exact pull-request head authority only as canonical lowercase 40-hex Git identity; uppercase aliases can no longer satisfy the final merge gate even when review and workflow evidence repeat the same alias.
 - Commercial Readiness now requires decisive reviewer and pull-request author logins to remain non-empty canonical strings before independent-review authority is evaluated; padded reviewer identities and malformed or unverifiable author identity evidence fail closed instead of being trimmed or omitted into synthetic approval authority.
