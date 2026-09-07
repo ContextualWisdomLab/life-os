@@ -1,0 +1,69 @@
+name: Repair qs 6.16.0 resolution
+
+on:
+  push:
+    branches: [fix/qs-6-16-0-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-qs-6-16-0-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/qs-6-16-0-v1
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Regenerate package-manager-owned lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          test "$(node -p "require('./package.json').packageManager")" = "pnpm@10.15.0"
+          test "$(node -p "require('./package.json').pnpm.overrides.qs")" = "6.16.0"
+          pnpm install --lockfile-only
+          pnpm install --frozen-lockfile
+
+      - name: Verify vulnerable qs resolution is absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Fq 'qs@6.15.3' pnpm-lock.yaml; then
+            echo '::error::Vulnerable qs@6.15.3 remains in the regenerated lockfile.'
+            exit 1
+          fi
+          grep -Fq 'qs@6.16.0' pnpm-lock.yaml
+          pnpm list qs -r --depth Infinity
+
+      - name: Verify repository type contracts
+        run: pnpm typecheck
+
+      - name: Publish regenerated lockfile and retire repair workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/repair-qs-6-16-0.yml
+          git add package.json pnpm-lock.yaml .github/workflows/repair-qs-6-16-0.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo '::error::Repair produced no package-manager-owned delta.'
+            exit 1
+          fi
+          git commit -m 'fix(security): regenerate qs 6.16.0 lock resolution'
+          git push origin HEAD:fix/qs-6-16-0-v1
