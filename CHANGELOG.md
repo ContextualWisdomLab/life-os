@@ -43,6 +43,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Release migration compatibility ranges are now bound to the release being produced: the maximum accepted source version must be strictly older than the target release, so same-version or future-version migration claims cannot satisfy structural release admission.
 - Release migration evidence now carries an explicit bounded minimum/maximum source-release compatibility range, and reversed, malformed, missing, or non-migration placement of that authority fails closed.
 - Release-evidence indexes now require at least one retained versioned database migration artifact, preventing release admission from satisfying the #210 contract with only application/container supply-chain evidence.
 - Release-evidence indexes now require at least one retained container descriptor, preventing a release-candidate evidence set from satisfying structural admission with no OCI image evidence at all.
