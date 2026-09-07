@@ -58,14 +58,15 @@ function parseCanonicalGitHubReviewTimestamp(value) {
  * decisive state from the merge decision. Decisive records with malformed reviewer identity
  * or submission time are likewise invalid. Reviewer identity must already be a non-empty
  * canonical string; the final evaluator must not trim durable evidence into approval authority.
- * Review timestamps must preserve GitHub's canonical UTC REST shape and calendar value rather
- * than becoming authority merely because JavaScript can parse or normalize them. Approval records
- * additionally must bind the exact current pull-request head. A later stale approval revokes an
- * older exact-head approval for the same actor, but never clears a current change request; a
- * still-later exact-head approval may supersede that stale approval. GitHub timestamps have finite
- * precision, so equal timestamps use input order for both exact-head and stale approval evidence.
- * This preserves chronological review authority without allowing stale commit evidence to grant
- * approval.
+ * Case-variant spellings of one GitHub login are ambiguous decisive evidence and fail closed
+ * instead of being split into independent reviewer histories. Review timestamps must preserve
+ * GitHub's canonical UTC REST shape and calendar value rather than becoming authority merely
+ * because JavaScript can parse or normalize them. Approval records additionally must bind the
+ * exact current pull-request head. A later stale approval revokes an older exact-head approval
+ * for the same actor, but never clears a current change request; a still-later exact-head approval
+ * may supersede that stale approval. GitHub timestamps have finite precision, so equal timestamps
+ * use input order for both exact-head and stale approval evidence. This preserves chronological
+ * review authority without allowing stale commit evidence to grant approval.
  *
  * @param {unknown} reviews Untrusted review records collected for one pull request.
  * @param {string} headSha Exact current pull-request head that an approval must bind.
@@ -74,6 +75,7 @@ function parseCanonicalGitHubReviewTimestamp(value) {
 function latestReviewsByActor(reviews, headSha) {
   const latest = new Map();
   const staleApprovals = new Map();
+  const actorAliases = new Map();
   let invalid = false;
   const input = Array.isArray(reviews) ? reviews : [];
   for (let reviewOrder = 0; reviewOrder < input.length; reviewOrder += 1) {
@@ -98,6 +100,13 @@ function latestReviewsByActor(reviews, headSha) {
       invalid = true;
       continue;
     }
+    const actorIdentity = review.actor.toLowerCase();
+    const priorActor = actorAliases.get(actorIdentity);
+    if (priorActor !== undefined && priorActor !== review.actor) {
+      invalid = true;
+      continue;
+    }
+    actorAliases.set(actorIdentity, review.actor);
     const actor = review.actor;
     const timestamp = parseCanonicalGitHubReviewTimestamp(review.submitted_at);
     if (timestamp === null) {
