@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness mutating merge drains now reject duplicate positive pull-request numbers in every initial or refreshed snapshot before candidate selection, preventing ambiguous identity evidence from scheduling the same mutation twice or leaving a successful merge without its durable drain receipt after protected `main` advances.
 - Commercial Readiness duplicate status-ID detection now happens before per-record SHA/state/timestamp provenance reduction, so a reused positive GitHub status identity cannot hide behind mismatched provenance while preserving an earlier exact-head success.
 - Commercial Readiness commit-status reduction now treats a reused positive GitHub status ID as ambiguous durable evidence and fails closed for every affected context, so contradictory records cannot preserve success authority through equal-ID ordering.
 - Commercial Readiness merge drains now validate mutation response evidence at the exported `mergeEligiblePullRequests()` boundary itself, so malformed or partial callback results cannot become durable successful merge receipts even outside the CLI wrapper.
