@@ -316,13 +316,19 @@ function requireArtifacts(value, sourceCommit, releaseVersion) {
   return Object.freeze(artifacts);
 }
 
+function compareArtifactNames(left, right) {
+  if (left.artifact_name < right.artifact_name) return -1;
+  if (left.artifact_name > right.artifact_name) return 1;
+  return 0;
+}
+
 function expectedChecksumManifestBytes(artifacts) {
   const lines = artifacts
     .filter(
       (artifact) =>
         artifact.evidence_type !== 'checksum' && artifact.evidence_type !== 'signature',
     )
-    .sort((left, right) => left.artifact_name.localeCompare(right.artifact_name, 'en'))
+    .sort(compareArtifactNames)
     .map(
       (artifact) =>
         `${artifact.sha256.slice('sha256:'.length)}  ${artifact.artifact_name}\n`,
@@ -445,13 +451,15 @@ export function validateReleaseEvidenceIndex(value) {
  * following a final symlink, streams its bytes through SHA-256, and compares both
  * byte count and digest with the immutable index. Every checksum artifact is also
  * required to be the canonical lowercase SHA-256 manifest for every retained
- * non-checksum, non-signature artifact, sorted by artifact name. This prevents a
- * digest-valid but unrelated checksum file from being presented as buyer-verifiable
- * release evidence. It reads only artifact names already accepted by the
- * no-path-separator contract and emits the same payload-free failure for missing,
- * replaced, symlinked, non-regular, short, oversized, digest-mismatched, or
- * checksum-unbound files. It does not interpret SBOM/provenance content or
- * cryptographically validate detached signatures; those are separate release gates.
+ * non-checksum, non-signature artifact, sorted by artifact name using the ASCII
+ * artifact-name contract rather than locale-sensitive collation. This prevents a
+ * digest-valid but unrelated or environment-reordered checksum file from being
+ * presented as buyer-verifiable release evidence. It reads only artifact names
+ * already accepted by the no-path-separator contract and emits the same payload-free
+ * failure for missing, replaced, symlinked, non-regular, short, oversized,
+ * digest-mismatched, or checksum-unbound files. It does not interpret
+ * SBOM/provenance content or cryptographically validate detached signatures; those
+ * are separate release gates.
  *
  * @param {unknown} value Untrusted release-evidence index.
  * @param {string} artifactDirectory Directory containing the indexed artifact files.
