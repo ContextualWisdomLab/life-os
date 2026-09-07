@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { isIP } from 'node:net';
 import { Pool } from 'pg';
 import type {
   PluginHostedPostgresPool,
@@ -280,16 +281,25 @@ async function requirePluginPostgresReadiness(
   }
 }
 
+/** Normalizes a URL hostname only for IP-literal detection; it never changes connection authority. */
+function ipLiteralCandidate(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+}
+
 /**
  * Requires one self-contained PostgreSQL URI before node-postgres sees process state.
  *
  * node-postgres documents that missing connection fields can be supplied by libpq-style
  * `PG*` environment variables and that connection-string query parameters can change
- * transport behavior. Requiring scheme, user, password, host, port, and database while
+ * transport behavior. Requiring scheme, user, password, DNS host, port, and database while
  * rejecting every query parameter keeps the Integration service's database target,
- * credential, and transport authority on one canonical configuration surface. TLS is
- * configured separately by the Pool with certificate verification enabled, so the URI
- * cannot disable or replace the deployment transport policy.
+ * credential, and transport authority on one canonical configuration surface. node-postgres
+ * 8.22 does not bind an IP-literal connection target to certificate identity when it upgrades
+ * an existing socket to TLS, so IP literals are rejected rather than accepted with CA-only
+ * verification. TLS is configured separately by the Pool with certificate verification enabled,
+ * and DNS authority lets node-postgres supply the TLS server name used for certificate identity.
  */
 function requireConnectionString(value: string): string {
   if (typeof value !== 'string' || value.length === 0 || value !== value.trim()) {
@@ -312,6 +322,7 @@ function requireConnectionString(value: string): string {
     parsed.username.length === 0 ||
     parsed.password.length === 0 ||
     parsed.hostname.length === 0 ||
+    isIP(ipLiteralCandidate(parsed.hostname)) !== 0 ||
     parsed.port.length === 0 ||
     !Number.isSafeInteger(port) ||
     port < 1 ||
@@ -332,20 +343,21 @@ function requireConnectionString(value: string): string {
  * The connection string is supplied explicitly by the already-validated hosted runtime and is
  * required to carry complete target/credential authority before the node-postgres constructor is
  * invoked. TLS is mandatory with peer verification through Node's configured trust store; because
- * connection-string query options are rejected, URI input cannot downgrade or replace this `ssl`
- * policy. Connection acquisition and database work are both finite: PostgreSQL receives a five-
- * second `statement_timeout`, while node-postgres retains a six-second `query_timeout` fallback so
- * the server-side cancellation has a bounded interval to arrive before the client call fails closed.
- * Idle, lifetime, and pool-size bounds are explicit as well. Pool construction itself is part of the
- * credential boundary: a constructor failure is reduced to the same fixed configuration error before
- * native driver detail can become startup evidence. The accepted query and shutdown methods are each
- * captured once before readiness so stateful or hostile accessors cannot pass acquisition and later
- * replace SQL or cleanup authority. An idle-client error listener is registered before the first query,
- * then a fixed readiness statement must prove authenticated, verified-TLS query execution before the
- * pool crosses the runtime boundary. Registration/readiness failure closes the newly constructed pool
- * through the already-captured shutdown authority before returning the bounded configuration error.
- * Parameter arrays are copied because node-postgres accepts mutable arrays while Integration
- * repositories expose readonly fixed-query values.
+ * connection-string query options and IP-literal targets are rejected, URI input cannot downgrade
+ * transport policy or enter node-postgres's CA-only IP path. Connection acquisition and database
+ * work are both finite: PostgreSQL receives a five-second `statement_timeout`, while node-postgres
+ * retains a six-second `query_timeout` fallback so the server-side cancellation has a bounded
+ * interval to arrive before the client call fails closed. Idle, lifetime, and pool-size bounds are
+ * explicit as well. Pool construction itself is part of the credential boundary: a constructor
+ * failure is reduced to the same fixed configuration error before native driver detail can become
+ * startup evidence. The accepted query and shutdown methods are each captured once before readiness
+ * so stateful or hostile accessors cannot pass acquisition and later replace SQL or cleanup authority.
+ * An idle-client error listener is registered before the first query, then a fixed readiness statement
+ * must prove authenticated, verified-TLS query execution before the pool crosses the runtime boundary.
+ * Registration/readiness failure closes the newly constructed pool through the already-captured
+ * shutdown authority before returning the bounded configuration error. Parameter arrays are copied
+ * because node-postgres accepts mutable arrays while Integration repositories expose readonly
+ * fixed-query values.
  */
 export function createNodePostgresPluginPool(
   connectionString: string,
