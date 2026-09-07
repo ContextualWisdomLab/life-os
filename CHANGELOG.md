@@ -43,6 +43,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Release migration evidence now carries an explicit bounded minimum/maximum source-release compatibility range, and reversed, malformed, missing, or non-migration placement of that authority fails closed.
 - Release-evidence indexes now require at least one retained versioned database migration artifact, preventing release admission from satisfying the #210 contract with only application/container supply-chain evidence.
 - Release-evidence indexes now require at least one retained container descriptor, preventing a release-candidate evidence set from satisfying structural admission with no OCI image evidence at all.
 - Release-evidence indexes now require detached-signature coverage for every retained container image descriptor, checksum manifest, and SLSA provenance artifact, so one unrelated signature cannot satisfy release admission.

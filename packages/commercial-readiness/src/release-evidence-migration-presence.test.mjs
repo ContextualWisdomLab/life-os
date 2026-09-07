@@ -50,7 +50,16 @@ function releaseIndex(includeMigration) {
     signature('SHA256SUMS.sig', 'SHA256SUMS', checksumSha, digest('2')),
   ];
   if (includeMigration) {
-    artifacts.splice(1, 0, artifact('life-os-migrations.tar', 'migration', digest('3')));
+    artifacts.splice(
+      1,
+      0,
+      artifact('life-os-migrations.tar', 'migration', digest('3'), {
+        compatibility: {
+          minimum_source_version: '0.1.0',
+          maximum_source_version: '0.1.0',
+        },
+      }),
+    );
   }
   return {
     schema_version: 'life-os.release-evidence.v1',
