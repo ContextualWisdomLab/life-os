@@ -353,8 +353,10 @@ export function assertMergeResponseEvidence(value) {
  * A successful squash merge necessarily advances the protected default branch and invalidates
  * the workflow commit whose code and policy authorized that mutation. Merge mode therefore keeps
  * one PR number for the lifetime of this process; later eligible PRs wait for a fresh scheduled or
- * manual run from the new protected head. Dry-run mode preserves the complete snapshot because it
- * performs no repository mutation.
+ * manual run from the new protected head. Mutating mode fails closed before candidate selection
+ * whenever one positive PR number appears more than once, so ambiguous snapshot identity cannot
+ * schedule duplicate mutation attempts or leave a successful merge without its drain receipt.
+ * Dry-run mode preserves the complete snapshot because it performs no repository mutation.
  *
  * @param {boolean} execute Whether this selector is used by merge mode.
  * @returns {(pullRequests: unknown[]) => unknown[]} Stateful snapshot selector.
@@ -366,6 +368,17 @@ export function createDrainPullRequestSelector(execute) {
       throw new Error('Pull request snapshot is invalid');
     }
     if (!execute) return pullRequests;
+    const seenNumbers = new Set();
+    for (const pullRequest of pullRequests) {
+      const number = pullRequest?.number;
+      if (!Number.isSafeInteger(number) || number <= 0) continue;
+      if (seenNumbers.has(number)) {
+        throw new Error(
+          'Pull request snapshot contains duplicate pull request identity',
+        );
+      }
+      seenNumbers.add(number);
+    }
     if (selectedNumber === null) {
       const candidate = pullRequests.find(
         (pullRequest) =>
