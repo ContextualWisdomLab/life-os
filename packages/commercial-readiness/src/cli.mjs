@@ -305,7 +305,7 @@ export async function assertDefaultBranchHead(
     defaultBranch.length > 255 ||
     /[\u0000-\u001f\u007f\\]/.test(defaultBranch) ||
     typeof expectedCommitSha !== 'string' ||
-    !/^[0-9a-f]{40}$/i.test(expectedCommitSha)
+    !/^[0-9a-f]{40}$/.test(expectedCommitSha)
   ) {
     throw new Error('Merge drain default-branch evidence is invalid');
   }
@@ -316,8 +316,8 @@ export async function assertDefaultBranchHead(
   if (
     payload?.protected !== true ||
     typeof liveHead !== 'string' ||
-    !/^[0-9a-f]{40}$/i.test(liveHead) ||
-    liveHead.toLowerCase() !== expectedCommitSha.toLowerCase()
+    !/^[0-9a-f]{40}$/.test(liveHead) ||
+    liveHead !== expectedCommitSha
   ) {
     throw new Error('Protected default branch changed during merge drain');
   }
