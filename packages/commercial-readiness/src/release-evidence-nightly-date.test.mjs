@@ -4,13 +4,13 @@ import { validateReleaseEvidenceIndex } from './release-evidence.mjs';
 
 const SOURCE_COMMIT = 'a'.repeat(40);
 
-function nightlyReleaseIndex(version) {
+function nightlyReleaseIndex(version, generatedAt = '2026-02-28T14:30:00.000Z') {
   return {
     schema_version: 'life-os.release-evidence.v1',
     channel: 'nightly',
     version,
     source_commit: SOURCE_COMMIT,
-    generated_at: '2026-02-28T14:30:00.000Z',
+    generated_at: generatedAt,
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
       {
@@ -91,7 +91,9 @@ describe('nightly release version calendar identity', () => {
       validateReleaseEvidenceIndex(nightlyReleaseIndex('0.2.0-nightly.20260228.1')),
     );
     assert.doesNotThrow(() =>
-      validateReleaseEvidenceIndex(nightlyReleaseIndex('0.2.0-nightly.20240229.1')),
+      validateReleaseEvidenceIndex(
+        nightlyReleaseIndex('0.2.0-nightly.20240229.1', '2024-02-29T14:30:00.000Z'),
+      ),
     );
 
     for (const version of [
