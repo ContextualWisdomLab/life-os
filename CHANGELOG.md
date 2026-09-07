@@ -31,6 +31,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Scheduled/manual Commercial Readiness merge drains now require both the workflow `GITHUB_SHA` and the live protected-default-branch SHA to already be canonical lowercase 40-hex identities and compare them exactly; uppercase aliases can no longer be recanonicalized into merge-mutation authority.
 - Commercial Readiness workflow reduction now requires `run_attempt` to remain a positive safe integer exactly as returned by GitHub; numeric-looking strings and other malformed attempt evidence can no longer be coerced into exact-head workflow ordering or success authority.
 - Commercial Readiness final merge evaluation now requires decisive reviewer identity evidence to already be a non-empty canonical string; padded reviewer aliases can no longer be trimmed into exact-head approval authority from durable or replayed snapshots.
 - Commercial Readiness GitHub collection and merge-mutation boundaries now require canonical lowercase 40-hex SHA evidence for snapshot commits, pull-request head/base commits, compare base/merge-base provenance, and expected merge heads; uppercase aliases can no longer be recanonicalized into base-freshness or mutation authority.
@@ -78,24 +79,3 @@ All notable changes to LifeOS are documented in this file.
 - The OpenCode development loop now prevents project settings from overriding its pinned offline NVIDIA model, records catalog failures accurately, parses the accepted candidate's exact Compose file outside the model account, and requires digest-pinned PostgreSQL queries plus NATS JetStream probes in pull-request CI.
 - Live contextual-orchestrator responses now classify successful empty bodies as evaluation failures, emit exactly one terminal observation, canonicalize retained timestamps safely, and preserve null metric denominators instead of fabricating deltas.
 - Stale AI proposal revision conflicts now belong to the technology-independent audit domain while the PostgreSQL adapter preserves its compatibility export.
-- Planning search now normalizes browser query text and prevents stale or unmounted requests from replacing the latest visible result state.
-- Reminder fatigue deferral now crosses long IANA offset fallbacks and next-day quiet hours without abandoning the claimed occurrence.
-- Notification workers now recover expired claims and exact delivery replays without creating duplicate inbox messages.
-- Notification batches now isolate delivery-count persistence failures, issue a distinct token for each claim attempt, share concurrent shutdown work, and emit bounded credential-free PostgreSQL failure classifications.
-
-### Security
-
-- Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
-- Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
-- Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.
-- Goal, project, and task create/list routes now reject bare client-selected `x-workspace-id` authority and require the same short-lived signed `life-os.workspace.v1` context used by planning search and durable Today.
-- The data-rights request ledger keeps personal export payloads out of durable audit rows and normalizes primary-key/idempotency collisions before dependency errors can escape the service boundary.
-- The commercial-development model account no longer performs Docker commands, never receives Docker-socket authority, and cannot trigger provider-wide model discovery through the credential bridge.
-- The scheduled live-model harness uses only `NVIDIA_NIM_API_KEY`, seeds it through the encrypted contextual-orchestrator credential registry, installs hash-locked dependencies from an exact commit, confines LifeOS traffic to loopback, allowlists NVIDIA NIM egress, and excludes provider credentials, prompts, responses, traces, and hidden reasoning from retained artifacts.
-- Proposal quality reports now discard nested model failures and response bodies, normalize labeled sentinel checks, expose no provider credential or mutation dependency, and measure prompt-injection resistance together with benign utility instead of rewarding blanket refusal.
-- External proposal generation now accepts only one credential-free HTTPS orchestrator origin, stops responses at 65536 bytes, enforces a bounded abort timeout, supplies no tools, treats planning context as untrusted data, and exposes only sanitized failures.
-- AI gateway service-context authentication now carries an integrity-protected key identifier, signs only with one active key, verifies one explicitly selected active or previous key during a bounded overlap, and rejects retired identifiers immediately without trial verification.
-- Planning-search upstream responses are stopped at a fixed byte limit before they can be fully buffered by the web boundary.
-- Notification persistence stores SHA-256 idempotency digests instead of raw delivery keys, validates every untrusted row, and keeps all SQL tenant-scoped and parameterized.
-- The AI production boundary rejects direct client-selected ownership headers, verifies a short-lived HMAC-SHA-256 context bound to workspace, actor, HTTP method, and exact path, returns credential-free problem details, and exposes no proposal apply or execution route.
-- The AI web boundary consumes and bounds identity-session response streams exactly once, avoiding unbounded buffering from cloning an untrusted streamed response.
