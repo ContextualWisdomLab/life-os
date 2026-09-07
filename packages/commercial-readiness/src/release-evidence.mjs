@@ -271,7 +271,7 @@ async function verifyArtifactBytes(directory, artifact) {
  * @returns {Readonly<object>} A deeply frozen, bounded release evidence index.
  * @throws {ReleaseEvidenceValidationError} When identity, scope, artifact, or channel evidence is invalid.
  */
-export function validateReleaseEvidenceIndex(value) {
+function validateReleaseEvidenceIndexUnsafe(value) {
   const record = requirePlainObject(value);
   requireExactKeys(record, [
     'schema_version',
@@ -294,6 +294,15 @@ export function validateReleaseEvidenceIndex(value) {
     open_p0_buyer_gaps: requireOpenP0BuyerGaps(record.open_p0_buyer_gaps, channel),
     artifacts: requireArtifacts(record.artifacts, sourceCommit),
   });
+}
+
+export function validateReleaseEvidenceIndex(value) {
+  try {
+    return validateReleaseEvidenceIndexUnsafe(value);
+  } catch (error) {
+    if (error instanceof ReleaseEvidenceValidationError) throw error;
+    return invalid();
+  }
 }
 
 /**
