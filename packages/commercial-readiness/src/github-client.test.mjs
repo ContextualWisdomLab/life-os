@@ -301,6 +301,7 @@ describe('mergeEligiblePullRequests', () => {
 
   it('rechecks the exact head immediately before a squash merge', async () => {
     const headSha = 'a'.repeat(40);
+    const mergeSha = 'b'.repeat(40);
     const candidate = {
       number: 8,
       title: 'ready',
@@ -344,14 +345,16 @@ describe('mergeEligiblePullRequests', () => {
       },
       mergePullRequest: async (number, expectedHeadSha, method) => {
         merges.push({ number, expectedHeadSha, method });
-        return { merged: true };
+        return { merged: true, sha: mergeSha };
       },
     });
     assert.equal(collections, 2);
     assert.deepEqual(merges, [
       { number: 8, expectedHeadSha: headSha, method: 'squash' },
     ]);
-    assert.deepEqual(result, [{ number: 8, action: 'merged' }]);
+    assert.deepEqual(result, [
+      { number: 8, action: 'merged', merge_sha: mergeSha },
+    ]);
   });
 
   it('refuses to merge when the head moves between evaluation and mutation', async () => {
