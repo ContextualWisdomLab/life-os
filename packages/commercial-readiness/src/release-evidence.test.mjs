@@ -15,6 +15,8 @@ const SBOM_DIGEST = `sha256:${'c'.repeat(64)}`;
 const PROVENANCE_DIGEST = `sha256:${'d'.repeat(64)}`;
 const CHECKSUM_DIGEST = `sha256:${'e'.repeat(64)}`;
 const SIGNATURE_DIGEST = `sha256:${'f'.repeat(64)}`;
+const CONTAINER_SIGNATURE_DIGEST = `sha256:${'0'.repeat(64)}`;
+const CHECKSUM_SIGNATURE_DIGEST = `sha256:${'1'.repeat(64)}`;
 
 function releaseIndex(overrides = {}) {
   return {
@@ -64,6 +66,24 @@ function releaseIndex(overrides = {}) {
         size_bytes: 256,
         source_commit: SOURCE_COMMIT,
       },
+      {
+        artifact_name: 'life-os-web.oci.json.sig',
+        evidence_type: 'signature',
+        subject_artifact_name: 'life-os-web.oci.json',
+        subject_sha256: OCI_DIGEST,
+        sha256: CONTAINER_SIGNATURE_DIGEST,
+        size_bytes: 256,
+        source_commit: SOURCE_COMMIT,
+      },
+      {
+        artifact_name: 'SHA256SUMS.sig',
+        evidence_type: 'signature',
+        subject_artifact_name: 'SHA256SUMS',
+        subject_sha256: CHECKSUM_DIGEST,
+        sha256: CHECKSUM_SIGNATURE_DIGEST,
+        size_bytes: 256,
+        source_commit: SOURCE_COMMIT,
+      },
     ],
     ...overrides,
   };
@@ -102,7 +122,7 @@ describe('validateReleaseEvidenceIndex', () => {
     assert.equal(value.schema_version, 'life-os.release-evidence.v1');
     assert.equal(value.channel, 'rc');
     assert.deepEqual(value.open_p0_buyer_gaps, [209, 210]);
-    assert.equal(value.artifacts.length, 5);
+    assert.equal(value.artifacts.length, 7);
     assert.ok(Object.isFrozen(value));
     assert.ok(Object.isFrozen(value.artifacts));
     assert.ok(value.artifacts.every(Object.isFrozen));
@@ -255,6 +275,8 @@ describe('verifyReleaseEvidenceDirectory', () => {
       ['life-os.intoto.jsonl', Buffer.from('{"predicateType":"slsa"}\n')],
       ['SHA256SUMS', Buffer.from('checksum manifest\n')],
       ['life-os.intoto.jsonl.sig', Buffer.from('detached signature bytes\n')],
+      ['life-os-web.oci.json.sig', Buffer.from('container detached signature bytes\n')],
+      ['SHA256SUMS.sig', Buffer.from('checksum detached signature bytes\n')],
     ]);
     try {
       for (const [name, bytes] of bodies) {
@@ -277,6 +299,8 @@ describe('verifyReleaseEvidenceDirectory', () => {
       ['life-os.intoto.jsonl', Buffer.from('provenance')],
       ['SHA256SUMS', Buffer.from('checksums')],
       ['life-os.intoto.jsonl.sig', Buffer.from('signature')],
+      ['life-os-web.oci.json.sig', Buffer.from('container signature')],
+      ['SHA256SUMS.sig', Buffer.from('checksum signature')],
     ]);
     try {
       for (const [name, bytes] of bodies) {
@@ -303,6 +327,8 @@ describe('verifyReleaseEvidenceDirectory', () => {
       ['life-os.intoto.jsonl', Buffer.from('provenance')],
       ['SHA256SUMS', Buffer.from('checksums')],
       ['life-os.intoto.jsonl.sig', Buffer.from('signature')],
+      ['life-os-web.oci.json.sig', Buffer.from('container signature')],
+      ['SHA256SUMS.sig', Buffer.from('checksum signature')],
     ]);
     try {
       for (const [name, bytes] of bodies) {
