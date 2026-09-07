@@ -37,6 +37,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Plugin credential replay now revalidates the exact durable credential binding after provider-backed secret verification and installation revalidation, so a concurrent credential revocation cannot be returned as stale active replay authority.
 - Plugin credential replay now revalidates the owning installation after provider-backed secret verification; a concurrent installation revocation cannot leave stale active replay metadata accepted after secret-store I/O.
 - Plugin credential metadata replays now require exact provider-backed secret evidence before acceptance; reusing a binding identity with different secret bytes, or with missing/conflicting Vault evidence, fails closed instead of returning stale active metadata.
 - Integration Plugin PostgreSQL shutdown authority is now captured once during Pool acquisition and reused for acquisition rollback and accepted runtime shutdown, so a stateful or hostile `end` accessor cannot replace cleanup authority after readiness.
