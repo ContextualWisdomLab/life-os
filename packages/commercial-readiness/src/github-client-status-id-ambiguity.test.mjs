@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { collectRepositorySnapshot } from './github-client.mjs';
 
-it('fails closed when one GitHub commit-status id carries contradictory authority', async () => {
-  const headSha = 'a'.repeat(40);
-  const baseSha = 'b'.repeat(40);
+const headSha = 'a'.repeat(40);
+const baseSha = 'b'.repeat(40);
+
+async function collectWithStatuses(statuses) {
   const client = {
     async requestJson(path) {
       if (path.startsWith('/repos/o/r/pulls?')) return [{ number: 7 }];
@@ -36,22 +37,7 @@ it('fails closed when one GitHub commit-status id carries contradictory authorit
         return { total_count: 0, workflow_runs: [] };
       }
       if (path.startsWith(`/repos/o/r/commits/${headSha}/statuses?`)) {
-        return [
-          {
-            id: 100,
-            context: 'CodeRabbit',
-            state: 'success',
-            sha: headSha,
-            created_at: '2026-09-07T07:00:00Z',
-          },
-          {
-            id: 100,
-            context: 'CodeRabbit',
-            state: 'failure',
-            sha: headSha,
-            created_at: '2026-09-07T07:00:00Z',
-          },
-        ];
+        return statuses;
       }
       if (path.startsWith('/repos/o/r/compare/')) {
         return {
@@ -79,7 +65,7 @@ it('fails closed when one GitHub commit-status id carries contradictory authorit
     },
   };
 
-  const snapshot = await collectRepositorySnapshot(client, 'o/r', {
+  return await collectRepositorySnapshot(client, 'o/r', {
     policy: {
       default_branch: 'main',
       required_workflows: [],
@@ -89,11 +75,57 @@ it('fails closed when one GitHub commit-status id carries contradictory authorit
     commitSha: 'c'.repeat(40),
     generatedAt: '2026-09-07T07:05:00Z',
   });
+}
+
+it('fails closed when one GitHub commit-status id carries contradictory authority', async () => {
+  const snapshot = await collectWithStatuses([
+    {
+      id: 100,
+      context: 'CodeRabbit',
+      state: 'success',
+      sha: headSha,
+      created_at: '2026-09-07T07:00:00Z',
+    },
+    {
+      id: 100,
+      context: 'CodeRabbit',
+      state: 'failure',
+      sha: headSha,
+      created_at: '2026-09-07T07:00:00Z',
+    },
+  ]);
 
   const [pullRequest] = snapshot.pull_requests;
   assert.equal(pullRequest.eligible, false);
   assert.ok(pullRequest.blockers.includes('status-not-successful:CodeRabbit'));
   assert.deepEqual(pullRequest.statuses, [
     { context: 'CodeRabbit', state: 'invalid', sha: headSha },
+  ]);
+});
+
+it('taints prior success when a reused status id appears with mismatched provenance', async () => {
+  const snapshot = await collectWithStatuses([
+    {
+      id: 200,
+      context: 'CodeRabbit',
+      state: 'success',
+      sha: headSha,
+      created_at: '2026-09-07T07:00:00Z',
+    },
+    {
+      id: 200,
+      context: 'Other',
+      state: 'failure',
+      sha: baseSha,
+      created_at: '2026-09-07T07:00:01Z',
+    },
+  ]);
+
+  const [pullRequest] = snapshot.pull_requests;
+  assert.equal(pullRequest.eligible, false);
+  assert.ok(pullRequest.blockers.includes('status-not-successful:CodeRabbit'));
+  assert.deepEqual(pullRequest.statuses, [
+    { context: 'CodeRabbit', state: 'invalid', sha: headSha },
+    { context: 'Other', state: 'invalid', sha: headSha },
   ]);
 });
