@@ -41,6 +41,12 @@ flowchart LR
 - Cross-service writes require an explicit API, event, saga, or plugin contract; shared-table coupling is prohibited.
 - Public errors, metrics, logs, artifacts, and review evidence exclude credentials and unbounded tenant data.
 
+### Identity persistence vocabulary
+
+The Identity service's durable PostgreSQL vocabulary uses `user_accounts`, `external_identities`, `identity_workspaces`, `authentication_sessions`, and `oauth_transactions`. Their owned identifiers and discriminators are context-qualified (`user_account_id`, `external_identity_id`, `identity_workspace_id`, `authentication_session_id`, `oauth_transaction_id`, `identity_provider`, `workspace_name`, and `workspace_kind`) rather than generic `id`, `provider`, `name`, or `kind` columns. Repository adapters translate that semantic persistence vocabulary into stable application/domain shapes; a database-only rename must not silently become an HTTP or event contract rename.
+
+Persistence naming migrations preserve normalized relationships and foreign-key ownership. Because PostgreSQL rename DDL can require strong locks, a rename migration must be transactional, bounded by a fail-fast lock timeout, and deployed with the matching service binary rather than across old/new dual writers. The deployment runner owns its `life_os_deployment.schema_migrations` receipt schema even when that receipt is colocated in a service database: service-owned migration SQL must not read or mutate the deployment receipt. If a process stops after service DDL commits but before the receipt is finalized, only the runner may reconcile the exact `applying` row, and only after verifying the complete expected service-schema postcondition. Partial or ambiguous schemas fail closed. The current operational contract is documented in `docs/doctoring/identity-database-semantic-names.md`.
+
 ## 2. AI proposal safety boundary
 
 AI output is an inert proposal, not an execution command. The AI service can generate, persist, retrieve, and record explicit decisions about proposals, but it has no planning mutation repository or generic command bus.

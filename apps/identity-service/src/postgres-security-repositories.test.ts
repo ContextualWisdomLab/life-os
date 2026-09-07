@@ -20,11 +20,11 @@ class RecordingSqlClient implements SqlClient {
 
   async query<Row>(text: string, values: readonly unknown[] = []): Promise<SqlQueryResult<Row>> {
     this.calls.push({ text, values });
-    const result = this.results.shift();
-    if (!result) {
+    const queryResult = this.results.shift();
+    if (!queryResult) {
       return { rows: [], rowCount: 0 };
     }
-    return result as SqlQueryResult<Row>;
+    return queryResult as SqlQueryResult<Row>;
   }
 }
 
@@ -32,12 +32,12 @@ function requireCall(
   client: RecordingSqlClient,
   index = 0,
 ): { text: string; values: readonly unknown[] } {
-  const call = client.calls[index];
-  expect(call).toBeDefined();
-  if (!call) {
+  const queryCall = client.calls[index];
+  expect(queryCall).toBeDefined();
+  if (!queryCall) {
     throw new Error(`Expected SQL call at index ${index}`);
   }
-  return call;
+  return queryCall;
 }
 
 function createSecretBox(): AesGcmSecretBox {
@@ -85,26 +85,28 @@ describe('PostgresOAuthTransactionRepository', () => {
     await repository.save(transaction);
 
     expect(client.calls).toHaveLength(1);
-    const call = requireCall(client);
-    expect(call.text).toContain('INSERT INTO identity.oauth_transactions');
-    expect(call.text).toContain('$1');
-    expect(call.text).not.toContain(transaction.codeVerifier);
-    expect(call.text).not.toContain(transaction.nonce ?? '');
-    expect(call.values).toContain('v1');
-    expect(call.values.some((value) => Buffer.isBuffer(value))).toBe(true);
-    expect(JSON.stringify(call.values)).not.toContain(transaction.codeVerifier);
-    expect(JSON.stringify(call.values)).not.toContain(transaction.nonce ?? '');
+    const queryCall = requireCall(client);
+    expect(queryCall.text).toContain('INSERT INTO identity.oauth_transactions');
+    expect(queryCall.text).toContain('oauth_transaction_id');
+    expect(queryCall.text).toContain('identity_provider');
+    expect(queryCall.text).toContain('$1');
+    expect(queryCall.text).not.toContain(transaction.codeVerifier);
+    expect(queryCall.text).not.toContain(transaction.nonce ?? '');
+    expect(queryCall.values).toContain('v1');
+    expect(queryCall.values.some((value) => Buffer.isBuffer(value))).toBe(true);
+    expect(JSON.stringify(queryCall.values)).not.toContain(transaction.codeVerifier);
+    expect(JSON.stringify(queryCall.values)).not.toContain(transaction.nonce ?? '');
   });
 
   it('atomically consumes and decrypts one active transaction', async () => {
     const client = new RecordingSqlClient();
-    const box = createSecretBox();
+    const secretBox = createSecretBox();
     const transaction = transactionFixture();
-    const verifier = box.encrypt(
+    const verifier = secretBox.encrypt(
       transaction.codeVerifier,
       `oauth-transaction:${transaction.id}:verifier`,
     );
-    const nonce = box.encrypt(
+    const nonce = secretBox.encrypt(
       transaction.nonce ?? '',
       `oauth-transaction:${transaction.id}:nonce`,
     );
@@ -112,8 +114,8 @@ describe('PostgresOAuthTransactionRepository', () => {
       rowCount: 1,
       rows: [
         {
-          id: transaction.id,
-          provider: transaction.provider,
+          oauth_transaction_id: transaction.id,
+          identity_provider: transaction.provider,
           state_hash: transaction.stateHash,
           browser_session_hash: transaction.browserSessionHash,
           code_verifier_ciphertext: verifier.payload,
@@ -127,7 +129,7 @@ describe('PostgresOAuthTransactionRepository', () => {
         },
       ],
     });
-    const repository = new PostgresOAuthTransactionRepository(client, box);
+    const repository = new PostgresOAuthTransactionRepository(client, secretBox);
 
     const consumed = await repository.consumeByStateHash(
       transaction.provider,
@@ -140,11 +142,12 @@ describe('PostgresOAuthTransactionRepository', () => {
       ...transaction,
       consumedAt: '2026-08-03T00:01:00.000Z',
     });
-    const call = requireCall(client);
-    expect(call.text).toContain('UPDATE identity.oauth_transactions');
-    expect(call.text).toContain('consumed_at IS NULL');
-    expect(call.text).toContain('expires_at >');
-    expect(call.text).toContain('RETURNING');
+    const queryCall = requireCall(client);
+    expect(queryCall.text).toContain('UPDATE identity.oauth_transactions');
+    expect(queryCall.text).toContain('identity_provider = $1');
+    expect(queryCall.text).toContain('consumed_at IS NULL');
+    expect(queryCall.text).toContain('expires_at >');
+    expect(queryCall.text).toContain('RETURNING');
   });
 
   it('returns undefined when no active transaction can be consumed', async () => {
@@ -170,9 +173,9 @@ describe('PostgresOAuthTransactionRepository', () => {
     await expect(
       repository.deleteExpiredOrConsumedBefore('2026-08-03T00:00:00.000Z'),
     ).resolves.toBe(7);
-    const call = requireCall(client);
-    expect(call.text).toContain('DELETE FROM identity.oauth_transactions');
-    expect(call.values).toEqual(['2026-08-03T00:00:00.000Z']);
+    const queryCall = requireCall(client);
+    expect(queryCall.text).toContain('DELETE FROM identity.oauth_transactions');
+    expect(queryCall.values).toEqual(['2026-08-03T00:00:00.000Z']);
   });
 });
 
@@ -184,7 +187,10 @@ describe('PostgresSessionRepository', () => {
 
     await repository.save(session);
     const saveCall = requireCall(client);
-    expect(saveCall.text).toContain('INSERT INTO identity.sessions');
+    expect(saveCall.text).toContain('INSERT INTO identity.authentication_sessions');
+    expect(saveCall.text).toContain('authentication_session_id');
+    expect(saveCall.text).toContain('user_account_id');
+    expect(saveCall.text).toContain('identity_workspace_id');
     expect(saveCall.text).toContain('authenticated_at');
     expect(saveCall.text).not.toContain(session.tokenHash);
     expect(saveCall.values).toContain(session.workspaceId);
@@ -194,15 +200,15 @@ describe('PostgresSessionRepository', () => {
       rowCount: 1,
       rows: [
         {
-          id: session.id,
-          user_id: session.userId,
-          workspace_id: session.workspaceId,
+          authentication_session_id: session.id,
+          user_account_id: session.userId,
+          identity_workspace_id: session.workspaceId,
           token_hash: session.tokenHash,
           authenticated_at: session.authenticatedAt,
           created_at: session.createdAt,
           expires_at: session.expiresAt,
           revoked_at: null,
-          rotated_from_id: null,
+          rotated_from_session_id: null,
         },
       ],
     });
@@ -212,7 +218,10 @@ describe('PostgresSessionRepository', () => {
 
   it('revokes a token once and does not disclose an unknown token', async () => {
     const client = new RecordingSqlClient();
-    client.enqueue({ rows: [{ id: sessionFixture().id }], rowCount: 1 });
+    client.enqueue({
+      rows: [{ authentication_session_id: sessionFixture().id }],
+      rowCount: 1,
+    });
     client.enqueue({ rows: [], rowCount: 0 });
     const repository = new PostgresSessionRepository(client);
 
@@ -223,6 +232,7 @@ describe('PostgresSessionRepository', () => {
       repository.revokeByTokenHash('d'.repeat(64), '2026-08-03T00:02:00.000Z'),
     ).resolves.toBe(false);
     expect(requireCall(client).text).toContain('revoked_at IS NULL');
+    expect(requireCall(client).text).toContain('RETURNING authentication_session_id');
   });
 
   it('deletes expired sessions and old revoked sessions', async () => {
@@ -231,8 +241,8 @@ describe('PostgresSessionRepository', () => {
     const repository = new PostgresSessionRepository(client);
 
     await expect(repository.deleteInactiveBefore('2026-08-03T00:00:00.000Z')).resolves.toBe(3);
-    const call = requireCall(client);
-    expect(call.text).toContain('DELETE FROM identity.sessions');
-    expect(call.values).toEqual(['2026-08-03T00:00:00.000Z']);
+    const queryCall = requireCall(client);
+    expect(queryCall.text).toContain('DELETE FROM identity.authentication_sessions');
+    expect(queryCall.values).toEqual(['2026-08-03T00:00:00.000Z']);
   });
 });

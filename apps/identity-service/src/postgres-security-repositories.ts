@@ -17,8 +17,8 @@ export interface SqlClient {
 }
 
 interface OAuthTransactionRow {
-  id: unknown;
-  provider: unknown;
+  oauth_transaction_id: unknown;
+  identity_provider: unknown;
   state_hash: unknown;
   browser_session_hash: unknown;
   code_verifier_ciphertext: unknown;
@@ -32,15 +32,15 @@ interface OAuthTransactionRow {
 }
 
 interface SessionRow {
-  id: unknown;
-  user_id: unknown;
-  workspace_id: unknown;
+  authentication_session_id: unknown;
+  user_account_id: unknown;
+  identity_workspace_id: unknown;
   token_hash: unknown;
   authenticated_at: unknown;
   created_at: unknown;
   expires_at: unknown;
   revoked_at: unknown;
-  rotated_from_id: unknown;
+  rotated_from_session_id: unknown;
 }
 
 function requireString(value: unknown, message: string): string {
@@ -95,8 +95,11 @@ function mapOAuthTransactionRow(
   row: OAuthTransactionRow,
   secretBox: AesGcmSecretBox,
 ): StoredOAuthTransaction {
-  const id = requireString(row.id, 'Stored OAuth transaction is invalid');
-  const provider = requireProvider(row.provider);
+  const oauthTransactionId = requireString(
+    row.oauth_transaction_id,
+    'Stored OAuth transaction is invalid',
+  );
+  const identityProvider = requireProvider(row.identity_provider);
   const verifier: EncryptedSecret = {
     keyVersion: requireString(
       row.code_verifier_key_version,
@@ -111,27 +114,27 @@ function mapOAuthTransactionRow(
       : requireString(row.nonce_key_version, 'Stored OAuth transaction is invalid');
 
   if (
-    (provider === 'google' && (!noncePayload || !nonceKeyVersion)) ||
-    (provider === 'github' && (noncePayload !== null || nonceKeyVersion !== null))
+    (identityProvider === 'google' && (!noncePayload || !nonceKeyVersion)) ||
+    (identityProvider === 'github' && (noncePayload !== null || nonceKeyVersion !== null))
   ) {
     throw new Error('Stored OAuth transaction is invalid');
   }
 
   return {
-    id,
-    provider,
+    id: oauthTransactionId,
+    provider: identityProvider,
     stateHash: requireString(row.state_hash, 'Stored OAuth transaction is invalid'),
     browserSessionHash: requireString(
       row.browser_session_hash,
       'Stored OAuth transaction is invalid',
     ),
-    codeVerifier: secretBox.decrypt(verifier, verifierContext(id)),
+    codeVerifier: secretBox.decrypt(verifier, verifierContext(oauthTransactionId)),
     redirectUri: requireString(row.redirect_uri, 'Stored OAuth transaction is invalid'),
     nonce:
       noncePayload && nonceKeyVersion
         ? secretBox.decrypt(
             { keyVersion: nonceKeyVersion, payload: noncePayload },
-            nonceContext(id),
+            nonceContext(oauthTransactionId),
           )
         : null,
     createdAt: toIsoString(row.created_at, 'Stored OAuth transaction is invalid'),
@@ -158,8 +161,8 @@ export class PostgresOAuthTransactionRepository implements OAuthTransactionRepos
 
     await this.client.query(
       `INSERT INTO identity.oauth_transactions (
-        id,
-        provider,
+        oauth_transaction_id,
+        identity_provider,
         state_hash,
         browser_session_hash,
         code_verifier_ciphertext,
@@ -194,17 +197,17 @@ export class PostgresOAuthTransactionRepository implements OAuthTransactionRepos
     browserSessionHash: string,
     consumedAt: string,
   ): Promise<StoredOAuthTransaction | undefined> {
-    const result = await this.client.query<OAuthTransactionRow>(
+    const queryResult = await this.client.query<OAuthTransactionRow>(
       `UPDATE identity.oauth_transactions
        SET consumed_at = $4
-       WHERE provider = $1
+       WHERE identity_provider = $1
          AND state_hash = $2
          AND browser_session_hash = $3
          AND consumed_at IS NULL
          AND expires_at > $4
        RETURNING
-         id,
-         provider,
+         oauth_transaction_id,
+         identity_provider,
          state_hash,
          browser_session_hash,
          code_verifier_ciphertext,
@@ -218,35 +221,35 @@ export class PostgresOAuthTransactionRepository implements OAuthTransactionRepos
       [provider, stateHash, browserSessionHash, consumedAt],
     );
 
-    const row = result.rows[0];
-    return row ? mapOAuthTransactionRow(row, this.secretBox) : undefined;
+    const transactionRow = queryResult.rows[0];
+    return transactionRow ? mapOAuthTransactionRow(transactionRow, this.secretBox) : undefined;
   }
 
   async deleteExpiredOrConsumedBefore(retentionBoundary: string): Promise<number> {
-    const result = await this.client.query(
+    const queryResult = await this.client.query(
       `DELETE FROM identity.oauth_transactions
        WHERE expires_at < $1
           OR (consumed_at IS NOT NULL AND consumed_at < $1)`,
       [retentionBoundary],
     );
-    return result.rowCount ?? 0;
+    return queryResult.rowCount ?? 0;
   }
 }
 
 function mapSessionRow(row: SessionRow): SessionRecord {
   return {
-    id: requireString(row.id, 'Stored session is invalid'),
-    userId: requireString(row.user_id, 'Stored session is invalid'),
-    workspaceId: requireString(row.workspace_id, 'Stored session is invalid'),
+    id: requireString(row.authentication_session_id, 'Stored session is invalid'),
+    userId: requireString(row.user_account_id, 'Stored session is invalid'),
+    workspaceId: requireString(row.identity_workspace_id, 'Stored session is invalid'),
     tokenHash: requireString(row.token_hash, 'Stored session is invalid'),
     authenticatedAt: toIsoString(row.authenticated_at, 'Stored session is invalid'),
     createdAt: toIsoString(row.created_at, 'Stored session is invalid'),
     expiresAt: toIsoString(row.expires_at, 'Stored session is invalid'),
     revokedAt: optionalIsoString(row.revoked_at, 'Stored session is invalid'),
     rotatedFromId:
-      row.rotated_from_id === null
+      row.rotated_from_session_id === null
         ? null
-        : requireString(row.rotated_from_id, 'Stored session is invalid'),
+        : requireString(row.rotated_from_session_id, 'Stored session is invalid'),
   };
 }
 
@@ -255,16 +258,16 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async save(session: SessionRecord): Promise<void> {
     await this.client.query(
-      `INSERT INTO identity.sessions (
-        id,
-        user_id,
-        workspace_id,
+      `INSERT INTO identity.authentication_sessions (
+        authentication_session_id,
+        user_account_id,
+        identity_workspace_id,
         token_hash,
         authenticated_at,
         created_at,
         expires_at,
         revoked_at,
-        rotated_from_id
+        rotated_from_session_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         session.id,
@@ -281,44 +284,44 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async findByTokenHash(tokenHash: string): Promise<SessionRecord | undefined> {
-    const result = await this.client.query<SessionRow>(
+    const queryResult = await this.client.query<SessionRow>(
       `SELECT
-         id,
-         user_id,
-         workspace_id,
+         authentication_session_id,
+         user_account_id,
+         identity_workspace_id,
          token_hash,
          authenticated_at,
          created_at,
          expires_at,
          revoked_at,
-         rotated_from_id
-       FROM identity.sessions
+         rotated_from_session_id
+       FROM identity.authentication_sessions
        WHERE token_hash = $1`,
       [tokenHash],
     );
-    const row = result.rows[0];
-    return row ? mapSessionRow(row) : undefined;
+    const sessionRow = queryResult.rows[0];
+    return sessionRow ? mapSessionRow(sessionRow) : undefined;
   }
 
   async revokeByTokenHash(tokenHash: string, revokedAt: string): Promise<boolean> {
-    const result = await this.client.query<{ id: string }>(
-      `UPDATE identity.sessions
+    const queryResult = await this.client.query<{ authentication_session_id: string }>(
+      `UPDATE identity.authentication_sessions
        SET revoked_at = $2
        WHERE token_hash = $1
          AND revoked_at IS NULL
-       RETURNING id`,
+       RETURNING authentication_session_id`,
       [tokenHash, revokedAt],
     );
-    return (result.rowCount ?? 0) === 1;
+    return (queryResult.rowCount ?? 0) === 1;
   }
 
   async deleteInactiveBefore(retentionBoundary: string): Promise<number> {
-    const result = await this.client.query(
-      `DELETE FROM identity.sessions
+    const queryResult = await this.client.query(
+      `DELETE FROM identity.authentication_sessions
        WHERE expires_at < $1
           OR (revoked_at IS NOT NULL AND revoked_at < $1)`,
       [retentionBoundary],
     );
-    return result.rowCount ?? 0;
+    return queryResult.rowCount ?? 0;
   }
 }

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -150,6 +150,13 @@ describe('production Kubernetes reference contract', () => {
     expect(workflow).toContain('kubectl diff --server-side');
   });
 
+  it('requires an explicit externally verified Identity drain before the breaking semantic rename', () => {
+    expect(workflow).toContain('identity_service_drained:');
+    expect(workflow).toContain(
+      "PGOPTIONS: ${{ inputs.identity_service_drained && '-c life_os.identity_schema_rename_confirmation=identity-service-drained' || '' }}",
+    );
+  });
+
   it('recovers captured state after rollout or partial apply failure', () => {
     expect(workflow).toContain('WEB_PRIOR_REVISION');
     expect(workflow).toContain('GATEWAY_PRIOR_REVISION');
@@ -178,14 +185,35 @@ describe('production Kubernetes reference contract', () => {
     expect(migrationRunner).not.toContain('--dbname "${database_url}"');
   });
 
-  it('blocks duplicate and retrograde migration sequences', () => {
-    expect(migrationRunner).toContain('migration_sequence integer NOT NULL');
-    expect(migrationRunner).toContain(
-      'schema_migrations_service_sequence_unique',
+  it('orders migrations by immutable filename so historical duplicate prefixes remain reachable', () => {
+    const identityMigrationNames = readdirSync(
+      resolve(repositoryRoot, 'apps/identity-service/migrations'),
+    )
+      .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/u.test(name))
+      .sort();
+    const numericPrefixes = identityMigrationNames.map((name) =>
+      name.slice(0, 4),
     );
-    expect(migrationRunner).toContain('MAX(migration_sequence)');
+
+    expect(numericPrefixes.filter((prefix) => prefix === '0004')).toHaveLength(
+      2,
+    );
+    expect(numericPrefixes.filter((prefix) => prefix === '0005')).toHaveLength(
+      2,
+    );
+    expect(identityMigrationNames.at(-1)).toBe(
+      '0007_identity_database_semantic_names.sql',
+    );
+    expect(migrationRunner).toContain('MAX(migration_name COLLATE "C")');
+    expect(migrationRunner).toContain('migration_name_is_forward');
     expect(migrationRunner).toContain(
-      'migration_error=migration_sequence_not_forward',
+      'DROP INDEX IF EXISTS life_os_deployment.schema_migrations_service_sequence_unique',
+    );
+    expect(migrationRunner).not.toContain(
+      'CREATE UNIQUE INDEX IF NOT EXISTS schema_migrations_service_sequence_unique',
+    );
+    expect(migrationRunner).toContain(
+      'migration_error=migration_name_not_forward',
     );
     expect(migrationRunner).toContain(
       'migration_error=incomplete_migration_requires_reconciliation',
