@@ -1,0 +1,62 @@
+name: Repair commercial readiness formatting
+
+on:
+  push:
+    branches:
+      - fix/actions-draft-queue-pressure-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-commercial-readiness-format
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact repair head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/actions-draft-queue-pressure-v1
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Repair only hosted-RED formatting paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --single-quote --write \
+            packages/commercial-readiness/src/pr-gate.mjs \
+            CHANGELOG.md
+          git diff --check
+          test "$(git diff --name-only | sort)" = $'CHANGELOG.md\npackages/commercial-readiness/src/pr-gate.mjs'
+          pnpm exec prettier --single-quote --check \
+            packages/commercial-readiness/src/pr-gate.mjs \
+            CHANGELOG.md
+          node --test packages/commercial-readiness/src/pr-gate*.test.mjs
+
+      - name: Publish formatting repair and remove one-shot workflow
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/repair-commercial-readiness-format.yml
+          test "$(git diff --name-only | sort)" = $'.github/workflows/repair-commercial-readiness-format.yml\nCHANGELOG.md\npackages/commercial-readiness/src/pr-gate.mjs'
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/repair-commercial-readiness-format.yml \
+            CHANGELOG.md \
+            packages/commercial-readiness/src/pr-gate.mjs
+          git commit -m 'style(readiness): satisfy exact-head format gate'
+          git push origin HEAD:fix/actions-draft-queue-pressure-v1
