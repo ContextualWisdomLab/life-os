@@ -424,12 +424,18 @@ function validateReleaseEvidenceIndexUnsafe(value) {
   const channel = requireChannel(record.channel);
   const sourceCommit = requireSourceCommit(record.source_commit);
   const releaseVersion = parseReleaseVersion(record.version, channel);
+  const generatedAt = requireGeneratedAt(record.generated_at);
+  if (channel === 'nightly') {
+    const nightlyDate = NIGHTLY_VERSION_PATTERN.exec(releaseVersion.value)?.[4];
+    const generatedDate = `${generatedAt.slice(0, 4)}${generatedAt.slice(5, 7)}${generatedAt.slice(8, 10)}`;
+    if (!nightlyDate || nightlyDate !== generatedDate) return invalid();
+  }
   return Object.freeze({
     schema_version: RELEASE_SCHEMA_VERSION,
     channel,
     version: releaseVersion.value,
     source_commit: sourceCommit,
-    generated_at: requireGeneratedAt(record.generated_at),
+    generated_at: generatedAt,
     open_p0_buyer_gaps: requireOpenP0BuyerGaps(record.open_p0_buyer_gaps, channel),
     artifacts: requireArtifacts(record.artifacts, sourceCommit, releaseVersion),
   });
