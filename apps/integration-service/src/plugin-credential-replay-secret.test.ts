@@ -96,6 +96,22 @@ class ExistingBindingStore implements PluginCredentialBindingStore {
   }
 }
 
+class RevokingBindingStore extends ExistingBindingStore {
+  calls = 0;
+
+  override async findById(): Promise<PluginCredentialBindingRecord> {
+    this.calls += 1;
+    if (this.calls === 1) {
+      return BINDING;
+    }
+    return Object.freeze({
+      ...BINDING,
+      status: 'revoked',
+      revokedAt: BOUND_AT,
+    });
+  }
+}
+
 class ExactSecretStore implements PluginSecretStore {
   readonly verifications: PutPluginSecretInput[] = [];
   async putSecret(_input: PutPluginSecretInput): Promise<string> {
@@ -119,10 +135,11 @@ class ExactSecretStore implements PluginSecretStore {
 function application(
   secretStore: ExactSecretStore,
   installationAuthority: PluginInstallationAuthority = new InstallationAuthority(),
+  bindingStore: PluginCredentialBindingStore = new ExistingBindingStore(),
 ): PluginCredentialApplication {
   return new PluginCredentialApplication(
     installationAuthority,
-    new ExistingBindingStore(),
+    bindingStore,
     secretStore,
     () => new Date(BOUND_AT),
   );
@@ -167,5 +184,18 @@ describe('Plugin credential replay secret authority', () => {
     ).rejects.toBeInstanceOf(PluginCredentialError);
     expect(secrets.verifications).toHaveLength(1);
     expect(installations.calls).toBe(2);
+  });
+
+  it('rejects replay when credential authority is revoked during provider verification', async () => {
+    const secrets = new ExactSecretStore();
+    const bindings = new RevokingBindingStore();
+
+    await expect(
+      application(secrets, new InstallationAuthority(), bindings).bind(
+        bindInput(SECRET_VALUE),
+      ),
+    ).rejects.toBeInstanceOf(PluginCredentialError);
+    expect(secrets.verifications).toHaveLength(1);
+    expect(bindings.calls).toBe(2);
   });
 });
