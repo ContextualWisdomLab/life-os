@@ -64,6 +64,8 @@ async function createFixture({
   const subjectArtifactName = 'life-os-web.tar';
   const subjectBytes = Buffer.from('immutable release payload\n', 'utf8');
   const subjectSha256 = sha256(subjectBytes);
+  const migrationArtifactName = 'life-os-migrations.tar';
+  const migrationBytes = Buffer.from('immutable migration payload\n', 'utf8');
   const sbomBytes = suppliedSbomBytes ?? Buffer.from('{}\n', 'utf8');
   const provenanceArtifactName = 'life-os.provenance.json';
   const provenanceBytes = Buffer.from('{}\n', 'utf8');
@@ -90,6 +92,7 @@ async function createFixture({
 
   await Promise.all([
     writeFile(join(directory, subjectArtifactName), subjectBytes),
+    writeFile(join(directory, migrationArtifactName), migrationBytes),
     writeFile(join(directory, signatureArtifactName), signatureArtifactBytes),
     writeFile(join(directory, 'life-os.spdx.json'), sbomBytes),
     writeFile(join(directory, provenanceArtifactName), provenanceBytes),
@@ -120,6 +123,7 @@ async function createFixture({
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
       artifact(subjectArtifactName, 'container', subjectBytes),
+      artifact(migrationArtifactName, 'migration', migrationBytes),
       artifact('life-os.spdx.json', 'sbom', sbomBytes, { spec_version: '3.0.1' }),
       artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
         predicate_type: 'https://slsa.dev/provenance/v1',
