@@ -7,26 +7,27 @@ import { describe, it } from 'node:test';
 import { verifyReleaseEvidenceDirectory } from './release-evidence.mjs';
 
 const SOURCE_COMMIT = 'a'.repeat(40);
+const CHECKSUM_SUBJECT_NAMES = [
+  'life-os-migrations.tar',
+  'life-os-web.oci.json',
+  'life-os.intoto.jsonl',
+  'life-os.spdx.json',
+];
 
 function sha256(bytes) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 }
 
-function canonicalChecksumBody(bodies) {
+function canonicalChecksumBody(bodies, names = CHECKSUM_SUBJECT_NAMES) {
   return Buffer.from(
-    [
-      'life-os-migrations.tar',
-      'life-os-web.oci.json',
-      'life-os.intoto.jsonl',
-      'life-os.spdx.json',
-    ]
+    [...names]
       .sort()
       .map((name) => `${sha256(bodies.get(name)).slice('sha256:'.length)}  ${name}\n`)
       .join(''),
   );
 }
 
-function releaseIndexForBodies(bodies) {
+function releaseIndexForBodies(bodies, extraSubjects = []) {
   const artifact = (artifactName, evidenceType, extra = {}) => ({
     artifact_name: artifactName,
     evidence_type: evidenceType,
@@ -49,6 +50,7 @@ function releaseIndexForBodies(bodies) {
       artifact('life-os.intoto.jsonl', 'provenance', {
         predicate_type: 'https://slsa.dev/provenance/v1',
       }),
+      ...extraSubjects.map((name) => artifact(name, 'application')),
       artifact('SHA256SUMS', 'checksum'),
       artifact('life-os.intoto.jsonl.sig', 'signature', {
         subject_artifact_name: 'life-os.intoto.jsonl',
@@ -116,6 +118,28 @@ describe('verifyReleaseEvidenceDirectory checksum binding', () => {
         directory,
       );
       assert.equal(verified.source_commit, SOURCE_COMMIT);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('uses deterministic ASCII artifact-name order rather than locale collation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'life-os-release-checksum-order-'));
+    const bodies = baseBodies();
+    const extraSubjects = ['a-.bin', 'a_.bin'];
+    bodies.set('a-.bin', Buffer.from('hyphen artifact\n'));
+    bodies.set('a_.bin', Buffer.from('underscore artifact\n'));
+    bodies.set(
+      'SHA256SUMS',
+      canonicalChecksumBody(bodies, [...CHECKSUM_SUBJECT_NAMES, ...extraSubjects]),
+    );
+    try {
+      await writeBodies(directory, bodies);
+      const verified = await verifyReleaseEvidenceDirectory(
+        releaseIndexForBodies(bodies, extraSubjects),
+        directory,
+      );
+      assert.equal(verified.artifacts.length, 10);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
