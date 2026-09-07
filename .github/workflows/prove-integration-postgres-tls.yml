@@ -125,24 +125,29 @@ jobs:
             exit 1
           fi
 
+          echo '127.0.0.1 postgres-mismatch.lifeos.invalid' | sudo tee -a /etc/hosts >/dev/null
           echo "tls_dir=$tls_dir" >> "$GITHUB_OUTPUT"
 
       - name: Prove migrations and driver against real verified TLS PostgreSQL
         shell: bash
         env:
           INTEGRATION_DATABASE_URL: postgresql://lifeos:lifeos@localhost:55432/lifeos
-          INTEGRATION_DATABASE_TLS_HOST_MISMATCH_URL: postgresql://lifeos:lifeos@127.0.0.1:55432/lifeos
+          INTEGRATION_DATABASE_TLS_HOST_MISMATCH_URL: postgresql://lifeos:lifeos@postgres-mismatch.lifeos.invalid:55432/lifeos
           INTEGRATION_POSTGRES_TLS_ACCEPTANCE: '1'
           NODE_EXTRA_CA_CERTS: ${{ steps.postgres.outputs.tls_dir }}/ca.crt
           PGSSLMODE: verify-full
           PGSSLROOTCERT: ${{ steps.postgres.outputs.tls_dir }}/ca.crt
         run: |
           set -Eeuo pipefail
-          pnpm --filter @life-os/integration-service exec vitest run \
+          for migration_suite in \
             src/plugin-installation-migration.test.ts \
             src/plugin-credential-migration.test.ts \
-            src/plugin-operator-replay-migration.test.ts \
-            src/plugin-vault-postgres-driver-postgres.integration.test.ts
+            src/plugin-operator-replay-migration.test.ts; do
+            pnpm --filter @life-os/integration-service exec vitest run "$migration_suite"
+          done
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-vault-postgres-driver-postgres.integration.test.ts \
+            src/plugin-vault-postgres-driver-ip-authority.test.ts
 
       - name: Publish acceptance regression and remove one-shot workflow
         shell: bash
