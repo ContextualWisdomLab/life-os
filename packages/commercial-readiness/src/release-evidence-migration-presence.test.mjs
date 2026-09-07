@@ -27,12 +27,12 @@ function signature(artifactName, subjectArtifactName, subjectSha256, sha256) {
   });
 }
 
-function releaseIndex(includeContainer) {
+function releaseIndex(includeMigration) {
+  const containerSha = digest('b');
   const provenanceSha = digest('d');
   const checksumSha = digest('e');
-  const containerSha = digest('b');
   const artifacts = [
-    artifact('life-os-migrations.tar', 'migration', digest('3')),
+    artifact('life-os-web.oci.json', 'container', containerSha),
     artifact('life-os.spdx.json', 'sbom', digest('c'), {
       spec_version: '3.0.1',
     }),
@@ -40,27 +40,30 @@ function releaseIndex(includeContainer) {
       predicate_type: 'https://slsa.dev/provenance/v1',
     }),
     artifact('SHA256SUMS', 'checksum', checksumSha),
-    signature('life-os.intoto.jsonl.sig', 'life-os.intoto.jsonl', provenanceSha, digest('f')),
-    signature('SHA256SUMS.sig', 'SHA256SUMS', checksumSha, digest('1')),
+    signature('life-os-web.oci.json.sig', 'life-os-web.oci.json', containerSha, digest('f')),
+    signature(
+      'life-os.intoto.jsonl.sig',
+      'life-os.intoto.jsonl',
+      provenanceSha,
+      digest('1'),
+    ),
+    signature('SHA256SUMS.sig', 'SHA256SUMS', checksumSha, digest('2')),
   ];
-  if (includeContainer) {
-    artifacts.unshift(artifact('life-os-web.oci.json', 'container', containerSha));
-    artifacts.push(
-      signature('life-os-web.oci.json.sig', 'life-os-web.oci.json', containerSha, digest('0')),
-    );
+  if (includeMigration) {
+    artifacts.splice(1, 0, artifact('life-os-migrations.tar', 'migration', digest('3')));
   }
   return {
     schema_version: 'life-os.release-evidence.v1',
     channel: 'rc',
     version: '0.2.0-rc.1',
     source_commit: SOURCE_COMMIT,
-    generated_at: '2026-09-07T11:00:00.000Z',
+    generated_at: '2026-09-07T11:30:00.000Z',
     open_p0_buyer_gaps: [209, 210],
     artifacts,
   };
 }
 
-it('requires container evidence before a release index can satisfy structural admission', () => {
+it('requires migration evidence before a release index can satisfy structural admission', () => {
   assert.throws(() => validateReleaseEvidenceIndex(releaseIndex(false)));
   assert.doesNotThrow(() => validateReleaseEvidenceIndex(releaseIndex(true)));
 });

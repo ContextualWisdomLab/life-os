@@ -34,6 +34,7 @@ function indexFor(bodies) {
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
       artifact('life-os-web.oci.json', 'container'),
+      artifact('life-os-migrations.tar', 'migration'),
       artifact('life-os.spdx.json', 'sbom', { spec_version: '3.0.1' }),
       artifact('life-os.intoto.jsonl', 'provenance', {
         predicate_type: 'https://slsa.dev/provenance/v1',
@@ -42,6 +43,14 @@ function indexFor(bodies) {
       artifact('life-os.intoto.jsonl.sig', 'signature', {
         subject_artifact_name: 'life-os.intoto.jsonl',
         subject_sha256: sha256(bodies.get('life-os.intoto.jsonl')),
+      }),
+      artifact('life-os-web.oci.json.sig', 'signature', {
+        subject_artifact_name: 'life-os-web.oci.json',
+        subject_sha256: sha256(bodies.get('life-os-web.oci.json')),
+      }),
+      artifact('SHA256SUMS.sig', 'signature', {
+        subject_artifact_name: 'SHA256SUMS',
+        subject_sha256: sha256(bodies.get('SHA256SUMS')),
       }),
     ],
   };
@@ -53,10 +62,13 @@ it('refuses a symlinked release-evidence directory even when all target bytes ma
   const linked = join(parent, 'evidence');
   const bodies = new Map([
     ['life-os-web.oci.json', Buffer.from('container')],
+    ['life-os-migrations.tar', Buffer.from('migrations')],
     ['life-os.spdx.json', Buffer.from('sbom')],
     ['life-os.intoto.jsonl', Buffer.from('provenance')],
     ['SHA256SUMS', Buffer.from('checksums')],
     ['life-os.intoto.jsonl.sig', Buffer.from('signature')],
+    ['life-os-web.oci.json.sig', Buffer.from('container signature')],
+    ['SHA256SUMS.sig', Buffer.from('checksum signature')],
   ]);
   try {
     for (const [name, bytes] of bodies) {
