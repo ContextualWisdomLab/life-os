@@ -299,8 +299,7 @@ function validateReleaseEvidenceIndexUnsafe(value) {
 export function validateReleaseEvidenceIndex(value) {
   try {
     return validateReleaseEvidenceIndexUnsafe(value);
-  } catch (error) {
-    if (error instanceof ReleaseEvidenceValidationError) throw error;
+  } catch {
     return invalid();
   }
 }
