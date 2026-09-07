@@ -165,7 +165,7 @@ jobs:
           } >>"$GITHUB_ENV"
           echo "pg_tls_dir=$pg_tls_dir" >>"$GITHUB_OUTPUT"
 
-      - name: Apply migrations and prove real Vault PostgreSQL recovery
+      - name: Apply Integration migrations
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -176,14 +176,23 @@ jobs:
               -f "$migration"
           done
 
-          pnpm --filter @life-os/plugin-sdk build
-          pnpm exec prettier --check \
-            apps/integration-service/src/plugin-vault-postgres-vault.integration.test.ts
-          pnpm --filter @life-os/integration-service typecheck
+      - name: Build plugin SDK
+        run: pnpm --filter @life-os/plugin-sdk build
+
+      - name: Verify acceptance formatting
+        run: pnpm exec prettier --check apps/integration-service/src/plugin-vault-postgres-vault.integration.test.ts
+
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Prove real Vault PostgreSQL recovery
+        run: |
           pnpm --filter @life-os/integration-service exec vitest run \
             src/plugin-vault-postgres-vault.integration.test.ts \
             --no-file-parallelism
 
+      - name: Run deterministic Integration suite
+        run: |
           env \
             -u INTEGRATION_DATABASE_URL \
             -u INTEGRATION_PLUGIN_VAULT_ORIGIN \
