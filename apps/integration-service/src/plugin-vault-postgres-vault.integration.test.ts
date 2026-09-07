@@ -142,149 +142,125 @@ async function credentialEvidence(
 describeWithRealVaultAndPostgres(
   'Integration hosted Vault and PostgreSQL durable acceptance',
   () => {
-    it(
-      'survives restart between installation revocation and idempotent credential cleanup',
-      async () => {
-        const workspaceId = randomUUID();
-        const userId = randomUUID();
-        const installationId = randomUUID();
-        const credentialBindingId = randomUUID();
-        const secretReference = `lifeos-plugin-vault://${credentialBindingId}`;
-        const credentialInput = Object.freeze({
-          credentialBindingId,
+    it('survives restart between installation revocation and idempotent credential cleanup', async () => {
+      const workspaceId = randomUUID();
+      const userId = randomUUID();
+      const installationId = randomUUID();
+      const credentialBindingId = randomUUID();
+      const secretReference = `lifeos-plugin-vault://${credentialBindingId}`;
+      const credentialInput = Object.freeze({
+        credentialBindingId,
+        installationId,
+        credentialName: 'api_token',
+        secretValue: TEST_SECRET,
+      });
+
+      runtime = await createPluginVaultHostedRuntime(
+        createNodePostgresPluginPool,
+        process.env,
+      );
+      observer = await createNodePostgresPluginPool(DATABASE_URL!);
+      const secretStore = new PluginVaultSecretStore(
+        VAULT_ORIGIN!,
+        VAULT_TOKEN!,
+        VAULT_MOUNT!,
+      );
+      cleanupSecretStore = secretStore;
+      cleanupReference = secretReference;
+
+      const installed = await runtime.operator.install(
+        signedHeaders(workspaceId, userId, 'POST', '/v1/plugins/installations'),
+        {
           installationId,
-          credentialName: 'api_token',
-          secretValue: TEST_SECRET,
-        });
+          manifest: MANIFEST,
+          grantedCapabilities: [TASK_COMPLETED],
+        },
+      );
+      expect(installed).toMatchObject({
+        installationId,
+        workspaceId,
+        installedByUserId: userId,
+        status: 'active',
+        revokedAt: null,
+      });
 
-        runtime = await createPluginVaultHostedRuntime(
-          createNodePostgresPluginPool,
-          process.env,
-        );
-        observer = await createNodePostgresPluginPool(DATABASE_URL!);
-        const secretStore = new PluginVaultSecretStore(
-          VAULT_ORIGIN!,
-          VAULT_TOKEN!,
-          VAULT_MOUNT!,
-        );
-        cleanupSecretStore = secretStore;
-        cleanupReference = secretReference;
-
-        const installed = await runtime.operator.install(
-          signedHeaders(
-            workspaceId,
-            userId,
-            'POST',
-            '/v1/plugins/installations',
-          ),
-          {
-            installationId,
-            manifest: MANIFEST,
-            grantedCapabilities: [TASK_COMPLETED],
-          },
-        );
-        expect(installed).toMatchObject({
-          installationId,
-          workspaceId,
-          installedByUserId: userId,
-          status: 'active',
-          revokedAt: null,
-        });
-
-        const bound = await runtime.operator.bindCredential(
-          signedHeaders(
-            workspaceId,
-            userId,
-            'POST',
-            '/v1/plugins/credential-bindings',
-          ),
-          credentialInput,
-        );
-        const replay = await runtime.operator.bindCredential(
-          signedHeaders(
-            workspaceId,
-            userId,
-            'POST',
-            '/v1/plugins/credential-bindings',
-          ),
-          credentialInput,
-        );
-        expect(replay).toEqual(bound);
-
-        const durableActive = await credentialEvidence(
-          observer,
-          credentialBindingId,
+      const bound = await runtime.operator.bindCredential(
+        signedHeaders(
           workspaceId,
           userId,
-        );
-        expect(durableActive).toMatchObject({
-          credential_status: 'active',
-          secret_reference: secretReference,
-          revoked_at: null,
-        });
-        await expect(
-          secretStore.verifySecret(secretReference, {
-            credentialBindingId,
-            installationId,
-            workspaceId,
-            installedByUserId: userId,
-            credentialName: credentialInput.credentialName,
-            secretValue: TEST_SECRET,
-          }),
-        ).resolves.toBeUndefined();
+          'POST',
+          '/v1/plugins/credential-bindings',
+        ),
+        credentialInput,
+      );
+      const replay = await runtime.operator.bindCredential(
+        signedHeaders(
+          workspaceId,
+          userId,
+          'POST',
+          '/v1/plugins/credential-bindings',
+        ),
+        credentialInput,
+      );
+      expect(replay).toEqual(bound);
 
-        const revokedInstallation = await runtime.operator.revokeInstallation(
-          signedHeaders(
-            workspaceId,
-            userId,
-            'POST',
-            `/v1/plugins/installations/${installationId}/revoke`,
-          ),
-          installationId,
-        );
-        expect(revokedInstallation).toMatchObject({
-          installationId,
-          status: 'revoked',
-        });
-
-        await expect(
-          runtime.operator.bindCredential(
-            signedHeaders(
-              workspaceId,
-              userId,
-              'POST',
-              '/v1/plugins/credential-bindings',
-            ),
-            credentialInput,
-          ),
-        ).rejects.toBeInstanceOf(PluginCredentialError);
-
-        await runtime.close();
-        runtime = undefined;
-        restartedRuntime = await createPluginVaultHostedRuntime(
-          createNodePostgresPluginPool,
-          process.env,
-        );
-
-        const revokedCredential =
-          await restartedRuntime.operator.revokeCredential(
-            signedHeaders(
-              workspaceId,
-              userId,
-              'POST',
-              `/v1/plugins/credential-bindings/${credentialBindingId}/revoke`,
-            ),
-            credentialBindingId,
-          );
-        expect(revokedCredential).toMatchObject({
+      const durableActive = await credentialEvidence(
+        observer,
+        credentialBindingId,
+        workspaceId,
+        userId,
+      );
+      expect(durableActive).toMatchObject({
+        credential_status: 'active',
+        secret_reference: secretReference,
+        revoked_at: null,
+      });
+      await expect(
+        secretStore.verifySecret(secretReference, {
           credentialBindingId,
           installationId,
           workspaceId,
           installedByUserId: userId,
-          status: 'revoked',
-        });
+          credentialName: credentialInput.credentialName,
+          secretValue: TEST_SECRET,
+        }),
+      ).resolves.toBeUndefined();
 
-        const cleanupReplay = await restartedRuntime.operator.revokeCredential(
+      const revokedInstallation = await runtime.operator.revokeInstallation(
+        signedHeaders(
+          workspaceId,
+          userId,
+          'POST',
+          `/v1/plugins/installations/${installationId}/revoke`,
+        ),
+        installationId,
+      );
+      expect(revokedInstallation).toMatchObject({
+        installationId,
+        status: 'revoked',
+      });
+
+      await expect(
+        runtime.operator.bindCredential(
+          signedHeaders(
+            workspaceId,
+            userId,
+            'POST',
+            '/v1/plugins/credential-bindings',
+          ),
+          credentialInput,
+        ),
+      ).rejects.toBeInstanceOf(PluginCredentialError);
+
+      await runtime.close();
+      runtime = undefined;
+      restartedRuntime = await createPluginVaultHostedRuntime(
+        createNodePostgresPluginPool,
+        process.env,
+      );
+
+      const revokedCredential =
+        await restartedRuntime.operator.revokeCredential(
           signedHeaders(
             workspaceId,
             userId,
@@ -293,31 +269,46 @@ describeWithRealVaultAndPostgres(
           ),
           credentialBindingId,
         );
-        expect(cleanupReplay).toEqual(revokedCredential);
+      expect(revokedCredential).toMatchObject({
+        credentialBindingId,
+        installationId,
+        workspaceId,
+        installedByUserId: userId,
+        status: 'revoked',
+      });
 
-        const durableRevoked = await credentialEvidence(
-          observer,
-          credentialBindingId,
+      const cleanupReplay = await restartedRuntime.operator.revokeCredential(
+        signedHeaders(
           workspaceId,
           userId,
-        );
-        expect(durableRevoked.credential_status).toBe('revoked');
-        expect(durableRevoked.secret_reference).toBe(secretReference);
-        expect(durableRevoked.revoked_at).toBeInstanceOf(Date);
+          'POST',
+          `/v1/plugins/credential-bindings/${credentialBindingId}/revoke`,
+        ),
+        credentialBindingId,
+      );
+      expect(cleanupReplay).toEqual(revokedCredential);
 
-        await expect(
-          secretStore.verifySecret(secretReference, {
-            credentialBindingId,
-            installationId,
-            workspaceId,
-            installedByUserId: userId,
-            credentialName: credentialInput.credentialName,
-            secretValue: TEST_SECRET,
-          }),
-        ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
-        cleanupReference = undefined;
-      },
-      30_000,
-    );
+      const durableRevoked = await credentialEvidence(
+        observer,
+        credentialBindingId,
+        workspaceId,
+        userId,
+      );
+      expect(durableRevoked.credential_status).toBe('revoked');
+      expect(durableRevoked.secret_reference).toBe(secretReference);
+      expect(durableRevoked.revoked_at).toBeInstanceOf(Date);
+
+      await expect(
+        secretStore.verifySecret(secretReference, {
+          credentialBindingId,
+          installationId,
+          workspaceId,
+          installedByUserId: userId,
+          credentialName: credentialInput.credentialName,
+          secretValue: TEST_SECRET,
+        }),
+      ).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+      cleanupReference = undefined;
+    }, 30_000);
   },
 );
