@@ -583,10 +583,11 @@ function runIsNewer(candidate, current) {
 /**
  * Reduce pull-request workflow runs without allowing contradictory head provenance to disappear.
  *
- * A run may create workflow authority only when its own scalar `name`, `status`, and `head_sha`
- * preserve GitHub's JSON types and `head_sha` equals the exact pull-request head. Arrays or objects
- * must not become valid workflow identity through JavaScript coercion. A mismatched or malformed
- * head cannot create authority; when the same valid workflow name also has exact-head evidence,
+ * A run may create workflow authority only when its own scalar `name`, `status`, `head_sha`, and
+ * positive integer `run_attempt` preserve GitHub's JSON types and `head_sha` equals the exact
+ * pull-request head. Arrays, objects, or numeric-looking strings must not become valid workflow
+ * identity or ordering evidence through JavaScript coercion. A mismatched or malformed head or
+ * attempt cannot create authority; when the same valid workflow name also has exact-head evidence,
  * contradictory provenance taints that workflow so success cannot remain merge-authoritative.
  *
  * @param {unknown} runs Untrusted workflow-run records already associated with the pull request.
@@ -595,19 +596,24 @@ function runIsNewer(candidate, current) {
  */
 function latestWorkflowRuns(runs, headSha) {
   const latest = new Map();
-  const mismatchedNames = new Set();
+  const taintedNames = new Set();
   for (const run of Array.isArray(runs) ? runs : []) {
     const nameValue = run?.name;
     if (typeof nameValue !== 'string' || !nameValue) continue;
     const name = nameValue;
     const runHeadShaValue = run?.head_sha;
     if (typeof runHeadShaValue !== 'string') {
-      mismatchedNames.add(name);
+      taintedNames.add(name);
       continue;
     }
     const runHeadSha = runHeadShaValue;
     if (runHeadSha !== headSha) {
-      mismatchedNames.add(name);
+      taintedNames.add(name);
+      continue;
+    }
+    const runAttempt = run?.run_attempt;
+    if (!Number.isSafeInteger(runAttempt) || runAttempt <= 0) {
+      taintedNames.add(name);
       continue;
     }
     const statusValue = run?.status;
@@ -617,7 +623,7 @@ function latestWorkflowRuns(runs, headSha) {
       status: typeof statusValue === 'string' ? statusValue : 'invalid',
       conclusion: run?.conclusion ?? null,
       head_sha: runHeadSha,
-      run_attempt: Number(run?.run_attempt ?? 0),
+      run_attempt: runAttempt,
       updated_at: run?.updated_at ?? null,
     };
     const current = latest.get(normalized.name);
@@ -625,7 +631,7 @@ function latestWorkflowRuns(runs, headSha) {
       latest.set(normalized.name, normalized);
     }
   }
-  for (const name of mismatchedNames) {
+  for (const name of taintedNames) {
     if (!latest.has(name)) continue;
     latest.set(name, {
       id: 0,
