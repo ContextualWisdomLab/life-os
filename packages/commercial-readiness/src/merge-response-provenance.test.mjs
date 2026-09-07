@@ -20,6 +20,7 @@ describe('merge response provenance', () => {
       { merged: 1 },
       { merged: true },
       { merged: true, sha: 'not-a-sha' },
+      { merged: true, sha: 'A'.repeat(40) },
     ]) {
       assert.throws(
         () => assertMergeResponseEvidence(malformed),
