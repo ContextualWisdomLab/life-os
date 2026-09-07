@@ -43,6 +43,16 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Nightly release-evidence versions now bind their `YYYYMMDD` identity to the canonical UTC date in `generated_at`, rejecting otherwise valid indexes whose nightly version date and generation instant disagree.
+- Release checksum evidence is now bound to the exact retained non-signature subjects: every checksum artifact must byte-for-byte match the canonical lowercase SHA-256 manifest sorted by artifact name, so a digest-valid but unrelated checksum file cannot satisfy buyer-verifiable release evidence.
+- Release-evidence directory verification now rejects a static path reached through symlinked ancestry before opening retained artifacts, preserving the final-directory and per-artifact no-follow boundaries instead of accepting aliased filesystem authority.
+- Release migration compatibility ranges are now bound to the release being produced: the maximum accepted source version must be strictly older than the target release, so same-version or future-version migration claims cannot satisfy structural release admission.
+- Release migration evidence now carries an explicit bounded minimum/maximum source-release compatibility range, and reversed, malformed, missing, or non-migration placement of that authority fails closed.
+- Release-evidence indexes now require at least one retained versioned database migration artifact, preventing release admission from satisfying the #210 contract with only application/container supply-chain evidence.
+- Release-evidence indexes now require at least one retained container descriptor, preventing a release-candidate evidence set from satisfying structural admission with no OCI image evidence at all.
+- Release-evidence indexes now require detached-signature coverage for every retained container image descriptor, checksum manifest, and SLSA provenance artifact, so one unrelated signature cannot satisfy release admission.
+- Nightly release-evidence versions now reject impossible `YYYYMMDD` calendar identities instead of accepting values such as February 30 or month 13 as valid release metadata.
+- Release-evidence validation now collapses hostile accessors and proxy enumeration failures into the fixed payload-free `ReleaseEvidenceValidationError`, preventing credential-bearing native exception detail from crossing the release-admission boundary.
 - Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
 - Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.
