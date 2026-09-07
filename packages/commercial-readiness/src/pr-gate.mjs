@@ -153,6 +153,10 @@ function latestReviewsByActor(reviews, headSha) {
 /**
  * Evaluate exact-head workflow evidence for one required workflow name.
  *
+ * The collector normally reduces each workflow name to one record. The evaluator still treats
+ * duplicate same-name records as ambiguous authority so a replayed or schema-valid durable
+ * snapshot cannot hide a failure or stale record beside one successful exact-head record.
+ *
  * @param {object} pr Pull-request snapshot containing exact-head workflow runs.
  * @param {string} requiredName Required workflow display name.
  * @returns {{blocker?: string}} Empty evidence on success or one fail-closed blocker.
@@ -163,18 +167,22 @@ function workflowEvidence(pr, requiredName) {
   );
   if (named.length === 0)
     return { blocker: `missing-workflow:${requiredName}` };
-  const matchingHead = named.filter((item) => item.head_sha === pr.head_sha);
-  if (matchingHead.length === 0) return { blocker: 'stale-check-evidence' };
-  const successful = matchingHead.some(
-    (item) => item.status === 'completed' && item.conclusion === SUCCESS,
-  );
-  return successful
+  if (named.length !== 1) {
+    return { blocker: `workflow-evidence-ambiguous:${requiredName}` };
+  }
+  const [candidate] = named;
+  if (candidate.head_sha !== pr.head_sha) return { blocker: 'stale-check-evidence' };
+  return candidate.status === 'completed' && candidate.conclusion === SUCCESS
     ? {}
     : { blocker: `workflow-not-successful:${requiredName}` };
 }
 
 /**
  * Evaluate exact-head commit-status evidence for one required status context.
+ *
+ * The collector normally reduces each status context to one record. Duplicate same-context
+ * records are ambiguous durable authority and fail closed rather than allowing one success to
+ * mask a contradictory failure or stale SHA record.
  *
  * @param {object} pr Pull-request snapshot containing exact-head commit statuses.
  * @param {string} requiredContext Required status context.
@@ -186,9 +194,12 @@ function statusEvidence(pr, requiredContext) {
   );
   if (named.length === 0)
     return { blocker: `missing-status:${requiredContext}` };
-  const matchingHead = named.filter((item) => item.sha === pr.head_sha);
-  if (matchingHead.length === 0) return { blocker: 'stale-check-evidence' };
-  return matchingHead.some((item) => item.state === SUCCESS)
+  if (named.length !== 1) {
+    return { blocker: `status-evidence-ambiguous:${requiredContext}` };
+  }
+  const [candidate] = named;
+  if (candidate.sha !== pr.head_sha) return { blocker: 'stale-check-evidence' };
+  return candidate.state === SUCCESS
     ? {}
     : { blocker: `status-not-successful:${requiredContext}` };
 }
@@ -200,10 +211,10 @@ function statusEvidence(pr, requiredContext) {
  * provenance, missing or unrecognized mergeability-state evidence, GitHub-reported non-passing
  * commit status, merge conflicts or stale base ancestry, malformed or unresolved review-thread
  * counts, malformed or unknown review authority, missing decisive exact-head approval, any latest
- * decisive change request, and missing/stale/non-successful required workflow or status evidence.
- * Reviewer records with malformed actor or timestamp authority become explicit blockers rather
- * than disappearing from the decision; approvals bound to another commit remain stale.
- * `eligible` is true only when the de-duplicated `blockers` array is empty.
+ * decisive change request, and missing, stale, ambiguous, or non-successful required workflow or
+ * status evidence. Reviewer records with malformed actor or timestamp authority become explicit
+ * blockers rather than disappearing from the decision; approvals bound to another commit remain
+ * stale. `eligible` is true only when the de-duplicated `blockers` array is empty.
  *
  * @param {object} pr Collected pull-request evidence for one exact head.
  * @param {{default_branch: string, required_workflows: string[], required_statuses: string[]}} policy Active merge policy.
