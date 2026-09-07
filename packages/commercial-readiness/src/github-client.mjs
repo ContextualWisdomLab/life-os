@@ -663,8 +663,9 @@ function statusIsNewer(candidate, current) {
  * non-empty, its GitHub status identifier is a unique positive safe integer, and `created_at` is a
  * canonical UTC second-precision GitHub timestamp. Arrays or objects must not become a valid
  * status context, success state, or exact-head binding through JavaScript coercion. Reusing one
- * status id across multiple records makes every affected context ambiguous and fail-closed.
- * Contradictory or malformed evidence for a known context likewise remains fail-closed.
+ * positive status id anywhere in the bounded response taints every context carrying that identity,
+ * including records whose SHA or other provenance is malformed or mismatched. Contradictory or
+ * malformed evidence for a known context likewise remains fail-closed.
  *
  * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
  * @param {string} headSha Exact current pull-request head SHA.
@@ -679,6 +680,17 @@ function latestStatuses(statuses, headSha) {
     const contextValue = status?.context;
     if (typeof contextValue !== 'string' || !contextValue) continue;
     const context = contextValue;
+    const id = status?.id;
+    const idCanonical = Number.isSafeInteger(id) && id > 0;
+    if (idCanonical) {
+      const priorContext = statusIdContexts.get(id);
+      if (priorContext !== undefined) {
+        invalidContexts.add(priorContext);
+        invalidContexts.add(context);
+      } else {
+        statusIdContexts.set(id, context);
+      }
+    }
     const shaValue = status?.sha;
     if (typeof shaValue !== 'string') {
       invalidContexts.add(context);
@@ -689,25 +701,16 @@ function latestStatuses(statuses, headSha) {
       mismatchedContexts.add(context);
       continue;
     }
-    const id = status?.id;
     const stateValue = status?.state;
     const createdAt = status?.created_at ?? null;
     if (
-      !Number.isSafeInteger(id) ||
-      id <= 0 ||
+      !idCanonical ||
       typeof stateValue !== 'string' ||
       parseCanonicalGitHubStatusTimestamp(createdAt) === null
     ) {
       invalidContexts.add(context);
       continue;
     }
-    const priorContext = statusIdContexts.get(id);
-    if (priorContext !== undefined) {
-      invalidContexts.add(priorContext);
-      invalidContexts.add(context);
-      continue;
-    }
-    statusIdContexts.set(id, context);
     const normalized = {
       id,
       context,
