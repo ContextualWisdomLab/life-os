@@ -35,6 +35,25 @@ describe('merge drain mutation authority', () => {
     );
   });
 
+  it('fails closed when a mutating snapshot repeats one pull-request identity', () => {
+    const initial = createDrainPullRequestSelector(true);
+    assert.throws(
+      () => initial([pullRequest(301, true), pullRequest(301, true)]),
+      /duplicate pull request identity/,
+      'duplicate initial evidence must fail before any mutation candidate is returned',
+    );
+
+    const refreshed = createDrainPullRequestSelector(true);
+    assert.deepEqual(refreshed([pullRequest(301, true)]), [
+      pullRequest(301, true),
+    ]);
+    assert.throws(
+      () => refreshed([pullRequest(301, true), pullRequest(301, true)]),
+      /duplicate pull request identity/,
+      'duplicate refreshed evidence must fail before the pinned candidate can be mutated',
+    );
+  });
+
   it('preserves the complete candidate set for dry-run evidence', () => {
     const select = createDrainPullRequestSelector(false);
     const snapshot = [pullRequest(300, false), pullRequest(301, true)];
