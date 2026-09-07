@@ -1,0 +1,204 @@
+name: Prove Integration Vault PostgreSQL acceptance
+
+on:
+  push:
+    branches:
+      - feat/plugin-vault-postgres-driver-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-vault-postgres-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact acceptance head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Install reproducible dependencies and pinned Vault
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes postgresql-client unzip
+          fi
+
+          vault_zip="$RUNNER_TEMP/vault_1.20.4_linux_amd64.zip"
+          curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+            -o "$vault_zip" \
+            https://releases.hashicorp.com/vault/1.20.4/vault_1.20.4_linux_amd64.zip
+          echo "fc5fb5d01d192f1216b139fb5c6af17e3af742aaeffc289fd861920ec55f2c9c  $vault_zip" \
+            | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/lifeos-vault-bin"
+          unzip -q "$vault_zip" -d "$RUNNER_TEMP/lifeos-vault-bin"
+          "$RUNNER_TEMP/lifeos-vault-bin/vault" version
+
+      - name: Start disposable verified-TLS PostgreSQL and Vault
+        id: infra
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pg_tls_dir="$RUNNER_TEMP/lifeos-integration-postgres-tls"
+          vault_dir="$RUNNER_TEMP/lifeos-integration-vault"
+          vault_tls_dir="$vault_dir/tls"
+          mkdir -p "$pg_tls_dir" "$vault_tls_dir"
+
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout "$pg_tls_dir/ca.key" \
+            -out "$pg_tls_dir/ca.crt" \
+            -days 1 \
+            -subj '/CN=LifeOS Integration Test CA'
+          openssl req -newkey rsa:2048 -nodes \
+            -keyout "$pg_tls_dir/server.key" \
+            -out "$pg_tls_dir/server.csr" \
+            -subj '/CN=localhost'
+          cat >"$pg_tls_dir/server.ext" <<'EOF'
+          subjectAltName=DNS:localhost
+          extendedKeyUsage=serverAuth
+          EOF
+          openssl x509 -req \
+            -in "$pg_tls_dir/server.csr" \
+            -CA "$pg_tls_dir/ca.crt" \
+            -CAkey "$pg_tls_dir/ca.key" \
+            -CAcreateserial \
+            -out "$pg_tls_dir/server.crt" \
+            -days 1 \
+            -extfile "$pg_tls_dir/server.ext"
+          cat >"$pg_tls_dir/pg_hba.conf" <<'EOF'
+          local all all trust
+          hostnossl all all 0.0.0.0/0 reject
+          hostssl all all 0.0.0.0/0 scram-sha-256
+          hostnossl all all ::/0 reject
+          hostssl all all ::/0 scram-sha-256
+          EOF
+
+          postgres_image='postgres:17.10-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193'
+          postgres_uid="$(docker run --rm "$postgres_image" id -u postgres)"
+          postgres_gid="$(docker run --rm "$postgres_image" id -g postgres)"
+          sudo chown "$postgres_uid:$postgres_gid" \
+            "$pg_tls_dir/server.key" "$pg_tls_dir/server.crt" "$pg_tls_dir/pg_hba.conf"
+          sudo chmod 600 "$pg_tls_dir/server.key"
+          sudo chmod 644 "$pg_tls_dir/server.crt" "$pg_tls_dir/ca.crt" "$pg_tls_dir/pg_hba.conf"
+
+          docker run --detach --name lifeos-integration-postgres \
+            --publish 127.0.0.1:55432:5432 \
+            --env POSTGRES_DB=lifeos \
+            --env POSTGRES_USER=lifeos \
+            --env POSTGRES_PASSWORD=lifeos \
+            --volume "$pg_tls_dir:/tls:ro" \
+            "$postgres_image" \
+            -c ssl=on \
+            -c ssl_cert_file=/tls/server.crt \
+            -c ssl_key_file=/tls/server.key \
+            -c hba_file=/tls/pg_hba.conf
+
+          for attempt in $(seq 1 30); do
+            if PGPASSWORD=lifeos PGSSLMODE=verify-full PGSSLROOTCERT="$pg_tls_dir/ca.crt" \
+              psql -h localhost -p 55432 -U lifeos -d lifeos -Atqc 'SELECT 1' 2>/dev/null | grep -Fx 1; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'PostgreSQL TLS readiness did not converge' >&2
+              docker logs lifeos-integration-postgres >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          vault_token="$(openssl rand -hex 32)"
+          operator_context_secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$vault_token"
+          echo "::add-mask::$operator_context_secret"
+          "$RUNNER_TEMP/lifeos-vault-bin/vault" server \
+            -dev \
+            -dev-no-store-token \
+            -dev-root-token-id="$vault_token" \
+            -dev-tls \
+            -dev-tls-cert-dir="$vault_tls_dir" \
+            -dev-listen-address=127.0.0.1:58200 \
+            >"$vault_dir/server.log" 2>&1 &
+          echo "$!" >"$vault_dir/server.pid"
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              --cacert "$vault_tls_dir/vault-ca.pem" \
+              https://localhost:58200/v1/sys/health >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo 'Vault TLS readiness did not converge' >&2
+              sed -E 's/(Root Token:).*/\1 [REDACTED]/' "$vault_dir/server.log" >&2 || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          combined_ca="$RUNNER_TEMP/lifeos-integration-combined-ca.pem"
+          cat "$pg_tls_dir/ca.crt" "$vault_tls_dir/vault-ca.pem" >"$combined_ca"
+
+          {
+            echo "INTEGRATION_DATABASE_URL=postgresql://lifeos:lifeos@localhost:55432/lifeos"
+            echo "INTEGRATION_PLUGIN_VAULT_ORIGIN=https://localhost:58200"
+            echo "INTEGRATION_PLUGIN_VAULT_TOKEN=$vault_token"
+            echo "INTEGRATION_PLUGIN_VAULT_MOUNT=secret"
+            echo "INTEGRATION_OPERATOR_CONTEXT_SECRET=$operator_context_secret"
+            echo "INTEGRATION_VAULT_POSTGRES_ACCEPTANCE=1"
+            echo "NODE_EXTRA_CA_CERTS=$combined_ca"
+            echo "PGSSLMODE=verify-full"
+            echo "PGSSLROOTCERT=$pg_tls_dir/ca.crt"
+          } >>"$GITHUB_ENV"
+          echo "pg_tls_dir=$pg_tls_dir" >>"$GITHUB_OUTPUT"
+
+      - name: Apply migrations and prove real Vault PostgreSQL recovery
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for migration in apps/integration-service/migrations/*.sql; do
+            PGPASSWORD=lifeos psql \
+              -h localhost -p 55432 -U lifeos -d lifeos \
+              -v ON_ERROR_STOP=1 \
+              -f "$migration"
+          done
+
+          pnpm --filter @life-os/plugin-sdk build
+          pnpm exec prettier --check \
+            apps/integration-service/src/plugin-vault-postgres-vault.integration.test.ts
+          pnpm --filter @life-os/integration-service typecheck
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-vault-postgres-vault.integration.test.ts \
+            --no-file-parallelism
+
+          env \
+            -u INTEGRATION_DATABASE_URL \
+            -u INTEGRATION_PLUGIN_VAULT_ORIGIN \
+            -u INTEGRATION_PLUGIN_VAULT_TOKEN \
+            -u INTEGRATION_PLUGIN_VAULT_MOUNT \
+            -u INTEGRATION_OPERATOR_CONTEXT_SECRET \
+            -u INTEGRATION_VAULT_POSTGRES_ACCEPTANCE \
+            pnpm --filter @life-os/integration-service test
+
+      - name: Stop disposable acceptance infrastructure
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -f "$RUNNER_TEMP/lifeos-integration-vault/server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/lifeos-integration-vault/server.pid")" >/dev/null 2>&1 || true
+          fi
+          docker rm --force lifeos-integration-postgres >/dev/null 2>&1 || true
