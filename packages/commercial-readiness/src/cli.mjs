@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { lstat, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { constants as fileConstants } from 'node:fs';
+import { lstat, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { evaluateCapabilities } from './audit.mjs';
@@ -17,6 +18,7 @@ import {
   validateCommercialReadinessPolicy,
   validateGitHubSnapshot,
 } from './schema.mjs';
+import { verifyReleaseEvidenceSignatures } from './release-signature-verification.mjs';
 import { collectWorkflowRegistrySnapshot } from './workflow-registry.mjs';
 
 const COMMANDS = Object.freeze({
@@ -32,6 +34,10 @@ const COMMANDS = Object.freeze({
   },
   'workflow-registry': {
     values: new Set(['repository', 'output', 'commit', 'generatedAt']),
+    booleans: new Set(),
+  },
+  'verify-release': {
+    values: new Set(['index', 'artifacts', 'trustedKeys']),
     booleans: new Set(),
   },
   audit: {
@@ -67,6 +73,9 @@ const FLAG_TO_KEY = Object.freeze({
   '--output-json': 'outputJson',
   '--output-markdown': 'outputMarkdown',
   '--report': 'report',
+  '--index': 'index',
+  '--artifacts': 'artifacts',
+  '--trusted-keys': 'trustedKeys',
   '--dry-run': 'dryRun',
   '--merge': 'merge',
 });
@@ -113,18 +122,49 @@ function requireOptions(options, names) {
   }
 }
 
+/**
+ * Reads one bounded regular JSON file through a single no-follow file descriptor.
+ *
+ * Opening and then inspecting the same descriptor closes the lstat/read race that
+ * would otherwise let a symlink replacement redirect policy, release evidence, or
+ * trust-root input after validation. Parser errors remain generic and no file content
+ * is reflected in the failure.
+ */
 export async function readJsonFile(path, maxBytes = 1024 * 1024) {
-  const metadata = await lstat(path);
-  if (metadata.isSymbolicLink() || !metadata.isFile()) {
-    throw new Error('JSON input must be a regular file');
-  }
-  if (metadata.size > maxBytes)
-    throw new Error('JSON input exceeded the size limit');
+  let handle;
   try {
-    return JSON.parse(await readFile(path, 'utf8'));
+    handle = await open(path, fileConstants.O_RDONLY | fileConstants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new Error('JSON input must be a regular file');
+    if (metadata.size > maxBytes)
+      throw new Error('JSON input exceeded the size limit');
+
+    const bytes = Buffer.allocUnsafe(metadata.size);
+    let position = 0;
+    while (position < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, position, bytes.length - position, position);
+      if (bytesRead <= 0) throw new Error('JSON input could not be read completely');
+      position += bytesRead;
+    }
+    try {
+      return JSON.parse(bytes.toString('utf8'));
+    } catch (error) {
+      if (error instanceof SyntaxError) throw new Error('JSON input was invalid');
+      throw error;
+    }
   } catch (error) {
-    if (error instanceof SyntaxError) throw new Error('JSON input was invalid');
+    if (error && typeof error === 'object' && error.code === 'ELOOP') {
+      throw new Error('JSON input must be a regular file');
+    }
     throw error;
+  } finally {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // A completed read is not made less trustworthy by a later descriptor-close failure.
+      }
+    }
   }
 }
 
@@ -209,6 +249,29 @@ export async function commandWorkflowRegistry(
       `Workflow registry contains ${snapshot.active_orphans.length} active orphan identity record(s)`,
     );
   }
+}
+
+/**
+ * Verifies one operator-supplied release-evidence directory against explicit trusted keys.
+ *
+ * The command reads only two bounded regular JSON inputs, passes the artifact directory
+ * unchanged to the cryptographic verifier, and prints only the verified release version
+ * and source commit. It does not discover trust roots, fetch remote keys, or emit artifact
+ * names/signature material on success.
+ */
+export async function commandVerifyRelease(options, dependencies = {}) {
+  requireOptions(options, ['index', 'artifacts', 'trustedKeys']);
+  const readJson = dependencies.readJsonFile ?? readJsonFile;
+  const verify =
+    dependencies.verifyReleaseEvidenceSignatures ?? verifyReleaseEvidenceSignatures;
+  const log = dependencies.log ?? console.log;
+  const [index, trustedKeys] = await Promise.all([
+    readJson(options.index, 1024 * 1024),
+    readJson(options.trustedKeys, 256 * 1024),
+  ]);
+  const verified = await verify(index, options.artifacts, trustedKeys);
+  log(`release verified: ${verified.version} @ ${verified.source_commit}`);
+  return verified;
 }
 
 async function commandAudit(options) {
@@ -327,6 +390,7 @@ async function main(argv = process.argv.slice(2)) {
   if (command === 'workflow-registry') {
     return await commandWorkflowRegistry(options);
   }
+  if (command === 'verify-release') return await commandVerifyRelease(options);
   if (command === 'audit') return await commandAudit(options);
   if (command === 'publish') return await commandPublish(options);
   if (command === 'drain') return await commandDrain(options);
