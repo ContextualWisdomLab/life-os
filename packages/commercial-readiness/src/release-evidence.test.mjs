@@ -105,6 +105,20 @@ function sha256(bytes) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 }
 
+function canonicalChecksumBody(bodies) {
+  return Buffer.from(
+    [
+      'life-os-migrations.tar',
+      'life-os-web.oci.json',
+      'life-os.intoto.jsonl',
+      'life-os.spdx.json',
+    ]
+      .sort()
+      .map((name) => `${sha256(bodies.get(name)).slice('sha256:'.length)}  ${name}\n`)
+      .join(''),
+  );
+}
+
 function releaseIndexForBodies(bodies) {
   const base = releaseIndex();
   return {
@@ -285,12 +299,13 @@ describe('verifyReleaseEvidenceDirectory', () => {
       ['life-os-web.oci.json', Buffer.from('{"image":"digest"}\n')],
       ['life-os.spdx.json', Buffer.from('{"spdxVersion":"3.0.1"}\n')],
       ['life-os.intoto.jsonl', Buffer.from('{"predicateType":"slsa"}\n')],
-      ['SHA256SUMS', Buffer.from('checksum manifest\n')],
+      ['SHA256SUMS', Buffer.from('placeholder')],
       ['life-os.intoto.jsonl.sig', Buffer.from('detached signature bytes\n')],
       ['life-os-web.oci.json.sig', Buffer.from('container detached signature bytes\n')],
       ['SHA256SUMS.sig', Buffer.from('checksum detached signature bytes\n')],
       ['life-os-migrations.tar', Buffer.from('migration bundle\n')],
     ]);
+    bodies.set('SHA256SUMS', canonicalChecksumBody(bodies));
     try {
       for (const [name, bytes] of bodies) {
         await writeFile(join(directory, name), bytes, { flag: 'wx' });
@@ -310,12 +325,13 @@ describe('verifyReleaseEvidenceDirectory', () => {
       ['life-os-web.oci.json', Buffer.from('container')],
       ['life-os.spdx.json', Buffer.from('sbom')],
       ['life-os.intoto.jsonl', Buffer.from('provenance')],
-      ['SHA256SUMS', Buffer.from('checksums')],
+      ['SHA256SUMS', Buffer.from('placeholder')],
       ['life-os.intoto.jsonl.sig', Buffer.from('signature')],
       ['life-os-web.oci.json.sig', Buffer.from('container signature')],
       ['SHA256SUMS.sig', Buffer.from('checksum signature')],
       ['life-os-migrations.tar', Buffer.from('migrations')],
     ]);
+    bodies.set('SHA256SUMS', canonicalChecksumBody(bodies));
     try {
       for (const [name, bytes] of bodies) {
         await writeFile(join(directory, name), bytes, { flag: 'wx' });
@@ -339,12 +355,13 @@ describe('verifyReleaseEvidenceDirectory', () => {
       ['life-os-web.oci.json', Buffer.from('container')],
       ['life-os.spdx.json', Buffer.from('sbom')],
       ['life-os.intoto.jsonl', Buffer.from('provenance')],
-      ['SHA256SUMS', Buffer.from('checksums')],
+      ['SHA256SUMS', Buffer.from('placeholder')],
       ['life-os.intoto.jsonl.sig', Buffer.from('signature')],
       ['life-os-web.oci.json.sig', Buffer.from('container signature')],
       ['SHA256SUMS.sig', Buffer.from('checksum signature')],
       ['life-os-migrations.tar', Buffer.from('migrations')],
     ]);
+    bodies.set('SHA256SUMS', canonicalChecksumBody(bodies));
     try {
       for (const [name, bytes] of bodies) {
         if (name === 'SHA256SUMS') continue;

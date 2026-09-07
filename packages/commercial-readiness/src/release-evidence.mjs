@@ -316,7 +316,22 @@ function requireArtifacts(value, sourceCommit, releaseVersion) {
   return Object.freeze(artifacts);
 }
 
-async function verifyArtifactBytes(directory, artifact) {
+function expectedChecksumManifestBytes(artifacts) {
+  const lines = artifacts
+    .filter(
+      (artifact) =>
+        artifact.evidence_type !== 'checksum' && artifact.evidence_type !== 'signature',
+    )
+    .sort((left, right) => left.artifact_name.localeCompare(right.artifact_name, 'en'))
+    .map(
+      (artifact) =>
+        `${artifact.sha256.slice('sha256:'.length)}  ${artifact.artifact_name}\n`,
+    )
+    .join('');
+  return Buffer.from(lines, 'utf8');
+}
+
+async function verifyArtifactBytes(directory, artifact, expectedBytes = null) {
   let handle;
   try {
     handle = await open(
@@ -324,7 +339,13 @@ async function verifyArtifactBytes(directory, artifact) {
       fileConstants.O_RDONLY | fileConstants.O_NOFOLLOW,
     );
     const metadata = await handle.stat();
-    if (!metadata.isFile() || metadata.size !== artifact.size_bytes) return invalid();
+    if (
+      !metadata.isFile() ||
+      metadata.size !== artifact.size_bytes ||
+      (expectedBytes && metadata.size !== expectedBytes.byteLength)
+    ) {
+      return invalid();
+    }
 
     const digest = createHash('sha256');
     const buffer = Buffer.allocUnsafe(VERIFY_BUFFER_BYTES);
@@ -337,6 +358,14 @@ async function verifyArtifactBytes(directory, artifact) {
         position,
       );
       if (bytesRead <= 0) return invalid();
+      if (
+        expectedBytes &&
+        !buffer
+          .subarray(0, bytesRead)
+          .equals(expectedBytes.subarray(position, position + bytesRead))
+      ) {
+        return invalid();
+      }
       digest.update(buffer.subarray(0, bytesRead));
       position += bytesRead;
     }
@@ -414,10 +443,14 @@ export function validateReleaseEvidenceIndex(value) {
  * The verifier first applies the structural release contract, rejects a symlinked
  * evidence-directory boundary or ancestor, then opens each artifact without
  * following a final symlink, streams its bytes through SHA-256, and compares both
- * byte count and digest with the immutable index. It reads only artifact names
- * already accepted by the no-path-separator contract and emits the same payload-free
- * failure for missing, replaced, symlinked, non-regular, short, oversized, or
- * digest-mismatched files. It does not interpret SBOM/provenance content or
+ * byte count and digest with the immutable index. Every checksum artifact is also
+ * required to be the canonical lowercase SHA-256 manifest for every retained
+ * non-checksum, non-signature artifact, sorted by artifact name. This prevents a
+ * digest-valid but unrelated checksum file from being presented as buyer-verifiable
+ * release evidence. It reads only artifact names already accepted by the
+ * no-path-separator contract and emits the same payload-free failure for missing,
+ * replaced, symlinked, non-regular, short, oversized, digest-mismatched, or
+ * checksum-unbound files. It does not interpret SBOM/provenance content or
  * cryptographically validate detached signatures; those are separate release gates.
  *
  * @param {unknown} value Untrusted release-evidence index.
@@ -443,8 +476,13 @@ export async function verifyReleaseEvidenceDirectory(value, artifactDirectory) {
     if (error instanceof ReleaseEvidenceValidationError) throw error;
     return invalid();
   }
+  const checksumManifestBytes = expectedChecksumManifestBytes(index.artifacts);
   for (const artifact of index.artifacts) {
-    await verifyArtifactBytes(directory, artifact);
+    await verifyArtifactBytes(
+      directory,
+      artifact,
+      artifact.evidence_type === 'checksum' ? checksumManifestBytes : null,
+    );
   }
   return index;
 }
