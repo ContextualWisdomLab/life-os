@@ -367,7 +367,7 @@ export function validateCommercialReadinessPolicy(value) {
 
 const SNAPSHOT_SCHEMA = 'life-os.github-snapshot.v1';
 const SNAPSHOT_REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 function failSnapshot(detail = '') {
   throw new Error(`Invalid GitHub snapshot${detail ? `: ${detail}` : ''}`);
