@@ -171,7 +171,8 @@ function workflowEvidence(pr, requiredName) {
     return { blocker: `workflow-evidence-ambiguous:${requiredName}` };
   }
   const [candidate] = named;
-  if (candidate.head_sha !== pr.head_sha) return { blocker: 'stale-check-evidence' };
+  if (candidate.head_sha !== pr.head_sha)
+    return { blocker: 'stale-check-evidence' };
   return candidate.status === 'completed' && candidate.conclusion === SUCCESS
     ? {}
     : { blocker: `workflow-not-successful:${requiredName}` };
