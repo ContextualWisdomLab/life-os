@@ -86,6 +86,7 @@ it('does not coerce malformed workflow identity scalars into exact-head success 
     { ...canonical, name: ['CI'] },
     { ...canonical, status: ['completed'] },
     { ...canonical, head_sha: [headSha] },
+    { ...canonical, run_attempt: '1' },
   ]) {
     const pullRequest = await evaluateRun(malformed);
     assert.equal(pullRequest.eligible, false);
