@@ -215,7 +215,7 @@ function requireArtifacts(value, sourceCommit) {
     byName.set(artifact.artifact_name, artifact);
     evidenceTypes.add(artifact.evidence_type);
   }
-  for (const requiredType of ['sbom', 'provenance', 'checksum', 'signature']) {
+  for (const requiredType of ['container', 'sbom', 'provenance', 'checksum', 'signature']) {
     if (!evidenceTypes.has(requiredType)) return invalid();
   }
   const signedSubjectNames = new Set();
