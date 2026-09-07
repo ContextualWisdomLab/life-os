@@ -42,32 +42,36 @@ jobs:
           if '\n      pg:\n' in importer or "\n      '@types/pg':\n" in importer:
               raise SystemExit('integration importer already contains PostgreSQL entries')
 
-          dependency_anchor = """      '@nestjs/platform-express':
-        specifier: ^11.1.6
-        version: 11.1.28(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)
-      reflect-metadata:
-"""
-          dependency_replacement = """      '@nestjs/platform-express':
-        specifier: ^11.1.6
-        version: 11.1.28(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)
-      pg:
-        specifier: ^8.22.0
-        version: 8.22.0
-      reflect-metadata:
-"""
-          type_anchor = """      '@types/node':
-        specifier: ^24.3.0
-        version: 24.13.3
-      typescript:
-"""
-          type_replacement = """      '@types/node':
-        specifier: ^24.3.0
-        version: 24.13.3
-      '@types/pg':
-        specifier: ^8.20.0
-        version: 8.20.3
-      typescript:
-"""
+          dependency_anchor = (
+              "      '@nestjs/platform-express':\n"
+              '        specifier: ^11.1.6\n'
+              '        version: 11.1.28(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)\n'
+              '      reflect-metadata:\n'
+          )
+          dependency_replacement = (
+              "      '@nestjs/platform-express':\n"
+              '        specifier: ^11.1.6\n'
+              '        version: 11.1.28(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)\n'
+              '      pg:\n'
+              '        specifier: ^8.22.0\n'
+              '        version: 8.22.0\n'
+              '      reflect-metadata:\n'
+          )
+          type_anchor = (
+              "      '@types/node':\n"
+              '        specifier: ^24.3.0\n'
+              '        version: 24.13.3\n'
+              '      typescript:\n'
+          )
+          type_replacement = (
+              "      '@types/node':\n"
+              '        specifier: ^24.3.0\n'
+              '        version: 24.13.3\n'
+              "      '@types/pg':\n"
+              '        specifier: ^8.20.0\n'
+              '        version: 8.20.3\n'
+              '      typescript:\n'
+          )
 
           if importer.count(dependency_anchor) != 1:
               raise SystemExit('runtime dependency anchor is not unique inside Integration importer')
