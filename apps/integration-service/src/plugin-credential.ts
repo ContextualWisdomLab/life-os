@@ -456,7 +456,28 @@ export class PluginCredentialApplication {
       ) {
         return invalid();
       }
-      return view(existing);
+      let currentBindingEvidence: PluginCredentialBindingRecord | undefined;
+      try {
+        currentBindingEvidence = await this.bindingStore.findById(
+          credentialBindingId,
+          context.workspaceId,
+          context.actorUserId,
+        );
+      } catch {
+        return invalid();
+      }
+      if (currentBindingEvidence === undefined) {
+        return invalid();
+      }
+      const currentBinding = requireBindingRecord(currentBindingEvidence);
+      if (
+        !activeBinding(currentBinding, authority) ||
+        !sameImmutableBindingEvidence(currentBinding, existing) ||
+        !bindingVisibleAt(currentBinding, boundAt)
+      ) {
+        return invalid();
+      }
+      return view(currentBinding);
     }
 
     let secretReference: string;
