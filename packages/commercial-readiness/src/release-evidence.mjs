@@ -26,6 +26,7 @@ const EVIDENCE_TYPES = new Set([
   'test-report',
   'recovery-report',
 ]);
+const SIGNATURE_REQUIRED_SUBJECT_TYPES = new Set(['container', 'checksum', 'provenance']);
 
 /**
  * Stable validation failure for malformed or overclaimed release evidence.
@@ -217,10 +218,20 @@ function requireArtifacts(value, sourceCommit) {
   for (const requiredType of ['sbom', 'provenance', 'checksum', 'signature']) {
     if (!evidenceTypes.has(requiredType)) return invalid();
   }
+  const signedSubjectNames = new Set();
   for (const artifact of artifacts) {
     if (artifact.evidence_type !== 'signature') continue;
     const subject = byName.get(artifact.subject_artifact_name);
     if (!subject || subject.evidence_type === 'signature' || subject.sha256 !== artifact.subject_sha256) {
+      return invalid();
+    }
+    signedSubjectNames.add(subject.artifact_name);
+  }
+  for (const artifact of artifacts) {
+    if (
+      SIGNATURE_REQUIRED_SUBJECT_TYPES.has(artifact.evidence_type) &&
+      !signedSubjectNames.has(artifact.artifact_name)
+    ) {
       return invalid();
     }
   }
@@ -273,10 +284,11 @@ async function verifyArtifactBytes(directory, artifact) {
  * unresolved P0 buyer gaps explicit, and prevents a `stable` channel assertion
  * while any P0 gap remains. SPDX `specVersion` and the SLSA in-toto provenance
  * predicate URI identify the expected evidence formats. Signature evidence must
- * identify an exact retained subject artifact and its SHA-256 digest, preventing
- * an unrelated signature file from satisfying the index structurally. Successful
- * validation does not cryptographically verify the signature or claim
- * certification, SLSA level, accessibility conformance, or release readiness.
+ * identify an exact retained subject artifact and its SHA-256 digest, and every
+ * retained container, checksum manifest, and provenance artifact must have such
+ * structural signature coverage. Successful validation does not cryptographically
+ * verify the signature or claim certification, SLSA level, accessibility
+ * conformance, or release readiness.
  *
  * @param {unknown} value Untrusted machine-readable release evidence.
  * @returns {Readonly<object>} A deeply frozen, bounded release evidence index.

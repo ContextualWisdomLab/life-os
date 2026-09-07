@@ -35,6 +35,24 @@ function signatureMessage(subjectArtifactName, subjectSha256) {
   );
 }
 
+function signedEnvelope(privateKey, subjectArtifactName, subjectSha256) {
+  return {
+    schema_version: 'life-os.release-signature.v1',
+    algorithm: 'ed25519',
+    key_id: KEY_ID,
+    source_commit: SOURCE_COMMIT,
+    channel: CHANNEL,
+    version: VERSION,
+    subject_artifact_name: subjectArtifactName,
+    subject_sha256: subjectSha256,
+    signature_base64: sign(
+      null,
+      signatureMessage(subjectArtifactName, subjectSha256),
+      privateKey,
+    ).toString('base64'),
+  };
+}
+
 async function createFixture({
   mutateEnvelope,
   trustedKeyId = KEY_ID,
@@ -46,31 +64,38 @@ async function createFixture({
   const subjectArtifactName = 'life-os-web.tar';
   const subjectBytes = Buffer.from('immutable release payload\n', 'utf8');
   const subjectSha256 = sha256(subjectBytes);
-  const signatureBytes = sign(null, signatureMessage(subjectArtifactName, subjectSha256), privateKey);
-  const envelope = {
-    schema_version: 'life-os.release-signature.v1',
-    algorithm: 'ed25519',
-    key_id: KEY_ID,
-    source_commit: SOURCE_COMMIT,
-    channel: CHANNEL,
-    version: VERSION,
-    subject_artifact_name: subjectArtifactName,
-    subject_sha256: subjectSha256,
-    signature_base64: signatureBytes.toString('base64'),
-  };
+  const sbomBytes = suppliedSbomBytes ?? Buffer.from('{}\n', 'utf8');
+  const provenanceArtifactName = 'life-os.provenance.json';
+  const provenanceBytes = Buffer.from('{}\n', 'utf8');
+  const provenanceSha256 = sha256(provenanceBytes);
+  const checksumArtifactName = 'SHA256SUMS';
+  const checksumBytes = Buffer.from(`${subjectSha256}  ${subjectArtifactName}\n`, 'utf8');
+  const checksumSha256 = sha256(checksumBytes);
+
+  const envelope = signedEnvelope(privateKey, subjectArtifactName, subjectSha256);
   if (mutateEnvelope) mutateEnvelope(envelope);
   const signatureArtifactName = 'life-os-web.tar.sig.json';
   const signatureArtifactBytes = Buffer.from(`${JSON.stringify(envelope)}\n`, 'utf8');
 
-  const sbomBytes = suppliedSbomBytes ?? Buffer.from('{}\n', 'utf8');
-  const provenanceBytes = Buffer.from('{}\n', 'utf8');
-  const checksumBytes = Buffer.from(`${subjectSha256}  ${subjectArtifactName}\n`, 'utf8');
+  const provenanceSignatureArtifactName = 'life-os.provenance.json.sig.json';
+  const provenanceSignatureBytes = Buffer.from(
+    `${JSON.stringify(signedEnvelope(privateKey, provenanceArtifactName, provenanceSha256))}\n`,
+    'utf8',
+  );
+  const checksumSignatureArtifactName = 'SHA256SUMS.sig.json';
+  const checksumSignatureBytes = Buffer.from(
+    `${JSON.stringify(signedEnvelope(privateKey, checksumArtifactName, checksumSha256))}\n`,
+    'utf8',
+  );
+
   await Promise.all([
     writeFile(join(directory, subjectArtifactName), subjectBytes),
     writeFile(join(directory, signatureArtifactName), signatureArtifactBytes),
     writeFile(join(directory, 'life-os.spdx.json'), sbomBytes),
-    writeFile(join(directory, 'life-os.provenance.json'), provenanceBytes),
-    writeFile(join(directory, 'SHA256SUMS'), checksumBytes),
+    writeFile(join(directory, provenanceArtifactName), provenanceBytes),
+    writeFile(join(directory, checksumArtifactName), checksumBytes),
+    writeFile(join(directory, provenanceSignatureArtifactName), provenanceSignatureBytes),
+    writeFile(join(directory, checksumSignatureArtifactName), checksumSignatureBytes),
   ]);
 
   const artifact = (artifactName, evidenceType, bytes, extra = {}) => ({
@@ -81,6 +106,11 @@ async function createFixture({
     size_bytes: bytes.length,
     source_commit: SOURCE_COMMIT,
   });
+  const signatureArtifact = (artifactName, bytes, subjectName, subjectDigest) =>
+    artifact(artifactName, 'signature', bytes, {
+      subject_artifact_name: subjectName,
+      subject_sha256: subjectDigest,
+    });
   const index = {
     schema_version: 'life-os.release-evidence.v1',
     channel: CHANNEL,
@@ -91,14 +121,28 @@ async function createFixture({
     artifacts: [
       artifact(subjectArtifactName, 'application', subjectBytes),
       artifact('life-os.spdx.json', 'sbom', sbomBytes, { spec_version: '3.0.1' }),
-      artifact('life-os.provenance.json', 'provenance', provenanceBytes, {
+      artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
         predicate_type: 'https://slsa.dev/provenance/v1',
       }),
-      artifact('SHA256SUMS', 'checksum', checksumBytes),
-      artifact(signatureArtifactName, 'signature', signatureArtifactBytes, {
-        subject_artifact_name: subjectArtifactName,
-        subject_sha256: subjectSha256,
-      }),
+      artifact(checksumArtifactName, 'checksum', checksumBytes),
+      signatureArtifact(
+        signatureArtifactName,
+        signatureArtifactBytes,
+        subjectArtifactName,
+        subjectSha256,
+      ),
+      signatureArtifact(
+        provenanceSignatureArtifactName,
+        provenanceSignatureBytes,
+        provenanceArtifactName,
+        provenanceSha256,
+      ),
+      signatureArtifact(
+        checksumSignatureArtifactName,
+        checksumSignatureBytes,
+        checksumArtifactName,
+        checksumSha256,
+      ),
     ],
   };
 
