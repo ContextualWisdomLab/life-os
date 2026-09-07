@@ -119,7 +119,7 @@ async function createFixture({
     generated_at: GENERATED_AT,
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
-      artifact(subjectArtifactName, 'application', subjectBytes),
+      artifact(subjectArtifactName, 'container', subjectBytes),
       artifact('life-os.spdx.json', 'sbom', sbomBytes, { spec_version: '3.0.1' }),
       artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
         predicate_type: 'https://slsa.dev/provenance/v1',
