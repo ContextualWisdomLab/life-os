@@ -43,6 +43,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Nightly release-evidence versions now bind their `YYYYMMDD` identity to the canonical UTC date in `generated_at`, rejecting otherwise valid indexes whose nightly version date and generation instant disagree.
 - Release checksum evidence is now bound to the exact retained non-signature subjects: every checksum artifact must byte-for-byte match the canonical lowercase SHA-256 manifest sorted by artifact name, so a digest-valid but unrelated checksum file cannot satisfy buyer-verifiable release evidence.
 - Release-evidence directory verification now rejects a static path reached through symlinked ancestry before opening retained artifacts, preserving the final-directory and per-artifact no-follow boundaries instead of accepting aliased filesystem authority.
 - Release migration compatibility ranges are now bound to the release being produced: the maximum accepted source version must be strictly older than the target release, so same-version or future-version migration claims cannot satisfy structural release admission.
