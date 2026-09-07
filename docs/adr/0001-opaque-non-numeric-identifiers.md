@@ -31,3 +31,11 @@ UUIDv4 is preferred over sequential integers and time-ordered identifiers becaus
 - Tests must verify generated IDs are UUIDv4 and reject numeric-only supplied identifiers.
 - Foreign keys remain explicit and tenant-aware; opaque IDs do not replace authorization or tenant isolation.
 - The earlier design note proposing UUIDv7 is superseded by this ADR.
+
+## References
+
+Davis, K. R., Peabody, B. G., & Leach, P. J. (2024). *Universally unique IDentifiers (UUIDs)* (RFC 9562) [Published Standards Track RFC]. RFC Editor. https://doi.org/10.17487/RFC9562
+
+OWASP Foundation. (n.d.). *Insecure direct object reference (IDOR)*. https://owasp.org/www-community/attacks/insecure_direct_object_reference
+
+OWASP Foundation. (2021). *A01:2021 – Broken access control*. https://owasp.org/Top10/2021/A01_2021-Broken_Access_Control/index.html

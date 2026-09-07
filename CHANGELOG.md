@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Changed
 
+- Accepted ADRs 0001–0003 now include APA 7th References with verified RFC, OWASP, GitHub, and arXiv locators, and `docs/adr/README.md` indexes those decisions.
 - Production contextual-orchestrator proposal requests now explicitly use adaptive `auto` mode and avoid provider-native structured-output passthrough, allowing the orchestration plane to meet the quality requirement and then minimize known cost while LifeOS retains strict fail-closed proposal validation.
 
 ### Added

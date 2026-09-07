@@ -25,4 +25,4 @@ Simple requests may still use one worker when adaptive policy finds that suffici
 
 Omidvar, H., & Akhlaghi, V. (2026). *A communication-theoretic framework for LLM agents: Cost-aware adaptive reliability* [Preprint]. arXiv. https://doi.org/10.48550/arXiv.2605.09121
 
-Tang, Y., Cetin, E., Xu, J., Sun, Q., Nielsen, S., Richard, V., Goda, H., Tymchenko, I., Nguyen, N., Lee, H., Ashiga, M., Kotyan, S., Kuroki, S., & Clanuwat, T. (2026). *Sakana Fugu technical report* [Technical report]. arXiv. https://doi.org/10.48550/arXiv.2606.21228
+Sakana AI. (2026). *Sakana Fugu technical report* [Technical report; preprint]. arXiv. https://doi.org/10.48550/arXiv.2606.21228
