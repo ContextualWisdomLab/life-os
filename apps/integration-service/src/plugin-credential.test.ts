@@ -115,6 +115,15 @@ class RecordingSecretStore implements PluginSecretStore {
     return this.reference;
   }
 
+  async verifySecret(
+    secretReference: string,
+    _input: PutPluginSecretInput,
+  ): Promise<void> {
+    if (secretReference !== this.reference) {
+      throw new Error('secret reference unavailable');
+    }
+  }
+
   async deleteSecret(secretReference: string): Promise<void> {
     this.deletes.push(secretReference);
     if (this.deleteFailure) {
@@ -127,6 +136,7 @@ function application(
   authority = new InstallationAuthority(),
   bindingStore = new RecordingBindingStore(),
   secretStore = new RecordingSecretStore(),
+  now = BOUND_AT,
 ): {
   readonly authority: InstallationAuthority;
   readonly bindingStore: RecordingBindingStore;
@@ -141,7 +151,7 @@ function application(
       authority,
       bindingStore,
       secretStore,
-      () => new Date(BOUND_AT),
+      () => new Date(now),
     ),
   };
 }
@@ -269,6 +279,7 @@ describe('PluginCredentialApplication', () => {
       new InstallationAuthority(),
       bindingStore,
       secretStore,
+      REVOKED_AT,
     );
 
     await expect(
@@ -279,7 +290,7 @@ describe('PluginCredentialApplication', () => {
         credentialBindingId: BINDING_ID,
         workspaceId: WORKSPACE_ID,
         installedByUserId: USER_ID,
-        revokedAt: BOUND_AT,
+        revokedAt: REVOKED_AT,
       },
     ]);
     expect(secretStore.deletes).toEqual([SECRET_REFERENCE]);

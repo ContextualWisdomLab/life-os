@@ -89,11 +89,14 @@ export interface PutPluginSecretInput {
  * External encrypted secret-store/KMS authority.
  *
  * `putSecret` must be idempotent for one credential binding identity and return an
- * opaque reference rather than plaintext. `deleteSecret` must tolerate exact
- * retries so a durable revocation can complete provider cleanup after an outage.
+ * opaque reference rather than plaintext. `verifySecret` must prove that an existing
+ * opaque reference still contains the exact immutable authority and secret bytes before
+ * metadata-only replay can be accepted. `deleteSecret` must tolerate exact retries so a
+ * durable revocation can complete provider cleanup after an outage.
  */
 export interface PluginSecretStore {
   putSecret(input: PutPluginSecretInput): Promise<string>;
+  verifySecret(secretReference: string, input: PutPluginSecretInput): Promise<void>;
   deleteSecret(secretReference: string): Promise<void>;
 }
 
@@ -413,6 +416,18 @@ export class PluginCredentialApplication {
         !bindingVisibleAt(existing, boundAt) ||
         instantMilliseconds(existing.boundAt) < instantMilliseconds(installedAt)
       ) {
+        return invalid();
+      }
+      try {
+        await this.secretStore.verifySecret(existing.secretReference, {
+          credentialBindingId,
+          installationId,
+          workspaceId: context.workspaceId,
+          installedByUserId: context.actorUserId,
+          credentialName,
+          secretValue,
+        });
+      } catch {
         return invalid();
       }
       return view(existing);

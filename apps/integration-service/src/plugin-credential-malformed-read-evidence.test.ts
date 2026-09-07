@@ -91,6 +91,13 @@ class EvidenceSecretStore implements PluginSecretStore {
     return SECRET_REFERENCE;
   }
 
+  async verifySecret(
+    _secretReference: string,
+    _input: PutPluginSecretInput,
+  ): Promise<void> {
+    throw new Error('unexpected replay verification in fixture');
+  }
+
   async deleteSecret(secretReference: string): Promise<void> {
     this.deletes.push(secretReference);
   }

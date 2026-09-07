@@ -25,7 +25,7 @@ function fixture(): {
   emitIdleError(error: Error): void;
 } {
   const constructedWith = vi.fn();
-  const query = vi.fn(async (text: string) =>
+  const query = vi.fn(async (text: string, _values?: readonly unknown[]) =>
     text === READINESS_SQL
       ? {
           rows: [{ integration_plugin_runtime_ready: 1 }],
@@ -55,7 +55,7 @@ function fixture(): {
       text: string,
       values?: readonly unknown[],
     ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number | null }> {
-      return (await query(text, values)) as {
+      return (await query(text, values)) as unknown as {
         readonly rows: readonly Row[];
         readonly rowCount: number | null;
       };

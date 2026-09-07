@@ -22,7 +22,10 @@ function poolFixture(): {
       readonly rows: readonly Row[];
       readonly rowCount: number | null;
     }> {
-      return { rows: [], rowCount: 0 };
+      return {
+        rows: [{ integration_plugin_runtime_ready: 1 }] as unknown as readonly Row[],
+        rowCount: 1,
+      };
     }
 
     async end(): Promise<void> {
@@ -42,7 +45,7 @@ function poolFixture(): {
 }
 
 describe('Integration PostgreSQL idle-error telemetry boundary', () => {
-  it('does not let a failing telemetry sink turn an idle-client failure into an uncaught process error', () => {
+  it('does not let a failing telemetry sink turn an idle-client failure into an uncaught process error', async () => {
     const test = poolFixture();
     const credentialBearingNativeError = Object.assign(
       new Error('password=must-not-reach-process-error'),
@@ -52,14 +55,17 @@ describe('Integration PostgreSQL idle-error telemetry boundary', () => {
       },
     );
 
-    createNodePostgresPluginPool(
-      'postgresql://integration:secret@db.example.test:5432/life_os',
-      test.constructor,
-      () => {
-        throw new Error('telemetry sink failure with secret-like detail');
-      },
+    const pool = await Promise.resolve(
+      createNodePostgresPluginPool(
+        'postgresql://integration:secret@db.example.test:5432/life_os',
+        test.constructor,
+        () => {
+          throw new Error('telemetry sink failure with secret-like detail');
+        },
+      ),
     );
 
     expect(() => test.emitIdleError(credentialBearingNativeError)).not.toThrow();
+    await pool.end();
   });
 });

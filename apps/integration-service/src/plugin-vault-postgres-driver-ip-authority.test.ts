@@ -25,7 +25,7 @@ function rejectingConstructorProbe(): {
       readonly rowCount: number | null;
     }> {
       return {
-        rows: [{ integration_plugin_runtime_ready: 1 }] as readonly Row[],
+        rows: [],
         rowCount: 1,
       };
     }

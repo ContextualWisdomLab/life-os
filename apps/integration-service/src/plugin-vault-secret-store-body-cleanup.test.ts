@@ -106,12 +106,15 @@ describe('PluginVaultSecretStore response cleanup', () => {
 
     try {
       const deletion = store.deleteSecret(REFERENCE);
+      const rejection = expect(deletion).rejects.toBeInstanceOf(
+        PluginVaultSecretStoreError,
+      );
       await vi.advanceTimersByTimeAsync(0);
       expect(requestSignal).toBeDefined();
 
       await vi.advanceTimersByTimeAsync(5_001);
       expect(requestSignal?.aborted).toBe(true);
-      await expect(deletion).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+      await rejection;
     } finally {
       vi.useRealTimers();
     }
@@ -150,12 +153,15 @@ describe('PluginVaultSecretStore response cleanup', () => {
 
     try {
       const deletion = store.deleteSecret(REFERENCE);
+      const rejection = expect(deletion).rejects.toBeInstanceOf(
+        PluginVaultSecretStoreError,
+      );
       await vi.advanceTimersByTimeAsync(0);
       expect(requestSignal).toBeDefined();
 
       await vi.advanceTimersByTimeAsync(5_001);
       expect(requestSignal?.aborted).toBe(true);
-      await expect(deletion).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
+      await rejection;
     } finally {
       vi.useRealTimers();
     }

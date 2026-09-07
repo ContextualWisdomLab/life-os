@@ -157,6 +157,15 @@ class MemorySecretStore implements PluginSecretStore {
     return reference;
   }
 
+  async verifySecret(
+    secretReference: string,
+    _input: Parameters<PluginSecretStore['verifySecret']>[1],
+  ): Promise<void> {
+    if (!this.references.has(secretReference)) {
+      throw new Error('secret reference unavailable');
+    }
+  }
+
   async deleteSecret(secretReference: string): Promise<void> {
     this.references.delete(secretReference);
   }

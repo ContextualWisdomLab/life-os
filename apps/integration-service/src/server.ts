@@ -14,7 +14,7 @@ export interface IntegrationServiceEntrypointRuntime {
   stderr: {
     write(chunk: string): unknown;
   };
-  exitCode?: number;
+  exitCode: string | number | null | undefined;
 }
 
 /**
