@@ -264,15 +264,16 @@ describeWithRealVaultAndPostgres(
         process.env,
       );
 
-      const revokedCredential = await restartedRuntime.operator.revokeCredential(
-        signedHeaders(
-          workspaceId,
-          userId,
-          'POST',
-          `/v1/plugins/credential-bindings/${credentialBindingId}/revoke`,
-        ),
-        credentialBindingId,
-      );
+      const revokedCredential =
+        await restartedRuntime.operator.revokeCredential(
+          signedHeaders(
+            workspaceId,
+            userId,
+            'POST',
+            `/v1/plugins/credential-bindings/${credentialBindingId}/revoke`,
+          ),
+          credentialBindingId,
+        );
       expect(revokedCredential).toMatchObject({
         credentialBindingId,
         installationId,
