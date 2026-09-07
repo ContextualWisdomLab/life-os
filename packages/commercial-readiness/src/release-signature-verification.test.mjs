@@ -123,7 +123,12 @@ async function createFixture({
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
       artifact(subjectArtifactName, 'container', subjectBytes),
-      artifact(migrationArtifactName, 'migration', migrationBytes),
+      artifact(migrationArtifactName, 'migration', migrationBytes, {
+        compatibility: {
+          minimum_source_version: '0.1.0',
+          maximum_source_version: '0.1.0',
+        },
+      }),
       artifact('life-os.spdx.json', 'sbom', sbomBytes, { spec_version: '3.0.1' }),
       artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
         predicate_type: 'https://slsa.dev/provenance/v1',
