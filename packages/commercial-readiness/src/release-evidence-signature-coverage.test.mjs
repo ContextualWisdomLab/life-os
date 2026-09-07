@@ -39,6 +39,7 @@ function releaseIndex(signatures) {
     open_p0_buyer_gaps: [209, 210],
     artifacts: [
       retainedArtifact('life-os-web.oci.json', 'container', containerSha),
+      retainedArtifact('life-os-migrations.tar', 'migration', digest('2')),
       retainedArtifact('life-os.spdx.json', 'sbom', digest('c'), {
         spec_version: '3.0.1',
       }),
