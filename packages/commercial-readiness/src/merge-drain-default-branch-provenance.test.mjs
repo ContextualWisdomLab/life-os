@@ -31,6 +31,7 @@ describe('merge-drain protected-default-branch provenance', () => {
       [validClient, repository, 'main\\escape', expectedHead],
       [validClient, repository, 'main', null],
       [validClient, repository, 'main', 'not-a-sha'],
+      [validClient, repository, 'main', expectedHead.toUpperCase()],
     ];
     for (const args of invalidInputs) {
       await assert.rejects(
@@ -58,6 +59,11 @@ describe('merge-drain protected-default-branch provenance', () => {
       {
         async requestJson() {
           return { protected: ['true'], commit: { sha: expectedHead } };
+        },
+      },
+      {
+        async requestJson() {
+          return { protected: true, commit: { sha: expectedHead.toUpperCase() } };
         },
       },
     ];
@@ -100,7 +106,7 @@ describe('merge-drain protected-default-branch provenance', () => {
 
     const exactClient = {
       async requestJson() {
-        return { protected: true, commit: { sha: expectedHead.toUpperCase() } };
+        return { protected: true, commit: { sha: expectedHead } };
       },
     };
     await cliModule.assertDefaultBranchHead(
