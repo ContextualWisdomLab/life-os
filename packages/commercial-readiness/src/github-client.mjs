@@ -12,7 +12,7 @@ const READ_RETRY_DELAYS_MS = [100, 250];
 /** Transient server statuses that may be retried only when the request method is GET. */
 const READ_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
 /** Canonical UTC timestamp shape emitted by GitHub REST commit-status responses. */
 const GITHUB_STATUS_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
