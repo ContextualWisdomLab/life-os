@@ -656,14 +656,15 @@ function statusIsNewer(candidate, current) {
 }
 
 /**
- * Reduce exact-head commit statuses without allowing malformed provenance or ordering evidence to disappear.
+ * Reduce exact-head commit statuses without allowing malformed provenance, duplicate identity, or ordering evidence to disappear.
  *
  * A status may participate in latest-per-context reduction only when its scalar context, state,
  * and SHA preserve GitHub's JSON types, its SHA binds the exact pull-request head, its context is
- * non-empty, its GitHub status identifier is a positive safe integer, and `created_at` is a
+ * non-empty, its GitHub status identifier is a unique positive safe integer, and `created_at` is a
  * canonical UTC second-precision GitHub timestamp. Arrays or objects must not become a valid
- * status context, success state, or exact-head binding through JavaScript coercion. Contradictory
- * or malformed evidence for a known context remains fail-closed.
+ * status context, success state, or exact-head binding through JavaScript coercion. Reusing one
+ * status id across multiple records makes every affected context ambiguous and fail-closed.
+ * Contradictory or malformed evidence for a known context likewise remains fail-closed.
  *
  * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
  * @param {string} headSha Exact current pull-request head SHA.
@@ -673,6 +674,7 @@ function latestStatuses(statuses, headSha) {
   const latest = new Map();
   const invalidContexts = new Set();
   const mismatchedContexts = new Set();
+  const statusIdContexts = new Map();
   for (const status of Array.isArray(statuses) ? statuses : []) {
     const contextValue = status?.context;
     if (typeof contextValue !== 'string' || !contextValue) continue;
@@ -699,6 +701,13 @@ function latestStatuses(statuses, headSha) {
       invalidContexts.add(context);
       continue;
     }
+    const priorContext = statusIdContexts.get(id);
+    if (priorContext !== undefined) {
+      invalidContexts.add(priorContext);
+      invalidContexts.add(context);
+      continue;
+    }
+    statusIdContexts.set(id, context);
     const normalized = {
       id,
       context,
