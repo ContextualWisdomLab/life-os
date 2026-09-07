@@ -45,4 +45,28 @@ describe('release evidence hostile object boundary', () => {
 
     assertBoundedValidationFailure(() => validateReleaseEvidenceIndex(hostile));
   });
+
+  it('does not inspect an arbitrary thrown value while establishing the fixed failure', () => {
+    const hostileThrownValue = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error(SECRET_NATIVE_DETAIL);
+        },
+      },
+    );
+    const hostile = {
+      get schema_version() {
+        throw hostileThrownValue;
+      },
+      channel: 'rc',
+      version: '0.2.0-rc.1',
+      source_commit: 'a'.repeat(40),
+      generated_at: '2026-09-07T09:00:00.000Z',
+      open_p0_buyer_gaps: [210],
+      artifacts: [],
+    };
+
+    assertBoundedValidationFailure(() => validateReleaseEvidenceIndex(hostile));
+  });
 });
