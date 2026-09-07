@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { it } from 'node:test';
@@ -61,11 +61,8 @@ function indexFor(bodies) {
   };
 }
 
-it('refuses a symlinked release-evidence directory even when all target bytes match', async () => {
-  const parent = await mkdtemp(join(tmpdir(), 'life-os-release-parent-'));
-  const target = await mkdtemp(join(tmpdir(), 'life-os-release-target-'));
-  const linked = join(parent, 'evidence');
-  const bodies = new Map([
+function releaseBodies() {
+  return new Map([
     ['life-os-web.oci.json', Buffer.from('container')],
     ['life-os-migrations.tar', Buffer.from('migrations')],
     ['life-os.spdx.json', Buffer.from('sbom')],
@@ -75,6 +72,13 @@ it('refuses a symlinked release-evidence directory even when all target bytes ma
     ['life-os-web.oci.json.sig', Buffer.from('container signature')],
     ['SHA256SUMS.sig', Buffer.from('checksum signature')],
   ]);
+}
+
+it('refuses a symlinked release-evidence directory even when all target bytes match', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'life-os-release-parent-'));
+  const target = await mkdtemp(join(tmpdir(), 'life-os-release-target-'));
+  const linked = join(parent, 'evidence');
+  const bodies = releaseBodies();
   try {
     for (const [name, bytes] of bodies) {
       await writeFile(join(target, name), bytes, { flag: 'wx' });
@@ -84,5 +88,25 @@ it('refuses a symlinked release-evidence directory even when all target bytes ma
   } finally {
     await rm(parent, { recursive: true, force: true });
     await rm(target, { recursive: true, force: true });
+  }
+});
+
+it('refuses a release-evidence directory reached through a symlinked ancestor', async () => {
+  const anchor = await mkdtemp(join(tmpdir(), 'life-os-release-anchor-'));
+  const targetParent = await mkdtemp(join(tmpdir(), 'life-os-release-ancestor-target-'));
+  const evidence = join(targetParent, 'evidence');
+  const linkedParent = join(anchor, 'linked-parent');
+  const linkedEvidence = join(linkedParent, 'evidence');
+  const bodies = releaseBodies();
+  try {
+    await mkdir(evidence);
+    for (const [name, bytes] of bodies) {
+      await writeFile(join(evidence, name), bytes, { flag: 'wx' });
+    }
+    await symlink(targetParent, linkedParent, 'dir');
+    await assert.rejects(() => verifyReleaseEvidenceDirectory(indexFor(bodies), linkedEvidence));
+  } finally {
+    await rm(anchor, { recursive: true, force: true });
+    await rm(targetParent, { recursive: true, force: true });
   }
 });
