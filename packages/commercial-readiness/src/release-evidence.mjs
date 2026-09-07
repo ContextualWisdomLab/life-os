@@ -9,7 +9,7 @@ const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 const ARTIFACT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const RC_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.(0|[1-9]\d*)$/u;
-const NIGHTLY_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-nightly\.\d{8}\.(0|[1-9]\d*)$/u;
+const NIGHTLY_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-nightly\.(\d{8})\.(0|[1-9]\d*)$/u;
 const MAXIMUM_P0_GAPS = 64;
 const MAXIMUM_ARTIFACTS = 128;
 const VERIFY_BUFFER_BYTES = 64 * 1024;
@@ -77,27 +77,76 @@ function requireChannel(value) {
   return value;
 }
 
-function requireVersion(value, channel) {
+function requireNightlyCalendarDate(dateToken) {
+  const year = Number(dateToken.slice(0, 4));
+  const month = Number(dateToken.slice(4, 6));
+  const day = Number(dateToken.slice(6, 8));
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const maximumDay = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
+    month - 1
+  ];
+  if (!maximumDay || day < 1 || day > maximumDay) return invalid();
+}
+
+function parseReleaseVersion(value, expectedChannel) {
   if (typeof value !== 'string') return invalid();
-  const pattern =
-    channel === 'stable'
-      ? STABLE_VERSION_PATTERN
-      : channel === 'rc'
-        ? RC_VERSION_PATTERN
-        : NIGHTLY_VERSION_PATTERN;
-  if (!pattern.test(value)) return invalid();
-  if (channel === 'nightly') {
-    const dateToken = value.split('-nightly.')[1].split('.')[0];
-    const year = Number(dateToken.slice(0, 4));
-    const month = Number(dateToken.slice(4, 6));
-    const day = Number(dateToken.slice(6, 8));
-    const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    const maximumDay = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
-      month - 1
-    ];
-    if (!maximumDay || day < 1 || day > maximumDay) return invalid();
+
+  let channel;
+  let match = STABLE_VERSION_PATTERN.exec(value);
+  let prerelease = [];
+  if (match) {
+    channel = 'stable';
+  } else {
+    match = RC_VERSION_PATTERN.exec(value);
+    if (match) {
+      channel = 'rc';
+      prerelease = ['rc', BigInt(match[4])];
+    } else {
+      match = NIGHTLY_VERSION_PATTERN.exec(value);
+      if (!match) return invalid();
+      channel = 'nightly';
+      requireNightlyCalendarDate(match[4]);
+      prerelease = ['nightly', BigInt(match[4]), BigInt(match[5])];
+    }
   }
-  return value;
+
+  if (expectedChannel !== undefined && channel !== expectedChannel) return invalid();
+  return Object.freeze({
+    value,
+    channel,
+    core: Object.freeze([BigInt(match[1]), BigInt(match[2]), BigInt(match[3])]),
+    prerelease: Object.freeze(prerelease),
+  });
+}
+
+function compareReleaseVersions(left, right) {
+  for (let index = 0; index < left.core.length; index += 1) {
+    if (left.core[index] < right.core[index]) return -1;
+    if (left.core[index] > right.core[index]) return 1;
+  }
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0;
+  if (left.prerelease.length === 0) return 1;
+  if (right.prerelease.length === 0) return -1;
+
+  const length = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = left.prerelease[index];
+    const rightPart = right.prerelease[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    if (leftPart === rightPart) continue;
+    if (typeof leftPart === 'bigint' && typeof rightPart === 'bigint') {
+      return leftPart < rightPart ? -1 : 1;
+    }
+    if (typeof leftPart === 'bigint') return -1;
+    if (typeof rightPart === 'bigint') return 1;
+    return leftPart < rightPart ? -1 : 1;
+  }
+  return 0;
+}
+
+function requireVersion(value, channel) {
+  return parseReleaseVersion(value, channel).value;
 }
 
 function requireOpenP0BuyerGaps(value, channel) {
@@ -156,6 +205,27 @@ function requireFormatEvidence(record, evidenceType) {
   return Object.freeze({});
 }
 
+function requireMigrationCompatibility(record, evidenceType) {
+  const hasCompatibility = Object.hasOwn(record, 'compatibility');
+  if (evidenceType !== 'migration') {
+    if (hasCompatibility) return invalid();
+    return Object.freeze({});
+  }
+  if (!hasCompatibility) return invalid();
+
+  const compatibility = requirePlainObject(record.compatibility);
+  requireExactKeys(compatibility, ['minimum_source_version', 'maximum_source_version']);
+  const minimum = parseReleaseVersion(compatibility.minimum_source_version);
+  const maximum = parseReleaseVersion(compatibility.maximum_source_version);
+  if (compareReleaseVersions(minimum, maximum) > 0) return invalid();
+  return Object.freeze({
+    compatibility: Object.freeze({
+      minimum_source_version: minimum.value,
+      maximum_source_version: maximum.value,
+    }),
+  });
+}
+
 function requireSignatureSubject(record, evidenceType) {
   const hasSubjectArtifactName = Object.hasOwn(record, 'subject_artifact_name');
   const hasSubjectSha256 = Object.hasOwn(record, 'subject_sha256');
@@ -175,6 +245,7 @@ function requireArtifact(value, sourceCommit) {
   const evidenceType = requireEvidenceType(record.evidence_type);
   const hasSpecVersion = Object.hasOwn(record, 'spec_version');
   const hasPredicateType = Object.hasOwn(record, 'predicate_type');
+  const hasCompatibility = Object.hasOwn(record, 'compatibility');
   const hasSubjectArtifactName = Object.hasOwn(record, 'subject_artifact_name');
   const hasSubjectSha256 = Object.hasOwn(record, 'subject_sha256');
   requireExactKeys(record, [
@@ -182,6 +253,7 @@ function requireArtifact(value, sourceCommit) {
     'evidence_type',
     ...(hasSpecVersion ? ['spec_version'] : []),
     ...(hasPredicateType ? ['predicate_type'] : []),
+    ...(hasCompatibility ? ['compatibility'] : []),
     ...(hasSubjectArtifactName ? ['subject_artifact_name'] : []),
     ...(hasSubjectSha256 ? ['subject_sha256'] : []),
     'sha256',
@@ -191,11 +263,13 @@ function requireArtifact(value, sourceCommit) {
   const artifactSourceCommit = requireSourceCommit(record.source_commit);
   if (artifactSourceCommit !== sourceCommit) return invalid();
   const formatEvidence = requireFormatEvidence(record, evidenceType);
+  const migrationCompatibility = requireMigrationCompatibility(record, evidenceType);
   const signatureSubject = requireSignatureSubject(record, evidenceType);
   return Object.freeze({
     artifact_name: requireArtifactName(record.artifact_name),
     evidence_type: evidenceType,
     ...formatEvidence,
+    ...migrationCompatibility,
     ...signatureSubject,
     sha256: requireDigest(record.sha256),
     size_bytes: requireSize(record.size_bytes),
@@ -290,12 +364,13 @@ async function verifyArtifactBytes(directory, artifact) {
  * The contract binds every retained artifact to one exact source commit, keeps
  * unresolved P0 buyer gaps explicit, and prevents a `stable` channel assertion
  * while any P0 gap remains. SPDX `specVersion` and the SLSA in-toto provenance
- * predicate URI identify the expected evidence formats. Signature evidence must
- * identify an exact retained subject artifact and its SHA-256 digest, and every
- * retained container, checksum manifest, and provenance artifact must have such
- * structural signature coverage. Successful validation does not cryptographically
- * verify the signature or claim certification, SLSA level, accessibility
- * conformance, or release readiness.
+ * predicate URI identify the expected evidence formats. Every migration artifact
+ * must declare a bounded minimum/maximum source-release compatibility range.
+ * Signature evidence must identify an exact retained subject artifact and its
+ * SHA-256 digest, and every retained container, checksum manifest, and provenance
+ * artifact must have such structural signature coverage. Successful validation
+ * does not cryptographically verify the signature or claim certification, SLSA
+ * level, accessibility conformance, or release readiness.
  *
  * @param {unknown} value Untrusted machine-readable release evidence.
  * @returns {Readonly<object>} A deeply frozen, bounded release evidence index.
