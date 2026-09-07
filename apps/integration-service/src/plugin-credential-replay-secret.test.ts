@@ -4,6 +4,7 @@ import {
   PluginCredentialError,
   type PluginCredentialBindingRecord,
   type PluginCredentialBindingStore,
+  type PluginInstallationAuthority,
   type PluginSecretStore,
   type PutPluginSecretInput,
   type RevokePluginCredential,
@@ -47,12 +48,31 @@ const BINDING: PluginCredentialBindingRecord = Object.freeze({
   revokedAt: null,
 });
 
-class InstallationAuthority {
+class InstallationAuthority implements PluginInstallationAuthority {
   async getInstallation(
     _context: PluginInstallationContext,
     _installationId: string,
   ): Promise<PluginInstallationRecord> {
     return INSTALLATION;
+  }
+}
+
+class RevokingInstallationAuthority implements PluginInstallationAuthority {
+  calls = 0;
+
+  async getInstallation(
+    _context: PluginInstallationContext,
+    _installationId: string,
+  ): Promise<PluginInstallationRecord> {
+    this.calls += 1;
+    if (this.calls === 1) {
+      return INSTALLATION;
+    }
+    return Object.freeze({
+      ...INSTALLATION,
+      status: 'revoked',
+      revokedAt: BOUND_AT,
+    });
   }
 }
 
@@ -92,9 +112,12 @@ class ExactSecretStore implements PluginSecretStore {
   async deleteSecret(_secretReference: string): Promise<void> {}
 }
 
-function application(secretStore: ExactSecretStore): PluginCredentialApplication {
+function application(
+  secretStore: ExactSecretStore,
+  installationAuthority: PluginInstallationAuthority = new InstallationAuthority(),
+): PluginCredentialApplication {
   return new PluginCredentialApplication(
-    new InstallationAuthority(),
+    installationAuthority,
     new ExistingBindingStore(),
     secretStore,
     () => new Date(BOUND_AT),
@@ -127,5 +150,16 @@ describe('Plugin credential replay secret authority', () => {
       application(secrets).bind(bindInput('different-plugin-secret-value')),
     ).rejects.toBeInstanceOf(PluginCredentialError);
     expect(secrets.verifications).toHaveLength(1);
+  });
+
+  it('rejects replay when installation authority is revoked during provider verification', async () => {
+    const secrets = new ExactSecretStore();
+    const installations = new RevokingInstallationAuthority();
+
+    await expect(
+      application(secrets, installations).bind(bindInput(SECRET_VALUE)),
+    ).rejects.toBeInstanceOf(PluginCredentialError);
+    expect(secrets.verifications).toHaveLength(1);
+    expect(installations.calls).toBe(2);
   });
 });
