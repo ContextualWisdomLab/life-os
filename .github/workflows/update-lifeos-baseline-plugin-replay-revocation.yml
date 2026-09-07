@@ -1,0 +1,80 @@
+name: Publish LifeOS baseline plugin replay revocation currentness
+
+on:
+  push:
+    branches:
+      - docs/product-gap-baseline-2026-08-20
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lifeos-baseline-plugin-replay-revocation-currentness
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact documentation head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: docs/product-gap-baseline-2026-08-20
+          fetch-depth: 0
+
+      - name: Verify preservation-safe lineage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expected_parent='e09931f7e5008515fa5d0440ac4206c84f882cf2'
+          test "$(git rev-parse HEAD^)" = "$expected_parent"
+          test "$(git diff --name-only HEAD^...HEAD)" = '.github/workflows/update-lifeos-baseline-plugin-replay-revocation.yml'
+
+      - name: Insert currentness override
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/product-technical-gap-baseline.md')
+          text = path.read_text()
+          marker = (
+              'This baseline separates protected shipped truth from active or work-in-progress evidence. '
+              'A branch, mergeable PR, test source, queued check, successful predecessor run, or documentation claim is not shipped capability. '
+              'Exact unchanged-head evidence must integrate through the live protected-branch policy before promotion.\n\n'
+          )
+          addition = (
+              '> **Currentness override — 2026-09-08 plugin credential replay revocation fence.** '
+              '#245 is now exact `1c65617233f565b624c1c74045bfcc834b74a632`, open Draft/mergeable on #244. '
+              'Hosted RED `a4f92ceb51d3eb249817745d29f7dc4b57df8667` (run `34158097007`, job `101854004341`) proved that an existing credential replay could return active metadata after the owning installation was revoked during provider-backed secret verification. '
+              'The causal descendant revalidates the exact installation/workspace/installer and canonical installation instant after provider I/O. '
+              'Hosted repair run `34158349560`, job `101854767901`, completed focused replay 3/3, plugin-sdk build, Integration typecheck, and the complete Integration suite at the generated source state (56 passed/4 environment-dependent skipped test files; 366 passed/16 skipped tests), then removed its one-shot workflow and normally published `1c656172...`. '
+              'This is unshipped Integration-scope evidence, not protected-main or repository-wide acceptance; real Vault-backed composed-runtime create/replay/revocation over migrated PostgreSQL remains the next #130 buyer gap.\n\n'
+          )
+          if text.count(marker) != 1:
+              raise SystemExit('baseline introduction marker is not exact')
+          if addition not in text:
+              path.write_text(text.replace(marker, marker + addition, 1))
+          PY
+
+      - name: Validate and publish docs-only descendant
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm .github/workflows/update-lifeos-baseline-plugin-replay-revocation.yml
+          actual_paths=$(git diff --name-only | sort)
+          expected_paths=$(cat <<'EOF'
+          .github/workflows/update-lifeos-baseline-plugin-replay-revocation.yml
+          docs/product-technical-gap-baseline.md
+          EOF
+          )
+          test "$actual_paths" = "$(printf '%s\n' "$expected_paths" | sort)"
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'docs: record plugin replay revocation currentness'
+          git push origin HEAD:docs/product-gap-baseline-2026-08-20
