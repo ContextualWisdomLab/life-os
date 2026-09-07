@@ -51,3 +51,18 @@ it('rejects padded decisive reviewer identity instead of trimming it into approv
   assert.equal(canonical.eligible, true);
   assert.deepEqual(canonical.blockers, []);
 });
+
+it('does not let a case-variant stale approval preserve exact-head approval authority', () => {
+  const pullRequest = pullRequestWithReviewer('reviewer-a');
+  pullRequest.reviews.push({
+    actor: 'Reviewer-A',
+    state: 'APPROVED',
+    submitted_at: '2026-09-07T01:21:00Z',
+    commit_id: 'b'.repeat(40),
+  });
+
+  const result = evaluatePullRequestForMerge(pullRequest, policy);
+
+  assert.equal(result.eligible, false);
+  assert.ok(result.blockers.includes('review-evidence-invalid'));
+});
