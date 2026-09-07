@@ -85,6 +85,17 @@ function requireVersion(value, channel) {
         ? RC_VERSION_PATTERN
         : NIGHTLY_VERSION_PATTERN;
   if (!pattern.test(value)) return invalid();
+  if (channel === 'nightly') {
+    const dateToken = value.split('-nightly.')[1].split('.')[0];
+    const year = Number(dateToken.slice(0, 4));
+    const month = Number(dateToken.slice(4, 6));
+    const day = Number(dateToken.slice(6, 8));
+    const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const maximumDay = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
+      month - 1
+    ];
+    if (!maximumDay || day < 1 || day > maximumDay) return invalid();
+  }
   return value;
 }
 
