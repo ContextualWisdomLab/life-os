@@ -973,7 +973,7 @@ export async function mergeEligiblePullRequests({
       action: result?.merged === false ? 'blocked' : 'merged',
       ...(result?.merged === false
         ? { blockers: ['github-rejected-merge'] }
-        : {}),
+        : { merge_sha: result.sha }),
     });
   }
   return results;
