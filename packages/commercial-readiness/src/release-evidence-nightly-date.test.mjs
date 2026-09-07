@@ -23,6 +23,10 @@ function nightlyReleaseIndex(version) {
       {
         artifact_name: 'life-os-migrations.tar',
         evidence_type: 'migration',
+        compatibility: {
+          minimum_source_version: '0.1.0',
+          maximum_source_version: '0.1.0',
+        },
         sha256: `sha256:${'2'.repeat(64)}`,
         size_bytes: 3072,
         source_commit: SOURCE_COMMIT,
