@@ -1,0 +1,118 @@
+name: Verify plugin delivery status k6
+
+on:
+  push:
+    branches:
+      - perf/plugin-delivery-status-k6-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-plugin-delivery-status-k6-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  status_p95:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      INTEGRATION_OPERATOR_CONTEXT_SECRET: performance-context-secret-value-32-bytes-minimum
+      INTEGRATION_PLUGIN_VAULT_ORIGIN: https://vault.performance.example.test
+      INTEGRATION_PLUGIN_VAULT_TOKEN: performance-vault-fixture-token
+      INTEGRATION_PLUGIN_VAULT_MOUNT: secret
+      INTEGRATION_SERVICE_PORT: '4107'
+      K6_BASE_URL: http://127.0.0.1:4107
+      K6_ITERATIONS: '1000'
+      K6_VUS: '10'
+      K6_AUTHORITY_FILE: /tmp/plugin-delivery-status-authority.json
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout exact verifier head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
+        with:
+          k6-version: '2.1.0'
+
+      - name: Install frozen workspace
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm --filter @life-os/plugin-sdk build
+          pnpm --filter @life-os/integration-service build
+
+      - name: Migrate and seed Integration-owned PostgreSQL
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for migration in apps/integration-service/migrations/*.sql; do
+            psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f apps/integration-service/perf/seed-plugin-delivery-attempt-status.sql
+
+      - name: Measure authenticated status path without warm-up exclusion
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          service_log=/tmp/integration-service.log
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ -n "${service_pid:-}" ]; then
+              kill "$service_pid" 2>/dev/null || true
+              wait "$service_pid" 2>/dev/null || true
+            fi
+            if [ "$status" -ne 0 ]; then
+              cat "$service_log" || true
+            fi
+            rm -f "$K6_AUTHORITY_FILE"
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          node apps/integration-service/dist/server.js >"$service_log" 2>&1 &
+          service_pid=$!
+
+          ready=0
+          for _ in $(seq 1 30); do
+            code=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --max-time 1 \
+              "$K6_BASE_URL/v1/plugins/delivery-attempts/33333333-3333-4333-8333-333333333333" || true)
+            if [ "$code" = '401' ]; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+
+          node apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
+            "$K6_AUTHORITY_FILE"
+          k6 run apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
