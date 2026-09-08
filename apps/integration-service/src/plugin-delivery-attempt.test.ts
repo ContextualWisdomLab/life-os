@@ -240,16 +240,18 @@ describe('plugin delivery attempt admission', () => {
   });
 
   it('bounds throwing durable attempt evidence after persistence I/O', async () => {
-    const createIfAbsent = vi.fn(async (record: PluginDeliveryAttemptRecord) => {
-      const hostile = { ...record };
-      Object.defineProperty(hostile, 'status', {
-        enumerable: true,
-        get(): never {
-          throw new Error('durable attempt accessor fixture detail');
-        },
-      });
-      return hostile as PluginDeliveryAttemptRecord;
-    });
+    const createIfAbsent = vi.fn(
+      async (record: PluginDeliveryAttemptRecord) => {
+        const hostile = { ...record };
+        Object.defineProperty(hostile, 'status', {
+          enumerable: true,
+          get(): never {
+            throw new Error('durable attempt accessor fixture detail');
+          },
+        });
+        return hostile as PluginDeliveryAttemptRecord;
+      },
+    );
     const application = new PluginDeliveryAttemptApplication(
       { createIfAbsent },
       { getGrant: vi.fn(async () => activeGrant()) },
