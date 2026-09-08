@@ -252,9 +252,7 @@ function parseEvidence(
     controlSequence: snapshot.controlSequence,
     controlCode,
     deliveryStatus: snapshot.deliveryStatus as
-      | 'paused'
-      | 'pending'
-      | 'dead_lettered',
+      'paused' | 'pending' | 'dead_lettered',
     occurredAt,
     nextAttemptAt,
     terminalAt,
@@ -262,9 +260,7 @@ function parseEvidence(
 }
 
 /** PostgreSQL adapter for explicit Integration-owned delivery lifecycle controls. */
-export class PostgresPluginDeliveryAttemptControlStore
-  implements PluginDeliveryAttemptControlStore
-{
+export class PostgresPluginDeliveryAttemptControlStore implements PluginDeliveryAttemptControlStore {
   /** Creates the store over one bounded parameterized SQL client. */
   constructor(private readonly client: PluginDeliveryAttemptControlSqlClient) {}
 
@@ -357,6 +353,8 @@ export class PostgresPluginDeliveryAttemptControlStore
       ),
     );
     const row = singleRow(result);
-    return row === undefined ? undefined : parseEvidence(row, command, controlCode);
+    return row === undefined
+      ? undefined
+      : parseEvidence(row, command, controlCode);
   }
 }

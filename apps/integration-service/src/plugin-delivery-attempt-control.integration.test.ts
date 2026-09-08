@@ -261,13 +261,15 @@ describeWithPostgres('plugin delivery control PostgreSQL acceptance', () => {
       occurredAt: '2026-09-09T01:06:10.000Z',
     });
 
-    await expect(app.deadLetter(context(), DELIVERY_ID)).resolves.toMatchObject({
-      controlSequence: 1,
-      controlCode: 'dead_letter',
-      deliveryStatus: 'dead_lettered',
-      nextAttemptAt: null,
-      terminalAt: '2026-09-09T01:06:10.000Z',
-    });
+    await expect(app.deadLetter(context(), DELIVERY_ID)).resolves.toMatchObject(
+      {
+        controlSequence: 1,
+        controlCode: 'dead_letter',
+        deliveryStatus: 'dead_lettered',
+        nextAttemptAt: null,
+        terminalAt: '2026-09-09T01:06:10.000Z',
+      },
+    );
 
     const outcome = await pool.query(
       `SELECT attempt_number, outcome_code, occurred_at
