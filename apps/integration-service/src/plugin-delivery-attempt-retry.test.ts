@@ -28,6 +28,7 @@ describe('PluginDeliveryAttemptRetryApplication', () => {
           workspaceId: WORKSPACE_ID,
           requestedByUserId: USER_ID,
           attemptNumber: 1,
+          maxAttempts: 2,
           deliveryStatus: 'pending',
           occurredAt: OCCURRED_AT,
           nextAttemptAt: '2026-09-08T13:00:30.000Z',
@@ -49,6 +50,7 @@ describe('PluginDeliveryAttemptRetryApplication', () => {
       ),
     ).resolves.toMatchObject({
       attemptNumber: 1,
+      maxAttempts: 2,
       deliveryStatus: 'pending',
       nextAttemptAt: '2026-09-08T13:00:30.000Z',
       terminalAt: null,
@@ -65,7 +67,7 @@ describe('PluginDeliveryAttemptRetryApplication', () => {
     ]);
   });
 
-  it('rejects terminal exhaustion evidence that cannot prove the retry budget was exhausted', async () => {
+  it('rejects terminal exhaustion evidence that does not bind the configured retry budget', async () => {
     const app = new PluginDeliveryAttemptRetryApplication(
       {
         recordRetryableFailure: async () => ({
@@ -74,6 +76,7 @@ describe('PluginDeliveryAttemptRetryApplication', () => {
           workspaceId: WORKSPACE_ID,
           requestedByUserId: USER_ID,
           attemptNumber: 1,
+          maxAttempts: 2,
           deliveryStatus: 'failed',
           occurredAt: OCCURRED_AT,
           nextAttemptAt: null,
@@ -91,6 +94,41 @@ describe('PluginDeliveryAttemptRetryApplication', () => {
         CLAIM_TOKEN,
       ),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptRetryAuthorityError);
+  });
+
+  it('accepts terminal exhaustion when the durable attempt equals its configured retry budget', async () => {
+    const app = new PluginDeliveryAttemptRetryApplication(
+      {
+        recordRetryableFailure: async () => ({
+          authorityVersion: 'life-os.plugin-delivery-attempt-retry.v1',
+          deliveryId: DELIVERY_ID,
+          workspaceId: WORKSPACE_ID,
+          requestedByUserId: USER_ID,
+          attemptNumber: 1,
+          maxAttempts: 1,
+          deliveryStatus: 'failed',
+          occurredAt: OCCURRED_AT,
+          nextAttemptAt: null,
+          terminalAt: OCCURRED_AT,
+          outcomeCode: 'attempt_limit',
+        }),
+      },
+      () => new Date(OCCURRED_AT),
+    );
+
+    await expect(
+      app.recordRetryableFailure(
+        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+        DELIVERY_ID,
+        CLAIM_TOKEN,
+      ),
+    ).resolves.toMatchObject({
+      attemptNumber: 1,
+      maxAttempts: 1,
+      deliveryStatus: 'failed',
+      terminalAt: OCCURRED_AT,
+      outcomeCode: 'attempt_limit',
+    });
   });
 
   it('fails closed when persistence rejects or no active claim is transitioned', async () => {
