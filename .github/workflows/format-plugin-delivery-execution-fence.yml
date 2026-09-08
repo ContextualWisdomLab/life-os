@@ -1,0 +1,68 @@
+name: Format plugin delivery execution fence once
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-execution-fence-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-plugin-delivery-execution-fence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+
+      - name: Refuse stale branch publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin refs/heads/feat/plugin-delivery-attempt-execution-fence-v1 | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply bounded canonical formatting and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts
+          rm .github/workflows/format-plugin-delivery-execution-fence.yml
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/format-plugin-delivery-execution-fence.yml \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts | sort)"
+          test "$changed" = "$expected"
+
+      - name: Publish formatting-only descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'LifeOS Maintainer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts \
+            .github/workflows/format-plugin-delivery-execution-fence.yml
+          git commit -m 'style(integration): format execution fence regression'
+          git push origin HEAD:feat/plugin-delivery-attempt-execution-fence-v1
