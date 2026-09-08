@@ -4,27 +4,46 @@ import {
 } from './plugin-delivery-attempt-test-database';
 
 describe('parsePluginDeliveryAttemptTestDatabaseTarget', () => {
-  it('accepts the explicit local disposable PostgreSQL target', () => {
-    expect(
-      parsePluginDeliveryAttemptTestDatabaseTarget(
-        'postgresql://life_os:secret@127.0.0.1:5432/life_os_integration?sslmode=disable',
-      ),
-    ).toEqual({
-      hostname: '127.0.0.1',
-      port: '5432',
-      username: 'life_os',
-      password: 'secret',
-      database: 'life_os_integration',
-      sslMode: 'disable',
-    });
+  it('accepts explicit local disposable PostgreSQL targets', () => {
+    for (const databaseUrl of [
+      'postgresql://life_os:secret@127.0.0.1:5432/life_os_integration?sslmode=disable',
+      'postgresql://life_os:secret@localhost:5432/life_os_integration?sslmode=disable',
+      'postgresql://life_os:secret@[::1]:5432/life_os_integration?sslmode=disable',
+    ]) {
+      expect(
+        parsePluginDeliveryAttemptTestDatabaseTarget(databaseUrl),
+      ).toMatchObject({
+        port: '5432',
+        username: 'life_os',
+        password: 'secret',
+        database: 'life_os_integration',
+        sslMode: 'disable',
+      });
+    }
   });
 
-  it('requires an explicit TLS mode instead of inheriting libpq prefer', () => {
-    expect(() =>
-      parsePluginDeliveryAttemptTestDatabaseTarget(
-        'postgresql://life_os:secret@127.0.0.1:5432/life_os_integration',
-      ),
-    ).toThrow('explicit sslmode');
+  it('rejects malformed or non-PostgreSQL URLs', () => {
+    for (const databaseUrl of [
+      'not a URL',
+      'https://life_os:secret@127.0.0.1:5432/life_os_integration?sslmode=disable',
+      'postgresql://life_os%ZZ:secret@127.0.0.1:5432/life_os_integration?sslmode=disable',
+    ]) {
+      expect(() =>
+        parsePluginDeliveryAttemptTestDatabaseTarget(databaseUrl),
+      ).toThrow('dedicated Integration test database URL');
+    }
+  });
+
+  it('requires one explicitly supported TLS mode instead of inheriting libpq prefer', () => {
+    for (const databaseUrl of [
+      'postgresql://life_os:secret@127.0.0.1:5432/life_os_integration',
+      'postgresql://life_os:secret@127.0.0.1:5432/life_os_integration?sslmode=allow',
+      'postgresql://life_os:secret@127.0.0.1:5432/life_os_integration?sslmode=require&sslmode=verify-full',
+    ]) {
+      expect(() =>
+        parsePluginDeliveryAttemptTestDatabaseTarget(databaseUrl),
+      ).toThrow('explicit sslmode');
+    }
   });
 
   it('rejects destructive setup against an unexpected database or role', () => {
@@ -46,11 +65,13 @@ describe('parsePluginDeliveryAttemptTestDatabaseTarget', () => {
     ).toThrow('loopback');
   });
 
-  it('preserves server-verifying TLS modes for remote disposable targets', () => {
-    expect(
-      parsePluginDeliveryAttemptTestDatabaseTarget(
-        'postgresql://life_os:secret@db.example.test:5432/life_os_integration?sslmode=verify-full',
-      ).sslMode,
-    ).toBe('verify-full');
+  it('preserves encrypted remote TLS modes', () => {
+    for (const sslMode of ['require', 'verify-ca', 'verify-full'] as const) {
+      expect(
+        parsePluginDeliveryAttemptTestDatabaseTarget(
+          `postgresql://life_os:secret@db.example.test:5432/life_os_integration?sslmode=${sslMode}`,
+        ).sslMode,
+      ).toBe(sslMode);
+    }
   });
 });
