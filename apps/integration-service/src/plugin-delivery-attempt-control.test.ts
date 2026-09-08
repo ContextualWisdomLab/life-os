@@ -124,11 +124,11 @@ describe('PluginDeliveryAttemptControlApplication', () => {
     );
   });
 
-  it('fails closed when durable control authority is absent or rejects', async () => {
+  it('fails closed with one credential-free error when durable control authority is absent or rejects', async () => {
     for (const pause of [
       async () => undefined,
       async () => {
-        throw new Error('database-native-detail');
+        throw new Error('database-native-detail-must-not-escape');
       },
     ]) {
       const app = new PluginDeliveryAttemptControlApplication(
@@ -139,9 +139,10 @@ describe('PluginDeliveryAttemptControlApplication', () => {
         },
         () => new Date(OCCURRED_AT),
       );
-      await expect(app.pause(context(), DELIVERY_ID)).rejects.toBeInstanceOf(
-        PluginDeliveryAttemptControlAuthorityError,
-      );
+      await expect(app.pause(context(), DELIVERY_ID)).rejects.toMatchObject({
+        name: PluginDeliveryAttemptControlAuthorityError.name,
+        message: 'Plugin delivery attempt control authority is invalid',
+      });
     }
   });
 });
