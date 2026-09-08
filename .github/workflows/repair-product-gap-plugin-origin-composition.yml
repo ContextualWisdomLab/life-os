@@ -1,0 +1,57 @@
+name: Repair product gap plugin origin composition
+
+on:
+  push:
+    branches: [docs/product-gap-baseline-2026-08-20]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-product-gap-plugin-origin-composition-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout documentation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: docs/product-gap-baseline-2026-08-20
+          fetch-depth: 1
+
+      - name: Replace bounded Plugin currentness paragraph
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'docs/product-technical-gap-baseline.md';
+          const source = fs.readFileSync(path, 'utf8');
+          const before = `The remaining #130 network boundary is deliberately separate from origin-grant identity. LifeOS must not copy mutable EgressWeave source or treat a manifest/origin grant as connect-time network authorization; the canonical egress owner currently has no immutable GitHub release for consumption. Until a released/versioned owner contract exists, the independent LifeOS-owned next slice is durable delivery attempt/outcome/idempotency/retry/dead-letter/recovery persistence and buyer-visible recovery state without granting outbound network authority.`;
+          const after = `Fresh source-to-runtime review exposes an earlier #130 buyer gap before outbound networking: Integration already owns delivery-origin aggregate/persistence truth and the migrated PostgreSQL active-installation fence, including a real integration contract that rejects grants after durable installation revocation and requires \`FOR SHARE\` serialization while admitting a grant. However, current \`PluginOperatorApplication\`, Vault operator composition, hosted runtime/module, and signed HTTP route family compose only installation, credential-binding, and replay authority; they do not compose or expose delivery-origin grant/read/revoke authority. The next independent LifeOS-owned slice must therefore attach the existing delivery-origin repository/domain authority to the authenticated hosted operator, add purpose-bound signed routes with one-time durable replay semantics, and prove create/read/revoke plus installation-revocation fencing against migrated PostgreSQL. Only after that authority exists should outbound delivery consume a released/versioned canonical egress contract; manifest/origin identity must not become connect-time network authorization. Durable delivery attempt/outcome/idempotency/retry/dead-letter/recovery persistence and buyer-visible recovery state remain a separate Integration-owned concern.`;
+          const first = source.indexOf(before);
+          if (first < 0 || source.indexOf(before, first + 1) >= 0) {
+            throw new Error('expected unique Plugin currentness paragraph was not found');
+          }
+          fs.writeFileSync(path, source.slice(0, first) + after + source.slice(first + before.length), 'utf8');
+          NODE
+          git diff --check
+          grep -Fq 'Fresh source-to-runtime review exposes an earlier #130 buyer gap before outbound networking' docs/product-technical-gap-baseline.md
+          grep -Fq 'they do not compose or expose delivery-origin grant/read/revoke authority' docs/product-technical-gap-baseline.md
+
+      - name: Publish bounded currentness patch and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/repair-product-gap-plugin-origin-composition.yml
+          git add docs/product-technical-gap-baseline.md .github/workflows/repair-product-gap-plugin-origin-composition.yml
+          git diff --cached --check
+          git diff --cached --quiet && { echo '::error::Plugin currentness repair produced no retained delta'; exit 1; }
+          git commit -m 'docs: record hosted delivery-origin composition gap'
+          git push origin HEAD:docs/product-gap-baseline-2026-08-20
