@@ -124,19 +124,28 @@ function requireSmallInteger(
   return value;
 }
 
-function one<Row>(result: PluginDeliveryAttemptSqlResult<Row>): Row {
+function oneOrUndefined<Row>(
+  result: PluginDeliveryAttemptSqlResult<Row>,
+): Row | undefined {
+  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+    return invalidEvidence();
+  }
+  const rows = result.rows;
+  const rowCount = result.rowCount;
   if (
-    result === null ||
-    typeof result !== 'object' ||
-    Array.isArray(result) ||
-    !Array.isArray(result.rows) ||
-    result.rowCount !== result.rows.length ||
-    result.rows.length !== 1 ||
-    result.rows[0] === undefined
+    !Array.isArray(rows) ||
+    typeof rowCount !== 'number' ||
+    !Number.isInteger(rowCount) ||
+    rowCount < 0 ||
+    rowCount !== rows.length ||
+    rows.length > 1
   ) {
     return invalidEvidence();
   }
-  return result.rows[0];
+  if (rows.length === 1 && rows[0] === undefined) {
+    return invalidEvidence();
+  }
+  return rows[0];
 }
 
 function validateCreate(record: PluginDeliveryAttemptRecord): PluginDeliveryAttemptRecord {
@@ -235,34 +244,18 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
     record: PluginDeliveryAttemptRecord,
   ): Promise<PluginDeliveryAttemptRecord> {
     const safe = validateCreate(record);
-    const result = await this.client.query<PluginDeliveryAttemptRow>(
-      `WITH inserted AS (
-         INSERT INTO plugin_integration.plugin_delivery_attempt_record (
-           authority_version, delivery_id, grant_id, installation_id, workspace_id,
-           requested_by_user_id, delivery_status, attempt_count, max_attempts,
-           requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
-         ) VALUES (
-           $1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
-           'pending', 0, $7, $8::timestamptz, $8::timestamptz,
-           $8::timestamptz, NULL, NULL
-         )
-         ON CONFLICT (delivery_id) DO NOTHING
-         RETURNING ${RETURNING_COLUMNS}
+    const inserted = await this.client.query<PluginDeliveryAttemptRow>(
+      `INSERT INTO plugin_integration.plugin_delivery_attempt_record (
+         authority_version, delivery_id, grant_id, installation_id, workspace_id,
+         requested_by_user_id, delivery_status, attempt_count, max_attempts,
+         requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
+       ) VALUES (
+         $1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
+         'pending', 0, $7, $8::timestamptz, $8::timestamptz,
+         $8::timestamptz, NULL, NULL
        )
-       SELECT ${RETURNING_COLUMNS}
-       FROM inserted
-       UNION ALL
-       SELECT ${RETURNING_COLUMNS}
-       FROM plugin_integration.plugin_delivery_attempt_record
-       WHERE delivery_id = $2::uuid
-         AND grant_id = $3::uuid
-         AND installation_id = $4::uuid
-         AND workspace_id = $5::uuid
-         AND requested_by_user_id = $6::uuid
-         AND delivery_status = 'pending'
-         AND attempt_count = 0
-         AND max_attempts = $7
-       LIMIT 1`,
+       ON CONFLICT (delivery_id) DO NOTHING
+       RETURNING ${RETURNING_COLUMNS}`,
       [
         safe.authorityVersion,
         safe.deliveryId,
@@ -274,7 +267,37 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
         safe.requestedAt,
       ],
     );
-    const durable = parseRow(one(result));
+    let durableRow = oneOrUndefined(inserted);
+    if (durableRow === undefined) {
+      // Read Committed can suppress INSERT on a concurrent conflict whose winner is
+      // invisible to that statement snapshot; a second command gets the fresh snapshot.
+      const replay = await this.client.query<PluginDeliveryAttemptRow>(
+        `SELECT ${RETURNING_COLUMNS}
+         FROM plugin_integration.plugin_delivery_attempt_record
+         WHERE delivery_id = $1::uuid
+           AND grant_id = $2::uuid
+           AND installation_id = $3::uuid
+           AND workspace_id = $4::uuid
+           AND requested_by_user_id = $5::uuid
+           AND delivery_status = 'pending'
+           AND attempt_count = 0
+           AND max_attempts = $6
+         LIMIT 2`,
+        [
+          safe.deliveryId,
+          safe.grantId,
+          safe.installationId,
+          safe.workspaceId,
+          safe.requestedByUserId,
+          safe.maxAttempts,
+        ],
+      );
+      durableRow = oneOrUndefined(replay);
+    }
+    if (durableRow === undefined) {
+      return invalidEvidence();
+    }
+    const durable = parseRow(durableRow);
     if (
       durable.deliveryId !== safe.deliveryId ||
       durable.grantId !== safe.grantId ||
