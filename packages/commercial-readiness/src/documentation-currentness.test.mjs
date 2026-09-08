@@ -56,7 +56,10 @@ test('canonical maturity follows protected main and current active work', () => 
     );
   }
 
-  for (const pullRequest of [145, 198, 199, 204, 205]) {
+  for (const pullRequest of [
+    145, 198, 199, 204, 205, 208, 214, 216, 217, 228, 229, 234, 236, 245,
+    250,
+  ]) {
     assertActiveAssessmentRow(pullRequest);
   }
   for (const pullRequest of [154, 155, 156, 195, 200, 203]) {
@@ -75,4 +78,8 @@ test('canonical gaps remain bounded and truthful', () => {
   assert.match(assessment, /Issue #132.*Partial/su);
   assert.match(assessment, /PR #205[^\n]*host-owned delivery-origin authority foundation/iu);
   assert.match(assessment, /PR #204[^\n]*read-only Actions workflow-registry detector/iu);
+  assert.match(assessment, /PR #228[^\n]*OAuth state\/PKCE/iu);
+  assert.match(assessment, /PR #250[^\n]*signed delivery-origin operator authority/iu);
+  assert.match(assessment, /#209[^\n]*Partial/iu);
+  assert.match(assessment, /#210[^\n]*Partial/iu);
 });
