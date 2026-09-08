@@ -135,6 +135,26 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
     );
   });
 
+  it('fails closed when the SQL row-array envelope throws during length or element access', async () => {
+    for (const property of ['length', '0']) {
+      const rows = new Proxy([row()], {
+        get(target, candidate, receiver) {
+          if (candidate === property) {
+            throw new Error('password=must-not-escape-claim-row-array');
+          }
+          return Reflect.get(target, candidate, receiver);
+        },
+      });
+      const store = new PostgresPluginDeliveryAttemptClaimStore(
+        new ScriptedClient([{ rows, rowCount: 1 }]),
+      );
+
+      await expect(store.claimDue(COMMAND)).rejects.toBeInstanceOf(
+        PluginDeliveryAttemptClaimPersistenceEvidenceError,
+      );
+    }
+  });
+
   it('fails closed on ambiguous or malformed durable claim evidence', async () => {
     for (const result of [
       { rows: [row(), row()], rowCount: 2 },
