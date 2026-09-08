@@ -254,6 +254,8 @@ function parseClaim(
   hasDigest: unknown,
   startedValue: unknown,
   expiresValue: unknown,
+  requestedAt: string,
+  updatedAt: string,
   checkedAt: string,
 ): ParsedClaim {
   if (typeof hasDigest !== 'boolean') {
@@ -267,6 +269,8 @@ function parseClaim(
   if (!hasDigest || startedAt === null || expiresAt === null) {
     return invalidEvidence();
   }
+  const requested = new Date(requestedAt).getTime();
+  const updated = new Date(updatedAt).getTime();
   const started = new Date(startedAt).getTime();
   const expires = new Date(expiresAt).getTime();
   const checked = new Date(checkedAt).getTime();
@@ -274,6 +278,8 @@ function parseClaim(
   if (
     lease < MINIMUM_LEASE_MILLISECONDS ||
     lease > MAXIMUM_LEASE_MILLISECONDS ||
+    started < requested ||
+    updated < started ||
     checked < started
   ) {
     return invalidEvidence();
@@ -408,6 +414,8 @@ function parseRow(
     snapshot.hasClaimTokenDigest,
     snapshot.claimStartedAt,
     snapshot.claimExpiresAt,
+    requestedAt,
+    updatedAt,
     command.checkedAt,
   );
 
