@@ -151,6 +151,16 @@ describeWithPostgres('plugin delivery-attempt PostgreSQL admission', () => {
     );
     expect(
       requireSqlSuccess(`
+        SELECT obj_description(
+          'plugin_integration.plugin_delivery_attempt_record'::regclass,
+          'pg_class'
+        );
+      `),
+    ).toBe(
+      'Integration-owned durable delivery-attempt admission record; insertion requires matching active delivery-origin grant and active owning installation authority.',
+    );
+    expect(
+      requireSqlSuccess(`
         SELECT count(*)
         FROM information_schema.columns
         WHERE table_schema = 'plugin_integration'
