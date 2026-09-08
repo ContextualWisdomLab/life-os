@@ -17,6 +17,16 @@ BEGIN
   IF OLD.claim_token_digest IS NOT NULL
      AND NEW.claim_token_digest IS NULL
      AND NEW.last_outcome_code IN ('retryable_failure', 'attempt_limit') THEN
+    IF OLD.claim_started_at IS NULL
+       OR OLD.claim_expires_at IS NULL
+       OR NEW.attempt_count <> OLD.attempt_count
+       OR NEW.updated_at < OLD.claim_started_at
+       OR NEW.updated_at >= OLD.claim_expires_at THEN
+      RAISE EXCEPTION 'plugin_delivery_attempt_outcome_claim_transition_check'
+        USING ERRCODE = '23514',
+              CONSTRAINT = 'plugin_delivery_attempt_outcome_claim_transition_check';
+    END IF;
+
     INSERT INTO plugin_integration.plugin_delivery_attempt_outcome_record (
       authority_version,
       delivery_id,
