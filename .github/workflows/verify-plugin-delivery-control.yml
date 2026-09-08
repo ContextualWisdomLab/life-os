@@ -68,7 +68,35 @@ jobs:
           src/plugin-delivery-attempt-control.test.ts
           --no-file-parallelism
 
-      - name: Run delivery control PostgreSQL acceptance
+      - name: Prove pause and resume persistence
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-control.integration.test.ts
+          -t 'durably pauses and resumes'
+          --no-file-parallelism
+
+      - name: Prove active-claim exclusion
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-control.integration.test.ts
+          -t 'does not let pause steal'
+          --no-file-parallelism
+
+      - name: Prove terminal dead-letter persistence
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-control.integration.test.ts
+          -t 'dead-letters only real retry exhaustion'
+          --no-file-parallelism
+
+      - name: Prove control evidence immutability
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-control.integration.test.ts
+          -t 'rejects forged and mutable control evidence'
+          --no-file-parallelism
+
+      - name: Run combined delivery control PostgreSQL acceptance
         run: >-
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-delivery-attempt-control.integration.test.ts
