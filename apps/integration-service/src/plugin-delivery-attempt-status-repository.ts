@@ -416,6 +416,7 @@ function parseRow(
     workspaceId !== command.workspaceId ||
     requestedByUserId !== command.requestedByUserId ||
     new Date(updatedAt).getTime() < new Date(requestedAt).getTime() ||
+    new Date(updatedAt).getTime() > new Date(command.checkedAt).getTime() ||
     new Date(command.checkedAt).getTime() < new Date(requestedAt).getTime() ||
     (nextAttemptAt !== null &&
       new Date(nextAttemptAt).getTime() < new Date(requestedAt).getTime()) ||
