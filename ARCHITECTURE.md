@@ -84,7 +84,9 @@ Protected-main foundations are:
 
 PR #150 added workspace-and-user scoped connection persistence with opaque secret references. PR #153 added atomic local connection revocation; neither grants provider-side credential revocation authority.
 
-Issue #129 remains **Partial** because protected main still lacks complete Google OAuth state/PKCE/callback, refresh fencing, provider-side revoke/delete recovery, calendar discovery/selection, scoped synchronization composition, end-to-end KMS/runtime composition, and retirement of the process-global development token path. PR #203 protects one concrete self-hosted encrypted store, not the complete provider credential lifecycle. Connection rows store only bounded metadata and opaque secret references; local revocation is not provider credential revocation.
+The current active Calendar stack advances this boundary without changing shipped truth. PR #216 rejects deployment-wide Google and CalDAV credentials from the hosted multi-user runtime until authenticated user-owned connection evidence and scoped secret materialization are composed. Stacked PR #228 adds five-minute Google OAuth authorization-state/PKCE authority with opaque durable state and secret-store-held verifier material, including hostile consumed-row validation before verifier materialization. Both remain Draft active-PR evidence.
+
+Issue #129 remains **Partial** because protected main still lacks complete hosted Google OAuth callback/token exchange, successful verifier cleanup after exchange, concrete PostgreSQL OAuth-state persistence, refresh fencing, provider-side revoke/delete recovery, calendar discovery/selection, scoped synchronization composition, end-to-end KMS/runtime composition, and retirement of process-global development credentials. PR #203 protects one concrete self-hosted encrypted store; PR #216/#228 do not become protected authority until normal integration. Connection rows store only bounded metadata and opaque secret references; local revocation is not provider credential revocation.
 
 ## 5. Plugin integration boundary
 
@@ -99,9 +101,11 @@ Protected main includes:
 - request-bound one-time operator authority and durable replay protection from PR #191;
 - fail-closed authenticated operator HTTP composition from PR #196.
 
-PR #205 is **Implemented on active PR** for a host-owned exact HTTPS delivery-origin grant scoped to installation, workspace, granting user, and opaque UUIDv4 grant identity. It does not perform outbound HTTP and does not yet provide durable PostgreSQL grant persistence, connect-time DNS/IP enforcement, redirect/proxy controls, delivery outcomes, retry/dead-letter handling, or operator recovery.
+The active #130 stack is deeper than protected main and remains explicitly non-shipped. PR #205 defines host-owned exact HTTPS delivery-origin authority. PR #235 adds Integration-owned PostgreSQL grant persistence and active-installation fencing. PR #241 hardens credential authority and concurrent revocation admission. PR #242 adds an operator-configured Vault KV v2 secret-store adapter that keeps provider plaintext and Vault credentials out of durable LifeOS metadata. PR #243 composes authenticated Vault operator authority, PR #244 composes the hosted Integration runtime over one service-owned PostgreSQL pool, and PR #245 adds the concrete PostgreSQL/default-entrypoint runtime. A hosted acceptance run on an exact #245 ancestor exercised real Vault KV v2 plus migrated Integration-owned PostgreSQL across installation, credential creation and exact replay, installation-revocation fencing, runtime restart, credential revocation, and idempotent cleanup; that retained ancestor evidence is not current-head merge authority.
 
-Issue #130 remains **Partial**. Protected main does not yet contain a concrete plugin KMS adapter, host-authorized delivery-origin registry, SSRF/DNS-rebinding-safe outbound HTTPS runtime, delivery attempt/outcome persistence, retry/dead-letter worker, or complete operator-facing delivery lifecycle. Active PR #205 is non-shipped authority evidence only. Manifests and stored installations never self-authorize network capabilities.
+Draft PR #250 is stacked on #245 and exposes the existing delivery-origin aggregate/store only through exact signed one-time operator grant/read/revoke authority. Its production route verifier now admits only canonical lowercase UUIDv4 delivery-origin collection/item/revoke paths with their exact POST/GET/POST methods. The slice deliberately stops before HTTP delivery-origin transport and outbound networking.
+
+Issue #130 remains **Partial**. Protected main does not yet contain this Vault/PostgreSQL/delivery-origin active stack, and no active PR yet supplies complete host-authorized outbound HTTPS. The remaining network boundary requires immutable released/versioned canonical egress authority for connect-time DNS/IP and rebinding controls, redirect/proxy policy, bounded response/time behavior, plus LifeOS-owned delivery attempt/outcome persistence, retry/dead-letter and operator recovery. Durable origin identity is not network authorization. Manifests and stored installations never self-authorize network capabilities.
 
 ## 6. AI proposal boundary
 
@@ -126,15 +130,15 @@ ADR 0011 is authoritative:
 - revocation, replay, conflict, compensation, and recovery fail closed;
 - owning services retain migrations, repositories, and API authority.
 
-The protected Calendar and Plugin Integration lines above are executable evidence of this decision. Neither closes its parent buyer gap, and active PR #205 does not become protected authority until integration.
+The protected Calendar and Plugin Integration lines above are executable evidence of this decision. Their active successors are evidence only until integration and do not close their parent buyer gaps.
 
 ## 9. Model-assisted development and automation
 
 ADR 0012 is authoritative. A strong single-model route is measured before deeper orchestration. Workflow stage, reasoning effort, decomposition, recursion depth, role-specific reasoning effort, worker/model selection, verifier topology, and access/communication topology are explicit experimental dimensions only when supported by the exact reviewed dependency.
 
-Model-backed development uses reviewed OpenCode or contextual-orchestrator boundaries with GitHub Secret `NVIDIA_NIM_API_KEY`; `COPILOT_GITHUB_TOKEN` is prohibited. Model execution has no product-data authority beyond bounded inputs and no independent review, branch-protection, merge, or release authority. Retained evidence excludes credentials, raw prompts/responses, and hidden reasoning.
+Protected main includes PR #200's exact pinned OpenCode executable bootstrap hardening; that historical line does not authorize direct provider selection as the target model-routing architecture. Current active PR #208 routes scheduled model-assisted work through contextual-orchestrator and virtual `orchestrator/free`, while preserving exact OpenCode identity verification. It remains Draft because the required contextual-orchestrator authentication/bootstrap contract and immutable reviewed upstream release are not yet available to LifeOS. LifeOS does not copy mutable upstream source or convert provider credentials into direct model-selection authority.
 
-PR #200 is **Implemented on protected main** for restoring the exact pinned OpenCode executable by allowing only the reviewed `opencode-ai` lifecycle script. It does not weaken deterministic governance or authorize unrelated dependency scripts.
+Model execution has no product-data authority beyond bounded inputs and no independent review, branch-protection, merge, or release authority. Retained evidence excludes credentials, raw prompts/responses, and hidden reasoning. Unsupported gateway capability fails closed and is repaired in the canonical owner rather than bypassed in LifeOS.
 
 ## 10. Verification identity and merge safety
 
@@ -152,13 +156,15 @@ PR #154 is **Implemented on protected main** for exact-source jobs, independentl
 
 Old PR #147 is **Superseded** as verification authority; the protected PR #154 identity model above is the current canonical line.
 
-PR #204 is **Implemented on active PR** for a read-only detector that binds the complete Actions workflow registry to one exact protected-default-branch Git tree and reports active orphan workflow identities. It does not authorize workflow-state mutation and is not passing merge evidence until its exact-head required checks, including a genuine Strix run, pass.
+PR #204 is **Implemented on active PR** for a read-only detector that binds the complete Actions workflow registry to one exact protected-default-branch Git tree and reports active orphan workflow identities. It does not authorize workflow-state mutation and is not passing merge evidence until its exact-head required checks pass.
 
 PR #190 protects exact request-bound integration event authority. PR #191 and PR #196 protect the plugin operator request/replay/HTTP line. These product authorities are independent from merge authority.
 
 ## 11. Release and recovery boundary
 
 A release is cut from one exact integrated protected head only after applicable CI, security, review, coverage/docstrings, packaging, SBOM/provenance, reproducibility, compatibility, migrations/rollback, backup/restore/recovery, accessibility/localization, and operational acceptance pass together. No feature PR, documentation PR, or model judgment is release evidence by itself.
+
+Issue #210 remains **Partial**. Draft PR #217 adds a machine-readable exact release-evidence index with fail-closed structural validation, including artifact/checksum/provenance/signature coverage and nightly identity constraints. Stacked Draft #236 adds detached Ed25519 signature verification and a bounded operator CLI. Neither publishes an immutable release, distributes trust roots, completes key rotation/revocation/custody, or transfers ancestor checks into current release authority.
 
 ## 12. Mathematical and psychometric future constraint
 
