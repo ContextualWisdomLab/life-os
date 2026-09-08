@@ -80,6 +80,11 @@ interface DeliveryOriginOperatorApplication {
     installationId: string,
     grantId: string,
   ): Promise<PluginDeliveryOriginGrantRecord | undefined>;
+  revokeDeliveryOrigin(
+    headers: ReturnType<typeof signedHeaders>,
+    installationId: string,
+    grantId: string,
+  ): Promise<PluginDeliveryOriginGrantRecord>;
 }
 
 function signedHeaders(method: 'GET' | 'POST', path: string) {
@@ -201,6 +206,25 @@ describe('plugin delivery-origin operator authority', () => {
       ),
     ).resolves.toEqual(GRANT_RECORD);
     expect(origins.getGrant).toHaveBeenCalledWith(
+      { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+      INSTALLATION_ID,
+      GRANT_ID,
+    );
+  });
+
+  it('revokes an origin only under the exact installation-and-grant signed route', async () => {
+    const origins = deliveryOrigins();
+    const app = application(origins);
+    const path = `/v1/plugins/installations/${INSTALLATION_ID}/delivery-origins/${GRANT_ID}/revoke`;
+
+    await expect(
+      app.revokeDeliveryOrigin(
+        signedHeaders('POST', path),
+        INSTALLATION_ID,
+        GRANT_ID,
+      ),
+    ).resolves.toMatchObject({ status: 'revoked', revokedAt: NOW });
+    expect(origins.revoke).toHaveBeenCalledWith(
       { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
       INSTALLATION_ID,
       GRANT_ID,
