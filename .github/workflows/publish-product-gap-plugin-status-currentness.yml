@@ -1,0 +1,72 @@
+name: Publish Product Gap Plugin Status Currentness
+
+on:
+  push:
+    branches: [docs/product-gap-baseline-2026-08-20]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-product-gap-plugin-status-currentness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact input head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Apply bounded baseline currentness replacement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/product-technical-gap-baseline.md")
+          text = path.read_text()
+          anchor = "\n## Canonical architecture and evidence rules\n"
+          if text.count(anchor) != 1:
+              raise SystemExit("expected exactly one canonical-architecture anchor")
+          block = """
+          > **#259 authenticated status HTTP — exact candidate GREEN, still unshipped.** #259 is the direct #258 child and remains Draft/unshipped at exact `097267ddf583b6d4d93047ff8bcfba089b1e979e`. Reality RED `7398b9051c99bc39b137ea697129dba4dab57249`, run `34284401430`, job `102256491368`, proved the signed delivery-status GET was absent by returning framework `404` instead of the fixed credential-free `503` required when durable status composition is unavailable. Minimum repair `ccdea29238ef11a3a6866c735dc989d2b24633ad` adds exact signed GET authority, replay-before-dependency ordering, raw method/URL equality before decoded dynamic parameters, bounded HTTP problems, and hosted composition of #258's status application/repository over Integration-owned PostgreSQL. Final writer run `34287096996`, job `102265083137`, created candidate `097267dd...` locally, retired both purpose workflows, then verified formatting/diff hygiene, Plugin SDK build, focused status HTTP + hosted-runtime acceptance 26/26, Integration typecheck, and the complete Integration suite 423 passed / 45 environment-dependent skipped across 83 files before ordinary-pushing the same exact candidate under an unchanged-remote-head fence. The retained PR diff is six Integration source/test files. This evidence completes the active authenticated status-observation slice only; it is not protected-main, independent-review, p95, coverage-percentage, provider-execution, egress, merge, or release authority.
+          """.strip()
+          text = text.replace(anchor, "\n\n" + block + anchor, 1)
+          old = "Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration and authenticated operator HTTP composition;"
+          new = "Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration;"
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one remaining-work sentence")
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          grep -F '#259 authenticated status HTTP' docs/product-technical-gap-baseline.md
+          grep -F 'exact `097267ddf583b6d4d93047ff8bcfba089b1e979e`' docs/product-technical-gap-baseline.md
+          grep -F 'Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration;' docs/product-technical-gap-baseline.md
+          ! grep -F 'Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration and authenticated operator HTTP composition;' docs/product-technical-gap-baseline.md
+          rm .github/workflows/publish-product-gap-plugin-status-currentness.yml
+          changed="$(git diff --name-only | sort)"
+          allowed="$(printf '%s\n' docs/product-technical-gap-baseline.md .github/workflows/publish-product-gap-plugin-status-currentness.yml | sort)"
+          test "$changed" = "$allowed"
+          git diff --check
+
+      - name: Verify Markdown formatting
+        run: pnpm exec prettier --check docs/product-technical-gap-baseline.md
+
+      - name: Publish verified bounded currentness candidate
+        env:
+          BRANCH: docs/product-gap-baseline-2026-08-20
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/product-technical-gap-baseline.md .github/workflows/publish-product-gap-plugin-status-currentness.yml
+          git commit -m "docs(product): record delivery status HTTP proof"
+          candidate="$(git rev-parse HEAD)"
+          git fetch origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain)"
+          git push origin "${candidate}:$BRANCH"
+          echo "PUBLISHED_BASELINE_SHA=${candidate}"
