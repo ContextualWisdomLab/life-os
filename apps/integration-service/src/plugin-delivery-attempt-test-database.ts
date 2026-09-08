@@ -1,8 +1,9 @@
 const TEST_DATABASE = 'life_os_integration';
 const TEST_ROLE = 'life_os';
 const TLS_MODES = new Set(['disable', 'require', 'verify-ca', 'verify-full']);
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
 
+/** Validated connection authority for the disposable delivery-attempt PostgreSQL harness. */
 export interface PluginDeliveryAttemptTestDatabaseTarget {
   readonly hostname: string;
   readonly port: string;
