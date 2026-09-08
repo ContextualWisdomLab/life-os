@@ -74,6 +74,7 @@ describe('PostgresPluginDeliveryAttemptRetryStore', () => {
       workspaceId: WORKSPACE_ID,
       requestedByUserId: USER_ID,
       attemptNumber: 1,
+      maxAttempts: 2,
       deliveryStatus: 'pending',
       occurredAt: OCCURRED_AT,
       nextAttemptAt: '2026-09-08T13:00:30.000Z',
