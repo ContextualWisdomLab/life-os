@@ -36,15 +36,21 @@ jobs:
       - name: Build Plugin SDK
         run: pnpm --filter @life-os/plugin-sdk build
 
-      - name: Run status HTTP regression
+      - name: Run focused status acceptance
         run: >-
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-delivery-attempt-status-http.integration.test.ts
+          src/plugin-vault-hosted-runtime.test.ts
 
       - name: Check focused formatting
         run: >-
           pnpm exec prettier --check
           apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts
+          apps/integration-service/src/plugin-operator-context.ts
+          apps/integration-service/src/plugin-operator-application.ts
+          apps/integration-service/src/main.ts
+          apps/integration-service/src/plugin-vault-operator-composition.ts
+          apps/integration-service/src/plugin-vault-hosted-runtime.ts
           .github/workflows/verify-plugin-delivery-status-http.yml
 
       - name: Typecheck Integration
