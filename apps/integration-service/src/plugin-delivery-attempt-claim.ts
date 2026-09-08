@@ -103,7 +103,10 @@ function currentInstant(now: () => Date): string {
 }
 
 function requireContext(value: unknown): PluginInstallationContext {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value === null || typeof value !== 'object') {
+    return invalid();
+  }
+  if (boundedRead(() => Array.isArray(value))) {
     return invalid();
   }
   const context = value as PluginInstallationContext;
