@@ -1,0 +1,72 @@
+name: Format Plugin Delivery Claim Sources
+
+on:
+  push:
+    branches: [feat/plugin-delivery-attempt-claim-lease-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-plugin-delivery-claim-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/plugin-delivery-attempt-claim-lease-v1
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format bounded claim sources
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/integration-service/src/plugin-delivery-attempt-claim.ts
+          apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts
+          apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts
+          apps/integration-service/src/plugin-delivery-attempt-claim.integration.test.ts
+
+      - name: Verify only bounded formatting changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.integration.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.ts | sort)"
+          if [ "${changed}" != "${expected}" ]; then
+            printf 'Unexpected formatting delta:\n%s\n' "${changed}" >&2
+            exit 1
+          fi
+
+      - name: Publish canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            apps/integration-service/src/plugin-delivery-attempt-claim.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.integration.test.ts
+          git commit -m 'style(integration): canonicalize claim lease sources'
+          git push origin HEAD:feat/plugin-delivery-attempt-claim-lease-v1
