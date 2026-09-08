@@ -54,7 +54,7 @@ Planning is a protected contributor through PR #179 and its request-bound authen
 
 Issue #55 remains **Partial**. Active contributors do not become shipped truth, and even their future integration will not by itself finish Identity-owned data, Calendar, Privacy, Plugin Integration, durable reconciliation, retention/legal-hold/backup-expiry, protected export delivery, or final participant-set completion.
 
-## 3. Planning, Habit, Review, Today, and Notification
+## 3. Planning, Habit, Review, Today, Notification, and first-party journey
 
 Planning owns Goals, Projects, Tasks, search, and the durable Today aggregate. Habit owns recurring definitions and completion evidence. Review owns guided-review persistence/projections without Planning or Habit mutation authority. Notification owns reminder occurrences, claims, delivery attempts, outcomes, and recovery evidence.
 
@@ -63,6 +63,10 @@ Protected main now requires signed tenant authority on Planning through PR #168 
 Gateway Today composition is real protected behavior: PR #186 composes authenticated Planning state and PR #187 composes authenticated Habit state. Issue #163 is completed; the earlier PR #164 fail-closed placeholder removal remains historical safety evidence, not the current end state.
 
 Durable Today synchronization is protected-main behavior. Durable Today uses explicit local-to-workspace acceptance, strong create/update preconditions, idempotency, and stale-conflict reconciliation. No browser draft is presented as durable before server acceptance.
+
+Issue #209 is **Partial** for the complete first-party buyer journey. The current Draft stack starts at PR #214 with an authenticated Goal BFF that keeps Identity-derived workspace authority and exact Planning request signing server-side. Descendants add the remaining BFF prerequisites and buyer-visible workspaces; PR #229 is the durable `/goals` workspace and PR #234 is the current stacked `/review` workspace with persistence-aligned ritual-period uniqueness. These pages consume validated server-authoritative evidence and do not move Planning/Review persistence or workspace authority into the browser.
+
+The active journey remains incomplete until the dependency-ordered Goals → Projects → Tasks → Habits → Review flow has current-head browser E2E and exact repository gates after final restack, Figma/Storybook traceability, normal/loading/empty/error/permission/responsive/interaction states, keyboard/focus/reduced-motion/a11y acceptance, authoritative Review read projections, and KO/EN/JA/ZH/VI/ES/DE/FR translation-ledger/font/text-expansion parity. Active browser work is not protected product truth and does not close #209.
 
 ## 4. Calendar integration boundary
 
