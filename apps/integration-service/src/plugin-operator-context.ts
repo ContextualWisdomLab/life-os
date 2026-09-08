@@ -11,6 +11,12 @@ const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 /** Exact lowercase installation item/revocation paths; case variants are never aliases. */
 const INSTALLATION_ROUTE_PATTERN =
   /^\/v1\/plugins\/installations\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/revoke)?$/u;
+/** Exact lowercase installation-scoped delivery-origin collection path. */
+const DELIVERY_ORIGIN_COLLECTION_ROUTE_PATTERN =
+  /^\/v1\/plugins\/installations\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/delivery-origins$/u;
+/** Exact lowercase delivery-origin item/revocation path; case variants are never aliases. */
+const DELIVERY_ORIGIN_ROUTE_PATTERN =
+  /^\/v1\/plugins\/installations\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/delivery-origins\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:\/revoke)?$/u;
 /** Exact lowercase credential-revocation path; case variants are never aliases. */
 const CREDENTIAL_ROUTE_PATTERN =
   /^\/v1\/plugins\/credential-bindings\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/revoke$/u;
@@ -105,6 +111,31 @@ function requireOperatorRoute(
       method: 'POST',
       path: CREDENTIAL_COLLECTION_PATH,
     });
+  }
+  if (
+    binding.method === 'POST' &&
+    typeof binding.path === 'string' &&
+    DELIVERY_ORIGIN_COLLECTION_ROUTE_PATTERN.test(binding.path)
+  ) {
+    return Object.freeze({
+      method: 'POST',
+      path: binding.path,
+    });
+  }
+  if (
+    typeof binding.path === 'string' &&
+    DELIVERY_ORIGIN_ROUTE_PATTERN.test(binding.path)
+  ) {
+    const isRevocation = binding.path.endsWith('/revoke');
+    if (
+      (isRevocation && binding.method === 'POST') ||
+      (!isRevocation && binding.method === 'GET')
+    ) {
+      return Object.freeze({
+        method: binding.method,
+        path: binding.path,
+      });
+    }
   }
   if (
     typeof binding.path === 'string' &&
