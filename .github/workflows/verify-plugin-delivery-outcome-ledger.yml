@@ -51,12 +51,13 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check focused formatting and diff hygiene
+      - name: Check focused formatting, changelog contract, and diff hygiene
         shell: bash
         run: |
           set -Eeuo pipefail
           pnpm exec prettier --single-quote --check \
             apps/integration-service/src/plugin-delivery-attempt-outcome.integration.test.ts
+          grep -Fqx -- '- Integration-owned plugin delivery attempts now append sanitized retry/exhaustion outcome evidence in the same PostgreSQL transaction that consumes the exact worker claim; the durable ledger is UPDATE/DELETE-immutable and rejects attempt-number changes or outcome timestamps outside the consumed claim window.' CHANGELOG.md
           git diff --check HEAD^
 
       - name: Build Plugin SDK dependency
