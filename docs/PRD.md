@@ -43,7 +43,7 @@ LifeOS is a privacy-first, multi-user, server-backed, self-hostable personal ope
 | PRD-REV-002 | Guided-review routes require request-bound signed workspace authority. | Implemented on protected main | PR #185 |
 | PRD-CAL-001 | Google/CalDAV synchronization is conflict-safe and tenant-scoped. | Implemented on protected main | Calendar provider tests |
 | PRD-CAL-002 | Calendar synchronization uses signed trusted workspace context, not browser-selected ownership. | Implemented on protected main | PR #139 |
-| PRD-CAL-003 | Complete encrypted per-user credential lifecycle, OAuth/PKCE, refresh/revoke, discovery/selection, and scoped sync. | Partial | issue #129 |
+| PRD-CAL-003 | Complete encrypted per-user credential lifecycle, OAuth/PKCE, callback/token exchange, refresh/revoke, discovery/selection, and scoped sync. | Partial | issue #129; active PR #216 and PR #228 narrow hosted credential and OAuth state/PKCE boundaries |
 | PRD-CAL-004 | Calendar-owned connection metadata is scoped to exact workspace and user and stores opaque secret references only. | Implemented on protected main | PR #150 |
 | PRD-CAL-005 | Local connection revocation is atomic, replay-safe, and tenant/user scoped. | Implemented on protected main | PR #153 |
 | PRD-CAL-006 | User-sensitive hosted operations use signed `life-os.calendar-user.v1` workspace+user authority. | Implemented on protected main | PR #155 |
@@ -59,20 +59,22 @@ LifeOS is a privacy-first, multi-user, server-backed, self-hostable personal ope
 | PRD-PRIV-005 | Independent services use versioned `life-os.data-rights-contributor.v1`, never cross-service SQL. | Implemented on protected main | PR #159 |
 | PRD-PRIV-007 | Planning owns a deterministic PostgreSQL-backed contributor and authenticated request-bound transport. | Implemented on protected main | PR #179 and PR #194 |
 | PRD-PRIV-008 | Habit owns a deterministic PostgreSQL-backed contributor and replay-safe authenticated transport. | Implemented on protected main | PR #184 and PR #192 |
-| PRD-PRIV-009 | Review, Notification, and AI own bounded contributors without widening Identity database authority. | Implemented on active PR | PR #195, PR #198, PR #199 |
+| PRD-PRIV-009 | Review, Notification, and AI own bounded contributors without widening Identity database authority. | Partial | Review protected in PR #195; Notification PR #198 and AI PR #199 remain active until integration |
 | PRD-INT-001 | Plugin SDK/manifest/event contracts are versioned, bounded, and deny direct database authority. | Implemented on protected main | Plugin SDK/integration tests |
-| PRD-INT-002 | Complete concrete secret/KMS, authorized-origin outbound delivery, retry/dead-letter, revocation fencing, and operator lifecycle. | Partial | issue #130 |
+| PRD-INT-002 | Complete concrete secret/KMS, authorized-origin outbound delivery, retry/dead-letter, revocation fencing, and operator lifecycle. | Partial | issue #130; active #205/#235/#241/#242/#243/#244/#245/#250 narrow durable origin, Vault, PostgreSQL and signed operator boundaries but do not authorize outbound networking |
 | PRD-INT-003 | A manifest is intent only; the host grants an explicit tenant/user-scoped capability subset. | Implemented on protected main | PR #151 |
 | PRD-INT-004 | Plugin installation persistence is restart-safe and validates exact opaque installation/workspace/installer evidence. | Implemented on protected main | PR #169 and PR #175 |
 | PRD-INT-005 | Credential binding stores only opaque secret references and compensates conflicting durable winners. | Implemented on protected main | PR #172 |
 | PRD-INT-006 | Operator requests use exact request-bound one-time authority, durable replay protection, and fail-closed HTTP composition. | Implemented on protected main | PR #191 and PR #196 |
 | PRD-WEB-001 | The PWA is responsive, keyboard-operable, installable, and structurally localized in Korean and English. | Implemented on protected main | Browser/accessibility/localization tests |
 | PRD-WEB-002 | Gateway Today composes authenticated Planning and Habit state without fabricated success. | Implemented on protected main | PR #186 and PR #187; Issue #163 completed |
+| PRD-WEB-003 | The first-party authenticated buyer journey covers Goals → Projects → Tasks → Habits → Review with durable server evidence, explicit normal/loading/empty/error/permission states, responsive keyboard/a11y behavior, Figma/Storybook traceability, and KO/EN/JA/ZH/VI/ES/DE/FR locale parity. | Partial | issue #209; active authenticated Goal BFF #214, durable Goals workspace #229 and stacked Weekly Review workspace #234 are bounded evidence only |
 | PRD-OPS-001 | Logical PostgreSQL backup/restore proves integrity and refuses unsafe targets. | Implemented on protected main | Backup scripts/tests/runbook |
 | PRD-OPS-002 | Deployment/readiness/metrics are provider-neutral and bounded. | Implemented on protected main | Compose/Kubernetes/observability evidence |
 | PRD-GOV-001 | Capability maturity and canonical buyer-gap exhaustion are reported independently. | Implemented on protected main | Commercial Readiness registry |
 | PRD-GOV-002 | Exact source, PR-base snapshot, live base, integration tree, workflow checkout, protected main, and release identities remain distinct. | Implemented on protected main | PR #154 and ADR 0010; issue #132 remains Partial |
-| PRD-GOV-003 | Scheduled model-assisted development uses exact pinned OpenCode and independent deterministic gates. | Implemented on protected main | PR #200 repairs the reviewed bootstrap boundary |
+| PRD-GOV-003 | Scheduled model-assisted development preserves exact reviewed OpenCode identity but routes model capability through a released contextual-orchestrator client/gateway using virtual `orchestrator/free`; provider credentials and model selection remain owner-side bootstrap authority. | Partial | protected #200 is bootstrap evidence; active PR #208 is blocked on the immutable contextual-orchestrator authentication/bootstrap release and current exact-head gates |
+| PRD-REL-001 | A commercial release binds one unchanged protected source to version/CHANGELOG/tag/package plus immutable artifact, SBOM, provenance, signature verification, reproducibility, rollback/recovery and operator-verifiable evidence. | Partial | issue #210; active Draft #217 and stacked #236 narrow structural/signature evidence but do not publish a release |
 
 ## Non-functional requirements
 
