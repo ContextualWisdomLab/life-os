@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Checkout exact head
+      - name: Checkout exact input head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
@@ -33,7 +33,7 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Apply bounded Prettier repair
+      - name: Apply bounded formatting repair and retire purpose workflows
         run: |
           pnpm exec prettier --write \
             apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
@@ -41,21 +41,16 @@ jobs:
             apps/integration-service/src/plugin-operator-application.ts \
             apps/integration-service/src/main.ts \
             apps/integration-service/src/plugin-vault-operator-composition.ts \
-            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
-            .github/workflows/verify-plugin-delivery-status-http.yml
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts
           pnpm exec prettier --check \
             apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
             apps/integration-service/src/plugin-operator-context.ts \
             apps/integration-service/src/plugin-operator-application.ts \
             apps/integration-service/src/main.ts \
             apps/integration-service/src/plugin-vault-operator-composition.ts \
-            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
-            .github/workflows/verify-plugin-delivery-status-http.yml
-          git diff --check
-
-      - name: Verify bounded delta and self-retire
-        run: |
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts
           rm .github/workflows/repair-plugin-delivery-status-http-format.yml
+          rm .github/workflows/verify-plugin-delivery-status-http.yml
           changed="$(git diff --name-only | sort)"
           allowed="$(printf '%s\n' \
             .github/workflows/repair-plugin-delivery-status-http-format.yml \
@@ -69,9 +64,7 @@ jobs:
           test "$changed" = "$allowed"
           git diff --check
 
-      - name: Publish formatting-only descendant
-        env:
-          BRANCH: feat/plugin-delivery-attempt-status-http-v1
+      - name: Create exact candidate before verification
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -85,6 +78,31 @@ jobs:
             apps/integration-service/src/plugin-vault-hosted-runtime.ts \
             apps/integration-service/src/plugin-vault-operator-composition.ts
           git commit -m "style(integration): format delivery status HTTP slice"
+          echo "VERIFIED_CANDIDATE_SHA=$(git rev-parse HEAD)"
+          git show --check --stat --oneline HEAD
+
+      - name: Build Plugin SDK
+        run: pnpm --filter @life-os/plugin-sdk build
+
+      - name: Run focused status acceptance on exact candidate
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-status-http.integration.test.ts
+          src/plugin-vault-hosted-runtime.test.ts
+
+      - name: Typecheck Integration on exact candidate
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration suite on exact candidate
+        run: pnpm --filter @life-os/integration-service test
+
+      - name: Publish only the verified candidate
+        env:
+          BRANCH: feat/plugin-delivery-attempt-status-http-v1
+        run: |
+          candidate="$(git rev-parse HEAD)"
           git fetch origin "$BRANCH"
           test "$(git rev-parse FETCH_HEAD)" = "${GITHUB_SHA}"
-          git push origin "HEAD:$BRANCH"
+          test -z "$(git status --porcelain)"
+          git push origin "${candidate}:$BRANCH"
+          echo "PUBLISHED_VERIFIED_CANDIDATE_SHA=${candidate}"
