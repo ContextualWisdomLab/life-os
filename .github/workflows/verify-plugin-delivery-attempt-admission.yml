@@ -69,6 +69,23 @@ jobs:
             exit 1
           fi
 
+      - name: Prove Read Committed replay-snapshot RED
+        shell: bash
+        env:
+          RED_SHA: d9bf3384fc59219b2c8ebed4aa6360bd97c60460
+        run: |
+          set -euo pipefail
+          git checkout --detach "${RED_SHA}"
+          set +e
+          pnpm --filter @life-os/integration-service exec vitest run src/plugin-delivery-attempt-repository.test.ts
+          red_status=$?
+          set -e
+          git checkout --detach "${GITHUB_SHA}"
+          if [ "${red_status}" -eq 0 ]; then
+            echo "Expected ${RED_SHA} to fail when an ON CONFLICT winner requires a fresh statement snapshot" >&2
+            exit 1
+          fi
+
       - name: Verify canonical source formatting
         run: >-
           pnpm exec prettier --single-quote --check
