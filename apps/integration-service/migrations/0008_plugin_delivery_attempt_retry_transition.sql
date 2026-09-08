@@ -24,7 +24,10 @@ ALTER TABLE plugin_integration.plugin_delivery_attempt_record
                 AND attempt_count BETWEEN 1 AND max_attempts
                 AND next_attempt_at IS NOT NULL
                 AND terminal_at IS NULL
-                AND last_outcome_code IN ('retryable_failure')
+                AND (
+                    last_outcome_code IS NULL
+                    OR last_outcome_code = 'retryable_failure'
+                )
                 AND claim_token_digest IS NOT NULL
                 AND claim_started_at IS NOT NULL
                 AND claim_expires_at IS NOT NULL
