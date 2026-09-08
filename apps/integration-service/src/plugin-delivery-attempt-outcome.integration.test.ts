@@ -88,8 +88,11 @@ async function prepareAttempt(maxAttempts = 2): Promise<void> {
        $1::uuid, $2::uuid, 'example.plugin', '1.0.0',
        repeat('a', 64), ARRAY['delivery.https'], 'active',
        '2026-09-08T04:00:00.000Z', NULL
-     );
-     INSERT INTO plugin_integration.plugin_delivery_origin_grant_record (
+     )`,
+    [WORKSPACE_ID, USER_ID],
+  );
+  await pool.query(
+    `INSERT INTO plugin_integration.plugin_delivery_origin_grant_record (
        authority_version, grant_id, installation_id, workspace_id,
        granted_by_user_id, origin_uri, grant_status, granted_at, revoked_at
      ) VALUES (
@@ -97,8 +100,11 @@ async function prepareAttempt(maxAttempts = 2): Promise<void> {
        '11111111-1111-4111-8111-111111111111',
        '22222222-2222-4222-8222-222222222222', $1::uuid, $2::uuid,
        'https://api.example.com', 'active', '2026-09-08T04:10:00.000Z', NULL
-     );
-     INSERT INTO plugin_integration.plugin_delivery_attempt_record (
+     )`,
+    [WORKSPACE_ID, USER_ID],
+  );
+  await pool.query(
+    `INSERT INTO plugin_integration.plugin_delivery_attempt_record (
        authority_version, delivery_id, grant_id, installation_id, workspace_id,
        requested_by_user_id, delivery_status, attempt_count, max_attempts,
        requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
@@ -108,7 +114,7 @@ async function prepareAttempt(maxAttempts = 2): Promise<void> {
        '22222222-2222-4222-8222-222222222222', $1::uuid, $2::uuid,
        'pending', 0, $4::integer, '2026-09-08T04:20:00.000Z',
        '2026-09-08T04:20:00.000Z', '2026-09-08T04:20:00.000Z', NULL, NULL
-     );`,
+     )`,
     [WORKSPACE_ID, USER_ID, DELIVERY_ID, maxAttempts],
   );
 }
