@@ -130,6 +130,21 @@ describe('PluginDeliveryAttemptStatusApplication', () => {
       new PluginDeliveryAttemptStatusAuthorityError(),
     );
   });
+
+  it('rejects durable status updated after the trusted read instant', async () => {
+    const futureUpdated: PluginDeliveryAttemptStatusEvidence = {
+      ...evidence(),
+      updatedAt: '2026-09-09T03:00:01.000Z',
+    };
+    const app = new PluginDeliveryAttemptStatusApplication(
+      new FakeStore(futureUpdated),
+      () => new Date(CHECKED_AT),
+    );
+
+    await expect(app.read(context(), DELIVERY_ID)).rejects.toEqual(
+      new PluginDeliveryAttemptStatusAuthorityError(),
+    );
+  });
 });
 
 describe('PostgresPluginDeliveryAttemptStatusStore hostile evidence', () => {
