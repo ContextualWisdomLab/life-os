@@ -171,6 +171,28 @@ describe('plugin delivery attempt admission', () => {
     expect(createIfAbsent).not.toHaveBeenCalled();
   });
 
+  it('bounds delivery-origin dependency rejection before persistence authority', async () => {
+    const createIfAbsent = vi.fn();
+    const application = new PluginDeliveryAttemptApplication(
+      { createIfAbsent },
+      {
+        getGrant: vi.fn(async () => {
+          throw new Error('origin repository credential fixture must never escape');
+        }),
+      },
+      () => NOW,
+    );
+
+    await expect(
+      application.schedule(CONTEXT, INSTALLATION_ID, {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    expect(createIfAbsent).not.toHaveBeenCalled();
+  });
+
   it('bounds throwing origin evidence before persistence authority', async () => {
     const createIfAbsent = vi.fn();
     const hostileGrant = {
@@ -193,6 +215,26 @@ describe('plugin delivery attempt admission', () => {
       }),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
     expect(createIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it('bounds persistence dependency rejection without reflecting database detail', async () => {
+    const createIfAbsent = vi.fn(async () => {
+      throw new Error('database connection fixture must never escape');
+    });
+    const application = new PluginDeliveryAttemptApplication(
+      { createIfAbsent },
+      { getGrant: vi.fn(async () => activeGrant()) },
+      () => NOW,
+    );
+
+    await expect(
+      application.schedule(CONTEXT, INSTALLATION_ID, {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    expect(createIfAbsent).toHaveBeenCalledTimes(1);
   });
 
   it('bounds throwing durable attempt evidence after persistence I/O', async () => {
