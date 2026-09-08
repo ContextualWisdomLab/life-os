@@ -88,9 +88,10 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     control_changed BOOLEAN := NEW.control_sequence <> OLD.control_sequence;
-    status_changed BOOLEAN := NEW.delivery_status <> OLD.delivery_status;
 BEGIN
-    IF NOT control_changed AND NOT status_changed THEN
+    IF NOT control_changed
+       AND OLD.delivery_status NOT IN ('paused', 'dead_lettered')
+       AND NEW.delivery_status NOT IN ('paused', 'dead_lettered') THEN
         RETURN NEW;
     END IF;
 
@@ -231,17 +232,17 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    control_code TEXT;
+    applied_control_code TEXT;
 BEGIN
     IF NEW.control_sequence = OLD.control_sequence + 1 THEN
-        control_code := CASE
+        applied_control_code := CASE
             WHEN OLD.delivery_status = 'pending' AND NEW.delivery_status = 'paused' THEN 'pause'
             WHEN OLD.delivery_status = 'paused' AND NEW.delivery_status = 'pending' THEN 'resume'
             WHEN OLD.delivery_status = 'failed' AND NEW.delivery_status = 'dead_lettered' THEN 'dead_letter'
             ELSE NULL
         END;
 
-        IF control_code IS NULL THEN
+        IF applied_control_code IS NULL THEN
             RAISE EXCEPTION 'plugin_delivery_attempt_control_transition_check'
                 USING ERRCODE = '23514',
                       CONSTRAINT = 'plugin_delivery_attempt_control_transition_check';
@@ -264,7 +265,7 @@ BEGIN
             NEW.workspace_id,
             NEW.requested_by_user_id,
             NEW.control_sequence,
-            control_code,
+            applied_control_code,
             NEW.delivery_status,
             NEW.updated_at,
             NEW.next_attempt_at,
