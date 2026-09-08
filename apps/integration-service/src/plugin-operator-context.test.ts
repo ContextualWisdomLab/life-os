@@ -113,18 +113,24 @@ describe('trusted plugin operator context', () => {
   it('accepts only the bounded operator route surface', () => {
     const installationId = '55555555-5555-4555-8555-555555555555';
     const bindingId = '66666666-6666-4666-8666-666666666666';
+    const grantId = '99999999-9999-4999-8999-999999999999';
+    const originCollectionPath = `${INSTALL_PATH}/${installationId}/delivery-origins`;
+    const originItemPath = `${originCollectionPath}/${grantId}`;
     const routes = [
       { method: 'POST', path: INSTALL_PATH },
-      { method: 'GET', path: `/v1/plugins/installations/${installationId}` },
+      { method: 'GET', path: `${INSTALL_PATH}/${installationId}` },
       {
         method: 'POST',
-        path: `/v1/plugins/installations/${installationId}/revoke`,
+        path: `${INSTALL_PATH}/${installationId}/revoke`,
       },
       { method: 'POST', path: '/v1/plugins/credential-bindings' },
       {
         method: 'POST',
         path: `/v1/plugins/credential-bindings/${bindingId}/revoke`,
       },
+      { method: 'POST', path: originCollectionPath },
+      { method: 'GET', path: originItemPath },
+      { method: 'POST', path: `${originItemPath}/revoke` },
     ] as const;
 
     for (const route of routes) {
@@ -146,6 +152,13 @@ describe('trusted plugin operator context', () => {
       { method: 'POST', path: `${INSTALL_PATH}?workspace=other` },
       { method: 'POST', path: `${INSTALL_PATH}/not-a-uuid/revoke` },
       { method: 'POST', path: `${INSTALL_PATH}/../credential-bindings` },
+      { method: 'GET', path: originCollectionPath },
+      { method: 'POST', path: originItemPath },
+      { method: 'GET', path: `${originItemPath}/revoke` },
+      {
+        method: 'POST',
+        path: `${INSTALL_PATH}/${installationId.toUpperCase()}/delivery-origins`,
+      },
     ];
     for (const route of invalidRoutes) {
       expectInvalid(() =>

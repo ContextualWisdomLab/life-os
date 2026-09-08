@@ -4,6 +4,7 @@ import {
 } from './plugin-credential';
 import {
   PluginOperatorApplication,
+  type PluginDeliveryOriginOperatorPort,
   type PluginInstallationOperatorPort,
 } from './plugin-operator-application';
 import type { PluginOperatorReplayGuardPort } from './plugin-operator-replay';
@@ -26,6 +27,7 @@ export interface PluginVaultOperatorDependencies {
   readonly installations: PluginInstallationOperatorPort;
   readonly bindingStore: PluginCredentialBindingStore;
   readonly replayGuard: PluginOperatorReplayGuardPort;
+  readonly deliveryOrigins?: PluginDeliveryOriginOperatorPort;
 }
 
 /** Fixed startup/composition failure that never reflects Vault or verifier secret configuration. */
@@ -78,15 +80,14 @@ function requireOperatorContextSecret(value: string): string {
   return value;
 }
 
-/** Requires the installation port methods needed by both operator and credential authority. */
-function requireInstallations(
-  value: unknown,
-): PluginInstallationOperatorPort {
+/** Requires the installation port methods needed by operator, credential, and origin authority. */
+function requireInstallations(value: unknown): PluginInstallationOperatorPort {
   if (
     value === null ||
     typeof value !== 'object' ||
     typeof (value as PluginInstallationOperatorPort).install !== 'function' ||
-    typeof (value as PluginInstallationOperatorPort).getInstallation !== 'function' ||
+    typeof (value as PluginInstallationOperatorPort).getInstallation !==
+      'function' ||
     typeof (value as PluginInstallationOperatorPort).revoke !== 'function'
   ) {
     return unavailable();
@@ -100,12 +101,33 @@ function requireBindingStore(value: unknown): PluginCredentialBindingStore {
     value === null ||
     typeof value !== 'object' ||
     typeof (value as PluginCredentialBindingStore).findById !== 'function' ||
-    typeof (value as PluginCredentialBindingStore).createIfAbsent !== 'function' ||
+    typeof (value as PluginCredentialBindingStore).createIfAbsent !==
+      'function' ||
     typeof (value as PluginCredentialBindingStore).revokeActive !== 'function'
   ) {
     return unavailable();
   }
   return value as PluginCredentialBindingStore;
+}
+
+/** Accepts an optional delivery-origin authority while rejecting malformed supplied capability. */
+function requireDeliveryOrigins(
+  value: unknown,
+): PluginDeliveryOriginOperatorPort | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    typeof (value as PluginDeliveryOriginOperatorPort).grant !== 'function' ||
+    typeof (value as PluginDeliveryOriginOperatorPort).getGrant !==
+      'function' ||
+    typeof (value as PluginDeliveryOriginOperatorPort).revoke !== 'function'
+  ) {
+    return unavailable();
+  }
+  return value as PluginDeliveryOriginOperatorPort;
 }
 
 /** Requires durable one-time operator evidence consumption before request authority is granted. */
@@ -127,13 +149,15 @@ function requireReplayGuard(value: unknown): PluginOperatorReplayGuardPort {
  * from the supplied operator-owned environment. Missing/malformed configuration fails
  * during composition with one credential-free error. The returned application derives
  * tenant/user authority from signed request evidence, consumes replay evidence durably,
- * and routes credential plaintext only through `PluginVaultSecretStore`; no secret value
- * is added to LifeOS persistence or returned in the credential view.
+ * routes credential plaintext only through `PluginVaultSecretStore`, and may consume an
+ * already-constructed Integration-owned delivery-origin authority. No secret value is
+ * added to LifeOS persistence or returned in the credential view.
  *
- * PostgreSQL pool ownership remains outside this focused slice: callers supply the
- * already-constructed Integration-owned installation, credential-metadata, and replay
- * ports. A later hosted bootstrap slice can bind those ports to the service-owned pool
- * without making Vault or another bounded context a persistence owner.
+ * PostgreSQL pool ownership remains outside this focused composition function: callers
+ * supply the already-constructed Integration-owned installation, credential-metadata,
+ * replay, and optional delivery-origin ports. The hosted runtime binds those ports to
+ * one service-owned pool without making Vault or another bounded context a persistence
+ * owner.
  */
 export function createPluginVaultOperatorApplication(
   dependencies: PluginVaultOperatorDependencies,
@@ -154,6 +178,7 @@ export function createPluginVaultOperatorApplication(
   const installations = requireInstallations(dependencies.installations);
   const bindingStore = requireBindingStore(dependencies.bindingStore);
   const replayGuard = requireReplayGuard(dependencies.replayGuard);
+  const deliveryOrigins = requireDeliveryOrigins(dependencies.deliveryOrigins);
   const contextSecret = requireOperatorContextSecret(
     requireConfiguration(environment, 'INTEGRATION_OPERATOR_CONTEXT_SECRET'),
   );
@@ -189,5 +214,6 @@ export function createPluginVaultOperatorApplication(
     contextSecret,
     replayGuard,
     nowSeconds,
+    deliveryOrigins,
   );
 }
