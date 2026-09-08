@@ -181,6 +181,75 @@ function requireClaimState(
   return value;
 }
 
+function validateLifecycle(
+  status: PluginDeliveryAttemptStatusEvidence['deliveryStatus'],
+  attemptCount: number,
+  maxAttempts: number,
+  nextAttemptAt: string | null,
+  terminalAt: string | null,
+  outcome: PluginDeliveryAttemptStatusEvidence['lastOutcomeCode'],
+  claimState: PluginDeliveryAttemptStatusEvidence['claimState'],
+): void {
+  const claimed = claimState === 'active' || claimState === 'expired';
+  const initialPending =
+    status === 'pending' &&
+    attemptCount === 0 &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    outcome === null &&
+    claimState === 'unclaimed';
+  const claimedPending =
+    status === 'pending' &&
+    attemptCount >= 1 &&
+    attemptCount <= maxAttempts &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    (outcome === null || outcome === 'retryable_failure') &&
+    claimed;
+  const scheduledRetry =
+    status === 'pending' &&
+    attemptCount >= 1 &&
+    attemptCount < maxAttempts &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    outcome === 'retryable_failure' &&
+    claimState === 'unclaimed';
+  const paused =
+    status === 'paused' &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    claimState === 'unclaimed' &&
+    ((attemptCount === 0 && outcome === null) ||
+      (attemptCount >= 1 &&
+        attemptCount < maxAttempts &&
+        outcome === 'retryable_failure'));
+  const failed =
+    status === 'failed' &&
+    attemptCount === maxAttempts &&
+    nextAttemptAt === null &&
+    terminalAt !== null &&
+    outcome === 'attempt_limit' &&
+    claimState === 'unclaimed';
+  const deadLettered =
+    status === 'dead_lettered' &&
+    attemptCount === maxAttempts &&
+    nextAttemptAt === null &&
+    terminalAt !== null &&
+    outcome === 'attempt_limit' &&
+    claimState === 'unclaimed';
+
+  if (
+    !initialPending &&
+    !claimedPending &&
+    !scheduledRetry &&
+    !paused &&
+    !failed &&
+    !deadLettered
+  ) {
+    return invalid();
+  }
+}
+
 function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptStatusCommand,
@@ -248,13 +317,20 @@ function requireEvidence(
       new Date(nextAttemptAt).getTime() < new Date(requestedAt).getTime()) ||
     (terminalAt !== null &&
       (new Date(terminalAt).getTime() < new Date(requestedAt).getTime() ||
-        new Date(terminalAt).getTime() > new Date(updatedAt).getTime())) ||
-    ((deliveryStatus === 'failed' || deliveryStatus === 'dead_lettered') &&
-      claimState !== 'unclaimed') ||
-    (deliveryStatus === 'paused' && claimState !== 'unclaimed')
+        new Date(terminalAt).getTime() > new Date(updatedAt).getTime()))
   ) {
     return invalid();
   }
+
+  validateLifecycle(
+    deliveryStatus,
+    attemptCount,
+    maxAttempts,
+    nextAttemptAt,
+    terminalAt,
+    lastOutcomeCode,
+    claimState,
+  );
 
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
