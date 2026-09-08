@@ -1,0 +1,60 @@
+name: Refresh LifeOS canonical architecture Integration currentness
+
+on:
+  push:
+    branches: [docs/canonical-product-architecture-mainline]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-lifeos-canonical-architecture-integration-currentness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh-and-retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact canonical documentation head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Refresh bounded Plugin Integration transport evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('ARCHITECTURE.md')
+          text = path.read_text(encoding='utf-8')
+          start_marker = 'Draft PR #251 is stacked exactly on #250 and adds real signed delivery-origin HTTP grant/read/revoke transport without adding outbound HTTPS.'
+          end_marker = '\n\nDraft PR #252 proceeds in parallel from #245'
+          if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+              raise SystemExit('canonical Architecture #251 markers are not unique')
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = 'Draft PR #251 is stacked exactly on #250 and retains the signed delivery-origin HTTP grant/read/revoke transport at `5641005c5ed0193b6206848f9c4c807050271ef7` without adding outbound HTTPS. Hosted verifier run `34186936889`, job `101937064591`, first proved the exact #250 parent lacks the routes and then proved the pre-repair percent-encoded raw-route/HMAC canonicalization defect. The minimum transport repair compares the server-observed raw method and URL byte-for-byte with each canonical signed plugin-operator route before decoded parameters can reach durable authority. Focused real-HTTP GREEN passed 2 files / 4 tests, Integration typecheck passed, and the complete Integration suite passed 59 files / 376 tests with 5 files / 17 environment-dependent tests skipped. The successful run ordinary-pushed the retained repair and removed only its purpose-complete verifier. This is active-PR evidence only: it is neither protected-main shipped truth nor independent review/security merge authority.'
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Publish architecture refresh and retire writer
+        shell: bash
+        env:
+          TARGET_BRANCH: docs/canonical-product-architecture-mainline
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          test "$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")" = "${GITHUB_SHA}"
+          git add ARCHITECTURE.md
+          git rm .github/workflows/refresh-lifeos-canonical-architecture-integration-currentness.yml
+          actual="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' '.github/workflows/refresh-lifeos-canonical-architecture-integration-currentness.yml' 'ARCHITECTURE.md' | sort)"
+          test "${actual}" = "${expected}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(architecture): refresh Integration transport evidence"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
