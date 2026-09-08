@@ -1,4 +1,4 @@
-name: Write product gap baseline claim envelope evidence
+name: Write Product Gap Baseline Claim Envelope
 
 on:
   push:
@@ -8,57 +8,38 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: life-os-product-gap-baseline-writer
-  cancel-in-progress: true
-
 jobs:
   write:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Checkout writer input
+      - name: Checkout exact writer input
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: docs/product-gap-baseline-2026-08-20
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Require exact writer input
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse origin/docs/product-gap-baseline-2026-08-20)" = "$GITHUB_SHA"
-      - name: Replace bounded Integration claim currentness
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
 
-          path = Path('docs/product-technical-gap-baseline.md')
-          text = path.read_text()
-          start = '> #253 is the direct #252 claim/lease child.'
-          end = '\n\n## Canonical architecture and evidence rules'
-          start_index = text.index(start)
-          end_index = text.index(end, start_index)
-          replacement = '''> #253 is the direct #252 claim/lease child and remains Draft/unshipped. It owns `life-os.plugin-delivery-attempt-claim.v1`, Integration-owned application/repository/migration `0007`, a worker-visible UUIDv4 claim token whose SHA-256 digest alone is persisted, atomic due/pending/retry-budget acquisition, and finite 30–3600 second leases. Durable-bound RED `400e88163ca9d878806aaee11ef8ca2917ec33dc` proved migrated PostgreSQL accepted out-of-bound 29.999-second and 3600.001-second leases; repair `e25a96d902adc6d6a6422ca4bc114c5bf189f47f` enforces the same database invariant. Later hostile row-array RED `e7c2815030a18809876b9a795aa0fb3f7fe8a49b` / run `34222703786` exposed native Proxy detail; repair `62291129777a1809db9985d8e055a57073315624` completed run `34223014702` GREEN across hostile acceptance, real PostgreSQL, typecheck and the complete Integration suite.
-
-> Fresh envelope review added revoked command/rows/row regressions at `adc0b2abfd96c686eadd469b78a202f90454c55a`. After a formatting-only harness correction, reality RED run `34224860775` / job `102056384487` failed all three new cases with native `TypeError: Cannot perform 'IsArray' on a revoked Proxy`; minimum repository repair `e762d491c1752f8545e426e4949ab1d091d13f22` moved only those shape checks into existing bounded input/evidence seams. Exact run `34225100874` / job `102057170771` completed GREEN: focused 9/9, real PostgreSQL 4/4, Integration typecheck, and complete Integration suite 67 passed / 2 skipped files with 418 passed / 3 skipped tests.
-
-> Application trusted-context regression `469fabedeb593c5ec95fc705b9b3cbea117a5977` then produced reality RED run `34225421007` / job `102058345229`: the new revoked-context case failed with the same native `IsArray` escape while 11 retained focused tests passed. Minimum application repair `3d2dcf626f554427dbdfdcc23ced3fa5965ba1bd` bounds only that context shape check. Exact run `34225615055` / job `102058881497` completed GREEN on Ubuntu 24.04/PostgreSQL 16 with focused 12/12, real PostgreSQL 4/4, Integration typecheck, and complete Integration suite 67 passed / 2 skipped files with 419 passed / 3 skipped tests. Current #253 exact `03ec9d2938e04a394354d3fb4402d99103cc0803` removes only the purpose-complete verifier, is ahead-only of #252 exact `9ed7847d3106d9418e1ff6e04e45c1c7d84d0b0d`, and has no submitted approval or review thread. Durable admission/claim identity remains neither provider execution nor outbound-network authorization; `ContextualWisdomLab/EgressWeave` has no GitHub release, so LifeOS stays fail closed rather than consuming mutable sibling source.'''
-          path.write_text(text[:start_index] + replacement + text[end_index:])
-          PY
-          git diff --check
-          grep -F "Current #253 exact \`03ec9d2938e04a394354d3fb4402d99103cc0803\`" docs/product-technical-gap-baseline.md
-      - name: Publish source-current baseline and retire writer
+      - name: Publish bounded currentness replacement
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          REPLACEMENT_B64: PiAqKkN1cnJlbnRuZXNzIG92ZXJyaWRlIOKAlCAyMDI2LTA5LTA4IEludGVncmF0aW9uIGRlbGl2ZXJ5IGF1dGhvcml0eS4qKiBQcm90ZWN0ZWQgYG1haW5gIHJlbWFpbnMgYDE5M2E4N2VmNTRjM2ZlNmRjZGE0NzU1YmNlNGQ2YmM4MWUzYTAyOTdgLiBJbnRlZ3JhdGlvbiAjMjUyIHJlbWFpbnMgRHJhZnQvdW5zaGlwcGVkIGV4YWN0IGA5ZWQ3ODQ3ZDMxMDZkOTQxOGUxZmY2ZTA0ZTQ1YzFjN2Q4NGQwYjBkYDsgaXRzIGhvc3RpbGUgZHVyYWJsZS1ldmlkZW5jZSBwcm9vZiBoZWFkIGBlYzIzNTNhMDAzYzE1YzlmNDY0YjVkNWQyNDU0ZDM1OTM0MjdkNzY4YCBjb21wbGV0ZWQgcnVuIGAzNDIxMzUwODE5OWAgLyBqb2IgYDEwMjAxOTc2NTM5NWAgR1JFRU4sIGFuZCBDSEFOR0VMT0cgZGVzY2VuZGFudCBgZmU1MWE3OWMxZTE5Y2M3ZmIxNGU1Mjk2ZjA0YjNmOTFiNDFiZjUzNWAgY29tcGxldGVkIHJ1biBgMzQyMTM5Mzc4MjhgIC8gam9iIGAxMDIwMjExMzYyMTlgIEdSRUVOLiBDdXJyZW50ICMyNTIgb25seSByZXRpcmVzIHRoYXQgcHVycG9zZSB2ZXJpZmllci4KCj4gIzI1MyBpcyB0aGUgZGlyZWN0ICMyNTIgY2xhaW0vbGVhc2UgY2hpbGQgYW5kIHJlbWFpbnMgRHJhZnQvdW5zaGlwcGVkLiBJdCBvd25zIGBsaWZlLW9zLnBsdWdpbi1kZWxpdmVyeS1hdHRlbXB0LWNsYWltLnYxYCwgSW50ZWdyYXRpb24tb3duZWQgYXBwbGljYXRpb24vcmVwb3NpdG9yeS9taWdyYXRpb24gYDAwMDdgLCBhIHdvcmtlci12aXNpYmxlIFVVSUR2NCBjbGFpbSB0b2tlbiB3aG9zZSBTSEEtMjU2IGRpZ2VzdCBhbG9uZSBpcyBwZXJzaXN0ZWQsIGF0b21pYyBkdWUvcGVuZGluZy9yZXRyeS1idWRnZXQgYWNxdWlzaXRpb24sIGFuZCBmaW5pdGUgMzDigJMzNjAwIHNlY29uZCBsZWFzZXMuIER1cmFibGUtYm91bmQgUkVEIGA0MDBlODgxNjNjYTlkODc4ODA2YWFlZTExZWY4Y2EyOTE3ZWMzM2RjYCBwcm92ZWQgbWlncmF0ZWQgUG9zdGdyZVNRTCBhY2NlcHRlZCBvdXQtb2YtYm91bmQgMjkuOTk5LXNlY29uZCBhbmQgMzYwMC4wMDEtc2Vjb25kIGxlYXNlczsgcmVwYWlyIGBlMjVhOTZkOTAyYWRjNmQ2YTY0MjJjYTRiYzExNGM1YmYxODlmNDdmYCBlbmZvcmNlcyB0aGUgc2FtZSBkYXRhYmFzZSBpbnZhcmlhbnQuIExhdGVyIGhvc3RpbGUgcm93LWFycmF5IFJFRCBgZTdjMjgxNTAzMGExODgwOTg3NmI5YTc5NWFhMGZiM2Y3ZmU4YTQ5YmAgLyBydW4gYDM0MjIyNzAzNzg2YCBleHBvc2VkIG5hdGl2ZSBQcm94eSBkZXRhaWw7IHJlcGFpciBgNjIyOTExMjk3NzdhMTgwOWRiOTk4NWQ4ZTA1NWE1NzA3MzMxNTYyNGAgY29tcGxldGVkIHJ1biBgMzQyMjMwMTQ3MDJgIEdSRUVOIGFjcm9zcyBob3N0aWxlIGFjY2VwdGFuY2UsIHJlYWwgUG9zdGdyZVNRTCwgdHlwZWNoZWNrIGFuZCB0aGUgY29tcGxldGUgSW50ZWdyYXRpb24gc3VpdGUuCgo+IEZyZXNoIGVudmVsb3BlIHJldmlldyBhZGRlZCByZXZva2VkIGNvbW1hbmQvcm93cy9yb3cgcmVncmVzc2lvbnMgYXQgYGFkYzBiMmFiZmQ5NmM2ODZlYWRkNDY5Yjc4YTIwMmY5MDQ1NGM1NWFgLiBBZnRlciBhIGZvcm1hdHRpbmctb25seSBoYXJuZXNzIGNvcnJlY3Rpb24sIHJlYWxpdHkgUkVEIHJ1biBgMzQyMjQ4NjA3NzVgIC8gam9iIGAxMDIwNTYzODQ0ODdgIGZhaWxlZCBhbGwgdGhyZWUgbmV3IGNhc2VzIHdpdGggbmF0aXZlIGBUeXBlRXJyb3I6IENhbm5vdCBwZXJmb3JtICdJc0FycmF5JyBvbiBhIHJldm9rZWQgUHJveHlgOyBtaW5pbXVtIHJlcG9zaXRvcnkgcmVwYWlyIGBlNzYyZDQ5MWMxNzUyZjg1NDVlNDI2ZTQ5NDlhYjFkMDkxZDEzZjIyYCBtb3ZlZCBvbmx5IHRob3NlIHNoYXBlIGNoZWNrcyBpbnRvIGV4aXN0aW5nIGJvdW5kZWQgaW5wdXQvZXZpZGVuY2Ugc2VhbXMuIEV4YWN0IHJ1biBgMzQyMjUxMDA4NzRgIC8gam9iIGAxMDIwNTcxNzA3NzFgIGNvbXBsZXRlZCBHUkVFTjogZm9jdXNlZCA5LzksIHJlYWwgUG9zdGdyZVNRTCA0LzQsIEludGVncmF0aW9uIHR5cGVjaGVjaywgYW5kIGNvbXBsZXRlIEludGVncmF0aW9uIHN1aXRlIDY3IHBhc3NlZCAvIDIgc2tpcHBlZCBmaWxlcyB3aXRoIDQxOCBwYXNzZWQgLyAzIHNraXBwZWQgdGVzdHMuCgo+IEFwcGxpY2F0aW9uIHRydXN0ZWQtY29udGV4dCByZWdyZXNzaW9uIGA0NjlmYWJlZGViNTkzYzVlYzk1ZmM3MDViOWIzY2JlYTExN2E1OTc3YCB0aGVuIHByb2R1Y2VkIHJlYWxpdHkgUkVEIHJ1biBgMzQyMjU0MjEwMDdgIC8gam9iIGAxMDIwNTgzNDUyMjlgOiB0aGUgbmV3IHJldm9rZWQtY29udGV4dCBjYXNlIGZhaWxlZCB3aXRoIHRoZSBzYW1lIG5hdGl2ZSBgSXNBcnJheWAgZXNjYXBlIHdoaWxlIDExIHJldGFpbmVkIGZvY3VzZWQgdGVzdHMgcGFzc2VkLiBNaW5pbXVtIGFwcGxpY2F0aW9uIHJlcGFpciBgM2QyZGNmNjI2ZjU1NDQyN2RiZGZkY2MyM2NlZDNmYTU5NjViYTFiZGAgYm91bmRzIG9ubHkgdGhhdCBjb250ZXh0IHNoYXBlIGNoZWNrLiBFeGFjdCBydW4gYDM0MjI1NjE1MDU1YCAvIGpvYiBgMTAyMDU4ODgxNDk3YCBjb21wbGV0ZWQgR1JFRU4gb24gVWJ1bnR1IDI0LjA0L1Bvc3RncmVTUUwgMTYgd2l0aCBmb2N1c2VkIDEyLzEyLCByZWFsIFBvc3RncmVTUUwgNC80LCBJbnRlZ3JhdGlvbiB0eXBlY2hlY2ssIGFuZCBjb21wbGV0ZSBJbnRlZ3JhdGlvbiBzdWl0ZSA2NyBwYXNzZWQgLyAyIHNraXBwZWQgZmlsZXMgd2l0aCA0MTkgcGFzc2VkIC8gMyBza2lwcGVkIHRlc3RzLiBDdXJyZW50ICMyNTMgZXhhY3QgYDAzZWM5ZDI5MzhlMDRhMzk0MzU0ZDNmYjQ0MDJkOTkxMDNjYzA4MDNgIHJlbW92ZXMgb25seSB0aGUgcHVycG9zZS1jb21wbGV0ZSB2ZXJpZmllciwgaXMgYWhlYWQtb25seSBvZiAjMjUyIGV4YWN0IGA5ZWQ3ODQ3ZDMxMDZkOTQxOGUxZmY2ZTA0ZTQ1YzFjN2Q4NGQwYjBkYCwgYW5kIGhhcyBubyBzdWJtaXR0ZWQgYXBwcm92YWwgb3IgcmV2aWV3IHRocmVhZC4gRHVyYWJsZSBhZG1pc3Npb24vY2xhaW0gaWRlbnRpdHkgcmVtYWlucyBuZWl0aGVyIHByb3ZpZGVyIGV4ZWN1dGlvbiBub3Igb3V0Ym91bmQtbmV0d29yayBhdXRob3JpemF0aW9uOyBgQ29udGV4dHVhbFdpc2RvbUxhYi9FZ3Jlc3NXZWF2ZWAgaGFzIG5vIEdpdEh1YiByZWxlYXNlLCBzbyBMaWZlT1Mgc3RheXMgZmFpbCBjbG9zZWQgcmF0aGVyIHRoYW4gY29uc3VtaW5nIG11dGFibGUgc2libGluZyBzb3VyY2Uu
         run: |
           set -euo pipefail
-          test "$(git rev-parse origin/docs/product-gap-baseline-2026-08-20)" = "$GITHUB_SHA"
+          branch='docs/product-gap-baseline-2026-08-20'
+          remote_head="$(git ls-remote origin "refs/heads/${branch}" | cut -f1)"
+          test "${remote_head}" = "${GITHUB_SHA}"
+
+          python -c 'import base64,os; from pathlib import Path; p=Path("docs/product-technical-gap-baseline.md"); t=p.read_text(encoding="utf-8"); s="> **Currentness override — 2026-09-08 Integration delivery authority.**"; a=t.index(s); b=t.index("## Canonical architecture and evidence rules",a); r=base64.b64decode(os.environ["REPLACEMENT_B64"]).decode("utf-8"); p.write_text(t[:a]+r+"\n\n"+t[b:],encoding="utf-8")'
+
+          git diff --check
           rm .github/workflows/write-product-gap-baseline-claim-envelope-v41.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/product-technical-gap-baseline.md .github/workflows/write-product-gap-baseline-claim-envelope-v41.yml
-          git diff --cached --check
-          git commit -m "docs: refresh plugin claim envelope evidence"
-          git push origin HEAD:docs/product-gap-baseline-2026-08-20
+          git commit -m 'docs(lifeos): record plugin claim envelope evidence'
+
+          git fetch origin "${branch}"
+          remote_head="$(git rev-parse "origin/${branch}")"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          git push origin "HEAD:${branch}"
