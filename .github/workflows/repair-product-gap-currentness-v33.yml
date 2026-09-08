@@ -1,0 +1,70 @@
+name: Repair Product Gap Currentness v33
+
+on:
+  push:
+    branches: [docs/product-gap-baseline-2026-08-20]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-product-gap-currentness-v33-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact contributor head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Replace only bounded currentness overrides
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/product-technical-gap-baseline.md')
+          text = path.read_text()
+          start_marker = '> **Currentness override — 2026-09-08 package graph, AppGuardrail trigger scope, and Integration acceptance.**'
+          end_marker = '## Canonical architecture and evidence rules'
+          if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+              raise SystemExit('expected unique currentness/current-architecture markers')
+          start = text.index(start_marker)
+          end = text.index(end_marker)
+          replacement = """> **Currentness override — 2026-09-08 package/control-plane authority.** Root package owner #249 remains exact `15eb89ca7a3c4585109440914490e78044d66386`, open Draft/mergeable on protected `main@193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`. Its package-manager-owned repair retains `qs@6.16.0` in place of vulnerable `qs@6.15.3`, and regression `30303f294f674c37faf03c60710e2b0c5c2e66f4` plus repair `15eb89ca...` preserve AppGuardrail's original root-only `*.md` trigger semantics rather than the accidental `**.md` widening. Current exact-head CI, AppGuardrail, Commercial Readiness and SAST are GREEN. Security Scan remains fail-closed only because GitHub Dependency Review exact base/head comparison returns HTTP 403 after Trivy/OSV/Scorecard evidence; CodeQL remains RED in the central asynchronous terminal-receipt authority. Those are owner-path failures, not reasons to duplicate package source or weaken LifeOS leaf gates.\n\n> **Currentness override — 2026-09-08 Integration delivery authority.** Integration parent #245 is workflow-free exact `39ebec99d907356a99a1a15528a3a1df713472ed`; #250 is non-force current at `2fef9decf5053c7abf2443ec8e5cae4278e7baac`; #251 is non-force current at `5067f870bdaa9a026411298a2233d4d053708b5a`; #252 remains an independent durable-attempt slice directly on #245. Dependency-rejection RED was proven on `987f0a8ca1ffb132146eee784bf3a3f281801f58` by run `34202494161` / job `101984290407`; minimum repair `c6330c06b6372b2bcdbebf08b16e51a4339d300a` then passed exact run `34203636724` / job `101987958062` across historical RED proofs, canonical formatting, diff hygiene, focused delivery-attempt acceptance, Integration typecheck and the complete Integration suite. Ordinary descendant `aac83fc36279c6af37ef6403b980818ca22efa50` removed only that purpose verifier. Fresh review then found separate timestamp-binding, destructive-test-target/TLS-policy and persistence-contract-comment defects. REDs `8ef43e183968a6713c0cf76da9a27a6400472ba0`, `9f2d9b7717ea39e0c2a71df4b0bd49bc4253ce9f`, and `c77d0a38c48caa7e02e50a9dac6a44b9ba6f4cd2` preserve them; repairs `5bfdee3d5fbb6fb22027d240279b9cc708aeb3cf`, `aca4c3bb69b6b76a6ceff790da3c08e304fe56ab`, `da94bb6b96391fcc3c66f3b4460979f62e6c964f`, and `171f15ed75be0331b37e2912ba42e2d37f201003` separate persisted timestamps, restrict destructive PostgreSQL setup to the exact disposable database/role, propagate explicit `PGSSLMODE`, and document table ownership/admission authority. Exact #252 head `dfb76e3250e4d63a3815b71b6991be1f0a3f549c` is under proof-only run `34205211068` / job `101992992300`; queued state is not GREEN. Neither durable origin nor attempt identity grants outbound HTTPS or connect-time egress authority, which must come from immutable released/versioned canonical owner contracts.\n\n"""
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+
+      - name: Verify preservation and diff hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(grep -c '^> \*\*Currentness override' docs/product-technical-gap-baseline.md)" -eq 2
+          grep -F '## Canonical architecture and evidence rules' docs/product-technical-gap-baseline.md >/dev/null
+          grep -F '### #209 — authenticated Goal → Project → Task → Habit → Today → Review product journey' docs/product-technical-gap-baseline.md >/dev/null
+          grep -F '### #130 — Plugin installation, secrets, and outbound delivery' docs/product-technical-gap-baseline.md >/dev/null
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "${changed}" = 'docs/product-technical-gap-baseline.md'
+
+      - name: Publish bounded currentness repair and retire writer
+        shell: bash
+        env:
+          BRANCH_NAME: docs/product-gap-baseline-2026-08-20
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/${BRANCH_NAME}" | awk '{print $1}')"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          rm .github/workflows/repair-product-gap-currentness-v33.yml
+          git add docs/product-technical-gap-baseline.md .github/workflows/repair-product-gap-currentness-v33.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs: refresh product gap currentness'
+          git push origin "HEAD:${BRANCH_NAME}"
