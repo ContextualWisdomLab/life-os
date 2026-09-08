@@ -58,7 +58,8 @@ export function parsePluginDeliveryAttemptTestDatabaseTarget(
       'An explicit sslmode is required for the Integration test database',
     );
   }
-  const sslMode = sslModes[0] as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
+  const sslMode =
+    sslModes[0] as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
   if (
     sslMode === 'disable' &&
     !LOOPBACK_HOSTS.has(target.hostname.toLowerCase())
