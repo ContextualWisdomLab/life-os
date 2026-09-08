@@ -29,6 +29,7 @@ import {
   validatePluginManifest,
 } from '@life-os/plugin-sdk';
 import {
+  PluginDeliveryOriginOperatorDependencyError,
   PluginOperatorApplication,
   PluginOperatorDependencyError,
   type PluginOperatorCredentialInput,
@@ -46,6 +47,11 @@ import {
   PluginCredentialError,
   type PluginCredentialBindingView,
 } from './plugin-credential';
+import {
+  PluginDeliveryOriginAuthorityError,
+  type GrantPluginDeliveryOriginInput,
+  type PluginDeliveryOriginGrantRecord,
+} from './plugin-delivery-origin-authority';
 
 type IntegrationProblemCode =
   | 'invalid_plugin_contract'
@@ -57,6 +63,7 @@ type IntegrationProblemCode =
   | 'invalid_plugin_operator_request'
   | 'plugin_operator_not_found'
   | 'plugin_credential_capability_unavailable'
+  | 'plugin_delivery_origin_capability_unavailable'
   | 'plugin_operator_failure';
 
 interface IntegrationProblemDetails {
@@ -188,6 +195,14 @@ function unavailablePluginCredentialCapability(): never {
   );
 }
 
+function unavailablePluginDeliveryOriginCapability(): never {
+  throw problemException(
+    503,
+    'Plugin delivery-origin capability is unavailable',
+    'plugin_delivery_origin_capability_unavailable',
+  );
+}
+
 function pluginOperatorFailure(): never {
   throw problemException(
     503,
@@ -259,6 +274,15 @@ function pluginOperatorCredentialInput(
     installationId: value.installationId as string,
     credentialName: value.credentialName as string,
     secretValue: value.secretValue as string,
+  });
+}
+
+/** Selects only delivery-origin fields; tenant and actor authority remain header-derived. */
+function pluginDeliveryOriginInput(body: unknown): GrantPluginDeliveryOriginInput {
+  const value = requireObject(body);
+  return Object.freeze({
+    grantId: value.grantId as string,
+    origin: value.origin as string,
   });
 }
 
@@ -370,7 +394,7 @@ export class IntegrationController {
 }
 
 /**
- * HTTP transport for the host-owned plugin installation and credential lifecycle.
+ * HTTP transport for host-owned plugin installation, credentials, and delivery-origin lifecycle.
  *
  * The controller never derives tenant or user authority from route/body data. It
  * forwards signed gateway evidence to `PluginOperatorApplication`, which verifies
@@ -453,6 +477,80 @@ export class PluginOperatorHttpController {
     }
   }
 
+  /** Grants one delivery origin under exact installation-scoped signed authority. */
+  @Post('v1/plugins/installations/:installationId/delivery-origins')
+  @HttpCode(200)
+  async grantDeliveryOrigin(
+    @Param('installationId') installationId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Body() body: unknown,
+  ): Promise<PluginDeliveryOriginGrantRecord> {
+    const operator = this.requireOperator();
+    try {
+      return await operator.grantDeliveryOrigin(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        installationId,
+        pluginDeliveryOriginInput(body),
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Reads one delivery-origin grant under its exact signed dynamic route authority. */
+  @Get('v1/plugins/installations/:installationId/delivery-origins/:grantId')
+  async getDeliveryOrigin(
+    @Param('installationId') installationId: string,
+    @Param('grantId') grantId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+  ): Promise<PluginDeliveryOriginGrantRecord> {
+    const operator = this.requireOperator();
+    try {
+      const record = await operator.getDeliveryOrigin(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        installationId,
+        grantId,
+      );
+      return record ?? missingPluginOperatorRecord();
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
+  /** Revokes one delivery-origin grant under its exact signed dynamic route authority. */
+  @Post(
+    'v1/plugins/installations/:installationId/delivery-origins/:grantId/revoke',
+  )
+  @HttpCode(200)
+  async revokeDeliveryOrigin(
+    @Param('installationId') installationId: string,
+    @Param('grantId') grantId: string,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+  ): Promise<PluginDeliveryOriginGrantRecord> {
+    const operator = this.requireOperator();
+    try {
+      return await operator.revokeDeliveryOrigin(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        installationId,
+        grantId,
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
   /** Binds one credential while returning only the secret-reference-free public view. */
   @Post('v1/plugins/credential-bindings')
   @HttpCode(200)
@@ -526,9 +624,13 @@ export class PluginOperatorHttpController {
     if (error instanceof PluginOperatorDependencyError) {
       return unavailablePluginCredentialCapability();
     }
+    if (error instanceof PluginDeliveryOriginOperatorDependencyError) {
+      return unavailablePluginDeliveryOriginCapability();
+    }
     if (
       error instanceof PluginInstallationError ||
-      error instanceof PluginCredentialError
+      error instanceof PluginCredentialError ||
+      error instanceof PluginDeliveryOriginAuthorityError
     ) {
       return invalidPluginOperatorRequest();
     }
