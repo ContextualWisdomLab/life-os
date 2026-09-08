@@ -6,7 +6,7 @@ on:
       - feat/plugin-delivery-attempt-control-v1
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: verify-plugin-delivery-control-${{ github.ref }}
@@ -35,7 +35,7 @@ jobs:
       - name: Checkout exact pushed head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
+          persist-credentials: true
           fetch-depth: 2
           ref: ${{ github.sha }}
 
@@ -49,6 +49,26 @@ jobs:
 
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Canonicalize focused TypeScript once
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/plugin-delivery-attempt-control.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control.integration.test.ts
+          if ! git diff --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add \
+              apps/integration-service/src/plugin-delivery-attempt-control.test.ts \
+              apps/integration-service/src/plugin-delivery-attempt-control.ts \
+              apps/integration-service/src/plugin-delivery-attempt-control-repository.ts \
+              apps/integration-service/src/plugin-delivery-attempt-control.integration.test.ts
+            git commit -m 'style(integration): canonicalize delivery control source'
+            git push origin HEAD:${GITHUB_REF_NAME}
+            exit 1
+          fi
 
       - name: Check focused formatting and diff hygiene
         run: |
