@@ -1,0 +1,90 @@
+name: Repair Plugin Delivery Status HTTP Formatting
+
+on:
+  push:
+    branches: [feat/plugin-delivery-attempt-status-http-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-plugin-delivery-status-http-format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply bounded Prettier repair
+        run: |
+          pnpm exec prettier --write \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            .github/workflows/verify-plugin-delivery-status-http.yml
+          pnpm exec prettier --check \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            .github/workflows/verify-plugin-delivery-status-http.yml
+          git diff --check
+
+      - name: Verify bounded delta and self-retire
+        run: |
+          rm .github/workflows/repair-plugin-delivery-status-http-format.yml
+          changed="$(git diff --name-only | sort)"
+          allowed="$(printf '%s\n' \
+            .github/workflows/repair-plugin-delivery-status-http-format.yml \
+            .github/workflows/verify-plugin-delivery-status-http.yml \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts | sort)"
+          test "$changed" = "$allowed"
+          git diff --check
+
+      - name: Publish formatting-only descendant
+        env:
+          BRANCH: feat/plugin-delivery-attempt-status-http-v1
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/repair-plugin-delivery-status-http-format.yml \
+            .github/workflows/verify-plugin-delivery-status-http.yml \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts
+          git commit -m "style(integration): format delivery status HTTP slice"
+          git fetch origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "${GITHUB_SHA}"
+          git push origin "HEAD:$BRANCH"
