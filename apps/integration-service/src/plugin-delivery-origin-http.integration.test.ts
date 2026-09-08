@@ -28,6 +28,7 @@ const EVIDENCE_IDS = Object.freeze([
   '55555555-5555-4555-8555-555555555552',
   '55555555-5555-4555-8555-555555555553',
   '55555555-5555-4555-8555-555555555554',
+  '55555555-5555-4555-8555-555555555555',
 ] as const);
 const openApplications = new Set<INestApplication>();
 
@@ -226,5 +227,28 @@ describe('plugin delivery-origin HTTP lifecycle', () => {
     expect(await response.json()).toMatchObject({
       code: 'plugin_delivery_origin_capability_unavailable',
     });
+  });
+
+  it('rejects a percent-encoded route alias authenticated only for the canonical path', async () => {
+    const deliveryOrigins = new InMemoryDeliveryOriginPort();
+    const { origin } = await startApplication(operator(deliveryOrigins));
+    const canonicalPath = `/v1/plugins/installations/${INSTALLATION_ID}/delivery-origins`;
+    const encodedInstallationId = `%33${INSTALLATION_ID.slice(1)}`;
+    const aliasedPath = `/v1/plugins/installations/${encodedInstallationId}/delivery-origins`;
+
+    const response = await fetch(`${origin}${aliasedPath}`, {
+      method: 'POST',
+      headers: headers(EVIDENCE_IDS[4], 'POST', canonicalPath),
+      body: JSON.stringify({
+        grantId: GRANT_ID,
+        origin: 'https://calendar.example.com',
+      }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      code: 'invalid_plugin_operator_context',
+    });
+    expect(deliveryOrigins.records.size).toBe(0);
   });
 });
