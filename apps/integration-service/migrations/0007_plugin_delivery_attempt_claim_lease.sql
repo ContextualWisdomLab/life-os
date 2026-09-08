@@ -35,7 +35,8 @@ ALTER TABLE plugin_integration.plugin_delivery_attempt_record
             claim_started_at IS NULL
             OR (
                 claim_started_at >= requested_at
-                AND claim_expires_at > claim_started_at
+                AND claim_expires_at >= claim_started_at + INTERVAL '30 seconds'
+                AND claim_expires_at <= claim_started_at + INTERVAL '3600 seconds'
                 AND updated_at >= claim_started_at
             )
         );
