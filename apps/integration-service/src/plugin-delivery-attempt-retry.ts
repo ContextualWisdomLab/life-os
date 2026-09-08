@@ -35,6 +35,7 @@ export interface PluginDeliveryAttemptRetryEvidence {
   readonly workspaceId: string;
   readonly requestedByUserId: string;
   readonly attemptNumber: number;
+  readonly maxAttempts: number;
   readonly deliveryStatus: 'pending' | 'failed';
   readonly occurredAt: string;
   readonly nextAttemptAt: string | null;
@@ -156,6 +157,7 @@ function requireEvidence(
     workspaceId: evidence.workspaceId,
     requestedByUserId: evidence.requestedByUserId,
     attemptNumber: evidence.attemptNumber,
+    maxAttempts: evidence.maxAttempts,
     deliveryStatus: evidence.deliveryStatus,
     occurredAt: evidence.occurredAt,
     nextAttemptAt: evidence.nextAttemptAt,
@@ -170,7 +172,11 @@ function requireEvidence(
     typeof snapshot.attemptNumber !== 'number' ||
     !Number.isInteger(snapshot.attemptNumber) ||
     snapshot.attemptNumber < 1 ||
-    snapshot.attemptNumber > MAXIMUM_ATTEMPTS
+    typeof snapshot.maxAttempts !== 'number' ||
+    !Number.isInteger(snapshot.maxAttempts) ||
+    snapshot.maxAttempts < 1 ||
+    snapshot.maxAttempts > MAXIMUM_ATTEMPTS ||
+    snapshot.attemptNumber > snapshot.maxAttempts
   ) {
     return invalid();
   }
@@ -181,7 +187,7 @@ function requireEvidence(
 
   if (snapshot.deliveryStatus === 'pending') {
     if (
-      snapshot.attemptNumber >= MAXIMUM_ATTEMPTS ||
+      snapshot.attemptNumber >= snapshot.maxAttempts ||
       snapshot.outcomeCode !== 'retryable_failure' ||
       snapshot.terminalAt !== null ||
       requireInstant(snapshot.nextAttemptAt) !==
@@ -191,7 +197,7 @@ function requireEvidence(
     }
   } else if (snapshot.deliveryStatus === 'failed') {
     if (
-      snapshot.attemptNumber !== MAXIMUM_ATTEMPTS ||
+      snapshot.attemptNumber !== snapshot.maxAttempts ||
       snapshot.outcomeCode !== 'attempt_limit' ||
       snapshot.nextAttemptAt !== null ||
       requireInstant(snapshot.terminalAt) !== occurredAt
@@ -208,6 +214,7 @@ function requireEvidence(
     workspaceId: requireCanonicalUuidV4(snapshot.workspaceId),
     requestedByUserId: requireCanonicalUuidV4(snapshot.requestedByUserId),
     attemptNumber: snapshot.attemptNumber,
+    maxAttempts: snapshot.maxAttempts,
     deliveryStatus: snapshot.deliveryStatus,
     occurredAt,
     nextAttemptAt: snapshot.nextAttemptAt,
