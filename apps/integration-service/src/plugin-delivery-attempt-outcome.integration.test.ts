@@ -28,6 +28,7 @@ const MIGRATIONS = [
   '0006_plugin_delivery_attempt_record.sql',
   '0007_plugin_delivery_attempt_claim_lease.sql',
   '0008_plugin_delivery_attempt_retry_transition.sql',
+  '0009_plugin_delivery_attempt_outcome_record.sql',
 ].map((name) =>
   readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
 );
@@ -72,43 +73,89 @@ afterAll(async () => {
   }
 });
 
-async function prepareAttempt(): Promise<void> {
+async function prepareAttempt(maxAttempts = 2): Promise<void> {
   await pool.query('DROP SCHEMA IF EXISTS plugin_integration CASCADE;');
   for (const migration of MIGRATIONS) {
     await pool.query(migration);
   }
-  await pool.query(`
-    INSERT INTO plugin_integration.plugin_installation_record (
-      installation_id, workspace_id, installed_by_user_id, plugin_id,
-      plugin_contract_version, manifest_sha256, granted_capabilities,
-      installation_status, installed_at, revoked_at
-    ) VALUES (
-      '22222222-2222-4222-8222-222222222222',
-      '${WORKSPACE_ID}', '${USER_ID}', 'example.plugin', '1.0.0',
-      repeat('a', 64), ARRAY['delivery.https'], 'active',
-      '2026-09-08T04:00:00.000Z', NULL
-    );
-    INSERT INTO plugin_integration.plugin_delivery_origin_grant_record (
-      authority_version, grant_id, installation_id, workspace_id,
-      granted_by_user_id, origin_uri, grant_status, granted_at, revoked_at
-    ) VALUES (
-      'life-os.plugin-delivery-origin.v1',
-      '11111111-1111-4111-8111-111111111111',
-      '22222222-2222-4222-8222-222222222222', '${WORKSPACE_ID}', '${USER_ID}',
-      'https://api.example.com', 'active', '2026-09-08T04:10:00.000Z', NULL
-    );
-    INSERT INTO plugin_integration.plugin_delivery_attempt_record (
-      authority_version, delivery_id, grant_id, installation_id, workspace_id,
-      requested_by_user_id, delivery_status, attempt_count, max_attempts,
-      requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
-    ) VALUES (
-      'life-os.plugin-delivery-attempt.v1', '${DELIVERY_ID}',
-      '11111111-1111-4111-8111-111111111111',
-      '22222222-2222-4222-8222-222222222222', '${WORKSPACE_ID}', '${USER_ID}',
-      'pending', 0, 2, '2026-09-08T04:20:00.000Z',
-      '2026-09-08T04:20:00.000Z', '2026-09-08T04:20:00.000Z', NULL, NULL
-    );
-  `);
+  await pool.query(
+    `INSERT INTO plugin_integration.plugin_installation_record (
+       installation_id, workspace_id, installed_by_user_id, plugin_id,
+       plugin_contract_version, manifest_sha256, granted_capabilities,
+       installation_status, installed_at, revoked_at
+     ) VALUES (
+       '22222222-2222-4222-8222-222222222222',
+       $1::uuid, $2::uuid, 'example.plugin', '1.0.0',
+       repeat('a', 64), ARRAY['delivery.https'], 'active',
+       '2026-09-08T04:00:00.000Z', NULL
+     );
+     INSERT INTO plugin_integration.plugin_delivery_origin_grant_record (
+       authority_version, grant_id, installation_id, workspace_id,
+       granted_by_user_id, origin_uri, grant_status, granted_at, revoked_at
+     ) VALUES (
+       'life-os.plugin-delivery-origin.v1',
+       '11111111-1111-4111-8111-111111111111',
+       '22222222-2222-4222-8222-222222222222', $1::uuid, $2::uuid,
+       'https://api.example.com', 'active', '2026-09-08T04:10:00.000Z', NULL
+     );
+     INSERT INTO plugin_integration.plugin_delivery_attempt_record (
+       authority_version, delivery_id, grant_id, installation_id, workspace_id,
+       requested_by_user_id, delivery_status, attempt_count, max_attempts,
+       requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
+     ) VALUES (
+       'life-os.plugin-delivery-attempt.v1', $3::uuid,
+       '11111111-1111-4111-8111-111111111111',
+       '22222222-2222-4222-8222-222222222222', $1::uuid, $2::uuid,
+       'pending', 0, $4::integer, '2026-09-08T04:20:00.000Z',
+       '2026-09-08T04:20:00.000Z', '2026-09-08T04:20:00.000Z', NULL, NULL
+     );`,
+    [WORKSPACE_ID, USER_ID, DELIVERY_ID, maxAttempts],
+  );
+}
+
+async function consumeClaim(occurredAt: string): Promise<void> {
+  const client = new PoolSqlClient(pool);
+  const claims = new PostgresPluginDeliveryAttemptClaimStore(client);
+  const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
+
+  await claims.claimDue({
+    deliveryId: DELIVERY_ID,
+    workspaceId: WORKSPACE_ID,
+    requestedByUserId: USER_ID,
+    claimTokenDigest: CLAIM_DIGEST,
+    claimedAt: '2026-09-08T13:00:00.000Z',
+    leaseExpiresAt: '2026-09-08T13:01:00.000Z',
+  });
+  await retries.recordRetryableFailure({
+    deliveryId: DELIVERY_ID,
+    workspaceId: WORKSPACE_ID,
+    requestedByUserId: USER_ID,
+    claimTokenDigest: CLAIM_DIGEST,
+    occurredAt,
+  });
+}
+
+async function readOutcomes(): Promise<
+  Array<{
+    delivery_id: string;
+    attempt_number: number;
+    outcome_code: string;
+    occurred_at: Date;
+  }>
+> {
+  const outcomes = await pool.query<{
+    delivery_id: string;
+    attempt_number: number;
+    outcome_code: string;
+    occurred_at: Date;
+  }>(
+    `SELECT delivery_id, attempt_number, outcome_code, occurred_at
+       FROM plugin_integration.plugin_delivery_attempt_outcome_record
+       WHERE delivery_id = $1::uuid
+       ORDER BY attempt_number`,
+    [DELIVERY_ID],
+  );
+  return outcomes.rows;
 }
 
 describeWithPostgres('plugin delivery append-only outcome acceptance', () => {
@@ -116,41 +163,10 @@ describeWithPostgres('plugin delivery append-only outcome acceptance', () => {
     await prepareAttempt();
   });
 
-  it('records one sanitized immutable outcome for the consumed claim attempt', async () => {
-    const client = new PoolSqlClient(pool);
-    const claims = new PostgresPluginDeliveryAttemptClaimStore(client);
-    const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
+  it('records one sanitized outcome in the same durable retry transition', async () => {
+    await consumeClaim('2026-09-08T13:00:10.000Z');
 
-    await claims.claimDue({
-      deliveryId: DELIVERY_ID,
-      workspaceId: WORKSPACE_ID,
-      requestedByUserId: USER_ID,
-      claimTokenDigest: CLAIM_DIGEST,
-      claimedAt: '2026-09-08T13:00:00.000Z',
-      leaseExpiresAt: '2026-09-08T13:01:00.000Z',
-    });
-    await retries.recordRetryableFailure({
-      deliveryId: DELIVERY_ID,
-      workspaceId: WORKSPACE_ID,
-      requestedByUserId: USER_ID,
-      claimTokenDigest: CLAIM_DIGEST,
-      occurredAt: '2026-09-08T13:00:10.000Z',
-    });
-
-    const outcomes = await pool.query<{
-      delivery_id: string;
-      attempt_number: number;
-      outcome_code: string;
-      occurred_at: Date;
-    }>(
-      `SELECT delivery_id, attempt_number, outcome_code, occurred_at
-         FROM plugin_integration.plugin_delivery_attempt_outcome_record
-         WHERE delivery_id = $1::uuid
-         ORDER BY attempt_number`,
-      [DELIVERY_ID],
-    );
-
-    expect(outcomes.rows).toEqual([
+    expect(await readOutcomes()).toEqual([
       {
         delivery_id: DELIVERY_ID,
         attempt_number: 1,
@@ -158,5 +174,41 @@ describeWithPostgres('plugin delivery append-only outcome acceptance', () => {
         occurred_at: new Date('2026-09-08T13:00:10.000Z'),
       },
     ]);
+  });
+
+  it('records terminal retry-budget exhaustion with the exact attempt number', async () => {
+    await prepareAttempt(1);
+    await consumeClaim('2026-09-08T13:00:10.000Z');
+
+    expect(await readOutcomes()).toEqual([
+      {
+        delivery_id: DELIVERY_ID,
+        attempt_number: 1,
+        outcome_code: 'attempt_limit',
+        occurred_at: new Date('2026-09-08T13:00:10.000Z'),
+      },
+    ]);
+  });
+
+  it('rejects mutation or deletion of accepted outcome evidence', async () => {
+    await consumeClaim('2026-09-08T13:00:10.000Z');
+
+    await expect(
+      pool.query(
+        `UPDATE plugin_integration.plugin_delivery_attempt_outcome_record
+            SET outcome_code = 'attempt_limit'
+          WHERE delivery_id = $1::uuid`,
+        [DELIVERY_ID],
+      ),
+    ).rejects.toMatchObject({ code: '55000' });
+    await expect(
+      pool.query(
+        `DELETE FROM plugin_integration.plugin_delivery_attempt_outcome_record
+          WHERE delivery_id = $1::uuid`,
+        [DELIVERY_ID],
+      ),
+    ).rejects.toMatchObject({ code: '55000' });
+
+    expect(await readOutcomes()).toHaveLength(1);
   });
 });
