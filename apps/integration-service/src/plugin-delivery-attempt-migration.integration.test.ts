@@ -2,9 +2,13 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { parsePluginDeliveryAttemptTestDatabaseTarget } from './plugin-delivery-attempt-test-database';
 
 const DATABASE_URL = process.env.INTEGRATION_DATABASE_URL;
-const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
+const TEST_DATABASE_TARGET = DATABASE_URL
+  ? parsePluginDeliveryAttemptTestDatabaseTarget(DATABASE_URL)
+  : undefined;
+const describeWithPostgres = TEST_DATABASE_TARGET ? describe : describe.skip;
 const MIGRATIONS = [
   '0001_plugin_installation_record.sql',
   '0002_plugin_credential_binding_record.sql',
@@ -22,14 +26,13 @@ interface SqlExecution {
   readonly stderr: string;
 }
 
-/** Runs one isolated PostgreSQL client process against the disposable Integration database. */
+/** Runs one isolated PostgreSQL client process against the validated disposable Integration database. */
 function executeSql(sql: string): SqlExecution {
-  if (!DATABASE_URL) {
+  if (!TEST_DATABASE_TARGET) {
     throw new Error(
       'A dedicated PostgreSQL integration test database URL is required',
     );
   }
-  const target = new URL(DATABASE_URL);
   const result = spawnSync(
     'psql',
     [
@@ -37,19 +40,23 @@ function executeSql(sql: string): SqlExecution {
       '-v',
       'ON_ERROR_STOP=1',
       '-h',
-      target.hostname,
+      TEST_DATABASE_TARGET.hostname,
       '-p',
-      target.port || '5432',
+      TEST_DATABASE_TARGET.port,
       '-U',
-      decodeURIComponent(target.username),
+      TEST_DATABASE_TARGET.username,
       '-d',
-      decodeURIComponent(target.pathname.replace(/^\//u, '')),
+      TEST_DATABASE_TARGET.database,
       '-Atq',
     ],
     {
       input: sql,
       encoding: 'utf8',
-      env: { ...process.env, PGPASSWORD: decodeURIComponent(target.password) },
+      env: {
+        ...process.env,
+        PGPASSWORD: TEST_DATABASE_TARGET.password,
+        PGSSLMODE: TEST_DATABASE_TARGET.sslMode,
+      },
     },
   );
   if (result.error) {
