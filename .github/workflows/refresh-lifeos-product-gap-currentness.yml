@@ -1,0 +1,60 @@
+name: Refresh LifeOS product gap currentness
+
+on:
+  push:
+    branches:
+      - docs/product-gap-baseline-2026-08-20
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-lifeos-product-gap-currentness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+
+      - name: Refuse stale branch publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin refs/heads/docs/product-gap-baseline-2026-08-20 | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Replace bounded Integration currentness block
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/product-technical-gap-baseline.md')
+          text = path.read_text()
+          start_marker = '> **Currentness override — 2026-09-09 Integration delivery authority.**'
+          end_marker = '## Canonical architecture and evidence rules'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''> **Currentness override — 2026-09-09 Integration delivery authority.** Protected `main` remains `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`. Integration #252 remains Draft/unshipped exact `9ed7847d3106d9418e1ff6e04e45c1c7d84d0b0d`; #253 direct child exact `8252575a510254883cb62c44198cb665daa0d0b5` owns deterministic finite 30–3600 second worker claims; #254 direct child exact `edc79d1291025b8787a9ccf16c39a10df4157023` owns claim-bound bounded retry/backoff and terminal retry-budget exhaustion; #255 direct child exact `e201b649cdea7d50ee2b856ac98a01d2b6c1368e` owns the append-only sanitized outcome ledger, including direct-forgery and TRUNCATE immutability repairs. All remain active-PR evidence, not shipped authority.\n\n> #256 is the direct #255 durable pause/resume/dead-letter child and remains Draft/unshipped current exact `0c6221e1fe32bf6594784219a7bd710ad0c1a993`. Initial real-PostgreSQL control RED `5d50c56ae714b7ca620f3c4b790002bcdf83aa8d` / run `34255006068` / job `102158492416` proved the missing durable lifecycle. Repaired exact `a576d3fd85e1f1d0845ed10200d1849b04c8f1b2` / run `34256983815` / job `102165175608` completed GREEN across pause/resume, active-claim exclusion, exhaustion-only dead-lettering, append-only control evidence, typecheck and the complete Integration suite.\n\n> Fresh review then found that `control_sequence` could advance while the accepted control timestamp moved backward. Real PostgreSQL chronology RED `8f25181033b44d89dd08ed965d8d258410629e58` / run `34261784625` / job `102181270911` failed specifically at a backdated resume after setup, frozen install, formatting/diff hygiene and Plugin SDK build passed. Forward migration `0011_plugin_delivery_attempt_control_chronology_guard.sql` adds only the missing `NEW.updated_at >= OLD.updated_at` transition invariant. Exact proof `c98734fcf50bfc197141aed6469fcf1e0adffcd6` / run `34261947610` / job `102181894242` completed GREEN across the real chronology regression, Integration typecheck and the complete Integration suite; current #256 removes only that purpose verifier.\n\n> Durable origin/delivery/claim/retry/outcome/control identity is not outbound-network authority. A later executor must consume only an immutable released/versioned canonical egress contract and otherwise remain fail closed. The next LifeOS-owned delivery gap after #256 is a per-attempt revocation fence immediately before execution, followed by operator-visible status, restart/recovery and bounded provider execution.\n\n'''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+          rm .github/workflows/refresh-lifeos-product-gap-currentness.yml
+          git diff --check
+
+      - name: Publish bounded source-current update and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'LifeOS Maintainer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add docs/product-technical-gap-baseline.md .github/workflows/refresh-lifeos-product-gap-currentness.yml
+          git commit -m 'docs: refresh Integration delivery currentness'
+          git push origin HEAD:docs/product-gap-baseline-2026-08-20
