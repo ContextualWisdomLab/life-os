@@ -78,6 +78,14 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    return invalid();
+  }
+}
+
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -310,7 +318,9 @@ export class PluginDeliveryAttemptApplication {
     const input = requireInput(inputValue);
     const requestedAt = currentInstant(this.now);
     const grant = requireActiveGrant(
-      await this.origins.getGrant(context, installationId, input.grantId),
+      await boundedDependency(() =>
+        this.origins.getGrant(context, installationId, input.grantId),
+      ),
       context,
       installationId,
       input.grantId,
@@ -332,7 +342,9 @@ export class PluginDeliveryAttemptApplication {
       terminalAt: null,
       lastOutcomeCode: null,
     });
-    const durable = requireRecord(await this.store.createIfAbsent(candidate));
+    const durable = requireRecord(
+      await boundedDependency(() => this.store.createIfAbsent(candidate)),
+    );
     if (!sameAdmission(durable, candidate)) {
       return invalid();
     }
