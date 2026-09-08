@@ -17,6 +17,22 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os@127.0.0.1:5432/life_os_integration?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: life_os
+          POSTGRES_PASSWORD: life_os
+          POSTGRES_DB: life_os_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U life_os -d life_os_integration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout exact pushed head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,19 +52,22 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check execution-fence regression formatting and diff hygiene
+      - name: Check execution-fence formatting and diff hygiene
         run: |
           pnpm exec prettier --single-quote --check \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.integration.test.ts
           git diff --check HEAD^
 
       - name: Build Plugin SDK dependency
         run: pnpm --filter @life-os/plugin-sdk build
 
-      - name: Run execution-fence capability acceptance
+      - name: Run execution-fence PostgreSQL acceptance
         run: >-
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-delivery-attempt-execution-fence.test.ts
+          src/plugin-delivery-attempt-execution-fence.integration.test.ts
           --no-file-parallelism
 
       - name: Typecheck Integration service
