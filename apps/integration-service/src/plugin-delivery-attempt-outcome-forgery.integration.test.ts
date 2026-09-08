@@ -87,29 +87,32 @@ beforeEach(async () => {
   );
 });
 
-describeWithPostgres('plugin delivery outcome source-transition acceptance', () => {
-  it('rejects a directly forged outcome that was not emitted by a consumed claim transition', async () => {
-    await expect(
-      pool.query(
-        `INSERT INTO plugin_integration.plugin_delivery_attempt_outcome_record (
+describeWithPostgres(
+  'plugin delivery outcome source-transition acceptance',
+  () => {
+    it('rejects a directly forged outcome that was not emitted by a consumed claim transition', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO plugin_integration.plugin_delivery_attempt_outcome_record (
            authority_version, delivery_id, attempt_number, outcome_code, occurred_at
          ) VALUES (
            'life-os.plugin-delivery-attempt-outcome.v1', $1::uuid, 1,
            'retryable_failure', '2026-09-08T13:00:10.000Z'
          )`,
-        [DELIVERY_ID],
-      ),
-    ).rejects.toMatchObject({
-      code: '23514',
-      constraint: 'plugin_delivery_attempt_outcome_source_transition_check',
-    });
+          [DELIVERY_ID],
+        ),
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'plugin_delivery_attempt_outcome_source_transition_check',
+      });
 
-    const result = await pool.query<{ count: string }>(
-      `SELECT count(*)::text AS count
+      const result = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
          FROM plugin_integration.plugin_delivery_attempt_outcome_record
         WHERE delivery_id = $1::uuid`,
-      [DELIVERY_ID],
-    );
-    expect(result.rows).toEqual([{ count: '0' }]);
-  });
-});
+        [DELIVERY_ID],
+      );
+      expect(result.rows).toEqual([{ count: '0' }]);
+    });
+  },
+);
