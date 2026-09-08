@@ -70,6 +70,14 @@ function invalid(): never {
   throw new PluginDeliveryAttemptAuthorityError();
 }
 
+function boundedRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalid();
+  }
+}
+
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -101,9 +109,12 @@ function requireContext(value: unknown): PluginInstallationContext {
     return invalid();
   }
   const context = value as PluginInstallationContext;
+  const [workspaceId, actorUserId] = boundedRead(
+    () => [context.workspaceId, context.actorUserId] as const,
+  );
   return Object.freeze({
-    workspaceId: requireUuidV4(context.workspaceId),
-    actorUserId: requireUuidV4(context.actorUserId),
+    workspaceId: requireUuidV4(workspaceId),
+    actorUserId: requireUuidV4(actorUserId),
   });
 }
 
@@ -112,18 +123,21 @@ function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
     return invalid();
   }
   const input = value as SchedulePluginDeliveryAttemptInput;
+  const [deliveryId, grantId, maxAttempts] = boundedRead(
+    () => [input.deliveryId, input.grantId, input.maxAttempts] as const,
+  );
   if (
-    typeof input.maxAttempts !== 'number' ||
-    !Number.isInteger(input.maxAttempts) ||
-    input.maxAttempts < MINIMUM_ATTEMPTS ||
-    input.maxAttempts > MAXIMUM_ATTEMPTS
+    typeof maxAttempts !== 'number' ||
+    !Number.isInteger(maxAttempts) ||
+    maxAttempts < MINIMUM_ATTEMPTS ||
+    maxAttempts > MAXIMUM_ATTEMPTS
   ) {
     return invalid();
   }
   return Object.freeze({
-    deliveryId: requireUuidV4(input.deliveryId),
-    grantId: requireUuidV4(input.grantId),
-    maxAttempts: input.maxAttempts,
+    deliveryId: requireUuidV4(deliveryId),
+    grantId: requireUuidV4(grantId),
+    maxAttempts,
   });
 }
 
@@ -138,22 +152,38 @@ function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
     return invalid();
   }
   const record = value as PluginDeliveryAttemptRecord;
+  const snapshot = boundedRead(() => ({
+    authorityVersion: record.authorityVersion,
+    deliveryId: record.deliveryId,
+    grantId: record.grantId,
+    installationId: record.installationId,
+    workspaceId: record.workspaceId,
+    requestedByUserId: record.requestedByUserId,
+    status: record.status,
+    attemptCount: record.attemptCount,
+    maxAttempts: record.maxAttempts,
+    requestedAt: record.requestedAt,
+    updatedAt: record.updatedAt,
+    nextAttemptAt: record.nextAttemptAt,
+    terminalAt: record.terminalAt,
+    lastOutcomeCode: record.lastOutcomeCode,
+  }));
   if (
-    record.authorityVersion !== AUTHORITY_VERSION ||
-    record.status !== 'pending' ||
-    record.attemptCount !== 0 ||
-    record.terminalAt !== null ||
-    record.lastOutcomeCode !== null ||
-    typeof record.maxAttempts !== 'number' ||
-    !Number.isInteger(record.maxAttempts) ||
-    record.maxAttempts < MINIMUM_ATTEMPTS ||
-    record.maxAttempts > MAXIMUM_ATTEMPTS
+    snapshot.authorityVersion !== AUTHORITY_VERSION ||
+    snapshot.status !== 'pending' ||
+    snapshot.attemptCount !== 0 ||
+    snapshot.terminalAt !== null ||
+    snapshot.lastOutcomeCode !== null ||
+    typeof snapshot.maxAttempts !== 'number' ||
+    !Number.isInteger(snapshot.maxAttempts) ||
+    snapshot.maxAttempts < MINIMUM_ATTEMPTS ||
+    snapshot.maxAttempts > MAXIMUM_ATTEMPTS
   ) {
     return invalid();
   }
-  const requestedAt = requireInstant(record.requestedAt);
-  const updatedAt = requireInstant(record.updatedAt);
-  const nextAttemptAt = requireInstant(record.nextAttemptAt);
+  const requestedAt = requireInstant(snapshot.requestedAt);
+  const updatedAt = requireInstant(snapshot.updatedAt);
+  const nextAttemptAt = requireInstant(snapshot.nextAttemptAt);
   if (
     new Date(updatedAt).getTime() < new Date(requestedAt).getTime() ||
     new Date(nextAttemptAt).getTime() < new Date(requestedAt).getTime()
@@ -162,14 +192,14 @@ function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
   }
   return freezeRecord({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireUuidV4(record.deliveryId),
-    grantId: requireUuidV4(record.grantId),
-    installationId: requireUuidV4(record.installationId),
-    workspaceId: requireUuidV4(record.workspaceId),
-    requestedByUserId: requireUuidV4(record.requestedByUserId),
+    deliveryId: requireUuidV4(snapshot.deliveryId),
+    grantId: requireUuidV4(snapshot.grantId),
+    installationId: requireUuidV4(snapshot.installationId),
+    workspaceId: requireUuidV4(snapshot.workspaceId),
+    requestedByUserId: requireUuidV4(snapshot.requestedByUserId),
     status: 'pending',
     attemptCount: 0,
-    maxAttempts: record.maxAttempts,
+    maxAttempts: snapshot.maxAttempts,
     requestedAt,
     updatedAt,
     nextAttemptAt,
@@ -178,27 +208,56 @@ function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
   });
 }
 
+interface PluginDeliveryAttemptGrantEvidence {
+  readonly grantId: string;
+  readonly installationId: string;
+  readonly workspaceId: string;
+  readonly grantedByUserId: string;
+  readonly status: 'active';
+  readonly grantedAt: string;
+  readonly revokedAt: null;
+}
+
 function requireActiveGrant(
   grant: PluginDeliveryOriginGrantRecord | undefined,
   context: PluginInstallationContext,
   installationId: string,
   grantId: string,
   authorityInstant: string,
-): PluginDeliveryOriginGrantRecord {
+): PluginDeliveryAttemptGrantEvidence {
+  if (!grant) {
+    return invalid();
+  }
+  const snapshot = boundedRead(() => ({
+    grantId: grant.grantId,
+    installationId: grant.installationId,
+    workspaceId: grant.workspaceId,
+    grantedByUserId: grant.grantedByUserId,
+    status: grant.status,
+    grantedAt: grant.grantedAt,
+    revokedAt: grant.revokedAt,
+  }));
+  const grantedAt = requireInstant(snapshot.grantedAt);
   if (
-    !grant ||
-    grant.grantId !== grantId ||
-    grant.installationId !== installationId ||
-    grant.workspaceId !== context.workspaceId ||
-    grant.grantedByUserId !== context.actorUserId ||
-    grant.status !== 'active' ||
-    grant.revokedAt !== null ||
-    new Date(requireInstant(grant.grantedAt)).getTime() >
-      new Date(authorityInstant).getTime()
+    snapshot.grantId !== grantId ||
+    snapshot.installationId !== installationId ||
+    snapshot.workspaceId !== context.workspaceId ||
+    snapshot.grantedByUserId !== context.actorUserId ||
+    snapshot.status !== 'active' ||
+    snapshot.revokedAt !== null ||
+    new Date(grantedAt).getTime() > new Date(authorityInstant).getTime()
   ) {
     return invalid();
   }
-  return grant;
+  return Object.freeze({
+    grantId,
+    installationId,
+    workspaceId: context.workspaceId,
+    grantedByUserId: context.actorUserId,
+    status: 'active',
+    grantedAt,
+    revokedAt: null,
+  });
 }
 
 function sameAdmission(
