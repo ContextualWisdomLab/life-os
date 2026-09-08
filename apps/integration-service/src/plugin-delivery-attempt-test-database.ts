@@ -24,10 +24,14 @@ export function parsePluginDeliveryAttemptTestDatabaseTarget(
   try {
     target = new URL(databaseUrl);
   } catch {
-    return invalidTarget('A dedicated Integration test database URL is required');
+    return invalidTarget(
+      'A dedicated Integration test database URL is required',
+    );
   }
   if (target.protocol !== 'postgresql:' && target.protocol !== 'postgres:') {
-    return invalidTarget('A dedicated Integration test database URL is required');
+    return invalidTarget(
+      'A dedicated Integration test database URL is required',
+    );
   }
 
   let username: string;
@@ -38,19 +42,30 @@ export function parsePluginDeliveryAttemptTestDatabaseTarget(
     password = decodeURIComponent(target.password);
     database = decodeURIComponent(target.pathname.replace(/^\//u, ''));
   } catch {
-    return invalidTarget('A dedicated Integration test database URL is required');
+    return invalidTarget(
+      'A dedicated Integration test database URL is required',
+    );
   }
   if (username !== TEST_ROLE || database !== TEST_DATABASE) {
-    return invalidTarget('A dedicated Integration test database and role are required');
+    return invalidTarget(
+      'A dedicated Integration test database and role are required',
+    );
   }
 
   const sslModes = target.searchParams.getAll('sslmode');
   if (sslModes.length !== 1 || !TLS_MODES.has(sslModes[0] ?? '')) {
-    return invalidTarget('An explicit sslmode is required for the Integration test database');
+    return invalidTarget(
+      'An explicit sslmode is required for the Integration test database',
+    );
   }
   const sslMode = sslModes[0] as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
-  if (sslMode === 'disable' && !LOOPBACK_HOSTS.has(target.hostname.toLowerCase())) {
-    return invalidTarget('sslmode=disable is allowed only for a loopback Integration test database');
+  if (
+    sslMode === 'disable' &&
+    !LOOPBACK_HOSTS.has(target.hostname.toLowerCase())
+  ) {
+    return invalidTarget(
+      'sslmode=disable is allowed only for a loopback Integration test database',
+    );
   }
 
   return {
