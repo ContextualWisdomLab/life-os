@@ -5,8 +5,7 @@ const AUTHORITY_VERSION =
   'life-os.plugin-delivery-attempt-execution-fence.v1' as const;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const MINIMUM_ATTEMPT_NUMBER = 1;
 const MAXIMUM_ATTEMPT_NUMBER = 10;
 
@@ -84,7 +83,10 @@ function requireInstant(value: unknown): string {
     return invalid();
   }
   const instant = new Date(candidate);
-  if (!Number.isFinite(instant.getTime()) || instant.toISOString() !== candidate) {
+  if (
+    !Number.isFinite(instant.getTime()) ||
+    instant.toISOString() !== candidate
+  ) {
     return invalid();
   }
   return candidate;
