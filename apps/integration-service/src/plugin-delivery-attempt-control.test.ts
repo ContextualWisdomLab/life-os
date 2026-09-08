@@ -113,15 +113,15 @@ describe('PluginDeliveryAttemptControlApplication', () => {
       () => new Date(OCCURRED_AT),
     );
 
-    await expect(
-      app.deadLetter(context(), DELIVERY_ID),
-    ).resolves.toMatchObject({
-      controlCode: 'dead_letter',
-      deliveryStatus: 'dead_lettered',
-      occurredAt: OCCURRED_AT,
-      nextAttemptAt: null,
-      terminalAt: EXHAUSTED_AT,
-    });
+    await expect(app.deadLetter(context(), DELIVERY_ID)).resolves.toMatchObject(
+      {
+        controlCode: 'dead_letter',
+        deliveryStatus: 'dead_lettered',
+        occurredAt: OCCURRED_AT,
+        nextAttemptAt: null,
+        terminalAt: EXHAUSTED_AT,
+      },
+    );
   });
 
   it('fails closed when durable control authority is absent or rejects', async () => {
