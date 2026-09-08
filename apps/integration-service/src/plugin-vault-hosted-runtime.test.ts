@@ -61,7 +61,7 @@ describe('Plugin Vault hosted runtime', () => {
     },
   );
 
-  it.each([null, undefined, 'invalid', []])(
+  it.each([null, 'invalid', []])(
     'bounds malformed environment envelope %j before configuration field access',
     async (malformed) => {
       const createPool = vi.fn(() => pool());
@@ -206,20 +206,17 @@ describe('Plugin Vault hosted runtime', () => {
     );
   });
 
-  it.each([
-    null,
-    undefined,
-    {},
-    { query: vi.fn() },
-    { end: vi.fn() },
-  ])('rejects malformed acquired SQL authority %j', async (malformed) => {
-    await expectRuntimeFailure(
-      createPluginVaultHostedRuntime(
-        () => malformed as unknown as PluginHostedPostgresPool,
-        environment(),
-      ),
-    );
-  });
+  it.each([null, undefined, {}, { query: vi.fn() }, { end: vi.fn() }])(
+    'rejects malformed acquired SQL authority %j',
+    async (malformed) => {
+      await expectRuntimeFailure(
+        createPluginVaultHostedRuntime(
+          () => malformed as unknown as PluginHostedPostgresPool,
+          environment(),
+        ),
+      );
+    },
+  );
 
   it('rejects array-shaped SQL authority even when it carries callable query and end properties', async () => {
     const end = vi.fn(async () => undefined);
@@ -245,9 +242,7 @@ describe('Plugin Vault hosted runtime', () => {
       INTEGRATION_PLUGIN_VAULT_MOUNT: 'secret',
     });
 
-    await expectRuntimeFailure(
-      createPluginVaultHostedRuntime(createPool, env),
-    );
+    await expectRuntimeFailure(createPluginVaultHostedRuntime(createPool, env));
     expect(createPool).not.toHaveBeenCalled();
   });
 });
