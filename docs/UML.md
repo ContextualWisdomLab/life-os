@@ -60,7 +60,9 @@ sequenceDiagram
     Note over Identity: session rotation preserves authentication age
 ```
 
-## Planning, Habit, Review, and Today authority
+## Planning, Habit, Review, Today, and first-party journey
+
+### Protected authority
 
 **Status:** Implemented on protected main
 
@@ -100,6 +102,35 @@ stateDiagram-v2
     Completed --> [*]
 ```
 
+### Active first-party buyer journey
+
+**Status:** Partial
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser as Web/PWA
+    participant Identity
+    participant BFF as First-party BFF
+    participant Owner as Planning/Habit/Review
+
+    User->>Browser: load workspace
+    Browser->>BFF: browser-safe request
+    BFF->>Identity: authenticate session/workspace
+    Identity-->>BFF: exact actor + workspace
+    BFF->>Owner: signed exact method/path authority
+    Owner-->>BFF: bounded durable evidence
+    BFF->>BFF: validate ownership/schema/evidence
+    BFF-->>Browser: browser-safe durable projection
+    User->>Browser: explicit mutation
+    Browser->>BFF: bounded mutation input
+    BFF->>Owner: authorized exact mutation
+    Owner-->>BFF: durable acceptance evidence
+    BFF-->>Browser: accepted durable record
+```
+
+Issue #209 is the complete Goals → Projects → Tasks → Habits → Review journey. PR #214 starts the active line with the authenticated Goal BFF; PR #229 adds the durable Goals workspace; stacked PR #234 is the current Weekly Review workspace. Browser state never creates workspace authority or durable identity. Completion still requires the full dependency stack, final current-head E2E, Figma/Storybook traceability, normal/loading/empty/error/permission/responsive/interaction states, keyboard/focus/reduced-motion/a11y, authoritative Review read projections, and KO/EN/JA/ZH/VI/ES/DE/FR parity.
+
 ## Calendar connection and credential lifecycle
 
 ### Protected-main lifecycle
@@ -121,31 +152,25 @@ stateDiagram-v2
     Compensating --> [*]: reverse-order cleanup proven
 ```
 
-PR #150 protects connection metadata, PR #153 protects atomic local revocation, PR #155 protects `life-os.calendar-user.v1`, PR #176 protects exact lookup evidence, PR #189 protects bounded read, PR #193 protects materialization, and PR #197 protects authenticated creation.
+PR #150 protects connection metadata, PR #153 protects atomic local revocation, PR #155 protects `life-os.calendar-user.v1`, PR #176 protects exact lookup evidence, PR #189 protects bounded read, PR #193 protects materialization, PR #197 protects authenticated creation, PR #201 protects returned-evidence compensation, and PR #203 protects the Calendar-owned encrypted self-hosted secret-store profile.
 
-### Protected compensation hardening
+### Active hosted OAuth authority
 
-**Status:** Implemented on protected main
+**Status:** Partial
 
 ```mermaid
-sequenceDiagram
-    participant Caller
-    participant Create as Calendar create application
-    participant SecretStore
-    participant Repository
-    Caller->>Create: signed workspace+user authority + bounded credentials
-    Create->>SecretStore: store access material
-    SecretStore-->>Create: opaque access handle
-    Create->>SecretStore: store refresh material
-    SecretStore-->>Create: opaque refresh handle
-    Create->>Repository: persist metadata + exact handles
-    Repository-->>Create: mismatched durable evidence
-    Create->>SecretStore: delete refresh handle
-    Create->>SecretStore: delete access handle
-    Create-->>Caller: bounded dependency failure
+stateDiagram-v2
+    [*] --> HostedAdmission
+    HostedAdmission --> RejectedGlobalCredential: deployment-wide provider credential supplied
+    HostedAdmission --> AuthorizationState: authenticated user-owned ceremony
+    AuthorizationState --> PendingCallback: opaque state + PKCE verifier secret reference
+    PendingCallback --> Consumed: exact state/workspace/user/provider/redirect + expiry accepted
+    PendingCallback --> Rejected: expired/replayed/malformed/mismatched evidence
+    Consumed --> VerifierMaterialized: revalidate consumed row before secret read
+    VerifierMaterialized --> TokenExchangePending: active boundary ends
 ```
 
-This PR #201 flow is protected-main evidence. Complete KMS/OAuth/refresh/provider cleanup/discovery/selection/scoped sync remains **Partial** under #129.
+Active PR #216 provides the fail-closed hosted admission boundary. Stacked PR #228 provides five-minute OAuth state/PKCE authority with verifier plaintext outside durable metadata. `TokenExchangePending` is deliberately not implemented by this stack: hosted callback/token exchange, successful verifier cleanup, concrete PostgreSQL OAuth-state runtime, refresh fencing, provider revoke/delete recovery, discovery/selection and scoped synchronization remain **Partial** under #129.
 
 ## Data-rights orchestration and contributor authority
 
@@ -178,24 +203,26 @@ sequenceDiagram
     end
 ```
 
-PR #159 protects the shared contract. Planning is protected through PR #179 and PR #194. Habit is protected through PR #184 and PR #192. Review PR #195, Notification PR #198, and AI PR #199 are **Implemented on active PR**. Issue #55 remains **Partial**.
+PR #159 protects the shared contract. Planning is protected through PR #179 and PR #194. Habit is protected through PR #184 and PR #192. Review is protected through PR #195. Notification PR #198 and AI PR #199 are **Implemented on active PR**. Issue #55 remains **Partial**.
 
 ### Contributor maturity
 
 ```mermaid
 flowchart LR
-    Contract[PR #159 contributor v1] --> Planning[Planning: protected PR #179/#194]
-    Contract --> Habit[Habit: protected PR #184/#192]
-    Contract --> Review[Review: active PR #195]
-    Contract --> Notification[Notification: active PR #198]
-    Contract --> AI[AI: active PR #199]
+    Contract[PR #159 contributor v1] --> Planning[Planning: protected #179/#194]
+    Contract --> Habit[Habit: protected #184/#192]
+    Contract --> Review[Review: protected #195]
+    Contract --> Notification[Notification: active #198]
+    Contract --> AI[AI: active #199]
     Contract --> Remaining[Remaining owners + reconciliation/delivery]
     Remaining --> Gap[Issue #55 Partial]
 ```
 
-## Plugin installation, credential, and operator authority
+## Plugin installation, credential, delivery-origin, and operator authority
 
 **Status:** Partial
+
+### Protected foundation
 
 ```mermaid
 stateDiagram-v2
@@ -211,18 +238,44 @@ stateDiagram-v2
     CleanupRetry --> Revoked: authority never restored
 ```
 
+### Active #130 persistence and operator stack
+
 ```mermaid
 flowchart LR
-    Manifest[Manifest intent] --> HostGrant[Host grant]
-    HostGrant --> Installation[Durable installation]
-    Installation --> SecretRef[Opaque secret reference]
-    Installation --> Operator[Request-bound operator]
-    HostOrigin[Separately host-authorized delivery origin] -. Planned .-> Delivery[Bounded HTTPS delivery]
-    SecretRef -. no plaintext persistence .-> Delivery
-    Operator -. no arbitrary network authority .-> Delivery
+    Manifest[Manifest intent] --> HostGrant[Explicit host grant]
+    HostGrant --> Installation[Installation authority]
+    Installation --> Credential[Opaque credential binding]
+    Installation --> Origin[Exact HTTPS origin grant]
+    Credential --> Vault[Vault KV v2]
+    Installation --> IPG[(Integration-owned PostgreSQL)]
+    Origin --> IPG
+    Operator[One-time signed operator context] --> Credential
+    Operator --> Origin
+    Origin -. identity only .-> Egress[Future canonical egress authority]
+    Egress -. connect-time policy .-> Network[Untrusted network]
 ```
 
-Concrete KMS, authorized-origin registry, SSRF/DNS-rebinding-safe delivery, outcomes, retry/dead-letter, and operator recovery remain **Partial** under #130.
+Active #205 establishes the origin aggregate; #235 adds PostgreSQL grant persistence and installation fencing; #241 strengthens credential/revocation authority; #242 adds the Vault KV v2 secret store; #243/#244 compose Vault and one Integration-owned PostgreSQL pool; #245 supplies the concrete hosted/default-entrypoint runtime; #250 adds exact signed grant/read/revoke application authority for delivery origins.
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant Verify as One-time operator verifier
+    participant App as Delivery-origin application
+    participant Install as Installation repository
+    participant Origin as Delivery-origin store
+
+    Operator->>Verify: signed exact method/path + actor/workspace/installation
+    Verify->>Verify: validate freshness/signature + consume replay identity
+    Verify->>App: exact authorized operation
+    App->>Install: read active installation authority
+    Install-->>App: exact durable evidence
+    App->>Origin: grant/read/revoke exact origin evidence
+    Origin-->>App: exact durable result
+    App-->>Operator: bounded result
+```
+
+#250 deliberately stops here. No public delivery-origin HTTP transport or outbound HTTPS is implied. #130 remains **Partial** until immutable released/versioned canonical egress authority enforces connect-time DNS/IP/rebinding, redirect/proxy and bounded time/response policy and LifeOS persists delivery attempts/outcomes with retry/dead-letter, revocation fencing and operator recovery.
 
 ## AI proposal and explicit decision
 
@@ -247,28 +300,25 @@ sequenceDiagram
     Note over AI,Audit: no generic Planning mutation authority
 ```
 
-## Model-assisted evaluation and repository authority
+## Model-assisted development and repository authority
 
-**Status:** Accepted architecture
+**Status:** Partial
 
 ```mermaid
 flowchart LR
-    Secret[GitHub Secret NVIDIA_NIM_API_KEY] --> Seed[Approved contextual-orchestrator / credential seeding]
-    Seed --> Route[Strong single-route baseline]
-    Seed --> Conduct[Bounded conduct cells]
-    Route --> Evaluator[deterministic LifeOS proposal evaluator]
-    Conduct --> Evaluator
-    Evaluator --> Evidence[Credential-free retained evidence]
-    Evidence --> Governance[Repository-specific governance decision]
-
-    CI[Deterministic CI/security] --> Review[Independent review authority]
-    Review --> Merge[Merge authority]
+    OpenCode[Exact reviewed OpenCode] --> CO[contextual-orchestrator released API/client]
+    Secrets[Provider credentials] --> CO
+    CO --> Free[orchestrator/free]
+    Free --> Model[Provider selected by owner]
+    Model --> Evidence[Bounded credential-free retained evidence]
+    Evidence --> CI[Deterministic CI/security]
+    CI --> Review[Independent review authority]
+    Review --> Merge[Protected merge authority]
     Merge --> Release[Release authority]
-    Governance -. evidence only .-> Review
-    Seed -. no review/merge/release authority .-> Review
+    Evidence -. no independent authority .-> Review
 ```
 
-Supported controls may include workflow stage, reasoning effort, decomposition, recursion depth, role-specific reasoning effort, worker/model choice, verifier topology, and access/communication topology. Unsupported controls remain explicit. PR #200 is **Implemented on protected main** only for restoring the exact pinned OpenCode postinstall boundary.
+Protected #200 covers only the exact OpenCode bootstrap allowlist. Active #208 is the target routing line: exact OpenCode identity plus contextual-orchestrator/`orchestrator/free`, with provider credentials/model selection remaining owner-side. It fails closed pending a repaired authentication/bootstrap owner contract, immutable reviewed owner release, and exact released consumer acceptance. Mutable owner source or direct-provider fallback is not authorized.
 
 ## Verification evidence authority
 
@@ -288,6 +338,28 @@ flowchart LR
 ```
 
 PR #154 protects exact-source/live-base separation. Issue #132 remains **Partial** for central reusable scanner checkout/attribution taxonomy. A green result never transfers across evidence identities.
+
+## Release-evidence authority
+
+**Status:** Partial
+
+```mermaid
+flowchart LR
+    RS[Exact protected release_source_sha] --> Index[Release evidence index]
+    RS --> Artifact[Package / image]
+    Artifact --> Checksum[Checksums]
+    Artifact --> SBOM[SBOM]
+    Artifact --> Provenance[Provenance / attestation]
+    Artifact --> Signature[Detached signatures]
+    Checksum --> Verify[Structural + cryptographic verification]
+    Provenance --> Verify
+    Signature --> Verify
+    Verify --> Publish[Immutable tag/package/release]
+    Publish --> Install[Installed runtime acceptance]
+    Install --> Recovery[Upgrade/rollback/restore/recovery]
+```
+
+Active Draft #217 provides structural index validation and #236 adds detached Ed25519 verification/operator tooling. The diagram's `Publish`, trust-root/key lifecycle, installed acceptance and recovery nodes remain **Partial** under #210 until proved on one unchanged protected release source.
 
 ## Deployment and recovery
 
@@ -322,10 +394,14 @@ Logical backup/restore does not claim PITR. External provider cleanup/recovery a
 
 | Failure | Required behavior | Status |
 | --- | --- | --- |
-| Identity/calendar/model provider unavailable | Bounded dependency failure; unrelated domains remain usable where safe | Accepted architecture |
-| Owning PostgreSQL unavailable | Durable mutation fails closed; local draft remains visibly non-durable | Implemented on protected main |
-| NATS unavailable | No fabricated delivery success; replay/recovery evidence remains | Implemented on protected main |
-| Stale write | Explicit conflict/revision evidence, never silent overwrite | Implemented on protected main |
-| Malformed/forged service context | Fail closed without reflecting identifiers or secrets | Implemented on protected main |
-| Unknown/stale verification identity | Non-passing evidence, never promoted success | Implemented on protected main |
-| Partial external secret/provider cleanup | Retain retry identity without restoring revoked authority | Partial |
+| Identity/calendar/model provider unavailable | bounded dependency failure; unrelated domains remain usable where safe | Accepted architecture |
+| Owning PostgreSQL unavailable | durable mutation fails closed; local draft remains visibly non-durable | Implemented on protected main |
+| Vault/secret store unavailable | credential/origin-dependent operation fails closed; no plaintext persistence fallback | Implemented on active PR |
+| NATS unavailable | no fabricated delivery success; replay/recovery evidence remains | Implemented on protected main |
+| Stale write | explicit conflict/revision evidence, never silent overwrite | Implemented on protected main |
+| Malformed/forged service context | fail closed without reflecting identifiers or secrets | Implemented on protected main |
+| Unknown/stale verification identity | non-passing evidence, never promoted success | Implemented on protected main |
+| Partial external secret/provider cleanup | retain retry identity without restoring revoked authority | Partial |
+| Missing canonical egress authority | plugin outbound delivery remains unavailable rather than treating stored origin as network authorization | Partial |
+| Missing immutable contextual-orchestrator release/authentication contract | model-assisted lane fails closed; no direct-provider bypass | Partial |
+| Release evidence mismatch or missing trust/recovery evidence | no immutable release promotion | Partial |
