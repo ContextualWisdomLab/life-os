@@ -1,0 +1,72 @@
+name: Publish Architecture Plugin Status Currentness
+
+on:
+  push:
+    branches: [docs/canonical-product-architecture-mainline]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-architecture-plugin-status-currentness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact input head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Apply bounded Architecture currentness replacement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("ARCHITECTURE.md")
+          text = path.read_text()
+          anchor = "\nThe status contract remains credential-free, exposes only derived claim state, creates no new persistence owner or migration, and grants no provider-execution or outbound-network authority."
+          if text.count(anchor) != 1:
+              raise SystemExit("expected exactly one Plugin status-contract anchor")
+          paragraph = """
+          Draft PR #259 is the direct #258 child and exposes that restart-recoverable, credential-free status through the authenticated Plugin operator HTTP boundary without adding provider execution or outbound HTTPS. Regression-only exact `7398b9051c99bc39b137ea697129dba4dab57249`, run `34284401430`, job `102256491368`, reached GitHub-hosted Ubuntu 24.04 and proved the route was absent: the signed delivery-status GET returned framework `404` rather than the bounded fixed credential-free `503` required when durable status composition is unavailable. Minimum product repair `ccdea29238ef11a3a6866c735dc989d2b24633ad` adds exact signed GET authority, replay-before-dependency ordering, server-observed raw method/URL equality before decoded dynamic parameters, bounded HTTP problems, and hosted composition of #258's status application/repository over the Integration-owned PostgreSQL pool. Final exact candidate `097267ddf583b6d4d93047ff8bcfba089b1e979e` was created and verified before publication by run `34287096996`, job `102265083137`: formatting/diff hygiene, Plugin SDK build, focused status HTTP + hosted-runtime acceptance 26/26, Integration typecheck, and the complete Integration suite 423 passed / 45 environment-dependent skipped across 83 files. Both purpose workflows were retired before the verified candidate was ordinary-pushed. #259 remains Draft active-PR evidence rather than protected-main shipped or release authority.
+          """.strip()
+          text = text.replace(anchor, "\n\n" + paragraph + anchor, 1)
+          old = "Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration and authenticated operator HTTP composition;"
+          new = "Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration;"
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one remaining-work sentence")
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          grep -F 'Draft PR #259 is the direct #258 child' ARCHITECTURE.md
+          grep -F 'Final exact candidate `097267ddf583b6d4d93047ff8bcfba089b1e979e`' ARCHITECTURE.md
+          grep -F 'Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration;' ARCHITECTURE.md
+          ! grep -F 'Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration and authenticated operator HTTP composition;' ARCHITECTURE.md
+          rm .github/workflows/publish-architecture-plugin-status-currentness.yml
+          changed="$(git diff --name-only | sort)"
+          allowed="$(printf '%s\n' ARCHITECTURE.md .github/workflows/publish-architecture-plugin-status-currentness.yml | sort)"
+          test "$changed" = "$allowed"
+          git diff --check
+
+      - name: Verify Markdown formatting
+        run: pnpm exec prettier --check ARCHITECTURE.md
+
+      - name: Publish verified bounded currentness candidate
+        env:
+          BRANCH: docs/canonical-product-architecture-mainline
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ARCHITECTURE.md .github/workflows/publish-architecture-plugin-status-currentness.yml
+          git commit -m "docs(architecture): record delivery status HTTP proof"
+          candidate="$(git rev-parse HEAD)"
+          git fetch origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "${GITHUB_SHA}"
+          test -z "$(git status --porcelain)"
+          git push origin "${candidate}:$BRANCH"
+          echo "PUBLISHED_ARCHITECTURE_SHA=${candidate}"
