@@ -16,6 +16,21 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: life_os_integration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_integration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_integration_test?sslmode=disable
     steps:
       - name: Checkout exact pushed head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -38,7 +53,8 @@ jobs:
       - name: Check focused formatting and diff hygiene
         run: |
           pnpm exec prettier --single-quote --check \
-            apps/integration-service/src/plugin-delivery-attempt-control.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-control.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control.integration.test.ts
           git diff --check HEAD^
 
       - name: Build Plugin SDK dependency
@@ -49,3 +65,15 @@ jobs:
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-delivery-attempt-control.test.ts
           --no-file-parallelism
+
+      - name: Run delivery control PostgreSQL acceptance
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-control.integration.test.ts
+          --no-file-parallelism
+
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration service suite
+        run: pnpm --filter @life-os/integration-service test -- --runInBand
