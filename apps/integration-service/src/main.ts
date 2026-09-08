@@ -14,6 +14,7 @@ import {
   Optional,
   Param,
   Post,
+  Req,
   type ArgumentsHost,
   type DynamicModule,
   type ExceptionFilter,
@@ -31,6 +32,7 @@ import {
 import {
   PluginOperatorApplication,
   PluginOperatorDependencyError,
+  PluginOperatorStatusDependencyError,
   type PluginOperatorCredentialInput,
   type PluginOperatorInstallInput,
 } from './plugin-operator-application';
@@ -46,6 +48,7 @@ import {
   PluginCredentialError,
   type PluginCredentialBindingView,
 } from './plugin-credential';
+import type { PluginDeliveryAttemptStatusEvidence } from './plugin-delivery-attempt-status';
 
 type IntegrationProblemCode =
   | 'invalid_plugin_contract'
@@ -57,6 +60,7 @@ type IntegrationProblemCode =
   | 'invalid_plugin_operator_request'
   | 'plugin_operator_not_found'
   | 'plugin_credential_capability_unavailable'
+  | 'plugin_delivery_status_capability_unavailable'
   | 'plugin_operator_failure';
 
 interface IntegrationProblemDetails {
@@ -67,6 +71,7 @@ interface IntegrationProblemDetails {
 }
 
 interface IntegrationHttpRequest {
+  readonly method?: string;
   readonly originalUrl?: string;
   readonly url?: string;
 }
@@ -188,6 +193,14 @@ function unavailablePluginCredentialCapability(): never {
   );
 }
 
+function unavailablePluginDeliveryStatusCapability(): never {
+  throw problemException(
+    503,
+    'Plugin delivery status capability is unavailable',
+    'plugin_delivery_status_capability_unavailable',
+  );
+}
+
 function pluginOperatorFailure(): never {
   throw problemException(
     503,
@@ -209,8 +222,21 @@ function isPluginOperatorPath(path: string): boolean {
     path === '/v1/plugins/installations' ||
     path.startsWith('/v1/plugins/installations/') ||
     path === '/v1/plugins/credential-bindings' ||
-    path.startsWith('/v1/plugins/credential-bindings/')
+    path.startsWith('/v1/plugins/credential-bindings/') ||
+    path.startsWith('/v1/plugins/delivery-attempts/')
   );
+}
+
+/** Requires the server-observed raw route to match the signed canonical route byte-for-byte. */
+function requireExactPluginOperatorRoute(
+  request: IntegrationHttpRequest,
+  method: 'GET' | 'POST',
+  canonicalPath: string,
+): void {
+  const rawPath = (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+  if (request.method !== method || rawPath !== canonicalPath) {
+    return invalidPluginOperatorContext();
+  }
 }
 
 /**
@@ -370,12 +396,14 @@ export class IntegrationController {
 }
 
 /**
- * HTTP transport for the host-owned plugin installation and credential lifecycle.
+ * HTTP transport for the host-owned plugin lifecycle and read-only delivery status.
  *
  * The controller never derives tenant or user authority from route/body data. It
  * forwards signed gateway evidence to `PluginOperatorApplication`, which verifies
  * the exact method/path binding and atomically consumes the one-time evidence
- * before any durable lifecycle authority is invoked. A standalone deployment
+ * before any durable lifecycle authority is invoked. Dynamic delivery-status paths
+ * are additionally compared against the server-observed raw URL before framework-
+ * decoded route parameters reach application authority. A standalone deployment
  * without a durable operator composition exposes the routes fail-closed as 503.
  */
 @Controller()
@@ -431,7 +459,7 @@ export class PluginOperatorHttpController {
     }
   }
 
-  /** Revokes one installation under its exact signed dynamic route authority. */
+  /** Revokes one installation under its exact signed dynamic POST authority. */
   @Post('v1/plugins/installations/:installationId/revoke')
   @HttpCode(200)
   async revokeInstallation(
@@ -497,6 +525,30 @@ export class PluginOperatorHttpController {
     }
   }
 
+  /** Reads one durable delivery-attempt snapshot under exact signed and raw-route authority. */
+  @Get('v1/plugins/delivery-attempts/:deliveryId')
+  async getDeliveryAttemptStatus(
+    @Param('deliveryId') deliveryId: string,
+    @Req() request: IntegrationHttpRequest,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-user-id') userId: string | undefined,
+    @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+  ): Promise<PluginDeliveryAttemptStatusEvidence> {
+    const operator = this.requireOperator();
+    const path = `/v1/plugins/delivery-attempts/${deliveryId}`;
+    try {
+      requireExactPluginOperatorRoute(request, 'GET', path);
+      return await operator.getDeliveryAttemptStatus(
+        this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
+        deliveryId,
+      );
+    } catch (error) {
+      return this.classify(error);
+    }
+  }
+
   /** Requires a deliberately composed durable runtime; absence never creates fake success. */
   private requireOperator(): PluginOperatorApplication {
     return this.operator ?? unavailablePluginOperator();
@@ -522,6 +574,9 @@ export class PluginOperatorHttpController {
       return error.kind === 'invalid'
         ? invalidPluginOperatorContext()
         : unavailablePluginOperatorContext();
+    }
+    if (error instanceof PluginOperatorStatusDependencyError) {
+      return unavailablePluginDeliveryStatusCapability();
     }
     if (error instanceof PluginOperatorDependencyError) {
       return unavailablePluginCredentialCapability();
