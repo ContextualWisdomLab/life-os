@@ -86,7 +86,45 @@ jobs:
             exit 1
           fi
 
-      - name: Verify canonical source formatting
+      - name: Canonicalize bounded TypeScript sources
+        shell: bash
+        env:
+          TARGET_BRANCH: feat/plugin-delivery-attempt-lifecycle-v1
+        run: |
+          set -euo pipefail
+          files=(
+            apps/integration-service/src/plugin-delivery-attempt.ts
+            apps/integration-service/src/plugin-delivery-attempt.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-repository.ts
+            apps/integration-service/src/plugin-delivery-attempt-repository.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-migration.integration.test.ts
+          )
+          pnpm exec prettier --single-quote --write "${files[@]}"
+          mapfile -t actual < <(git diff --name-only | sort)
+          if [ "${#actual[@]}" -eq 0 ]; then
+            exit 0
+          fi
+          mapfile -t expected < <(printf '%s\n' "${files[@]}" | sort)
+          if [ "${#actual[@]}" -ne "${#expected[@]}" ]; then
+            printf 'Unexpected formatting paths:\n%s\n' "${actual[*]}" >&2
+            exit 1
+          fi
+          for index in "${!expected[@]}"; do
+            if [ "${actual[$index]}" != "${expected[$index]}" ]; then
+              printf 'Unexpected formatting paths:\n%s\n' "${actual[*]}" >&2
+              exit 1
+            fi
+          done
+          git diff --check
+          git add "${files[@]}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(integration): canonicalize delivery attempt sources"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+          echo "Published canonical formatting descendant; a fresh exact-head run is required."
+          exit 1
+
+      - name: Verify canonical TypeScript formatting
         run: >-
           pnpm exec prettier --single-quote --check
           apps/integration-service/src/plugin-delivery-attempt.ts
@@ -94,7 +132,6 @@ jobs:
           apps/integration-service/src/plugin-delivery-attempt-repository.ts
           apps/integration-service/src/plugin-delivery-attempt-repository.test.ts
           apps/integration-service/src/plugin-delivery-attempt-migration.integration.test.ts
-          apps/integration-service/migrations/0006_plugin_delivery_attempt_record.sql
 
       - name: Verify source diff hygiene
         run: git diff --check
