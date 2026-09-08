@@ -114,6 +114,22 @@ describe('PluginDeliveryAttemptStatusApplication', () => {
       new PluginDeliveryAttemptStatusAuthorityError(),
     );
   });
+
+  it('rejects lifecycle evidence that the durable aggregate cannot represent', async () => {
+    const impossible: PluginDeliveryAttemptStatusEvidence = {
+      ...evidence(),
+      deliveryStatus: 'failed',
+      claimState: 'unclaimed',
+    };
+    const app = new PluginDeliveryAttemptStatusApplication(
+      new FakeStore(impossible),
+      () => new Date(CHECKED_AT),
+    );
+
+    await expect(app.read(context(), DELIVERY_ID)).rejects.toEqual(
+      new PluginDeliveryAttemptStatusAuthorityError(),
+    );
+  });
 });
 
 describe('PostgresPluginDeliveryAttemptStatusStore hostile evidence', () => {
