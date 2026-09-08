@@ -14,6 +14,7 @@ import {
   Optional,
   Param,
   Post,
+  Req,
   type ArgumentsHost,
   type DynamicModule,
   type ExceptionFilter,
@@ -74,6 +75,7 @@ interface IntegrationProblemDetails {
 }
 
 interface IntegrationHttpRequest {
+  readonly method?: string;
   readonly originalUrl?: string;
   readonly url?: string;
 }
@@ -128,7 +130,11 @@ function problemException(
 }
 
 function invalidContract(): HttpException {
-  return problemException(400, 'Plugin contract is invalid', 'invalid_plugin_contract');
+  return problemException(
+    400,
+    'Plugin contract is invalid',
+    'invalid_plugin_contract',
+  );
 }
 
 function invalidGatewayContext(): never {
@@ -238,7 +244,8 @@ class IntegrationBadRequestFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const request = http.getRequest<IntegrationHttpRequest>();
     const response = http.getResponse<IntegrationHttpResponse>();
-    const path = (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+    const path =
+      (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
 
     if (isPluginOperatorPath(path)) {
       response.status(400).json({
@@ -278,12 +285,26 @@ function pluginOperatorCredentialInput(
 }
 
 /** Selects only delivery-origin fields; tenant and actor authority remain header-derived. */
-function pluginDeliveryOriginInput(body: unknown): GrantPluginDeliveryOriginInput {
+function pluginDeliveryOriginInput(
+  body: unknown,
+): GrantPluginDeliveryOriginInput {
   const value = requireObject(body);
   return Object.freeze({
     grantId: value.grantId as string,
     origin: value.origin as string,
   });
+}
+
+/** Rejects transport aliases before decoded route parameters can become signed authority. */
+function requireExactPluginOperatorHttpPath(
+  request: IntegrationHttpRequest,
+  method: 'GET' | 'POST',
+  expectedPath: string,
+): void {
+  const rawUrl = request.originalUrl ?? request.url;
+  if (request.method !== method || rawUrl !== expectedPath) {
+    return invalidPluginOperatorContext();
+  }
 }
 
 /**
@@ -415,6 +436,7 @@ export class PluginOperatorHttpController {
   @Post('v1/plugins/installations')
   @HttpCode(200)
   async install(
+    @Req() request: IntegrationHttpRequest,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
     @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
@@ -424,6 +446,11 @@ export class PluginOperatorHttpController {
   ): Promise<PluginInstallationRecord> {
     const operator = this.requireOperator();
     try {
+      requireExactPluginOperatorHttpPath(
+        request,
+        'POST',
+        '/v1/plugins/installations',
+      );
       return await operator.install(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         pluginOperatorInstallInput(body),
@@ -436,6 +463,7 @@ export class PluginOperatorHttpController {
   /** Reads one installation under its exact signed dynamic route authority. */
   @Get('v1/plugins/installations/:installationId')
   async getInstallation(
+    @Req() request: IntegrationHttpRequest,
     @Param('installationId') installationId: string,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
@@ -445,6 +473,8 @@ export class PluginOperatorHttpController {
   ): Promise<PluginInstallationRecord> {
     const operator = this.requireOperator();
     try {
+      const path = `/v1/plugins/installations/${installationId}`;
+      requireExactPluginOperatorHttpPath(request, 'GET', path);
       const record = await operator.getInstallation(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         installationId,
@@ -459,6 +489,7 @@ export class PluginOperatorHttpController {
   @Post('v1/plugins/installations/:installationId/revoke')
   @HttpCode(200)
   async revokeInstallation(
+    @Req() request: IntegrationHttpRequest,
     @Param('installationId') installationId: string,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
@@ -468,6 +499,8 @@ export class PluginOperatorHttpController {
   ): Promise<PluginInstallationRecord> {
     const operator = this.requireOperator();
     try {
+      const path = `/v1/plugins/installations/${installationId}/revoke`;
+      requireExactPluginOperatorHttpPath(request, 'POST', path);
       return await operator.revokeInstallation(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         installationId,
@@ -481,6 +514,7 @@ export class PluginOperatorHttpController {
   @Post('v1/plugins/installations/:installationId/delivery-origins')
   @HttpCode(200)
   async grantDeliveryOrigin(
+    @Req() request: IntegrationHttpRequest,
     @Param('installationId') installationId: string,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
@@ -491,6 +525,8 @@ export class PluginOperatorHttpController {
   ): Promise<PluginDeliveryOriginGrantRecord> {
     const operator = this.requireOperator();
     try {
+      const path = `/v1/plugins/installations/${installationId}/delivery-origins`;
+      requireExactPluginOperatorHttpPath(request, 'POST', path);
       return await operator.grantDeliveryOrigin(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         installationId,
@@ -504,6 +540,7 @@ export class PluginOperatorHttpController {
   /** Reads one delivery-origin grant under its exact signed dynamic route authority. */
   @Get('v1/plugins/installations/:installationId/delivery-origins/:grantId')
   async getDeliveryOrigin(
+    @Req() request: IntegrationHttpRequest,
     @Param('installationId') installationId: string,
     @Param('grantId') grantId: string,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
@@ -514,6 +551,8 @@ export class PluginOperatorHttpController {
   ): Promise<PluginDeliveryOriginGrantRecord> {
     const operator = this.requireOperator();
     try {
+      const path = `/v1/plugins/installations/${installationId}/delivery-origins/${grantId}`;
+      requireExactPluginOperatorHttpPath(request, 'GET', path);
       const record = await operator.getDeliveryOrigin(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         installationId,
@@ -531,6 +570,7 @@ export class PluginOperatorHttpController {
   )
   @HttpCode(200)
   async revokeDeliveryOrigin(
+    @Req() request: IntegrationHttpRequest,
     @Param('installationId') installationId: string,
     @Param('grantId') grantId: string,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
@@ -541,6 +581,8 @@ export class PluginOperatorHttpController {
   ): Promise<PluginDeliveryOriginGrantRecord> {
     const operator = this.requireOperator();
     try {
+      const path = `/v1/plugins/installations/${installationId}/delivery-origins/${grantId}/revoke`;
+      requireExactPluginOperatorHttpPath(request, 'POST', path);
       return await operator.revokeDeliveryOrigin(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         installationId,
@@ -555,6 +597,7 @@ export class PluginOperatorHttpController {
   @Post('v1/plugins/credential-bindings')
   @HttpCode(200)
   async bindCredential(
+    @Req() request: IntegrationHttpRequest,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
     @Headers('x-life-os-context-evidence-id') evidenceId: string | undefined,
@@ -564,6 +607,11 @@ export class PluginOperatorHttpController {
   ): Promise<PluginCredentialBindingView> {
     const operator = this.requireOperator();
     try {
+      requireExactPluginOperatorHttpPath(
+        request,
+        'POST',
+        '/v1/plugins/credential-bindings',
+      );
       return await operator.bindCredential(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         pluginOperatorCredentialInput(body),
@@ -577,6 +625,7 @@ export class PluginOperatorHttpController {
   @Post('v1/plugins/credential-bindings/:credentialBindingId/revoke')
   @HttpCode(200)
   async revokeCredential(
+    @Req() request: IntegrationHttpRequest,
     @Param('credentialBindingId') credentialBindingId: string,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-user-id') userId: string | undefined,
@@ -586,6 +635,8 @@ export class PluginOperatorHttpController {
   ): Promise<PluginCredentialBindingView> {
     const operator = this.requireOperator();
     try {
+      const path = `/v1/plugins/credential-bindings/${credentialBindingId}/revoke`;
+      requireExactPluginOperatorHttpPath(request, 'POST', path);
       return await operator.revokeCredential(
         this.headers(workspaceId, userId, evidenceId, issuedAt, signature),
         credentialBindingId,
@@ -608,7 +659,13 @@ export class PluginOperatorHttpController {
     issuedAt: unknown,
     signature: unknown,
   ): IntegrationOperatorContextHeaders {
-    return Object.freeze({ workspaceId, userId, evidenceId, issuedAt, signature });
+    return Object.freeze({
+      workspaceId,
+      userId,
+      evidenceId,
+      issuedAt,
+      signature,
+    });
   }
 
   /** Converts domain/dependency failures to fixed, credential-free HTTP problems. */
@@ -644,7 +701,9 @@ export class PluginOperatorHttpController {
 })
 export class IntegrationAppModule {
   /** Registers an explicitly constructed durable plugin operator for host deployments. */
-  static withPluginOperator(operator: PluginOperatorApplication): DynamicModule {
+  static withPluginOperator(
+    operator: PluginOperatorApplication,
+  ): DynamicModule {
     return {
       module: IntegrationAppModule,
       providers: [{ provide: PLUGIN_OPERATOR_APPLICATION, useValue: operator }],

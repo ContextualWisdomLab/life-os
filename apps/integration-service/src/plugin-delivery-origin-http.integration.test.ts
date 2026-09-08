@@ -100,7 +100,9 @@ function replayGuard(): PluginOperatorReplayGuardPort {
   };
 }
 
-function operator(deliveryOrigins?: PluginDeliveryOriginOperatorPort): PluginOperatorApplication {
+function operator(
+  deliveryOrigins?: PluginDeliveryOriginOperatorPort,
+): PluginOperatorApplication {
   return new PluginOperatorApplication(
     {} as PluginInstallationOperatorPort,
     undefined,
@@ -111,7 +113,11 @@ function operator(deliveryOrigins?: PluginDeliveryOriginOperatorPort): PluginOpe
   );
 }
 
-function signature(evidenceId: string, method: 'GET' | 'POST', path: string): string {
+function signature(
+  evidenceId: string,
+  method: 'GET' | 'POST',
+  path: string,
+): string {
   return createHmac('sha256', CONTEXT_SECRET)
     .update(
       `life-os.integration-operator-context.v1\n${WORKSPACE_ID}\n${USER_ID}\n${evidenceId}\n${ISSUED_AT}\n${method}\n${path}`,
@@ -159,7 +165,9 @@ afterEach(async () => {
 
 describe('plugin delivery-origin HTTP lifecycle', () => {
   it('serves signed grant, read, and revoke through the exact installation-scoped routes', async () => {
-    const { origin } = await startApplication(operator(new InMemoryDeliveryOriginPort()));
+    const { origin } = await startApplication(
+      operator(new InMemoryDeliveryOriginPort()),
+    );
     const collectionPath = `/v1/plugins/installations/${INSTALLATION_ID}/delivery-origins`;
     const granted = await fetch(`${origin}${collectionPath}`, {
       method: 'POST',
@@ -187,7 +195,10 @@ describe('plugin delivery-origin HTTP lifecycle', () => {
       headers: headers(EVIDENCE_IDS[1], 'GET', itemPath),
     });
     expect(read.status).toBe(200);
-    expect(await read.json()).toMatchObject({ grantId: GRANT_ID, status: 'active' });
+    expect(await read.json()).toMatchObject({
+      grantId: GRANT_ID,
+      status: 'active',
+    });
 
     const revokePath = `${itemPath}/revoke`;
     const revoked = await fetch(`${origin}${revokePath}`, {
@@ -195,12 +206,17 @@ describe('plugin delivery-origin HTTP lifecycle', () => {
       headers: headers(EVIDENCE_IDS[2], 'POST', revokePath),
     });
     expect(revoked.status).toBe(200);
-    expect(await revoked.json()).toMatchObject({ grantId: GRANT_ID, status: 'revoked' });
+    expect(await revoked.json()).toMatchObject({
+      grantId: GRANT_ID,
+      status: 'revoked',
+    });
   });
 
   it('fails forged and uncomposed delivery-origin authority without reflecting request material', async () => {
     const collectionPath = `/v1/plugins/installations/${INSTALLATION_ID}/delivery-origins`;
-    const configured = await startApplication(operator(new InMemoryDeliveryOriginPort()));
+    const configured = await startApplication(
+      operator(new InMemoryDeliveryOriginPort()),
+    );
     const forged = await fetch(`${configured.origin}${collectionPath}`, {
       method: 'POST',
       headers: {
@@ -214,14 +230,19 @@ describe('plugin delivery-origin HTTP lifecycle', () => {
     });
     expect(forged.status).toBe(401);
     const forgedBody = await forged.json();
-    expect(forgedBody).toMatchObject({ code: 'invalid_plugin_operator_context' });
+    expect(forgedBody).toMatchObject({
+      code: 'invalid_plugin_operator_context',
+    });
     expect(JSON.stringify(forgedBody)).not.toContain('must-not-be-reflected');
 
     const unavailable = await startApplication(operator());
     const response = await fetch(`${unavailable.origin}${collectionPath}`, {
       method: 'POST',
       headers: headers(EVIDENCE_IDS[0], 'POST', collectionPath),
-      body: JSON.stringify({ grantId: GRANT_ID, origin: 'https://calendar.example.com' }),
+      body: JSON.stringify({
+        grantId: GRANT_ID,
+        origin: 'https://calendar.example.com',
+      }),
     });
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({
