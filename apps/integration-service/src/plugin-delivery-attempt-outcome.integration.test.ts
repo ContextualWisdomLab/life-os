@@ -224,6 +224,18 @@ describeWithPostgres('plugin delivery append-only outcome acceptance', () => {
     expect(await readOutcomes()).toHaveLength(1);
   });
 
+  it('rejects truncation of accepted outcome evidence', async () => {
+    await consumeClaim('2026-09-08T13:00:10.000Z');
+
+    await expect(
+      pool.query(
+        'TRUNCATE TABLE plugin_integration.plugin_delivery_attempt_outcome_record',
+      ),
+    ).rejects.toMatchObject({ code: '55000' });
+
+    expect(await readOutcomes()).toHaveLength(1);
+  });
+
   it('rejects an outcome transition that changes the claimed attempt number', async () => {
     await prepareAttempt(3);
     await claimAttempt();
