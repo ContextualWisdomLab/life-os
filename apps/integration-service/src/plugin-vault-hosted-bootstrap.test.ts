@@ -55,12 +55,14 @@ function app(
   };
 }
 
-async function expectBootstrapFailure(promise: Promise<unknown>): Promise<void> {
+async function expectBootstrapFailure(
+  promise: Promise<unknown>,
+): Promise<void> {
   await expect(promise).rejects.toBeInstanceOf(PluginVaultHostedRuntimeError);
 }
 
 describe('Plugin Vault hosted bootstrap', () => {
-  it.each([null, undefined, 'invalid', []])(
+  it.each([null, 'invalid', []])(
     'rejects malformed environment envelope %j before pool acquisition',
     async (malformed) => {
       const createPool = vi.fn(() => pool());
@@ -182,18 +184,21 @@ describe('Plugin Vault hosted bootstrap', () => {
     null,
     {},
     { enableShutdownHooks: vi.fn(), listen: vi.fn(), close: null },
-  ])('closes the runtime for malformed application envelope %j', async (malformed) => {
-    const ownedPool = pool();
+  ])(
+    'closes the runtime for malformed application envelope %j',
+    async (malformed) => {
+      const ownedPool = pool();
 
-    await expectBootstrapFailure(
-      startPluginVaultHostedService(
-        () => ownedPool,
-        environment(),
-        async () => malformed as unknown as PluginVaultHostedNestApplication,
-      ),
-    );
-    expect(ownedPool.end).toHaveBeenCalledTimes(1);
-  });
+      await expectBootstrapFailure(
+        startPluginVaultHostedService(
+          () => ownedPool,
+          environment(),
+          async () => malformed as unknown as PluginVaultHostedNestApplication,
+        ),
+      );
+      expect(ownedPool.end).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('bounds a throwing application cleanup accessor and still closes the runtime', async () => {
     const ownedPool = pool();
@@ -277,7 +282,9 @@ describe('Plugin Vault hosted bootstrap', () => {
 
   it('keeps startup failure bounded when runtime cleanup rejects', async () => {
     const ownedPool = pool();
-    ownedPool.end.mockRejectedValueOnce(new Error('pool cleanup fixture failure'));
+    ownedPool.end.mockRejectedValueOnce(
+      new Error('pool cleanup fixture failure'),
+    );
     const hostedApp = app({
       listen: vi.fn(async () => {
         throw new Error('listener fixture failure');

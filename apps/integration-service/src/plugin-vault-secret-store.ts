@@ -244,7 +244,7 @@ const defaultHttpClient: PluginVaultHttpClient = async (url, request) => {
   const response = await fetch(url, {
     method: request.method,
     headers: request.headers,
-    body: request.body,
+    ...(request.body === undefined ? {} : { body: request.body }),
     redirect: request.redirect,
     signal: request.signal,
   });
@@ -277,10 +277,42 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     this.origin = requireVaultOrigin(origin);
     this.token = requireVaultToken(token);
     this.mount = requireVaultMount(mount);
-    if (typeof http !== 'function') {
+    this.http = typeof http === 'function' ? http : unavailable();
+  }
+
+  /**
+   * Proves that one existing opaque binding reference still contains exactly the
+   * caller-supplied immutable authority and secret bytes. Missing or conflicting
+   * provider evidence is never repaired implicitly during metadata replay.
+   */
+  async verifySecret(
+    secretReference: string,
+    input: PutPluginSecretInput,
+  ): Promise<void> {
+    const bindingId = parseReference(secretReference);
+    const expected = requirePayload(input);
+    if (bindingId !== expected.credentialBindingId) {
       return unavailable();
     }
-    this.http = http;
+    let result: PluginVaultHttpResult;
+    try {
+      result = await this.request(this.dataUrl(bindingId), 'GET', undefined, true);
+    } catch {
+      return unavailable();
+    }
+    if (result.response.status !== 200 || result.body === undefined) {
+      return unavailable();
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.body);
+    } catch {
+      return unavailable();
+    }
+    const durable = requireVaultReadPayload(parsed);
+    if (!samePayload(durable, expected)) {
+      return unavailable();
+    }
   }
 
   /**

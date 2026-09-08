@@ -5,8 +5,7 @@ import type {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CREDENTIAL_NAME_PATTERN = /^[a-z][a-z0-9._-]{0,127}$/u;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/u;
 const MAXIMUM_SECRET_LENGTH = 8192;
@@ -89,17 +88,25 @@ export interface PutPluginSecretInput {
  * External encrypted secret-store/KMS authority.
  *
  * `putSecret` must be idempotent for one credential binding identity and return an
- * opaque reference rather than plaintext. `deleteSecret` must tolerate exact
- * retries so a durable revocation can complete provider cleanup after an outage.
+ * opaque reference rather than plaintext. `verifySecret` must prove that an existing
+ * opaque reference still contains the exact immutable authority and secret bytes before
+ * metadata-only replay can be accepted. `deleteSecret` must tolerate exact retries so a
+ * durable revocation can complete provider cleanup after an outage.
  */
 export interface PluginSecretStore {
   putSecret(input: PutPluginSecretInput): Promise<string>;
+  verifySecret(
+    secretReference: string,
+    input: PutPluginSecretInput,
+  ): Promise<void>;
   deleteSecret(secretReference: string): Promise<void>;
 }
 
 /** Input for one installer-authorized credential binding. Tenant/user authority is derived from trusted context. */
-export interface BindPluginCredentialInput
-  extends Omit<PutPluginSecretInput, 'workspaceId' | 'installedByUserId'> {
+export interface BindPluginCredentialInput extends Omit<
+  PutPluginSecretInput,
+  'workspaceId' | 'installedByUserId'
+> {
   readonly trustedContext: PluginInstallationContext;
 }
 
@@ -367,7 +374,9 @@ export class PluginCredentialApplication {
    * Stores new secret material only after exact active installation authority and
    * persists only the opaque reference returned by the external secret store.
    */
-  async bind(input: BindPluginCredentialInput): Promise<PluginCredentialBindingView> {
+  async bind(
+    input: BindPluginCredentialInput,
+  ): Promise<PluginCredentialBindingView> {
     const request = requireBindInput(input);
     const context = requireContext(request.trustedContext);
     const installationId = requireUuidV4(request.installationId);
@@ -415,7 +424,60 @@ export class PluginCredentialApplication {
       ) {
         return invalid();
       }
-      return view(existing);
+      try {
+        await this.secretStore.verifySecret(existing.secretReference, {
+          credentialBindingId,
+          installationId,
+          workspaceId: context.workspaceId,
+          installedByUserId: context.actorUserId,
+          credentialName,
+          secretValue,
+        });
+      } catch {
+        return invalid();
+      }
+      let currentInstallation: PluginInstallationRecord | undefined;
+      try {
+        currentInstallation = await this.installationAuthority.getInstallation(
+          context,
+          installationId,
+        );
+      } catch {
+        return invalid();
+      }
+      if (
+        !currentInstallation ||
+        currentInstallation.status !== 'active' ||
+        currentInstallation.revokedAt !== null ||
+        currentInstallation.workspaceId !== context.workspaceId ||
+        currentInstallation.installedByUserId !== context.actorUserId ||
+        currentInstallation.installationId !== installationId ||
+        requireStoredInstant(currentInstallation.installedAt) !== installedAt
+      ) {
+        return invalid();
+      }
+      let currentBindingEvidence: PluginCredentialBindingRecord | undefined;
+      try {
+        currentBindingEvidence = await this.bindingStore.findById(
+          credentialBindingId,
+          context.workspaceId,
+          context.actorUserId,
+        );
+      } catch {
+        return invalid();
+      }
+      if (currentBindingEvidence === undefined) {
+        return invalid();
+      }
+      const currentBinding = requireBindingRecord(currentBindingEvidence);
+      if (
+        !activeBinding(currentBinding, authority) ||
+        !sameImmutableBindingEvidence(currentBinding, existing) ||
+        !bindingVisibleAt(currentBinding, boundAt)
+      ) {
+        return invalid();
+      }
+      return view(currentBinding);
     }
 
     let secretReference: string;

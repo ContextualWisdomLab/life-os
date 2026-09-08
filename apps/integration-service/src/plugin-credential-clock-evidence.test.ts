@@ -109,6 +109,12 @@ function harness(now: () => Date): {
       calls.secretWrites += 1;
       return SECRET_REFERENCE;
     },
+    async verifySecret(
+      _secretReference: string,
+      _input: PutPluginSecretInput,
+    ): Promise<void> {
+      throw new Error('unexpected replay verification in fixture');
+    },
     async deleteSecret(_secretReference: string): Promise<void> {
       calls.secretDeletes += 1;
     },
