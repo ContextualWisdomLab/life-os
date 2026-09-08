@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  PluginDeliveryOriginOperatorDependencyError,
   PluginOperatorApplication,
   type PluginInstallationOperatorPort,
 } from './plugin-operator-application';
@@ -246,5 +247,26 @@ describe('plugin delivery-origin operator authority', () => {
       kind: 'invalid',
     });
     expect(origins.grant).not.toHaveBeenCalled();
+  });
+
+  it('consumes valid signed evidence before failing closed on absent origin composition', async () => {
+    const replay = replayGuard();
+    const app = new PluginOperatorApplication(
+      installations(),
+      undefined,
+      SECRET,
+      replay,
+      () => NOW_SECONDS,
+    );
+    const path = `/v1/plugins/installations/${INSTALLATION_ID}/delivery-origins/${GRANT_ID}`;
+
+    await expect(
+      app.getDeliveryOrigin(
+        signedHeaders('GET', path),
+        INSTALLATION_ID,
+        GRANT_ID,
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryOriginOperatorDependencyError);
+    expect(replay.consume).toHaveBeenCalledTimes(1);
   });
 });
