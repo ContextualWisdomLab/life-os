@@ -68,5 +68,35 @@ ALTER TABLE plugin_integration.plugin_delivery_attempt_record
             )
         );
 
+CREATE OR REPLACE FUNCTION plugin_integration.require_plugin_delivery_attempt_initial_shape()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.delivery_status <> 'pending'
+       OR NEW.attempt_count <> 0
+       OR NEW.next_attempt_at IS NULL
+       OR NEW.terminal_at IS NOT NULL
+       OR NEW.last_outcome_code IS NOT NULL
+       OR NEW.claim_token_digest IS NOT NULL
+       OR NEW.claim_started_at IS NOT NULL
+       OR NEW.claim_expires_at IS NOT NULL THEN
+        RAISE EXCEPTION 'plugin_delivery_attempt_initial_shape_check'
+            USING ERRCODE = '23514',
+                  CONSTRAINT = 'plugin_delivery_attempt_initial_shape_check';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS plugin_delivery_attempt_initial_shape
+    ON plugin_integration.plugin_delivery_attempt_record;
+
+CREATE TRIGGER plugin_delivery_attempt_initial_shape
+BEFORE INSERT ON plugin_integration.plugin_delivery_attempt_record
+FOR EACH ROW
+EXECUTE FUNCTION plugin_integration.require_plugin_delivery_attempt_initial_shape();
+
 COMMENT ON TABLE plugin_integration.plugin_delivery_attempt_record IS
-    'Integration-owned durable delivery-attempt admission, claim/lease, retry scheduling and bounded exhaustion record; raw claim tokens, provider payloads, credentials and outbound-network authority are not persisted here.';
+    'Integration-owned durable delivery-attempt admission, claim/lease, retry scheduling and bounded exhaustion record; direct creation is restricted to the initial admission shape and raw claim tokens, provider payloads, credentials and outbound-network authority are not persisted here.';
