@@ -1,0 +1,166 @@
+name: Repair Plugin Delivery Origin Operator Composition
+
+on:
+  push:
+    branches: [feat/plugin-delivery-origin-operator-v2]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-plugin-delivery-origin-operator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair-and-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact repair head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Apply minimal operator composition repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          operator = "apps/integration-service/src/plugin-operator-application.ts"
+          replace_once(
+              operator,
+              "import type {\n  BindPluginCredentialInput,\n  PluginCredentialBindingView,\n} from './plugin-credential';\n",
+              "import type {\n  BindPluginCredentialInput,\n  PluginCredentialBindingView,\n} from './plugin-credential';\nimport type {\n  GrantPluginDeliveryOriginInput,\n  PluginDeliveryOriginGrantRecord,\n} from './plugin-delivery-origin-authority';\n",
+          )
+          replace_once(
+              operator,
+              "export interface PluginCredentialOperatorPort {\n  /** Binds secret material only after authenticated installation authority is derived. */\n  bind(input: BindPluginCredentialInput): Promise<PluginCredentialBindingView>;\n  /** Revokes one installer-owned credential binding inside trusted tenant/user authority. */\n  revoke(\n    trustedContext: PluginInstallationContext,\n    credentialBindingId: string,\n  ): Promise<PluginCredentialBindingView>;\n}\n\n/** Fixed dependency failure that never discloses credential material or provider details. */\n",
+              "export interface PluginCredentialOperatorPort {\n  /** Binds secret material only after authenticated installation authority is derived. */\n  bind(input: BindPluginCredentialInput): Promise<PluginCredentialBindingView>;\n  /** Revokes one installer-owned credential binding inside trusted tenant/user authority. */\n  revoke(\n    trustedContext: PluginInstallationContext,\n    credentialBindingId: string,\n  ): Promise<PluginCredentialBindingView>;\n}\n\n/** Delivery-origin lifecycle authority consumed only after exact signed operator verification. */\nexport interface PluginDeliveryOriginOperatorPort {\n  /** Grants one exact HTTPS origin inside authenticated installation authority. */\n  grant(\n    trustedContext: PluginInstallationContext,\n    installationId: string,\n    input: GrantPluginDeliveryOriginInput,\n  ): Promise<PluginDeliveryOriginGrantRecord>;\n  /** Reads one exact durable origin grant inside authenticated installation authority. */\n  getGrant(\n    trustedContext: PluginInstallationContext,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord | undefined>;\n  /** Revokes one exact durable origin grant inside authenticated installation authority. */\n  revoke(\n    trustedContext: PluginInstallationContext,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord>;\n}\n\n/** Fixed dependency failure that never discloses credential material or provider details. */\n",
+          )
+          replace_once(
+              operator,
+              "export class PluginOperatorDependencyError extends Error {\n  /** Creates the bounded failure returned when credential composition is unavailable. */\n  constructor() {\n    super('Plugin credential capability is unavailable');\n    this.name = 'PluginOperatorDependencyError';\n  }\n}\n\n/** Operator-selected installation fields; authenticated authority is never accepted from the body. */\n",
+              "export class PluginOperatorDependencyError extends Error {\n  /** Creates the bounded failure returned when credential composition is unavailable. */\n  constructor() {\n    super('Plugin credential capability is unavailable');\n    this.name = 'PluginOperatorDependencyError';\n  }\n}\n\n/** Fixed dependency failure that does not reveal delivery-origin persistence details. */\nexport class PluginDeliveryOriginOperatorDependencyError extends Error {\n  /** Creates the bounded failure returned when delivery-origin composition is unavailable. */\n  constructor() {\n    super('Plugin delivery-origin capability is unavailable');\n    this.name = 'PluginDeliveryOriginOperatorDependencyError';\n  }\n}\n\n/** Operator-selected installation fields; authenticated authority is never accepted from the body. */\n",
+          )
+          replace_once(
+              operator,
+              "    private readonly replayGuard: PluginOperatorReplayGuardPort | undefined,\n    private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),\n  ) {}\n",
+              "    private readonly replayGuard: PluginOperatorReplayGuardPort | undefined,\n    private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),\n    private readonly deliveryOrigins?: PluginDeliveryOriginOperatorPort,\n  ) {}\n",
+          )
+          replace_once(
+              operator,
+              "  /** Verifies and atomically consumes one signed request identity before downstream authority. */\n  private async requireContext(\n",
+              "  /** Grants one exact delivery origin only under its installation-scoped signed POST authority. */\n  async grantDeliveryOrigin(\n    headers: IntegrationOperatorContextHeaders,\n    installationId: string,\n    input: GrantPluginDeliveryOriginInput,\n  ): Promise<PluginDeliveryOriginGrantRecord> {\n    const trustedContext = await this.requireContext(\n      headers,\n      'POST',\n      `/v1/plugins/installations/${installationId}/delivery-origins`,\n    );\n    return this.requireDeliveryOrigins().grant(trustedContext, installationId, input);\n  }\n\n  /** Reads one delivery-origin grant only under its exact signed dynamic GET authority. */\n  async getDeliveryOrigin(\n    headers: IntegrationOperatorContextHeaders,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord | undefined> {\n    const trustedContext = await this.requireContext(\n      headers,\n      'GET',\n      `/v1/plugins/installations/${installationId}/delivery-origins/${grantId}`,\n    );\n    return this.requireDeliveryOrigins().getGrant(\n      trustedContext,\n      installationId,\n      grantId,\n    );\n  }\n\n  /** Revokes one delivery-origin grant only under its exact signed dynamic POST authority. */\n  async revokeDeliveryOrigin(\n    headers: IntegrationOperatorContextHeaders,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord> {\n    const trustedContext = await this.requireContext(\n      headers,\n      'POST',\n      `/v1/plugins/installations/${installationId}/delivery-origins/${grantId}/revoke`,\n    );\n    return this.requireDeliveryOrigins().revoke(\n      trustedContext,\n      installationId,\n      grantId,\n    );\n  }\n\n  /** Verifies and atomically consumes one signed request identity before downstream authority. */\n  private async requireContext(\n",
+          )
+          replace_once(
+              operator,
+              "  private requireCredentials(): PluginCredentialOperatorPort {\n    if (!this.credentials) {\n      throw new PluginOperatorDependencyError();\n    }\n    return this.credentials;\n  }\n}\n",
+              "  private requireCredentials(): PluginCredentialOperatorPort {\n    if (!this.credentials) {\n      throw new PluginOperatorDependencyError();\n    }\n    return this.credentials;\n  }\n\n  /** Returns configured delivery-origin authority only after caller authentication succeeds. */\n  private requireDeliveryOrigins(): PluginDeliveryOriginOperatorPort {\n    if (!this.deliveryOrigins) {\n      throw new PluginDeliveryOriginOperatorDependencyError();\n    }\n    return this.deliveryOrigins;\n  }\n}\n",
+          )
+
+          composition = "apps/integration-service/src/plugin-vault-operator-composition.ts"
+          replace_once(
+              composition,
+              "import {\n  PluginOperatorApplication,\n  type PluginInstallationOperatorPort,\n} from './plugin-operator-application';\n",
+              "import {\n  PluginOperatorApplication,\n  type PluginDeliveryOriginOperatorPort,\n  type PluginInstallationOperatorPort,\n} from './plugin-operator-application';\n",
+          )
+          replace_once(
+              composition,
+              "  readonly bindingStore: PluginCredentialBindingStore;\n  readonly replayGuard: PluginOperatorReplayGuardPort;\n}\n",
+              "  readonly bindingStore: PluginCredentialBindingStore;\n  readonly replayGuard: PluginOperatorReplayGuardPort;\n  readonly deliveryOrigins?: PluginDeliveryOriginOperatorPort;\n}\n",
+          )
+          replace_once(
+              composition,
+              "/** Requires durable one-time operator evidence consumption before request authority is granted. */\nfunction requireReplayGuard(value: unknown): PluginOperatorReplayGuardPort {\n",
+              "/** Accepts an optional delivery-origin authority while rejecting malformed supplied capability. */\nfunction requireDeliveryOrigins(\n  value: unknown,\n): PluginDeliveryOriginOperatorPort | undefined {\n  if (value === undefined) {\n    return undefined;\n  }\n  if (\n    value === null ||\n    typeof value !== 'object' ||\n    typeof (value as PluginDeliveryOriginOperatorPort).grant !== 'function' ||\n    typeof (value as PluginDeliveryOriginOperatorPort).getGrant !== 'function' ||\n    typeof (value as PluginDeliveryOriginOperatorPort).revoke !== 'function'\n  ) {\n    return unavailable();\n  }\n  return value as PluginDeliveryOriginOperatorPort;\n}\n\n/** Requires durable one-time operator evidence consumption before request authority is granted. */\nfunction requireReplayGuard(value: unknown): PluginOperatorReplayGuardPort {\n",
+          )
+          replace_once(
+              composition,
+              "  const replayGuard = requireReplayGuard(dependencies.replayGuard);\n  const contextSecret = requireOperatorContextSecret(\n",
+              "  const replayGuard = requireReplayGuard(dependencies.replayGuard);\n  const deliveryOrigins = requireDeliveryOrigins(dependencies.deliveryOrigins);\n  const contextSecret = requireOperatorContextSecret(\n",
+          )
+          replace_once(
+              composition,
+              "    replayGuard,\n    nowSeconds,\n  );\n}\n",
+              "    replayGuard,\n    nowSeconds,\n    deliveryOrigins,\n  );\n}\n",
+          )
+
+          runtime = "apps/integration-service/src/plugin-vault-hosted-runtime.ts"
+          replace_once(
+              runtime,
+              "import { PluginInstallationApplication } from './plugin-installation';\n",
+              "import { PluginInstallationApplication } from './plugin-installation';\nimport { PluginDeliveryOriginAuthority } from './plugin-delivery-origin-authority';\nimport { PostgresPluginDeliveryOriginGrantStore } from './plugin-delivery-origin-repository';\n",
+          )
+          replace_once(
+              runtime,
+              "    const installations = new PluginInstallationApplication(\n      new PostgresPluginInstallationStore(candidate),\n    );\n    const bindingStore = new PostgresPluginCredentialBindingStore(candidate);\n",
+              "    const installationStore = new PostgresPluginInstallationStore(candidate);\n    const installations = new PluginInstallationApplication(installationStore);\n    const deliveryOrigins = new PluginDeliveryOriginAuthority(\n      new PostgresPluginDeliveryOriginGrantStore(candidate),\n      installationStore,\n    );\n    const bindingStore = new PostgresPluginCredentialBindingStore(candidate);\n",
+          )
+          replace_once(
+              runtime,
+              "      { installations, bindingStore, replayGuard },\n",
+              "      { installations, bindingStore, replayGuard, deliveryOrigins },\n",
+          )
+
+          test = "apps/integration-service/src/plugin-operator-delivery-origin.test.ts"
+          replace_once(
+              test,
+              "  getDeliveryOrigin(\n    headers: ReturnType<typeof signedHeaders>,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord | undefined>;\n}\n",
+              "  getDeliveryOrigin(\n    headers: ReturnType<typeof signedHeaders>,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord | undefined>;\n  revokeDeliveryOrigin(\n    headers: ReturnType<typeof signedHeaders>,\n    installationId: string,\n    grantId: string,\n  ): Promise<PluginDeliveryOriginGrantRecord>;\n}\n",
+          )
+          replace_once(
+              test,
+              "  it('does not accept a signature for another operator route as origin authority', async () => {\n",
+              "  it('revokes an origin only under the exact installation-and-grant signed route', async () => {\n    const origins = deliveryOrigins();\n    const app = application(origins);\n    const path = `/v1/plugins/installations/${INSTALLATION_ID}/delivery-origins/${GRANT_ID}/revoke`;\n\n    await expect(\n      app.revokeDeliveryOrigin(\n        signedHeaders('POST', path),\n        INSTALLATION_ID,\n        GRANT_ID,\n      ),\n    ).resolves.toMatchObject({ status: 'revoked', revokedAt: NOW });\n    expect(origins.revoke).toHaveBeenCalledWith(\n      { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },\n      INSTALLATION_ID,\n      GRANT_ID,\n    );\n  });\n\n  it('does not accept a signature for another operator route as origin authority', async () => {\n",
+          )
+          PY
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run focused delivery-origin operator contract
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-operator-delivery-origin.test.ts
+
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration service suite
+        run: pnpm --filter @life-os/integration-service test
+
+      - name: Publish retained causal descendant and retire purpose workflows
+        shell: bash
+        env:
+          TARGET_BRANCH: feat/plugin-delivery-origin-operator-v2
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/prove-plugin-delivery-origin-operator-red.yml
+          git rm .github/workflows/repair-plugin-delivery-origin-operator.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/integration-service/src/plugin-operator-application.ts \
+                  apps/integration-service/src/plugin-vault-operator-composition.ts \
+                  apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+                  apps/integration-service/src/plugin-operator-delivery-origin.test.ts
+          git commit -m "feat(integration): compose delivery-origin operator authority"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
