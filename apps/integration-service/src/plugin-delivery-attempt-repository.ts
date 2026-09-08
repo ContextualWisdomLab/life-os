@@ -255,8 +255,8 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
          requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
        ) VALUES (
          $1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid,
-         'pending', 0, $7, $8::timestamptz, $8::timestamptz,
-         $8::timestamptz, NULL, NULL
+         'pending', 0, $7, $8::timestamptz, $9::timestamptz,
+         $10::timestamptz, NULL, NULL
        )
        ON CONFLICT (delivery_id) DO NOTHING
        RETURNING ${RETURNING_COLUMNS}`,
@@ -269,6 +269,8 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
         safe.requestedByUserId,
         safe.maxAttempts,
         safe.requestedAt,
+        safe.updatedAt,
+        safe.nextAttemptAt,
       ],
     );
     let durableRow = oneOrUndefined(inserted);
