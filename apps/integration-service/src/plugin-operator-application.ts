@@ -2,6 +2,7 @@ import type {
   BindPluginCredentialInput,
   PluginCredentialBindingView,
 } from './plugin-credential';
+import type { PluginDeliveryAttemptStatusEvidence } from './plugin-delivery-attempt-status';
 import type {
   InstallPluginInput,
   PluginInstallationContext,
@@ -42,12 +43,30 @@ export interface PluginCredentialOperatorPort {
   ): Promise<PluginCredentialBindingView>;
 }
 
+/** Read-only delivery status authority consumed only after signed operator verification. */
+export interface PluginDeliveryAttemptStatusOperatorPort {
+  /** Reads one requesting-user-owned delivery aggregate without exposing claim credentials. */
+  read(
+    trustedContext: PluginInstallationContext,
+    deliveryId: string,
+  ): Promise<PluginDeliveryAttemptStatusEvidence>;
+}
+
 /** Fixed dependency failure that never discloses credential material or provider details. */
 export class PluginOperatorDependencyError extends Error {
   /** Creates the bounded failure returned when credential composition is unavailable. */
   constructor() {
     super('Plugin credential capability is unavailable');
     this.name = 'PluginOperatorDependencyError';
+  }
+}
+
+/** Fixed status-dependency failure that never reflects persistence or lifecycle detail. */
+export class PluginOperatorStatusDependencyError extends Error {
+  /** Creates the bounded failure returned when durable status composition is unavailable. */
+  constructor() {
+    super('Plugin delivery status capability is unavailable');
+    this.name = 'PluginOperatorStatusDependencyError';
   }
 }
 
@@ -71,7 +90,7 @@ function canonicalInstant(seconds: number): string {
 
 /**
  * Composes cryptographically verified operator identity with host-owned plugin
- * installation and credential applications.
+ * installation, credential, and read-only delivery-status applications.
  *
  * Every method constructs the exact server-owned method/path binding before any
  * downstream authority is invoked. Tenant/user identifiers are derived only from
@@ -88,6 +107,7 @@ export class PluginOperatorApplication {
     private readonly contextSecret: unknown,
     private readonly replayGuard: PluginOperatorReplayGuardPort | undefined,
     private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
+    private readonly deliveryStatus?: PluginDeliveryAttemptStatusOperatorPort,
   ) {}
 
   /** Installs a plugin only under a signed POST collection authority. */
@@ -157,6 +177,23 @@ export class PluginOperatorApplication {
       trustedContext,
       credentialBindingId,
     );
+  }
+
+  /** Reads durable delivery status only under the exact signed dynamic GET authority. */
+  async getDeliveryAttemptStatus(
+    headers: IntegrationOperatorContextHeaders,
+    deliveryId: string,
+  ): Promise<PluginDeliveryAttemptStatusEvidence> {
+    const trustedContext = await this.requireContext(
+      headers,
+      'GET',
+      `/v1/plugins/delivery-attempts/${deliveryId}`,
+    );
+    const deliveryStatus = this.deliveryStatus;
+    if (!deliveryStatus) {
+      throw new PluginOperatorStatusDependencyError();
+    }
+    return deliveryStatus.read(trustedContext, deliveryId);
   }
 
   /** Verifies and atomically consumes one signed request identity before downstream authority. */
