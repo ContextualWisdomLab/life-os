@@ -39,14 +39,20 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          pnpm exec prettier --single-quote --check apps/integration-service/src/plugin-delivery-attempt-retry.test.ts
+          pnpm exec prettier --single-quote --check \
+            apps/integration-service/src/plugin-delivery-attempt-retry.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts
           git diff --check HEAD^
 
       - name: Build Plugin SDK dependency
         run: pnpm --filter @life-os/plugin-sdk build
 
-      - name: Run retry capability acceptance
-        run: pnpm --filter @life-os/integration-service exec vitest run src/plugin-delivery-attempt-retry.test.ts
+      - name: Run retry capability and persistence acceptance
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-retry.test.ts
+          src/plugin-delivery-attempt-retry-repository.test.ts
 
       - name: Typecheck Integration service
         run: pnpm --filter @life-os/integration-service typecheck
