@@ -127,3 +127,11 @@ CREATE TRIGGER plugin_delivery_attempt_outcome_append_only
 BEFORE UPDATE OR DELETE ON plugin_integration.plugin_delivery_attempt_outcome_record
 FOR EACH ROW
 EXECUTE FUNCTION plugin_integration.reject_plugin_delivery_attempt_outcome_mutation();
+
+DROP TRIGGER IF EXISTS plugin_delivery_attempt_outcome_append_only_truncate
+  ON plugin_integration.plugin_delivery_attempt_outcome_record;
+
+CREATE TRIGGER plugin_delivery_attempt_outcome_append_only_truncate
+BEFORE TRUNCATE ON plugin_integration.plugin_delivery_attempt_outcome_record
+FOR EACH STATEMENT
+EXECUTE FUNCTION plugin_integration.reject_plugin_delivery_attempt_outcome_mutation();
