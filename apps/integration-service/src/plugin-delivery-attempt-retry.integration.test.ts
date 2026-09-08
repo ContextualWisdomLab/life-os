@@ -110,71 +110,68 @@ async function prepareAttempt(maxAttempts = 2): Promise<void> {
   `);
 }
 
-describeWithPostgres(
-  'plugin delivery retry PostgreSQL acceptance',
-  () => {
-    beforeEach(async () => {
-      await prepareAttempt();
+describeWithPostgres('plugin delivery retry PostgreSQL acceptance', () => {
+  beforeEach(async () => {
+    await prepareAttempt();
+  });
+
+  it('consumes an active claim and durably schedules the deterministic retry', async () => {
+    const client = new PoolSqlClient(pool);
+    const claims = new PostgresPluginDeliveryAttemptClaimStore(client);
+    const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
+
+    await expect(
+      claims.claimDue({
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        claimTokenDigest: CLAIM_DIGEST,
+        claimedAt: '2026-09-08T13:00:00.000Z',
+        leaseExpiresAt: '2026-09-08T13:01:00.000Z',
+      }),
+    ).resolves.toMatchObject({ attemptNumber: 1 });
+
+    await expect(
+      retries.recordRetryableFailure({
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        claimTokenDigest: CLAIM_DIGEST,
+        occurredAt: '2026-09-08T13:00:10.000Z',
+      }),
+    ).resolves.toMatchObject({
+      attemptNumber: 1,
+      deliveryStatus: 'pending',
+      outcomeCode: 'retryable_failure',
+      nextAttemptAt: '2026-09-08T13:00:40.000Z',
+      terminalAt: null,
     });
 
-    it('consumes an active claim and durably schedules the deterministic retry', async () => {
-      const client = new PoolSqlClient(pool);
-      const claims = new PostgresPluginDeliveryAttemptClaimStore(client);
-      const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
-
-      await expect(
-        claims.claimDue({
-          deliveryId: DELIVERY_ID,
-          workspaceId: WORKSPACE_ID,
-          requestedByUserId: USER_ID,
-          claimTokenDigest: CLAIM_DIGEST,
-          claimedAt: '2026-09-08T13:00:00.000Z',
-          leaseExpiresAt: '2026-09-08T13:01:00.000Z',
-        }),
-      ).resolves.toMatchObject({ attemptNumber: 1 });
-
-      await expect(
-        retries.recordRetryableFailure({
-          deliveryId: DELIVERY_ID,
-          workspaceId: WORKSPACE_ID,
-          requestedByUserId: USER_ID,
-          claimTokenDigest: CLAIM_DIGEST,
-          occurredAt: '2026-09-08T13:00:10.000Z',
-        }),
-      ).resolves.toMatchObject({
-        attemptNumber: 1,
-        deliveryStatus: 'pending',
-        outcomeCode: 'retryable_failure',
-        nextAttemptAt: '2026-09-08T13:00:40.000Z',
-        terminalAt: null,
-      });
-
-      const durable = await pool.query<{
-        attempt_count: number;
-        delivery_status: string;
-        last_outcome_code: string | null;
-        next_attempt_at: Date;
-        claim_token_digest: string | null;
-        claim_started_at: Date | null;
-        claim_expires_at: Date | null;
-      }>(
-        `SELECT attempt_count, delivery_status, last_outcome_code,
+    const durable = await pool.query<{
+      attempt_count: number;
+      delivery_status: string;
+      last_outcome_code: string | null;
+      next_attempt_at: Date;
+      claim_token_digest: string | null;
+      claim_started_at: Date | null;
+      claim_expires_at: Date | null;
+    }>(
+      `SELECT attempt_count, delivery_status, last_outcome_code,
                 next_attempt_at, claim_token_digest, claim_started_at, claim_expires_at
          FROM plugin_integration.plugin_delivery_attempt_record
          WHERE delivery_id = $1::uuid`,
-        [DELIVERY_ID],
-      );
-      expect(durable.rows).toEqual([
-        {
-          attempt_count: 1,
-          delivery_status: 'pending',
-          last_outcome_code: 'retryable_failure',
-          next_attempt_at: new Date('2026-09-08T13:00:40.000Z'),
-          claim_token_digest: null,
-          claim_started_at: null,
-          claim_expires_at: null,
-        },
-      ]);
-    });
-  },
-);
+      [DELIVERY_ID],
+    );
+    expect(durable.rows).toEqual([
+      {
+        attempt_count: 1,
+        delivery_status: 'pending',
+        last_outcome_code: 'retryable_failure',
+        next_attempt_at: new Date('2026-09-08T13:00:40.000Z'),
+        claim_token_digest: null,
+        claim_started_at: null,
+        claim_expires_at: null,
+      },
+    ]);
+  });
+});
