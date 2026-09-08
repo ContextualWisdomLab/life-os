@@ -86,6 +86,31 @@ jobs:
             exit 1
           fi
 
+      - name: Prove durable claim lease bounds RED
+        shell: bash
+        env:
+          RED_SHA: 400e88163ca9d878806aaee11ef8ca2917ec33dc
+        run: |
+          set -euo pipefail
+          git checkout --detach "${RED_SHA}"
+          set +e
+          red_output="$(pnpm --filter @life-os/integration-service exec vitest run --no-file-parallelism src/plugin-delivery-attempt-claim.integration.test.ts 2>&1)"
+          red_status=$?
+          set -e
+          printf '%s\n' "${red_output}"
+          git checkout --detach "${GITHUB_SHA}"
+          if [ "${red_status}" -eq 0 ]; then
+            echo "Expected ${RED_SHA} to accept out-of-range durable lease durations" >&2
+            exit 1
+          fi
+          grep -Fq 'rejects a lease shorter than the durable 30 second minimum' <<<"${red_output}"
+          grep -Fq 'rejects a lease longer than the durable 3600 second maximum' <<<"${red_output}"
+          failures="$(grep -Fc 'promise resolved "undefined" instead of rejecting' <<<"${red_output}")"
+          if [ "${failures}" -lt 2 ]; then
+            echo "Expected both durable lease-bound regressions to fail at ${RED_SHA}" >&2
+            exit 1
+          fi
+
       - name: Verify canonical bounded TypeScript sources
         run: >-
           pnpm exec prettier --single-quote --check
