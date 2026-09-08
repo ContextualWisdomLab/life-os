@@ -56,6 +56,9 @@ CREATE TABLE plugin_integration.plugin_delivery_attempt_record (
         CHECK (last_outcome_code IS NULL)
 );
 
+COMMENT ON TABLE plugin_integration.plugin_delivery_attempt_record IS
+    'Integration-owned durable delivery-attempt admission record; insertion requires matching active delivery-origin grant and active owning installation authority.';
+
 CREATE FUNCTION plugin_integration.require_active_plugin_authority_for_delivery_attempt()
 RETURNS trigger
 LANGUAGE plpgsql
