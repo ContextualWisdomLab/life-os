@@ -1,0 +1,45 @@
+name: Verify plugin delivery attempt claim hostile boundary
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-claim-lease-v1
+    paths:
+      - 'apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts'
+      - 'apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts'
+      - '.github/workflows/verify-plugin-delivery-attempt-claim-hostile-boundary.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: life-os-plugin-delivery-attempt-claim-hostile-boundary
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install frozen dependency graph
+        run: pnpm install --frozen-lockfile
+      - name: Check bounded source formatting
+        run: pnpm exec prettier --single-quote --check apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts
+      - name: Check diff hygiene
+        run: git diff --check HEAD^ HEAD
+      - name: Run focused hostile-boundary acceptance
+        run: pnpm --filter @life-os/integration-service exec vitest run src/plugin-delivery-attempt-claim-repository.test.ts --no-file-parallelism
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+      - name: Run complete Integration service suite
+        run: pnpm --filter @life-os/integration-service test
