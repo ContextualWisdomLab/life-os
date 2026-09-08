@@ -182,17 +182,23 @@ function singleRow<Row>(
   const [rows, rowCount] = boundedEvidenceRead(
     () => [result.rows, result.rowCount] as const,
   );
+  if (!Array.isArray(rows)) {
+    return invalidEvidence();
+  }
+  const rowsLength = boundedEvidenceRead(() => rows.length);
   if (
-    !Array.isArray(rows) ||
     typeof rowCount !== 'number' ||
     !Number.isInteger(rowCount) ||
     rowCount < 0 ||
-    rowCount !== rows.length ||
-    rows.length > 1
+    rowCount !== rowsLength ||
+    rowsLength > 1
   ) {
     return invalidEvidence();
   }
-  return rows[0];
+  if (rowsLength === 0) {
+    return undefined;
+  }
+  return boundedEvidenceRead(() => rows[0]);
 }
 
 function parseEvidence(
