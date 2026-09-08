@@ -104,6 +104,30 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
     ]);
   });
 
+  it('re-reads the exact durable winner with a fresh statement after a conflict snapshot returns no row', async () => {
+    const client = new ScriptedSqlClient([result([]), result([row()])]);
+    const store = new PostgresPluginDeliveryAttemptStore(client);
+
+    await expect(store.createIfAbsent(RECORD)).resolves.toEqual(RECORD);
+    expect(client.calls).toHaveLength(2);
+    expect(client.calls[0]?.text).toContain(
+      'ON CONFLICT (delivery_id) DO NOTHING',
+    );
+    expect(client.calls[1]?.text).toContain('WHERE delivery_id = $1::uuid');
+    expect(client.calls[1]?.text).toContain('grant_id = $2::uuid');
+    expect(client.calls[1]?.text).toContain('installation_id = $3::uuid');
+    expect(client.calls[1]?.text).toContain('workspace_id = $4::uuid');
+    expect(client.calls[1]?.text).toContain('requested_by_user_id = $5::uuid');
+    expect(client.calls[1]?.values).toEqual([
+      RECORD.deliveryId,
+      RECORD.grantId,
+      RECORD.installationId,
+      RECORD.workspaceId,
+      RECORD.requestedByUserId,
+      RECORD.maxAttempts,
+    ]);
+  });
+
   it('rejects malformed application records before issuing SQL', async () => {
     const client = new ScriptedSqlClient([]);
     const store = new PostgresPluginDeliveryAttemptStore(client);
