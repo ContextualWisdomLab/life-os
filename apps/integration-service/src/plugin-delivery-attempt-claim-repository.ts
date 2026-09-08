@@ -105,7 +105,10 @@ function requireStoredInstant(value: unknown): string {
     return invalidEvidence();
   }
   const instant = new Date(candidate);
-  if (!Number.isFinite(instant.getTime()) || instant.toISOString() !== candidate) {
+  if (
+    !Number.isFinite(instant.getTime()) ||
+    instant.toISOString() !== candidate
+  ) {
     return invalidEvidence();
   }
   return candidate;
@@ -223,9 +226,7 @@ function parseEvidence(
 }
 
 /** PostgreSQL adapter for deterministic Integration-owned attempt claim/lease acquisition. */
-export class PostgresPluginDeliveryAttemptClaimStore
-  implements PluginDeliveryAttemptClaimStore
-{
+export class PostgresPluginDeliveryAttemptClaimStore implements PluginDeliveryAttemptClaimStore {
   /** Creates the store over one bounded parameterized SQL client. */
   constructor(private readonly client: PluginDeliveryAttemptClaimSqlClient) {}
 

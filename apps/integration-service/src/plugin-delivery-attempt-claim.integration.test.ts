@@ -37,7 +37,9 @@ class PoolSqlClient implements PluginDeliveryAttemptClaimSqlClient {
     text: string,
     values: readonly unknown[] = [],
   ): Promise<PluginDeliveryAttemptClaimSqlResult<Row>> {
-    const result = await this.pool.query<Row & QueryResultRow>(text, [...values]);
+    const result = await this.pool.query<Row & QueryResultRow>(text, [
+      ...values,
+    ]);
     return { rows: result.rows, rowCount: result.rowCount };
   }
 }
@@ -95,107 +97,109 @@ async function prepareAttempt(maxAttempts = 2): Promise<void> {
   `);
 }
 
-describeWithPostgres('plugin delivery-attempt claim lease PostgreSQL acceptance', () => {
-  beforeEach(async () => {
-    await prepareAttempt();
-  });
-
-  it('allows one active lease, recovers exactly at expiry, and enforces the retry budget', async () => {
-    const store = new PostgresPluginDeliveryAttemptClaimStore(
-      new PoolSqlClient(pool),
-    );
-    const first = {
-      deliveryId: DELIVERY_ID,
-      workspaceId: WORKSPACE_ID,
-      requestedByUserId: USER_ID,
-      claimTokenDigest:
-        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      claimedAt: '2026-09-08T10:30:00.000Z',
-      leaseExpiresAt: '2026-09-08T10:31:00.000Z',
-    } as const;
-    const competing = {
-      ...first,
-      claimTokenDigest:
-        'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      claimedAt: '2026-09-08T10:30:30.000Z',
-      leaseExpiresAt: '2026-09-08T10:31:30.000Z',
-    } as const;
-    const recovered = {
-      ...first,
-      claimTokenDigest:
-        'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-      claimedAt: '2026-09-08T10:31:00.000Z',
-      leaseExpiresAt: '2026-09-08T10:32:00.000Z',
-    } as const;
-
-    await expect(store.claimDue(first)).resolves.toMatchObject({
-      attemptNumber: 1,
-      claimedAt: first.claimedAt,
-      leaseExpiresAt: first.leaseExpiresAt,
+describeWithPostgres(
+  'plugin delivery-attempt claim lease PostgreSQL acceptance',
+  () => {
+    beforeEach(async () => {
+      await prepareAttempt();
     });
-    await expect(store.claimDue(competing)).resolves.toBeUndefined();
-    await expect(store.claimDue(recovered)).resolves.toMatchObject({
-      attemptNumber: 2,
-      claimedAt: recovered.claimedAt,
-      leaseExpiresAt: recovered.leaseExpiresAt,
-    });
-    await expect(
-      store.claimDue({
-        ...recovered,
+
+    it('allows one active lease, recovers exactly at expiry, and enforces the retry budget', async () => {
+      const store = new PostgresPluginDeliveryAttemptClaimStore(
+        new PoolSqlClient(pool),
+      );
+      const first = {
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
         claimTokenDigest:
-          'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-        claimedAt: '2026-09-08T10:32:00.000Z',
-        leaseExpiresAt: '2026-09-08T10:33:00.000Z',
-      }),
-    ).resolves.toBeUndefined();
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        claimedAt: '2026-09-08T10:30:00.000Z',
+        leaseExpiresAt: '2026-09-08T10:31:00.000Z',
+      } as const;
+      const competing = {
+        ...first,
+        claimTokenDigest:
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        claimedAt: '2026-09-08T10:30:30.000Z',
+        leaseExpiresAt: '2026-09-08T10:31:30.000Z',
+      } as const;
+      const recovered = {
+        ...first,
+        claimTokenDigest:
+          'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        claimedAt: '2026-09-08T10:31:00.000Z',
+        leaseExpiresAt: '2026-09-08T10:32:00.000Z',
+      } as const;
 
-    const durable = await pool.query<{
-      attempt_count: number;
-      claim_token_digest: string;
-    }>(
-      `SELECT attempt_count, claim_token_digest
+      await expect(store.claimDue(first)).resolves.toMatchObject({
+        attemptNumber: 1,
+        claimedAt: first.claimedAt,
+        leaseExpiresAt: first.leaseExpiresAt,
+      });
+      await expect(store.claimDue(competing)).resolves.toBeUndefined();
+      await expect(store.claimDue(recovered)).resolves.toMatchObject({
+        attemptNumber: 2,
+        claimedAt: recovered.claimedAt,
+        leaseExpiresAt: recovered.leaseExpiresAt,
+      });
+      await expect(
+        store.claimDue({
+          ...recovered,
+          claimTokenDigest:
+            'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+          claimedAt: '2026-09-08T10:32:00.000Z',
+          leaseExpiresAt: '2026-09-08T10:33:00.000Z',
+        }),
+      ).resolves.toBeUndefined();
+
+      const durable = await pool.query<{
+        attempt_count: number;
+        claim_token_digest: string;
+      }>(
+        `SELECT attempt_count, claim_token_digest
        FROM plugin_integration.plugin_delivery_attempt_record
        WHERE delivery_id = $1::uuid`,
-      [DELIVERY_ID],
-    );
-    expect(durable.rows).toEqual([
-      {
-        attempt_count: 2,
-        claim_token_digest: recovered.claimTokenDigest,
-      },
-    ]);
-  });
+        [DELIVERY_ID],
+      );
+      expect(durable.rows).toEqual([
+        {
+          attempt_count: 2,
+          claim_token_digest: recovered.claimTokenDigest,
+        },
+      ]);
+    });
 
-  it('rejects lease durations outside the same 30-3600 second durable invariant', async () => {
-    const updateLease = async (leaseExpiresAt: string): Promise<void> => {
-      await pool.query(
-        `UPDATE plugin_integration.plugin_delivery_attempt_record
+    it('rejects lease durations outside the same 30-3600 second durable invariant', async () => {
+      const updateLease = async (leaseExpiresAt: string): Promise<void> => {
+        await pool.query(
+          `UPDATE plugin_integration.plugin_delivery_attempt_record
          SET attempt_count = 1,
              updated_at = '2026-09-08T10:30:00.000Z'::timestamptz,
              claim_token_digest = repeat('e', 64),
              claim_started_at = '2026-09-08T10:30:00.000Z'::timestamptz,
              claim_expires_at = $2::timestamptz
          WHERE delivery_id = $1::uuid`,
-        [DELIVERY_ID, leaseExpiresAt],
-      );
-    };
+          [DELIVERY_ID, leaseExpiresAt],
+        );
+      };
 
-    await expect(
-      updateLease('2026-09-08T10:30:29.999Z'),
-    ).rejects.toMatchObject({
-      code: '23514',
+      await expect(
+        updateLease('2026-09-08T10:30:29.999Z'),
+      ).rejects.toMatchObject({
+        code: '23514',
+      });
+
+      await prepareAttempt();
+      await expect(
+        updateLease('2026-09-08T11:30:00.001Z'),
+      ).rejects.toMatchObject({
+        code: '23514',
+      });
     });
 
-    await prepareAttempt();
-    await expect(
-      updateLease('2026-09-08T11:30:00.001Z'),
-    ).rejects.toMatchObject({
-      code: '23514',
-    });
-  });
-
-  it('persists no raw worker claim token and keeps lease columns structurally bounded', async () => {
-    const columns = await pool.query<{ column_name: string }>(`
+    it('persists no raw worker claim token and keeps lease columns structurally bounded', async () => {
+      const columns = await pool.query<{ column_name: string }>(`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_schema = 'plugin_integration'
@@ -203,17 +207,18 @@ describeWithPostgres('plugin delivery-attempt claim lease PostgreSQL acceptance'
         AND column_name LIKE 'claim_%'
       ORDER BY column_name;
     `);
-    expect(columns.rows.map((row) => row.column_name)).toEqual([
-      'claim_expires_at',
-      'claim_started_at',
-      'claim_token_digest',
-    ]);
-    const comment = await pool.query<{ comment: string }>(`
+      expect(columns.rows.map((row) => row.column_name)).toEqual([
+        'claim_expires_at',
+        'claim_started_at',
+        'claim_token_digest',
+      ]);
+      const comment = await pool.query<{ comment: string }>(`
       SELECT obj_description(
         'plugin_integration.plugin_delivery_attempt_record'::regclass,
         'pg_class'
       ) AS comment;
     `);
-    expect(comment.rows[0]?.comment).toContain('SHA-256 token digest');
-  });
-});
+      expect(comment.rows[0]?.comment).toContain('SHA-256 token digest');
+    });
+  },
+);

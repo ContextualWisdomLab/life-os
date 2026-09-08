@@ -30,8 +30,7 @@ export interface PluginDeliveryAttemptClaimEvidence {
 }
 
 /** Worker-visible lease authority; the raw token is never part of durable persistence. */
-export interface PluginDeliveryAttemptLease
-  extends PluginDeliveryAttemptClaimEvidence {
+export interface PluginDeliveryAttemptLease extends PluginDeliveryAttemptClaimEvidence {
   readonly claimToken: string;
 }
 

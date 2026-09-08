@@ -76,8 +76,12 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
     expect(client.calls[0]?.text).toContain(
       'UPDATE plugin_integration.plugin_delivery_attempt_record',
     );
-    expect(client.calls[0]?.text).toContain('attempt_count = attempt_count + 1');
-    expect(client.calls[0]?.text).toContain('next_attempt_at <= $5::timestamptz');
+    expect(client.calls[0]?.text).toContain(
+      'attempt_count = attempt_count + 1',
+    );
+    expect(client.calls[0]?.text).toContain(
+      'next_attempt_at <= $5::timestamptz',
+    );
     expect(client.calls[0]?.text).toContain(
       '(claim_expires_at IS NULL OR claim_expires_at <= $5::timestamptz)',
     );
@@ -114,7 +118,10 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
         ],
         rowCount: 1,
       },
-      { rows: [row({ claim_expires_at: new Date(COMMAND.claimedAt) })], rowCount: 1 },
+      {
+        rows: [row({ claim_expires_at: new Date(COMMAND.claimedAt) })],
+        rowCount: 1,
+      },
     ]) {
       const store = new PostgresPluginDeliveryAttemptClaimStore(
         new ScriptedClient([result]),
