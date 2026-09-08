@@ -100,7 +100,7 @@ jobs:
 
       - name: Run focused claim lease acceptance
         run: >-
-          pnpm --filter @life-os/integration-service exec vitest run
+          pnpm --filter @life-os/integration-service exec vitest run --no-file-parallelism
           src/plugin-delivery-attempt-claim.test.ts
           src/plugin-delivery-attempt-claim-repository.test.ts
           src/plugin-delivery-attempt-claim.integration.test.ts
