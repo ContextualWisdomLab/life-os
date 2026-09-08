@@ -115,8 +115,14 @@ function requireContext(value: unknown): PluginInstallationContext {
 }
 
 function digestClaimToken(rawClaimToken: unknown): string {
-  const claimToken = requireUuidV4(rawClaimToken);
-  return createHash('sha256').update(claimToken, 'utf8').digest('hex');
+  if (
+    typeof rawClaimToken !== 'string' ||
+    !UUID_V4_PATTERN.test(rawClaimToken) ||
+    rawClaimToken !== rawClaimToken.toLowerCase()
+  ) {
+    return invalid();
+  }
+  return createHash('sha256').update(rawClaimToken, 'utf8').digest('hex');
 }
 
 function requireEvidence(
