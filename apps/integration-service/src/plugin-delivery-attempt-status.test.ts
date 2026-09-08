@@ -41,9 +41,7 @@ class FakeStore implements PluginDeliveryAttemptStatusStore {
 
   constructor(
     private readonly result:
-      | PluginDeliveryAttemptStatusEvidence
-      | undefined
-      | Error,
+      PluginDeliveryAttemptStatusEvidence | undefined | Error,
   ) {}
 
   async read(
