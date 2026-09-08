@@ -1,3 +1,4 @@
+# Purpose verifier for the exact pre-execution fence branch head.
 name: Verify plugin delivery execution fence
 
 on:
