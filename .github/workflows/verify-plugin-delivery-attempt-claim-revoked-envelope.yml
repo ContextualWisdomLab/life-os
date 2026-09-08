@@ -50,6 +50,8 @@ jobs:
       - name: Check bounded source formatting
         run: >-
           pnpm exec prettier --single-quote --check
+          apps/integration-service/src/plugin-delivery-attempt-claim.ts
+          apps/integration-service/src/plugin-delivery-attempt-claim.test.ts
           apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts
           apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts
           apps/integration-service/src/plugin-delivery-attempt-claim-revoked-envelope.test.ts
@@ -58,6 +60,7 @@ jobs:
       - name: Run revoked-envelope acceptance
         run: >-
           pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-claim.test.ts
           src/plugin-delivery-attempt-claim-revoked-envelope.test.ts
           src/plugin-delivery-attempt-claim-repository.test.ts
           --no-file-parallelism
