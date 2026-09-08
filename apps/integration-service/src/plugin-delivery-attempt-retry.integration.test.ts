@@ -27,6 +27,7 @@ const MIGRATIONS = [
   '0005_plugin_credential_active_installation_guard.sql',
   '0006_plugin_delivery_attempt_record.sql',
   '0007_plugin_delivery_attempt_claim_lease.sql',
+  '0008_plugin_delivery_attempt_retry_transition.sql',
 ].map((name) =>
   readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
 );
@@ -141,6 +142,7 @@ describeWithPostgres('plugin delivery retry PostgreSQL acceptance', () => {
       }),
     ).resolves.toMatchObject({
       attemptNumber: 1,
+      maxAttempts: 2,
       deliveryStatus: 'pending',
       outcomeCode: 'retryable_failure',
       nextAttemptAt: '2026-09-08T13:00:40.000Z',
@@ -151,13 +153,15 @@ describeWithPostgres('plugin delivery retry PostgreSQL acceptance', () => {
       attempt_count: number;
       delivery_status: string;
       last_outcome_code: string | null;
-      next_attempt_at: Date;
+      next_attempt_at: Date | null;
+      terminal_at: Date | null;
       claim_token_digest: string | null;
       claim_started_at: Date | null;
       claim_expires_at: Date | null;
     }>(
       `SELECT attempt_count, delivery_status, last_outcome_code,
-                next_attempt_at, claim_token_digest, claim_started_at, claim_expires_at
+                next_attempt_at, terminal_at, claim_token_digest,
+                claim_started_at, claim_expires_at
          FROM plugin_integration.plugin_delivery_attempt_record
          WHERE delivery_id = $1::uuid`,
       [DELIVERY_ID],
@@ -168,6 +172,72 @@ describeWithPostgres('plugin delivery retry PostgreSQL acceptance', () => {
         delivery_status: 'pending',
         last_outcome_code: 'retryable_failure',
         next_attempt_at: new Date('2026-09-08T13:00:40.000Z'),
+        terminal_at: null,
+        claim_token_digest: null,
+        claim_started_at: null,
+        claim_expires_at: null,
+      },
+    ]);
+  });
+
+  it('durably exhausts the configured retry budget and clears the claim', async () => {
+    await prepareAttempt(1);
+    const client = new PoolSqlClient(pool);
+    const claims = new PostgresPluginDeliveryAttemptClaimStore(client);
+    const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
+
+    await expect(
+      claims.claimDue({
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        claimTokenDigest: CLAIM_DIGEST,
+        claimedAt: '2026-09-08T13:00:00.000Z',
+        leaseExpiresAt: '2026-09-08T13:01:00.000Z',
+      }),
+    ).resolves.toMatchObject({ attemptNumber: 1 });
+
+    await expect(
+      retries.recordRetryableFailure({
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        claimTokenDigest: CLAIM_DIGEST,
+        occurredAt: '2026-09-08T13:00:10.000Z',
+      }),
+    ).resolves.toMatchObject({
+      attemptNumber: 1,
+      maxAttempts: 1,
+      deliveryStatus: 'failed',
+      outcomeCode: 'attempt_limit',
+      nextAttemptAt: null,
+      terminalAt: '2026-09-08T13:00:10.000Z',
+    });
+
+    const durable = await pool.query<{
+      attempt_count: number;
+      delivery_status: string;
+      last_outcome_code: string | null;
+      next_attempt_at: Date | null;
+      terminal_at: Date | null;
+      claim_token_digest: string | null;
+      claim_started_at: Date | null;
+      claim_expires_at: Date | null;
+    }>(
+      `SELECT attempt_count, delivery_status, last_outcome_code,
+                next_attempt_at, terminal_at, claim_token_digest,
+                claim_started_at, claim_expires_at
+         FROM plugin_integration.plugin_delivery_attempt_record
+         WHERE delivery_id = $1::uuid`,
+      [DELIVERY_ID],
+    );
+    expect(durable.rows).toEqual([
+      {
+        attempt_count: 1,
+        delivery_status: 'failed',
+        last_outcome_code: 'attempt_limit',
+        next_attempt_at: null,
+        terminal_at: new Date('2026-09-08T13:00:10.000Z'),
         claim_token_digest: null,
         claim_started_at: null,
         claim_expires_at: null,
