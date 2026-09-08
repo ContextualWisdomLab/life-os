@@ -1,3 +1,5 @@
+import { PluginDeliveryAttemptStatusApplication } from './plugin-delivery-attempt-status';
+import { PostgresPluginDeliveryAttemptStatusStore } from './plugin-delivery-attempt-status-repository';
 import { PluginInstallationApplication } from './plugin-installation';
 import { PostgresPluginInstallationStore } from './plugin-installation-repository';
 import { PostgresPluginCredentialBindingStore } from './plugin-credential-repository';
@@ -150,12 +152,12 @@ async function closePool(pool: PluginHostedPostgresPool): Promise<void> {
  * Builds the hosted Plugin authority over one service-owned PostgreSQL pool.
  *
  * `INTEGRATION_DATABASE_URL` is the only accepted persistence authority. The same
- * pool backs installation lifecycle, credential metadata, and one-time operator
- * replay evidence, preventing cross-service SQL ownership or independent pool
- * lifecycles for one bounded context. Vault/operator composition happens only
- * after the pool and all three Integration-owned adapters exist. If subsequent
- * composition fails, the newly acquired pool is closed before the fixed startup
- * failure is returned.
+ * pool backs installation lifecycle, credential metadata, one-time operator replay
+ * evidence, and credential-free delivery-attempt status. This prevents cross-service
+ * SQL ownership or independent pool lifecycles for one bounded context. Vault/operator
+ * composition happens only after the pool and all Integration-owned adapters exist.
+ * If subsequent composition fails, the newly acquired pool is closed before the fixed
+ * startup failure is returned.
  *
  * Pool methods are captured once after validation rather than repeatedly read from
  * an injected object. This keeps hostile or stateful accessors from becoming later
@@ -195,8 +197,11 @@ export async function createPluginVaultHostedRuntime(
     );
     const bindingStore = new PostgresPluginCredentialBindingStore(candidate);
     const replayGuard = new PostgresPluginOperatorReplayGuard(candidate);
+    const deliveryStatus = new PluginDeliveryAttemptStatusApplication(
+      new PostgresPluginDeliveryAttemptStatusStore(candidate),
+    );
     const operator = createPluginVaultOperatorApplication(
-      { installations, bindingStore, replayGuard },
+      { installations, bindingStore, replayGuard, deliveryStatus },
       environment,
     );
 
