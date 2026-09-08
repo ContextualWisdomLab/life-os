@@ -80,6 +80,23 @@ describe('PluginDeliveryAttemptExecutionFenceApplication', () => {
     ]);
   });
 
+  it('rejects a case-aliased claim token before durable authority lookup', async () => {
+    const store = new FakeStore(evidence());
+    const app = new PluginDeliveryAttemptExecutionFenceApplication(
+      store,
+      () => new Date(CHECKED_AT),
+    );
+
+    await expect(
+      app.check(
+        context(),
+        DELIVERY_ID,
+        'ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF',
+      ),
+    ).rejects.toEqual(new PluginDeliveryAttemptExecutionFenceAuthorityError());
+    expect(store.commands).toEqual([]);
+  });
+
   it('fails closed when durable authority is absent', async () => {
     const app = new PluginDeliveryAttemptExecutionFenceApplication(
       new FakeStore(undefined),
