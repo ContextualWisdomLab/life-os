@@ -64,9 +64,27 @@ function invalidEvidence(): never {
   throw new PluginDeliveryAttemptClaimPersistenceEvidenceError();
 }
 
+function boundedInputRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidInput();
+  }
+}
+
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
+  } catch {
+    return invalidEvidence();
+  }
+}
+
+async function boundedEvidenceDependency<T>(
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
   } catch {
     return invalidEvidence();
   }
@@ -121,17 +139,25 @@ function validateCommand(
     return invalidInput();
   }
   const command = value as PluginDeliveryAttemptClaimCommand;
-  const deliveryId = requireInputUuid(command.deliveryId);
-  const workspaceId = requireInputUuid(command.workspaceId);
-  const requestedByUserId = requireInputUuid(command.requestedByUserId);
+  const snapshot = boundedInputRead(() => ({
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
+    claimTokenDigest: command.claimTokenDigest,
+    claimedAt: command.claimedAt,
+    leaseExpiresAt: command.leaseExpiresAt,
+  }));
+  const deliveryId = requireInputUuid(snapshot.deliveryId);
+  const workspaceId = requireInputUuid(snapshot.workspaceId);
+  const requestedByUserId = requireInputUuid(snapshot.requestedByUserId);
   if (
-    typeof command.claimTokenDigest !== 'string' ||
-    !SHA256_PATTERN.test(command.claimTokenDigest)
+    typeof snapshot.claimTokenDigest !== 'string' ||
+    !SHA256_PATTERN.test(snapshot.claimTokenDigest)
   ) {
     return invalidInput();
   }
-  const claimedAt = requireInputInstant(command.claimedAt);
-  const leaseExpiresAt = requireInputInstant(command.leaseExpiresAt);
+  const claimedAt = requireInputInstant(snapshot.claimedAt);
+  const leaseExpiresAt = requireInputInstant(snapshot.leaseExpiresAt);
   const leaseMs =
     new Date(leaseExpiresAt).getTime() - new Date(claimedAt).getTime();
   if (leaseMs < 30_000 || leaseMs > 3_600_000) {
@@ -141,7 +167,7 @@ function validateCommand(
     deliveryId,
     workspaceId,
     requestedByUserId,
-    claimTokenDigest: command.claimTokenDigest,
+    claimTokenDigest: snapshot.claimTokenDigest,
     claimedAt,
     leaseExpiresAt,
   });
@@ -235,8 +261,9 @@ export class PostgresPluginDeliveryAttemptClaimStore implements PluginDeliveryAt
     commandValue: PluginDeliveryAttemptClaimCommand,
   ): Promise<PluginDeliveryAttemptClaimEvidence | undefined> {
     const command = validateCommand(commandValue);
-    const result = await this.client.query<ClaimRow>(
-      `UPDATE plugin_integration.plugin_delivery_attempt_record
+    const result = await boundedEvidenceDependency(() =>
+      this.client.query<ClaimRow>(
+        `UPDATE plugin_integration.plugin_delivery_attempt_record
        SET attempt_count = attempt_count + 1,
            updated_at = $2::timestamptz,
            claim_token_digest = $1,
@@ -253,15 +280,16 @@ export class PostgresPluginDeliveryAttemptClaimStore implements PluginDeliveryAt
                  requested_by_user_id, attempt_count,
                  max_attempts, claim_token_digest,
                  claim_started_at, claim_expires_at`,
-      [
-        command.claimTokenDigest,
-        command.claimedAt,
-        command.leaseExpiresAt,
-        command.deliveryId,
-        command.claimedAt,
-        command.workspaceId,
-        command.requestedByUserId,
-      ],
+        [
+          command.claimTokenDigest,
+          command.claimedAt,
+          command.leaseExpiresAt,
+          command.deliveryId,
+          command.claimedAt,
+          command.workspaceId,
+          command.requestedByUserId,
+        ],
+      ),
     );
     const row = singleRow(result);
     if (row === undefined) {
