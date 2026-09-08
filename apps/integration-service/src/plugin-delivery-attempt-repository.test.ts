@@ -19,8 +19,8 @@ const RECORD: PluginDeliveryAttemptRecord = Object.freeze({
   attemptCount: 0,
   maxAttempts: 4,
   requestedAt: '2026-09-08T04:40:00.000Z',
-  updatedAt: '2026-09-08T04:40:00.000Z',
-  nextAttemptAt: '2026-09-08T04:40:00.000Z',
+  updatedAt: '2026-09-08T04:41:00.000Z',
+  nextAttemptAt: '2026-09-08T04:45:00.000Z',
   terminalAt: null,
   lastOutcomeCode: null,
 });
@@ -91,6 +91,9 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
     expect(client.calls[0]?.text).toContain(
       'ON CONFLICT (delivery_id) DO NOTHING',
     );
+    expect(client.calls[0]?.text).toContain(
+      '$8::timestamptz, $9::timestamptz,\n         $10::timestamptz',
+    );
     expect(client.calls[0]?.text).not.toContain(RECORD.deliveryId);
     expect(client.calls[0]?.values).toEqual([
       RECORD.authorityVersion,
@@ -101,6 +104,8 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
       RECORD.requestedByUserId,
       RECORD.maxAttempts,
       RECORD.requestedAt,
+      RECORD.updatedAt,
+      RECORD.nextAttemptAt,
     ]);
   });
 
