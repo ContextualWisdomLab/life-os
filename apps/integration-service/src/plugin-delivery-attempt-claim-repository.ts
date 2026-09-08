@@ -50,6 +50,8 @@ interface ClaimRow {
   workspace_id: unknown;
   requested_by_user_id: unknown;
   attempt_count: unknown;
+  max_attempts: unknown;
+  claim_token_digest: unknown;
   claim_started_at: unknown;
   claim_expires_at: unknown;
 }
@@ -178,6 +180,8 @@ function parseEvidence(
     workspaceId: candidate.workspace_id,
     requestedByUserId: candidate.requested_by_user_id,
     attemptNumber: candidate.attempt_count,
+    maxAttempts: candidate.max_attempts,
+    claimTokenDigest: candidate.claim_token_digest,
     claimedAt: candidate.claim_started_at,
     leaseExpiresAt: candidate.claim_expires_at,
   }));
@@ -186,10 +190,15 @@ function parseEvidence(
     snapshot.deliveryId !== command.deliveryId ||
     snapshot.workspaceId !== command.workspaceId ||
     snapshot.requestedByUserId !== command.requestedByUserId ||
+    snapshot.claimTokenDigest !== command.claimTokenDigest ||
     typeof snapshot.attemptNumber !== 'number' ||
     !Number.isInteger(snapshot.attemptNumber) ||
     snapshot.attemptNumber < 1 ||
-    snapshot.attemptNumber > 10
+    typeof snapshot.maxAttempts !== 'number' ||
+    !Number.isInteger(snapshot.maxAttempts) ||
+    snapshot.maxAttempts < 1 ||
+    snapshot.maxAttempts > 10 ||
+    snapshot.attemptNumber > snapshot.maxAttempts
   ) {
     return invalidEvidence();
   }
@@ -241,6 +250,7 @@ export class PostgresPluginDeliveryAttemptClaimStore
          AND (claim_expires_at IS NULL OR claim_expires_at <= $5::timestamptz)
        RETURNING authority_version, delivery_id, workspace_id,
                  requested_by_user_id, attempt_count,
+                 max_attempts, claim_token_digest,
                  claim_started_at, claim_expires_at`,
       [
         command.claimTokenDigest,
