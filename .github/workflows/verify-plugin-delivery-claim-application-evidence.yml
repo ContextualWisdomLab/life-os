@@ -1,0 +1,79 @@
+name: Verify plugin delivery claim application evidence
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-claim-lease-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-plugin-delivery-claim-application-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check focused formatting and diff hygiene
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --check \
+            apps/integration-service/src/plugin-delivery-attempt-claim.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim-revoked-envelope.test.ts
+          git diff --check HEAD^
+
+      - name: Build Plugin SDK dependency
+        run: pnpm --filter @life-os/plugin-sdk build
+
+      - name: Run focused claim authority acceptance
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-claim.test.ts
+          src/plugin-delivery-attempt-claim-repository.test.ts
+          src/plugin-delivery-attempt-claim-revoked-envelope.test.ts
+          src/plugin-delivery-attempt-claim.integration.test.ts
+
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration suite
+        run: pnpm --filter @life-os/integration-service test
