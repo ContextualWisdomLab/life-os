@@ -4,6 +4,7 @@ import {
 } from './plugin-credential';
 import {
   PluginOperatorApplication,
+  type PluginDeliveryAttemptStatusOperatorPort,
   type PluginInstallationOperatorPort,
 } from './plugin-operator-application';
 import type { PluginOperatorReplayGuardPort } from './plugin-operator-replay';
@@ -26,6 +27,7 @@ export interface PluginVaultOperatorDependencies {
   readonly installations: PluginInstallationOperatorPort;
   readonly bindingStore: PluginCredentialBindingStore;
   readonly replayGuard: PluginOperatorReplayGuardPort;
+  readonly deliveryStatus?: PluginDeliveryAttemptStatusOperatorPort;
 }
 
 /** Fixed startup/composition failure that never reflects Vault or verifier secret configuration. */
@@ -120,6 +122,23 @@ function requireReplayGuard(value: unknown): PluginOperatorReplayGuardPort {
   return value as PluginOperatorReplayGuardPort;
 }
 
+/** Requires the optional read-only delivery-status authority when a hosted runtime supplies it. */
+function requireDeliveryStatus(
+  value: unknown,
+): PluginDeliveryAttemptStatusOperatorPort | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    typeof (value as PluginDeliveryAttemptStatusOperatorPort).read !== 'function'
+  ) {
+    return unavailable();
+  }
+  return value as PluginDeliveryAttemptStatusOperatorPort;
+}
+
 /**
  * Composes authenticated Plugin operator authority with Plugin-owned Vault secret storage.
  *
@@ -127,13 +146,13 @@ function requireReplayGuard(value: unknown): PluginOperatorReplayGuardPort {
  * from the supplied operator-owned environment. Missing/malformed configuration fails
  * during composition with one credential-free error. The returned application derives
  * tenant/user authority from signed request evidence, consumes replay evidence durably,
- * and routes credential plaintext only through `PluginVaultSecretStore`; no secret value
- * is added to LifeOS persistence or returned in the credential view.
+ * routes credential plaintext only through `PluginVaultSecretStore`, and optionally
+ * exposes a read-only Integration-owned delivery-status authority. No secret value is
+ * added to LifeOS persistence or returned in either public view.
  *
- * PostgreSQL pool ownership remains outside this focused slice: callers supply the
- * already-constructed Integration-owned installation, credential-metadata, and replay
- * ports. A later hosted bootstrap slice can bind those ports to the service-owned pool
- * without making Vault or another bounded context a persistence owner.
+ * PostgreSQL pool ownership remains outside this focused boundary: callers supply the
+ * already-constructed Integration-owned installation, credential-metadata, replay,
+ * and optional delivery-status ports.
  */
 export function createPluginVaultOperatorApplication(
   dependencies: PluginVaultOperatorDependencies,
@@ -154,6 +173,7 @@ export function createPluginVaultOperatorApplication(
   const installations = requireInstallations(dependencies.installations);
   const bindingStore = requireBindingStore(dependencies.bindingStore);
   const replayGuard = requireReplayGuard(dependencies.replayGuard);
+  const deliveryStatus = requireDeliveryStatus(dependencies.deliveryStatus);
   const contextSecret = requireOperatorContextSecret(
     requireConfiguration(environment, 'INTEGRATION_OPERATOR_CONTEXT_SECRET'),
   );
@@ -189,5 +209,6 @@ export function createPluginVaultOperatorApplication(
     contextSecret,
     replayGuard,
     nowSeconds,
+    deliveryStatus,
   );
 }
