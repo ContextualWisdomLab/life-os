@@ -146,6 +146,44 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
     expect(client.calls).toHaveLength(0);
   });
 
+  it('collapses hostile SQL result and row getters into fixed persistence evidence errors', async () => {
+    const sensitiveNativeDetail = 'provider-secret=must-not-escape';
+    const hostileResult = new Proxy(
+      {} as PluginDeliveryAttemptSqlResult<Record<string, unknown>>,
+      {
+        get: (_target, property) => {
+          if (property === 'rows') {
+            throw new Error(sensitiveNativeDetail);
+          }
+          if (property === 'rowCount') {
+            return 1;
+          }
+          return undefined;
+        },
+      },
+    );
+    const hostileRow = new Proxy(row(), {
+      get: (target, property, receiver) => {
+        if (property === 'authority_version') {
+          throw new Error(sensitiveNativeDetail);
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    for (const durableResult of [hostileResult, result([hostileRow])]) {
+      const store = new PostgresPluginDeliveryAttemptStore(
+        new ScriptedSqlClient([durableResult]),
+      );
+      await expect(store.createIfAbsent(RECORD)).rejects.toEqual(
+        expect.objectContaining({
+          name: 'PluginDeliveryAttemptPersistenceEvidenceError',
+          message: 'Persisted plugin delivery attempt evidence is invalid',
+        }),
+      );
+    }
+  });
+
   it('fails closed when the durable idempotency winner is absent, ambiguous, or corrupt', async () => {
     const resultCases = [
       [result([]), result([])],
