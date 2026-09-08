@@ -312,6 +312,7 @@ function requireEvidence(
     requestedByUserId !== command.requestedByUserId ||
     checkedAt !== command.checkedAt ||
     new Date(updatedAt).getTime() < new Date(requestedAt).getTime() ||
+    new Date(updatedAt).getTime() > new Date(checkedAt).getTime() ||
     new Date(checkedAt).getTime() < new Date(requestedAt).getTime() ||
     (nextAttemptAt !== null &&
       new Date(nextAttemptAt).getTime() < new Date(requestedAt).getTime()) ||
