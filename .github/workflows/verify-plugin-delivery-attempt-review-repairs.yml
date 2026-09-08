@@ -86,6 +86,23 @@ jobs:
             exit 1
           fi
 
+      - name: Prove IPv6 loopback edge RED
+        shell: bash
+        env:
+          RED_SHA: 87b247ff8043470f1807286f5b3a4f84a14237a8
+        run: |
+          set -euo pipefail
+          git checkout --detach "${RED_SHA}"
+          set +e
+          pnpm --filter @life-os/integration-service exec vitest run src/plugin-delivery-attempt-test-database.test.ts
+          red_status=$?
+          set -e
+          git checkout --detach "${GITHUB_SHA}"
+          if [ "${red_status}" -eq 0 ]; then
+            echo "Expected ${RED_SHA} to fail before bracketed IPv6 loopback is recognized" >&2
+            exit 1
+          fi
+
       - name: Prove database-contract comment RED
         shell: bash
         env:
