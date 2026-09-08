@@ -113,6 +113,24 @@ describeWithPostgres(
         [DELIVERY_ID],
       );
       expect(result.rows).toEqual([{ count: '0' }]);
+
+      const attempt = await pool.query<{
+        attempt_count: number;
+        claim_token_digest: string | null;
+        last_outcome_code: string | null;
+      }>(
+        `SELECT attempt_count, claim_token_digest, last_outcome_code
+           FROM plugin_integration.plugin_delivery_attempt_record
+          WHERE delivery_id = $1::uuid`,
+        [DELIVERY_ID],
+      );
+      expect(attempt.rows).toEqual([
+        {
+          attempt_count: 0,
+          claim_token_digest: null,
+          last_outcome_code: null,
+        },
+      ]);
     });
   },
 );
