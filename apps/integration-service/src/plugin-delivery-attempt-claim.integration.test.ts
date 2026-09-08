@@ -166,6 +166,30 @@ describeWithPostgres('plugin delivery-attempt claim lease PostgreSQL acceptance'
     ]);
   });
 
+  it('rejects lease durations outside the same 30-3600 second durable invariant', async () => {
+    const updateLease = async (leaseExpiresAt: string): Promise<void> => {
+      await pool.query(
+        `UPDATE plugin_integration.plugin_delivery_attempt_record
+         SET attempt_count = 1,
+             updated_at = '2026-09-08T10:30:00.000Z'::timestamptz,
+             claim_token_digest = repeat('e', 64),
+             claim_started_at = '2026-09-08T10:30:00.000Z'::timestamptz,
+             claim_expires_at = $2::timestamptz
+         WHERE delivery_id = $1::uuid`,
+        [DELIVERY_ID, leaseExpiresAt],
+      );
+    };
+
+    await expect(updateLease('2026-09-08T10:30:29.999Z')).rejects.toMatchObject({
+      code: '23514',
+    });
+
+    await prepareAttempt();
+    await expect(updateLease('2026-09-08T11:30:00.001Z')).rejects.toMatchObject({
+      code: '23514',
+    });
+  });
+
   it('persists no raw worker claim token and keeps lease columns structurally bounded', async () => {
     const columns = await pool.query<{ column_name: string }>(`
       SELECT column_name
