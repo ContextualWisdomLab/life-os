@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
 
 const UUID_V4_PATTERN =
@@ -197,7 +197,7 @@ export class PluginDeliveryAttemptClaimApplication {
   constructor(
     private readonly store: PluginDeliveryAttemptClaimStore,
     private readonly now: () => Date = () => new Date(),
-    private readonly createClaimToken: () => string = () => crypto.randomUUID(),
+    private readonly createClaimToken: () => string = randomUUID,
   ) {}
 
   /** Claims one due pending delivery for a bounded 30–3600 second lease. */
