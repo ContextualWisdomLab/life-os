@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PluginDeliveryAttemptClaimPersistenceEvidenceError,
+  PluginDeliveryAttemptClaimPersistenceValidationError,
   PostgresPluginDeliveryAttemptClaimStore,
   type PluginDeliveryAttemptClaimSqlClient,
   type PluginDeliveryAttemptClaimSqlResult,
@@ -102,6 +103,36 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
     const client = new ScriptedClient([{ rows: [], rowCount: 0 }]);
     const store = new PostgresPluginDeliveryAttemptClaimStore(client);
     await expect(store.claimDue(COMMAND)).resolves.toBeUndefined();
+  });
+
+  it('fails closed on hostile command getters before exercising SQL authority', async () => {
+    const client = new ScriptedClient([]);
+    const store = new PostgresPluginDeliveryAttemptClaimStore(client);
+    const hostile = new Proxy(COMMAND, {
+      get(target, property, receiver) {
+        if (property === 'deliveryId') {
+          throw new Error('password=must-not-escape-claim-input');
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    await expect(store.claimDue(hostile)).rejects.toBeInstanceOf(
+      PluginDeliveryAttemptClaimPersistenceValidationError,
+    );
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it('fails closed on SQL dependency rejection without reflecting database detail', async () => {
+    const store = new PostgresPluginDeliveryAttemptClaimStore({
+      async query() {
+        throw new Error('password=must-not-escape-claim-sql');
+      },
+    });
+
+    await expect(store.claimDue(COMMAND)).rejects.toBeInstanceOf(
+      PluginDeliveryAttemptClaimPersistenceEvidenceError,
+    );
   });
 
   it('fails closed on ambiguous or malformed durable claim evidence', async () => {
