@@ -23,7 +23,10 @@ class RecordingClient implements PluginDeliveryAttemptRetrySqlClient {
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
-  ): Promise<{ readonly rows: readonly Row[]; readonly rowCount: number | null }> {
+  ): Promise<{
+    readonly rows: readonly Row[];
+    readonly rowCount: number | null;
+  }> {
     this.calls.push({ text, values });
     return this.result as {
       readonly rows: readonly Row[];
@@ -80,8 +83,10 @@ describe('PostgresPluginDeliveryAttemptRetryStore', () => {
 
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]?.text).toContain('claim_token_digest = $1');
-    expect(client.calls[0]?.text).toContain('claim_expires_at > $2::timestamptz');
-    expect(client.calls[0]?.text).toContain("last_outcome_code = CASE");
+    expect(client.calls[0]?.text).toContain(
+      'claim_expires_at > $2::timestamptz',
+    );
+    expect(client.calls[0]?.text).toContain('last_outcome_code = CASE');
     expect(client.calls[0]?.text).toContain('claim_token_digest = NULL');
     expect(client.calls[0]?.values).toEqual([
       CLAIM_DIGEST,
