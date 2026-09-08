@@ -71,7 +71,10 @@ function signature(path: string, evidenceId = EVIDENCE_ID): string {
     .digest('base64url');
 }
 
-function headers(path: string, evidenceId = EVIDENCE_ID): Record<string, string> {
+function headers(
+  path: string,
+  evidenceId = EVIDENCE_ID,
+): Record<string, string> {
   return {
     'x-life-os-workspace-id': WORKSPACE_ID,
     'x-life-os-user-id': USER_ID,
