@@ -49,6 +49,9 @@ jobs:
       - name: Typecheck Integration service
         run: pnpm --filter @life-os/integration-service typecheck
 
+      - name: Build Plugin SDK runtime dependency
+        run: pnpm --filter @life-os/plugin-sdk build
+
       - name: Run complete Integration service suite
         run: pnpm --filter @life-os/integration-service test
 
