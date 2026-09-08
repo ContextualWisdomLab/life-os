@@ -6,6 +6,11 @@ import {
   type PluginDeliveryAttemptStatusEvidence,
   type PluginDeliveryAttemptStatusStore,
 } from './plugin-delivery-attempt-status';
+import {
+  PluginDeliveryAttemptStatusPersistenceEvidenceError,
+  PostgresPluginDeliveryAttemptStatusStore,
+  type PluginDeliveryAttemptStatusSqlClient,
+} from './plugin-delivery-attempt-status-repository';
 
 const DELIVERY_ID = '55555555-5555-4555-8555-555555555555';
 const GRANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -59,6 +64,15 @@ function context() {
   return { workspaceId: WORKSPACE_ID, actorUserId: USER_ID };
 }
 
+function command(): PluginDeliveryAttemptStatusCommand {
+  return {
+    deliveryId: DELIVERY_ID,
+    workspaceId: WORKSPACE_ID,
+    requestedByUserId: USER_ID,
+    checkedAt: CHECKED_AT,
+  };
+}
+
 describe('PluginDeliveryAttemptStatusApplication', () => {
   it('returns one credential-free durable status snapshot in the exact trusted scope', async () => {
     const store = new FakeStore(evidence());
@@ -98,6 +112,26 @@ describe('PluginDeliveryAttemptStatusApplication', () => {
 
     await expect(app.read(context(), DELIVERY_ID)).rejects.toEqual(
       new PluginDeliveryAttemptStatusAuthorityError(),
+    );
+  });
+});
+
+describe('PostgresPluginDeliveryAttemptStatusStore hostile evidence', () => {
+  it('collapses a revoked SQL rows array instead of leaking a native proxy failure', async () => {
+    const revokedRows = Proxy.revocable([], {});
+    revokedRows.revoke();
+    const client: PluginDeliveryAttemptStatusSqlClient = {
+      async query() {
+        return {
+          rows: revokedRows.proxy,
+          rowCount: 0,
+        };
+      },
+    };
+    const store = new PostgresPluginDeliveryAttemptStatusStore(client);
+
+    await expect(store.read(command())).rejects.toEqual(
+      new PluginDeliveryAttemptStatusPersistenceEvidenceError(),
     );
   });
 });
