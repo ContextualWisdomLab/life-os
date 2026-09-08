@@ -3,8 +3,7 @@ import type { PluginDeliveryOriginGrantRecord } from './plugin-delivery-origin-a
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt.v1' as const;
 const MINIMUM_ATTEMPTS = 1;
 const MAXIMUM_ATTEMPTS = 10;
@@ -45,7 +44,9 @@ export interface PluginDeliveryAttemptRecord {
 /** Service-owned durable port for idempotent delivery-attempt admission. */
 export interface PluginDeliveryAttemptStore {
   /** Creates one pending attempt or returns the exact durable idempotency winner. */
-  createIfAbsent(record: PluginDeliveryAttemptRecord): Promise<PluginDeliveryAttemptRecord>;
+  createIfAbsent(
+    record: PluginDeliveryAttemptRecord,
+  ): Promise<PluginDeliveryAttemptRecord>;
 }
 
 /** Read-only authority required to prove an exact delivery-origin grant is active now. */
@@ -126,7 +127,9 @@ function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
   });
 }
 
-function freezeRecord(record: PluginDeliveryAttemptRecord): PluginDeliveryAttemptRecord {
+function freezeRecord(
+  record: PluginDeliveryAttemptRecord,
+): PluginDeliveryAttemptRecord {
   return Object.freeze({ ...record });
 }
 
@@ -190,7 +193,8 @@ function requireActiveGrant(
     grant.grantedByUserId !== context.actorUserId ||
     grant.status !== 'active' ||
     grant.revokedAt !== null ||
-    new Date(requireInstant(grant.grantedAt)).getTime() > new Date(authorityInstant).getTime()
+    new Date(requireInstant(grant.grantedAt)).getTime() >
+      new Date(authorityInstant).getTime()
   ) {
     return invalid();
   }
@@ -213,9 +217,12 @@ function sameAdmission(
     durable.maxAttempts === candidate.maxAttempts &&
     durable.terminalAt === null &&
     durable.lastOutcomeCode === null &&
-    new Date(durable.requestedAt).getTime() <= new Date(candidate.requestedAt).getTime() &&
-    new Date(durable.updatedAt).getTime() <= new Date(candidate.updatedAt).getTime() &&
-    new Date(durable.nextAttemptAt).getTime() <= new Date(candidate.nextAttemptAt).getTime()
+    new Date(durable.requestedAt).getTime() <=
+      new Date(candidate.requestedAt).getTime() &&
+    new Date(durable.updatedAt).getTime() <=
+      new Date(candidate.updatedAt).getTime() &&
+    new Date(durable.nextAttemptAt).getTime() <=
+      new Date(candidate.nextAttemptAt).getTime()
   );
 }
 

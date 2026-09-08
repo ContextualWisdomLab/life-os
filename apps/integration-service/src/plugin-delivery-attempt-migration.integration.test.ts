@@ -12,7 +12,9 @@ const MIGRATIONS = [
   '0004_plugin_delivery_origin_grant_record.sql',
   '0005_plugin_credential_active_installation_guard.sql',
   '0006_plugin_delivery_attempt_record.sql',
-].map((name) => readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'));
+].map((name) =>
+  readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
+);
 
 interface SqlExecution {
   readonly status: number | null;
@@ -23,17 +25,25 @@ interface SqlExecution {
 /** Runs one isolated PostgreSQL client process against the disposable Integration database. */
 function executeSql(sql: string): SqlExecution {
   if (!DATABASE_URL) {
-    throw new Error('A dedicated PostgreSQL integration test database URL is required');
+    throw new Error(
+      'A dedicated PostgreSQL integration test database URL is required',
+    );
   }
   const target = new URL(DATABASE_URL);
   const result = spawnSync(
     'psql',
     [
-      '-X', '-v', 'ON_ERROR_STOP=1',
-      '-h', target.hostname,
-      '-p', target.port || '5432',
-      '-U', decodeURIComponent(target.username),
-      '-d', decodeURIComponent(target.pathname.replace(/^\//u, '')),
+      '-X',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-h',
+      target.hostname,
+      '-p',
+      target.port || '5432',
+      '-U',
+      decodeURIComponent(target.username),
+      '-d',
+      decodeURIComponent(target.pathname.replace(/^\//u, '')),
       '-Atq',
     ],
     {
@@ -45,14 +55,20 @@ function executeSql(sql: string): SqlExecution {
   if (result.error) {
     throw result.error;
   }
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 /** Applies fixed SQL while exposing only bounded diagnostics for failed test setup. */
 function requireSqlSuccess(sql: string): string {
   const result = executeSql(sql);
   if (result.status !== 0) {
-    throw new Error(`PostgreSQL test setup failed: ${result.stderr.slice(0, 500)}`);
+    throw new Error(
+      `PostgreSQL test setup failed: ${result.stderr.slice(0, 500)}`,
+    );
   }
   return result.stdout.trim();
 }
@@ -150,7 +166,10 @@ describeWithPostgres('plugin delivery-attempt PostgreSQL admission', () => {
       SET grant_status = 'revoked', revoked_at = '2026-09-08T04:15:00.000Z'
       WHERE grant_id = '11111111-1111-4111-8111-111111111111'::uuid;
     `);
-    expectSqlFailure(ATTEMPT_SQL, 'plugin_delivery_attempt_active_authority_check');
+    expectSqlFailure(
+      ATTEMPT_SQL,
+      'plugin_delivery_attempt_active_authority_check',
+    );
   });
 
   it('rejects admission after installation revocation even when the origin grant row remains active', () => {
@@ -159,7 +178,10 @@ describeWithPostgres('plugin delivery-attempt PostgreSQL admission', () => {
       SET installation_status = 'revoked', revoked_at = '2026-09-08T04:15:00.000Z'
       WHERE installation_id = '22222222-2222-4222-8222-222222222222'::uuid;
     `);
-    expectSqlFailure(ATTEMPT_SQL, 'plugin_delivery_attempt_active_authority_check');
+    expectSqlFailure(
+      ATTEMPT_SQL,
+      'plugin_delivery_attempt_active_authority_check',
+    );
   });
 
   it('rejects impossible retry limits and UUID versions before a worker can observe them', () => {

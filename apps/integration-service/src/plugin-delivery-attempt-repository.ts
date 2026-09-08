@@ -6,8 +6,7 @@ import type {
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt.v1' as const;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 /** Result returned by the bounded delivery-attempt SQL client. */
 export interface PluginDeliveryAttemptSqlResult<Row> {
@@ -101,7 +100,10 @@ function requireStoredInstant(value: unknown): string {
     return invalidEvidence();
   }
   const instant = new Date(candidate);
-  if (!Number.isFinite(instant.getTime()) || instant.toISOString() !== candidate) {
+  if (
+    !Number.isFinite(instant.getTime()) ||
+    instant.toISOString() !== candidate
+  ) {
     return invalidEvidence();
   }
   return candidate;
@@ -148,7 +150,9 @@ function oneOrUndefined<Row>(
   return rows[0];
 }
 
-function validateCreate(record: PluginDeliveryAttemptRecord): PluginDeliveryAttemptRecord {
+function validateCreate(
+  record: PluginDeliveryAttemptRecord,
+): PluginDeliveryAttemptRecord {
   if (record === null || typeof record !== 'object' || Array.isArray(record)) {
     return invalidInput();
   }
@@ -305,7 +309,8 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
       durable.workspaceId !== safe.workspaceId ||
       durable.requestedByUserId !== safe.requestedByUserId ||
       durable.maxAttempts !== safe.maxAttempts ||
-      new Date(durable.requestedAt).getTime() > new Date(safe.requestedAt).getTime()
+      new Date(durable.requestedAt).getTime() >
+        new Date(safe.requestedAt).getTime()
     ) {
       return invalidEvidence();
     }

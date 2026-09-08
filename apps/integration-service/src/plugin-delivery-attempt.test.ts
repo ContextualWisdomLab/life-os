@@ -30,16 +30,29 @@ function activeGrant(): PluginDeliveryOriginGrantRecord {
   });
 }
 
-function exactReplay(record: PluginDeliveryAttemptRecord): PluginDeliveryAttemptRecord {
-  return Object.freeze({ ...record, requestedAt: '2026-09-08T04:39:00.000Z', updatedAt: '2026-09-08T04:39:00.000Z', nextAttemptAt: '2026-09-08T04:39:00.000Z' });
+function exactReplay(
+  record: PluginDeliveryAttemptRecord,
+): PluginDeliveryAttemptRecord {
+  return Object.freeze({
+    ...record,
+    requestedAt: '2026-09-08T04:39:00.000Z',
+    updatedAt: '2026-09-08T04:39:00.000Z',
+    nextAttemptAt: '2026-09-08T04:39:00.000Z',
+  });
 }
 
 describe('plugin delivery attempt admission', () => {
   it('persists an opaque idempotent pending attempt without origin, credential, or payload material', async () => {
-    const createIfAbsent = vi.fn(async (record: PluginDeliveryAttemptRecord) => exactReplay(record));
+    const createIfAbsent = vi.fn(async (record: PluginDeliveryAttemptRecord) =>
+      exactReplay(record),
+    );
     const store: PluginDeliveryAttemptStore = { createIfAbsent };
     const grants = { getGrant: vi.fn(async () => activeGrant()) };
-    const application = new PluginDeliveryAttemptApplication(store, grants, () => NOW);
+    const application = new PluginDeliveryAttemptApplication(
+      store,
+      grants,
+      () => NOW,
+    );
 
     const result = await application.schedule(CONTEXT, INSTALLATION_ID, {
       deliveryId: DELIVERY_ID,
@@ -89,7 +102,10 @@ describe('plugin delivery attempt admission', () => {
 
   it('rejects an idempotency collision whose durable winner changes authority scope', async () => {
     const createIfAbsent = vi.fn(async (record: PluginDeliveryAttemptRecord) =>
-      Object.freeze({ ...record, grantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }),
+      Object.freeze({
+        ...record,
+        grantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      }),
     );
     const application = new PluginDeliveryAttemptApplication(
       { createIfAbsent },

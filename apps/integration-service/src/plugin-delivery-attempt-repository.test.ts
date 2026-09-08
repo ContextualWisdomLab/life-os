@@ -34,7 +34,9 @@ class ScriptedSqlClient implements PluginDeliveryAttemptSqlClient {
   readonly calls: QueryCall[] = [];
 
   constructor(
-    private readonly results: PluginDeliveryAttemptSqlResult<Record<string, unknown>>[],
+    private readonly results: PluginDeliveryAttemptSqlResult<
+      Record<string, unknown>
+    >[],
   ) {}
 
   async query<Row>(
@@ -50,9 +52,7 @@ class ScriptedSqlClient implements PluginDeliveryAttemptSqlClient {
   }
 }
 
-function row(
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
+function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     authority_version: RECORD.authorityVersion,
     delivery_id: RECORD.deliveryId,
