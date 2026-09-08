@@ -165,4 +165,40 @@ describe('PostgresPluginDeliveryAttemptStatusStore hostile evidence', () => {
       new PluginDeliveryAttemptStatusPersistenceEvidenceError(),
     );
   });
+
+  it('rejects a durable row updated after the trusted read instant', async () => {
+    const futureRow = {
+      authority_version: 'life-os.plugin-delivery-attempt.v1',
+      delivery_id: DELIVERY_ID,
+      grant_id: GRANT_ID,
+      installation_id: INSTALLATION_ID,
+      workspace_id: WORKSPACE_ID,
+      requested_by_user_id: USER_ID,
+      delivery_status: 'pending',
+      attempt_count: 1,
+      max_attempts: 3,
+      requested_at: new Date('2026-09-09T01:20:00.000Z'),
+      updated_at: new Date('2026-09-09T03:00:01.000Z'),
+      next_attempt_at: new Date('2026-09-09T01:20:00.000Z'),
+      terminal_at: null,
+      last_outcome_code: null,
+      control_sequence: 0,
+      has_claim_token_digest: true,
+      claim_started_at: new Date('2026-09-09T02:55:00.000Z'),
+      claim_expires_at: new Date('2026-09-09T03:05:00.000Z'),
+    };
+    const client: PluginDeliveryAttemptStatusSqlClient = {
+      async query<Row>() {
+        return {
+          rows: [futureRow as unknown as Row],
+          rowCount: 1,
+        };
+      },
+    };
+    const store = new PostgresPluginDeliveryAttemptStatusStore(client);
+
+    await expect(store.read(command())).rejects.toEqual(
+      new PluginDeliveryAttemptStatusPersistenceEvidenceError(),
+    );
+  });
 });
