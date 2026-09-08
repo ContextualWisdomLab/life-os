@@ -89,4 +89,28 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
       ).rejects.toBeInstanceOf(PluginDeliveryAttemptClaimAuthorityError);
     }
   });
+
+  it('collapses a revoked trusted context before claim persistence', async () => {
+    let calls = 0;
+    const app = new PluginDeliveryAttemptClaimApplication(
+      {
+        claimDue: async () => {
+          calls += 1;
+          return undefined;
+        },
+      },
+      () => new Date(CLAIMED_AT),
+      () => CLAIM_TOKEN,
+    );
+    const revoked = Proxy.revocable(
+      { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+      {},
+    );
+    revoked.revoke();
+
+    await expect(
+      app.claim(revoked.proxy, DELIVERY_ID, 60),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptClaimAuthorityError);
+    expect(calls).toBe(0);
+  });
 });
