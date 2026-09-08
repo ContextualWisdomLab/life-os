@@ -1,0 +1,31 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.7 [39m[90m/home/runner/work/life-os/life-os/apps/integration-service[39m
+
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/plugin-delivery-attempt-control.integration.test.ts[2m [ src/plugin-delivery-attempt-control.integration.test.ts ][22m
+[31m[1mError[22m: A dedicated Integration test database and role are required[39m
+[36m [2m❯[22m invalidTarget src/plugin-delivery-attempt-test-database.ts:[2m17:9[22m[39m
+    [90m 15| [39m
+    [90m 16| [39m[35mfunction[39m [34minvalidTarget[39m(message[33m:[39m string)[33m:[39m never {
+    [90m 17| [39m  [35mthrow[39m [35mnew[39m [33mError[39m(message)[33m;[39m
+    [90m   | [39m        [31m^[39m
+    [90m 18| [39m}
+    [90m 19| [39m
+[90m [2m❯[22m parsePluginDeliveryAttemptTestDatabaseTarget src/plugin-delivery-attempt-test-database.ts:[2m51:12[22m[39m
+[90m [2m❯[22m src/plugin-delivery-attempt-control.integration.test.ts:[2m28:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [2mno tests[22m
+[2m   Start at [22m 17:23:42
+[2m   Duration [22m 299ms[2m (transform 100ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 52ms)[22m
+
+
+::error file=/home/runner/work/life-os/life-os/apps/integration-service/src/plugin-delivery-attempt-test-database.ts,title=src/plugin-delivery-attempt-control.integration.test.ts,line=17,column=9::Error: A dedicated Integration test database and role are required%0A ❯ invalidTarget src/plugin-delivery-attempt-test-database.ts:17:9%0A ❯ parsePluginDeliveryAttemptTestDatabaseTarget src/plugin-delivery-attempt-test-database.ts:51:12%0A ❯ src/plugin-delivery-attempt-control.integration.test.ts:28:5%0A%0A
+undefined
+/home/runner/work/life-os/life-os/apps/integration-service:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/plugin-delivery-attempt-control.integration.test.ts -t durably pauses and resumes --no-file-parallelism
