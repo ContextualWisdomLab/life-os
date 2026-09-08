@@ -35,6 +35,7 @@ erDiagram
     WORKSPACE_RECORD ||--o{ CALENDAR_CONNECTION_RECORD : authorizes
     USER_ACCOUNT ||--o{ CALENDAR_CONNECTION_RECORD : owns
     CALENDAR_CONNECTION_RECORD ||--o{ CALENDAR_SYNC_RECORD : tracks
+    CALENDAR_CONNECTION_RECORD ||--o{ OAUTH_AUTHORIZATION_STATE : authorizes
 
     WORKSPACE_RECORD ||--o{ REMINDER_OCCURRENCE : contains
     REMINDER_OCCURRENCE ||--o{ DELIVERY_OUTCOME : records
@@ -51,9 +52,10 @@ erDiagram
     WORKSPACE_RECORD ||--o{ PLUGIN_INSTALLATION_RECORD : grants
     USER_ACCOUNT ||--o{ PLUGIN_INSTALLATION_RECORD : installs
     PLUGIN_INSTALLATION_RECORD ||--o{ PLUGIN_CREDENTIAL_BINDING_RECORD : binds
+    PLUGIN_INSTALLATION_RECORD ||--o{ PLUGIN_DELIVERY_ORIGIN_GRANT : authorizes
 ```
 
-Relationships from `USER_ACCOUNT` to Calendar/Plugin records express logical ownership identifiers only. They do not imply cross-schema foreign keys.
+Relationships from `USER_ACCOUNT` to Calendar/Plugin records express logical ownership identifiers only. They do not imply cross-schema foreign keys. `OAUTH_AUTHORIZATION_STATE` and `PLUGIN_DELIVERY_ORIGIN_GRANT` are active-line logical records until their owning migrations integrate; the diagram does not promote them to protected persistence.
 
 ## Protected-main persistence
 
@@ -73,9 +75,7 @@ Habit owns recurrence/completion evidence and its service-owned data-rights eras
 
 ### Review
 
-Review owns guided-review completion/projection records. Request-bound workspace authority is protected through PR #185.
-
-The Review data-rights erasure receipt migration and contributor are **Implemented on active PR** in PR #195. They are not protected-main persistence until integration.
+Review owns guided-review completion/projection records. Request-bound workspace authority is protected through PR #185. The Review data-rights erasure receipt migration and contributor are **Implemented on protected main** through PR #195.
 
 ### Notification
 
@@ -91,9 +91,9 @@ Privacy owns purpose-bound access decisions, grants, consumption/fencing, and au
 
 ### Calendar Integration
 
-**Status:** Implemented on protected main
+**Status:** Partial
 
-`calendar_integration.calendar_connection_record` is scoped simultaneously to opaque connection, workspace, and user UUIDv4 identities. It stores bounded provider/account/calendar metadata, normalized scopes, lifecycle timestamps, and opaque access/refresh secret references—not plaintext provider credentials.
+`calendar_integration.calendar_connection_record` is protected and scoped simultaneously to opaque connection, workspace, and user UUIDv4 identities. It stores bounded provider/account/calendar metadata, normalized scopes, lifecycle timestamps, and opaque access/refresh secret references—not plaintext provider credentials.
 
 Protected-main lifecycle evidence:
 
@@ -103,19 +103,32 @@ Protected-main lifecycle evidence:
 - PR #189 exposes a credential-free authenticated read projection;
 - PR #193 materializes secrets only through validated opaque handles;
 - PR #197 composes authenticated secret-first creation and compensation boundaries;
-- PR #201 compensates both newly written handles when persistence returns mismatched durable evidence.
+- PR #201 compensates both newly written handles when persistence returns mismatched durable evidence;
+- PR #203 provides Calendar-owned AES-256-GCM encrypted self-hosted credential storage.
 
-Concrete provider/KMS/OAuth state is not invented here and remains **Partial** under #129.
+Active PR #216 prevents deployment-wide Google/CalDAV credentials from substituting for user-owned hosted authority. Stacked PR #228 adds an OAuth authorization-state aggregate with opaque UUIDv4 state identity, exact workspace/user/provider/redirect evidence, bounded expiry/consumption state and an opaque PKCE verifier secret reference. Verifier plaintext remains secret-store-owned. This active aggregate is not protected persistence yet, and #129 still requires concrete PostgreSQL state persistence, callback/token exchange, successful verifier cleanup, refresh fencing, provider revoke/delete recovery, discovery/selection and scoped synchronization.
 
 ### Plugin Integration
 
-**Status:** Implemented on protected main
+**Status:** Partial
 
 `plugin_integration.plugin_installation_record` is protected through PR #169 and retains opaque installation/workspace/installer UUIDv4 identities, bounded plugin/version metadata, exact manifest SHA-256 evidence, normalized explicit grants, lifecycle status, and timestamps. PR #175 requires exact opaque installation identity at application and repository boundaries.
 
 `plugin_integration.plugin_credential_binding_record` is protected through PR #172. It retains only bounded opaque `secret_reference` metadata and binding lifecycle evidence; plaintext credential material remains behind the `PluginSecretStore` port.
 
-Operator request replay evidence is protected through PR #191 and consumed by the fail-closed HTTP composition from PR #196. Delivery attempt/outcome tables are not claimed because the complete runtime is **Partial** under #130.
+Operator request replay evidence is protected through PR #191 and consumed by the fail-closed HTTP composition from PR #196.
+
+The active #130 stack adds Integration-owned persistence without widening this ownership boundary:
+
+- #205 defines the host-owned normalized HTTPS delivery-origin aggregate;
+- #235 persists delivery-origin grants in Integration-owned PostgreSQL and fences them against active installation evidence;
+- #241 strengthens credential/revocation admission consistency;
+- #242 stores provider secret material behind an operator-configured Vault KV v2 adapter; LifeOS durable rows retain only opaque references;
+- #243/#244 compose Vault operator authority and one Integration-owned PostgreSQL pool;
+- #245 supplies the concrete hosted/default-entrypoint PostgreSQL runtime and retained exact-ancestor real Vault+PostgreSQL lifecycle acceptance;
+- #250 exposes delivery-origin grant/read/revoke only through signed one-time operator application authority.
+
+These active rows are not protected truth until integration. There is still no delivery attempt/outcome persistence for plugin outbound delivery, and a durable delivery-origin grant is not connect-time DNS/IP/redirect/proxy authorization. #130 remains Partial.
 
 ## Data-rights participant model
 
@@ -124,7 +137,7 @@ Operator request replay evidence is protected through PR #191 and consumed by th
 | Identity coordinator/ledger | Identity | Implemented on protected main | durable request/terminal receipt and status |
 | Planning contributor/receipt | Planning | Implemented on protected main | PR #179 and PR #194 |
 | Habit contributor/receipt | Habit | Implemented on protected main | PR #184 and PR #192 |
-| Review contributor/receipt | Review | Implemented on active PR | PR #195 |
+| Review contributor/receipt | Review | Implemented on protected main | PR #195 |
 | Notification contributor/receipt | Notification | Implemented on active PR | PR #198 |
 | AI contributor/receipt | AI Proposal | Implemented on active PR | PR #199 |
 | Remaining owning domains and whole-product reconciliation | Each owner + Identity coordinator | Partial | issue #55 |
@@ -134,8 +147,9 @@ No participant row grants Identity direct access to another service's tables. Wh
 ## Cardinality and immutability
 
 - One workspace may contain many planning, habit, review, reminder, proposal, calendar, privacy, and plugin records.
-- One Calendar connection belongs to exactly one workspace and one user authority scope.
-- One Plugin installation belongs to exactly one workspace and one installing user and may have bounded credential bindings.
+- One Calendar connection belongs to exactly one workspace and one user authority scope; an OAuth authorization state is bound to one exact workspace/user/provider ceremony and is one-time/expiring.
+- One Plugin installation belongs to exactly one workspace and one installing user and may have bounded credential bindings and delivery-origin grants.
+- One durable delivery-origin grant remains scoped to its installation/workspace/granting-user evidence and may be revoked; it does not confer authority over later network resolution.
 - One data-rights request has zero or more contributor sections/receipts and at most one immutable terminal aggregate receipt.
 - Proposal decisions, delivery outcomes, terminal data-rights receipts, and immutable audit evidence are append-only or mutation-denying by owning-service contract.
 - Mutable lifecycle rows expose explicit state/version/timestamps and deterministic replay/conflict semantics.
