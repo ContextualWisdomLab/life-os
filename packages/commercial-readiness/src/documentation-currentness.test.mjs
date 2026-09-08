@@ -74,7 +74,10 @@ test('canonical maturity follows protected main and current active work', () => 
 });
 
 test('canonical gaps remain bounded and truthful', () => {
-  assert.match(traceability, /Canonical buyer gaps remain #55, #129 and #130/u);
+  assert.match(
+    traceability,
+    /Canonical buyer gaps remain #55, #129, #130, #209, and #210/u,
+  );
   assert.match(assessment, /Issue #132.*Partial/su);
   assert.match(assessment, /PR #205[^\n]*host-owned delivery-origin authority foundation/iu);
   assert.match(assessment, /PR #204[^\n]*read-only Actions workflow-registry detector/iu);
