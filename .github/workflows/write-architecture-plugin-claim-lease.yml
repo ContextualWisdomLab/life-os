@@ -1,0 +1,45 @@
+name: Write Architecture Plugin Claim Lease
+
+on:
+  push:
+    branches:
+      - docs/canonical-product-architecture-mainline
+
+permissions:
+  contents: write
+
+jobs:
+  write:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Publish bounded architecture insertion
+        shell: bash
+        env:
+          PARAGRAPH_B64: RHJhZnQgUFIgIzI1MyBpcyB0aGUgZGlyZWN0IGNoaWxkIG9mICMyNTIgYW5kIGVzdGFibGlzaGVzIGRldGVybWluaXN0aWMgSW50ZWdyYXRpb24tb3duZWQgZGVsaXZlcnktYXR0ZW1wdCBjbGFpbS9sZWFzZSBhdXRob3JpdHkgd2l0aG91dCBhZGRpbmcgcHJvdmlkZXIgZXhlY3V0aW9uIG9yIG91dGJvdW5kIEhUVFBTLiBgbGlmZS1vcy5wbHVnaW4tZGVsaXZlcnktYXR0ZW1wdC1jbGFpbS52MWAgcmV0dXJucyBhbiBvcGFxdWUgVVVJRHY0IGNsYWltIHRva2VuIG9ubHkgdG8gdGhlIHdvcmtlciB3aGlsZSBwZXJzaXN0ZW5jZSByZXRhaW5zIG9ubHkgaXRzIFNIQS0yNTYgZGlnZXN0LCBleGFjdCBjbGFpbSBzdGFydC9leHBpcnkgZXZpZGVuY2UgYW5kIHRoZSBhdG9taWMgcmV0cnktYnVkZ2V0IHRyYW5zaXRpb24uIEFwcGxpY2F0aW9uIGFuZCByZXBvc2l0b3J5IHZhbGlkYXRpb24gYm91bmQgYSBsZWFzZSB0byAzMOKAkzM2MDAgc2Vjb25kcy4gQSBkdXJhYmxlLWJvdW5kIHJldmlldyBmb3VuZCBtaWdyYXRpb24gYDAwMDdfcGx1Z2luX2RlbGl2ZXJ5X2F0dGVtcHRfY2xhaW1fbGVhc2Uuc3FsYCBkaWQgbm90IHlldCBlbmZvcmNlIHRoZSBzYW1lIGxvd2VyL3VwcGVyIGJvdW5kczogcmVncmVzc2lvbiBgMzJjMDJmM2NhMmVhZDc2MTdiMDhkMzU5NzNkNTE4YjI1ZWQ0ZjY5MWAsIGlzb2xhdGVkIGF0IHJlYWxpdHktUkVEIGA0MDBlODgxNjNjYTlkODc4ODA2YWFlZTExZWY4Y2EyOTE3ZWMzM2RjYCwgZGVtb25zdHJhdGVkIHJlYWwgbWlncmF0ZWQgUG9zdGdyZVNRTCBhY2NlcHRpbmcgMjkuOTk5LXNlY29uZCBhbmQgMzYwMC4wMDEtc2Vjb25kIGxlYXNlcy4gTWluaW11bSByZXBhaXIgYGUyNWE5NmQ5MDJhZGM2ZDZhNjQyMmNhNGJjMTE0YzViZjE4OWY0N2ZgIGFkZHMgdGhlIHNhbWUgaW5jbHVzaXZlIDMw4oCTMzYwMCBzZWNvbmQgZGF0YWJhc2UgaW52YXJpYW50LiBFeGFjdCBwcm9vZiBoZWFkIGA5NGVmMDRlODU0ZDI0ODBmNDUyMDI0MzUyMWJkZDlhNzU1MDg4OWVhYCwgcnVuIGAzNDIxNzc1NDQ0N2AsIGpvYiBgMTAyMDMzNDQzNjI5YCwgY29tcGxldGVkIEdSRUVOIG9uIFVidW50dSAyNC4wNC9Qb3N0Z3JlU1FMIDE2IGFjcm9zcyByZXRhaW5lZCBjYXBhYmlsaXR5L3BlcnNpc3RlbmNlL2R1cmFibGUtYm91bmQgUkVEcywgZm9ybWF0dGluZy9kaWZmIGh5Z2llbmUsIGZvY3VzZWQgY2xhaW0vbGVhc2UgYWNjZXB0YW5jZSwgSW50ZWdyYXRpb24gdHlwZWNoZWNrIGFuZCB0aGUgY29tcGxldGUgSW50ZWdyYXRpb24gc3VpdGUuIEN1cnJlbnQgIzI1MyBleGFjdCBgNjJiNmZkMmMzMzg4ZjYwMzg2NDE5NDVkZjM0YWZlZGQ1YjVmM2I3OGAgcmVtb3ZlcyBvbmx5IHRoZSBwdXJwb3NlLWNvbXBsZXRlIHZlcmlmaWVyLiBUaGlzIGlzIGFjdGl2ZS1QUiBldmlkZW5jZSBvbmx5IGFuZCBkb2VzIG5vdCBtb3ZlIG5ldHdvcmsgYXV0aG9yaXR5IGludG8gTGlmZU9TLg==
+        run: |
+          set -euo pipefail
+          branch='docs/canonical-product-architecture-mainline'
+          remote_head="$(git ls-remote origin "refs/heads/${branch}" | cut -f1)"
+          test "${remote_head}" = "${GITHUB_SHA}"
+
+          python -c 'import base64,os; from pathlib import Path; p=Path("ARCHITECTURE.md"); t=p.read_text(encoding="utf-8"); m="Issue #130 remains **Partial**."; para=base64.b64decode(os.environ["PARAGRAPH_B64"]).decode("utf-8"); assert "Draft PR #253 is the direct child of #252" not in t; i=t.index(m); p.write_text(t[:i]+para+"\n\n"+t[i:],encoding="utf-8")'
+
+          git diff --check
+          rm .github/workflows/write-architecture-plugin-claim-lease.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ARCHITECTURE.md .github/workflows/write-architecture-plugin-claim-lease.yml
+          git commit -m 'docs(architecture): record plugin claim lease boundary'
+
+          git fetch origin "${branch}"
+          remote_head="$(git rev-parse "origin/${branch}")"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          git push origin "HEAD:${branch}"
