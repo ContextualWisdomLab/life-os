@@ -135,7 +135,10 @@ function requireStoredInstant(value: unknown): string {
 function validateCommand(
   value: PluginDeliveryAttemptClaimCommand,
 ): PluginDeliveryAttemptClaimCommand {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value === null || typeof value !== 'object') {
+    return invalidInput();
+  }
+  if (boundedInputRead(() => Array.isArray(value))) {
     return invalidInput();
   }
   const command = value as PluginDeliveryAttemptClaimCommand;
@@ -176,13 +179,16 @@ function validateCommand(
 function singleRow<Row>(
   result: PluginDeliveryAttemptClaimSqlResult<Row>,
 ): Row | undefined {
-  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+  if (result === null || typeof result !== 'object') {
+    return invalidEvidence();
+  }
+  if (boundedEvidenceRead(() => Array.isArray(result))) {
     return invalidEvidence();
   }
   const [rows, rowCount] = boundedEvidenceRead(
     () => [result.rows, result.rowCount] as const,
   );
-  if (!Array.isArray(rows)) {
+  if (!boundedEvidenceRead(() => Array.isArray(rows))) {
     return invalidEvidence();
   }
   const rowsLength = boundedEvidenceRead(() => rows.length);
@@ -205,7 +211,10 @@ function parseEvidence(
   row: unknown,
   command: PluginDeliveryAttemptClaimCommand,
 ): PluginDeliveryAttemptClaimEvidence {
-  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+  if (row === null || typeof row !== 'object') {
+    return invalidEvidence();
+  }
+  if (boundedEvidenceRead(() => Array.isArray(row))) {
     return invalidEvidence();
   }
   const candidate = row as ClaimRow;
