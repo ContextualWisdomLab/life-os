@@ -2,14 +2,11 @@ name: Write Product Gap Baseline Claim Lease
 
 on:
   push:
-    branches: [docs/product-gap-baseline-2026-08-20]
+    branches:
+      - docs/product-gap-baseline-2026-08-20
 
 permissions:
   contents: write
-
-concurrency:
-  group: write-product-gap-baseline-claim-lease-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   write:
@@ -17,36 +14,22 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout exact writer input
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Publish bounded currentness replacement
         shell: bash
+        env:
+          REPLACEMENT_B64: PiAqKkN1cnJlbnRuZXNzIG92ZXJyaWRlIOKAlCAyMDI2LTA5LTA4IEludGVncmF0aW9uIGRlbGl2ZXJ5IGF1dGhvcml0eS4qKiBJbnRlZ3JhdGlvbiBwYXJlbnQgIzI0NSByZW1haW5zIHdvcmtmbG93LWZyZWUgZXhhY3QgYDM5ZWJlYzk5ZDkwNzM1NmE5OWExYTE1NTI4YTNhMWRmNzEzNDcyZWRgOyAjMjUwIGlzIG5vbi1mb3JjZSBjdXJyZW50IGF0IGAyZmVmOWRlY2Y1MDUzYzdhYmYyNDQzZWM4ZTVjYWU0Mjc4ZTdiYWFjYDsgIzI1MSBpcyBub24tZm9yY2UgY3VycmVudCBhdCBgNTA2N2Y4NzBiZGFhOWEwMjY0MTEyOThhMjIzM2Q0ZDA1MzcwOGI1YWA7ICMyNTIgcmVtYWlucyBhbiBpbmRlcGVuZGVudCBkdXJhYmxlLWF0dGVtcHQgc2xpY2UgZGlyZWN0bHkgb24gIzI0NS4gIzI1MiBob3N0aWxlIGR1cmFibGUtZXZpZGVuY2UgUkVEIGBiMzkwZjM3ZWQ2NTFjZTJkOWNiNzRkODYyZmJhZTAyNjQxZjNhNTVmYCDihpYgcmVwYWlyIGBlOWE4YjIxMmIyNGI0OTE0MDY5YTQ4YTExM2QxMThmZjRlNGMwYTU2YCBpcyByZXRhaW5lZDsgcHJvb2YgaGVhZCBgZWMyMzUzYTAwM2MxNWM5ZjQ2NGI1ZDVkMjQ1NGQzNTkzNDI3ZDc2OGAsIHJ1biBgMzQyMTM1MDgxOTlgLCBqb2IgYDEwMjAxOTc2NTM5NWAsIGNvbXBsZXRlZCBHUkVFTiB3aXRoIGZvY3VzZWQgYWNjZXB0YW5jZSAyNC8yNCwgSW50ZWdyYXRpb24gdHlwZWNoZWNrIGFuZCB0aGUgY29tcGxldGUgSW50ZWdyYXRpb24gc3VpdGUgKDQwMyB0ZXN0cywgMyBlbnZpcm9ubWVudC1kZXBlbmRlbnQgc2tpcHMgYWNyb3NzIDY1IGZpbGVzKS4gQ0hBTkdFTE9HIGRlc2NlbmRhbnQgYGZlNTFhNzljMWUxOWNjN2ZiMTRlNTI5NmYwNGIzZjkxYjQxYmY1MzVgIGFsc28gY29tcGxldGVkIGV4YWN0IHJ1biBgMzQyMTM5Mzc4MjhgIC8gam9iIGAxMDIwMjExMzYyMTlgIEdSRUVOLiBDdXJyZW50ICMyNTIgZXhhY3QgYDllZDc4NDdkMzEwNmQ5NDE4ZTFmZjZlMDRlNDVjMWM3ZDg0ZDBiMGRgIHJlbW92ZXMgb25seSB0aGUgcHVycG9zZS1jb21wbGV0ZSB2ZXJpZmllciBmcm9tIHRoYXQgcHJvdmVuIGxpbmVhZ2UgYW5kIHJlbWFpbnMgRHJhZnQvdW5zaGlwcGVkLgoKPiAjMjUzIGlzIHRoZSBkaXJlY3QgY2xhaW0vbGVhc2UgY2hpbGQgb2YgIzI1Mi4gSXQgb3ducyBgbGlmZS1vcy5wbHVnaW4tZGVsaXZlcnktYXR0ZW1wdC1jbGFpbS52MWAsIEludGVncmF0aW9uLW93bmVkIGNsYWltIGFwcGxpY2F0aW9uL3JlcG9zaXRvcnkvbWlncmF0aW9uIGAwMDA3YCwgYSB3b3JrZXItdmlzaWJsZSBVVUlEdjQgY2xhaW0gdG9rZW4gd2hvc2UgU0hBLTI1NiBkaWdlc3QgYWxvbmUgaXMgcGVyc2lzdGVkLCBhdG9taWMgZHVlL3BlbmRpbmcvcmV0cnktYnVkZ2V0IGNsYWltIGFjcXVpc2l0aW9uLCBhbmQgZmluaXRlIDMw4oCTMzYwMCBzZWNvbmQgbGVhc2VzLiBDYXBhYmlsaXR5IFJFRCBgYThhMmNmZjEwNDRjOTkxOTA5OTJhMzU3M2EzMWMzNzE3YTZjM2E0N2AsIHBlcnNpc3RlbmNlIFJFRCBgZTg5NGM2NzUyMWFjY2MyZmQ5MmY4YTlkYThkOTcxOGM4MmE0NTgyN2AsIGFuZCBkaWdlc3QvcmV0cnktZXZpZGVuY2UgUkVEIGBlMThmZDRlYTEwODRjYWU5NWQ1NmVmZGZlMDMzMzEwYzgzYzM2ZTVmYCBhcmUgcmV0YWluZWQuIER1cmFibGUtYm91bmQgcmVncmVzc2lvbiBgMzJjMDJmM2NhMmVhZDc2MTdiMDhkMzU5NzNkNTE4YjI1ZWQ0ZjY5MWAsIGlzb2xhdGVkIGF0IHJlYWxpdHktUkVEIGA0MDBlODgxNjNjYTlkODc4ODA2YWFlZTExZWY4Y2EyOTE3ZWMzM2RjYCwgcHJvdmVkIG1pZ3JhdGVkIFBvc3RncmVTUUwgYWNjZXB0ZWQgMjkuOTk5LXNlY29uZCBhbmQgMzYwMC4wMDEtc2Vjb25kIGxlYXNlcyBkZXNwaXRlIHRoZSBhcHBsaWNhdGlvbi9yZXBvc2l0b3J5IGJvdW5kLiBNaW5pbXVtIGNhdXNhbCByZXBhaXIgYGUyNWE5NmQ5MDJhZGM2ZDZhNjQyMmNhNGJjMTE0YzViZjE4OWY0N2ZgIG1ha2VzIFBvc3RncmVTUUwgZW5mb3JjZSB0aGUgc2FtZSBpbmNsdXNpdmUgMzDigJM2MDAgc2Vjb25kIGludmFyaWFudC4gRXhhY3QgcHJvb2YgaGVhZCBgOTRlZjA0ZTg1NGQyNDgwZjQ1MjAyNDM1MjFiZGQ5YTc1NTA4ODllYWAsIHJ1biBgMzQyMTc3NTQ0NDdgLCBqb2IgYDEwMjAzMzQ0MzYyOWAsIGNvbXBsZXRlZCBHUkVFTiBvbiBVYnVudHUgMjQuMDQvUG9zdGdyZVNRTCAxNiBhY3Jvc3MgYWxsIHRocmVlIGhpc3RvcmljYWwgUkVEIGxhbmVzLCBjYW5vbmljYWwgZm9ybWF0dGluZywgZGlmZiBoeWdpZW5lLCBmb2N1c2VkIGNsYWltL2xlYXNlIGFjY2VwdGFuY2UsIEludGVncmF0aW9uIHR5cGVjaGVjayBhbmQgdGhlIGNvbXBsZXRlIEludGVncmF0aW9uIHN1aXRlLiBDdXJyZW50ICMyNTMgZXhhY3QgYDYyYjZmZDJjMzM4OGY2MDM4NjQxOTQ1ZGYzNGFmZWRkNWI1ZjNiNzhgIGlzIHRoZSBvcmRpbmFyeSBvbmUtY29tbWl0IGRlc2NlbmRhbnQgcmVtb3Zpbmcgb25seSB0aGUgcHVycG9zZS1jb21wbGV0ZSB2ZXJpZmllcjsgbm8gcHJvZHVjdGlvbiwgdGVzdCBvciBtaWdyYXRpb24gc291cmNlIGNoYW5nZWQgYWZ0ZXIgcHJvb2YuICMyNTMgcmVtYWlucyBEcmFmdC91bnNoaXBwZWQgd2l0aCBubyBzdWJtaXR0ZWQgYXBwcm92YWwuIER1cmFibGUgYWRtaXNzaW9uL2NsYWltIGlkZW50aXR5IGlzIHN0aWxsIG5vdCBwcm92aWRlciBleGVjdXRpb24gb3Igb3V0Ym91bmQtbmV0d29yayBhdXRob3JpemF0aW9uLiBBIGxhdGVyIGV4ZWN1dG9yIG11c3QgY29uc3VtZSBpbW11dGFibGUgcmVsZWFzZWQvdmVyc2lvbmVkIGNhbm9uaWNhbCBlZ3Jlc3MgYXV0aG9yaXR5IGZvciBETlMvSVAvcmVkaXJlY3QvcHJveHkvY29ubmVjdC10aW1lIFNTUkYgY29udHJvbHM7IGBDb250ZXh0dWFsV2lzZG9tTGFiL0VncmVzc1dlYXZlYCBjdXJyZW50bHkgaGFzIG5vIEdpdEh1YiByZWxlYXNlLCBzbyBMaWZlT1MgcmVtYWlucyBmYWlsIGNsb3NlZCByYXRoZXIgdGhhbiBjb25zdW1pbmcgbXV0YWJsZSBzaWJsaW5nIHNvdXJjZS4=
         run: |
           set -euo pipefail
           branch='docs/product-gap-baseline-2026-08-20'
           remote_head="$(git ls-remote origin "refs/heads/${branch}" | cut -f1)"
-          if [ "${remote_head}" != "${GITHUB_SHA}" ]; then
-            echo "Writer input moved before edit: ${remote_head} != ${GITHUB_SHA}" >&2
-            exit 1
-          fi
+          test "${remote_head}" = "${GITHUB_SHA}"
 
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('docs/product-technical-gap-baseline.md')
-          text = path.read_text(encoding='utf-8')
-          start_marker = '> **Currentness override — 2026-09-08 Integration delivery authority.**'
-          end_marker = '\n\n## Canonical architecture and evidence rules'
-          start = text.index(start_marker)
-          end = text.index(end_marker, start)
-          replacement = '''> **Currentness override — 2026-09-08 Integration delivery authority.** Integration parent #245 remains workflow-free exact `39ebec99d907356a99a1a15528a3a1df713472ed`; #250 is non-force current at `2fef9decf5053c7abf2443ec8e5cae4278e7baac`; #251 is non-force current at `5067f870bdaa9a026411298a2233d4d053708b5a`; #252 remains an independent durable-attempt slice directly on #245. #252 hostile durable-evidence RED `b390f37ed651ce2d9cb74d862fbae02641f3a55f` → repair `e9a8b212b24b4914069a48a113d118ff4e4c0a56` is retained; proof head `ec2353a003c15c9f464b5d5d2454d3593427d768`, run `34213508199`, job `102019765395`, completed GREEN with focused acceptance 24/24, Integration typecheck and the complete Integration suite (403 tests, 3 environment-dependent skips across 65 files). CHANGELOG descendant `fe51a79c1e19cc7fb14e5296f04b3f91b41bf535` also completed exact run `34213937828` / job `102021136219` GREEN. Current #252 exact `9ed7847d3106d9418e1ff6e04e45c1c7d84d0b0d` removes only the purpose-complete verifier from that proven lineage and remains Draft/unshipped.
-
-> #253 is the direct claim/lease child of #252. It owns `life-os.plugin-delivery-attempt-claim.v1`, Integration-owned claim application/repository/migration `0007`, a worker-visible UUIDv4 claim token whose SHA-256 digest alone is persisted, atomic due/pending/retry-budget claim acquisition, and finite 30–3600 second leases. Capability RED `a8a2cff1044c99190992a3573a31c3717a6c3a47`, persistence RED `e894c67521accc2fd92f8a9da8d9718c82a45827`, and digest/retry-evidence RED `e18fd4ea1084cae95d56efdfe033310c83c36e5f` are retained. Durable-bound regression `32c02f3ca2ead7617b08d35973d518b25ed4f691`, isolated at reality-RED `400e88163ca9d878806aaee11ef8ca2917ec33dc`, proved migrated PostgreSQL accepted 29.999-second and 3600.001-second leases despite the application/repository bound. Minimum causal repair `e25a96d902adc6d6a6422ca4bc114c5bf189f47f` makes PostgreSQL enforce the same inclusive 30–3600 second invariant. Exact proof head `94ef04e854d2480f4520243521bdd9a7550889ea`, run `34217754447`, job `102033443629`, completed GREEN on Ubuntu 24.04/PostgreSQL 16 across all three historical RED lanes, canonical formatting, diff hygiene, focused claim/lease acceptance, Integration typecheck and the complete Integration suite. Current #253 exact `62b6fd2c3388f6038641945df34afedd5b5f3b78` is the ordinary one-commit descendant removing only the purpose-complete verifier; no production, test or migration source changed after proof. #253 remains Draft/unshipped with no submitted approval. Durable admission/claim identity is still not provider execution or outbound-network authorization. A later executor must consume immutable released/versioned canonical egress authority for DNS/IP/redirect/proxy/connect-time SSRF controls; `ContextualWisdomLab/EgressWeave` currently has no GitHub release, so LifeOS remains fail closed rather than consuming mutable sibling source.'''
-          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
-          PY
+          python -c 'import base64,os; from pathlib import Path; p=Path("docs/product-technical-gap-baseline.md"); t=p.read_text(encoding="utf-8"); s="> **Currentness override — 2026-09-08 Integration delivery authority.**"; e="\\n\\n## Canonical architecture and evidence rules"; a=t.index(s); b=t.index(e,a); r=base64.b64decode(os.environ["REPLACEMENT_B64"]).decode("utf-8"); p.write_text(t[:a]+r+t[b:],encoding="utf-8")'
 
           git diff --check
           rm .github/workflows/write-product-gap-baseline-claim-lease.yml
@@ -58,8 +41,5 @@ jobs:
 
           git fetch origin "${branch}"
           remote_head="$(git rev-parse "origin/${branch}")"
-          if [ "${remote_head}" != "${GITHUB_SHA}" ]; then
-            echo "Writer input moved during edit: ${remote_head} != ${GITHUB_SHA}" >&2
-            exit 1
-          fi
+          test "${remote_head}" = "${GITHUB_SHA}"
           git push origin "HEAD:${branch}"
