@@ -50,6 +50,8 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     workspace_id: COMMAND.workspaceId,
     requested_by_user_id: COMMAND.requestedByUserId,
     attempt_count: 1,
+    max_attempts: 4,
+    claim_token_digest: COMMAND.claimTokenDigest,
     claim_started_at: new Date(COMMAND.claimedAt),
     claim_expires_at: new Date(COMMAND.leaseExpiresAt),
     ...overrides,
@@ -80,6 +82,7 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
       '(claim_expires_at IS NULL OR claim_expires_at <= $5::timestamptz)',
     );
     expect(client.calls[0]?.text).toContain('attempt_count < max_attempts');
+    expect(client.calls[0]?.text).toContain('max_attempts, claim_token_digest');
     expect(client.calls[0]?.values).toEqual([
       COMMAND.claimTokenDigest,
       COMMAND.claimedAt,
@@ -101,6 +104,16 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
     for (const result of [
       { rows: [row(), row()], rowCount: 2 },
       { rows: [row({ attempt_count: 0 })], rowCount: 1 },
+      { rows: [row({ attempt_count: 3, max_attempts: 2 })], rowCount: 1 },
+      {
+        rows: [
+          row({
+            claim_token_digest:
+              'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          }),
+        ],
+        rowCount: 1,
+      },
       { rows: [row({ claim_expires_at: new Date(COMMAND.claimedAt) })], rowCount: 1 },
     ]) {
       const store = new PostgresPluginDeliveryAttemptClaimStore(
