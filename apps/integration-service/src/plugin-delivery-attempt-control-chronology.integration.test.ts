@@ -29,6 +29,7 @@ const MIGRATIONS = [
   '0008_plugin_delivery_attempt_retry_transition.sql',
   '0009_plugin_delivery_attempt_outcome_record.sql',
   '0010_plugin_delivery_attempt_control_lifecycle.sql',
+  '0011_plugin_delivery_attempt_control_chronology_guard.sql',
 ].map((name) =>
   readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
 );
