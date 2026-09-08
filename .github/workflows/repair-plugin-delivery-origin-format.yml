@@ -1,4 +1,4 @@
-name: Repair Plugin Delivery Origin Formatting
+name: Verify Plugin Delivery Origin Repair
 
 on:
   push:
@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  repair-prove-and-retire:
+  prove-and-retire:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -33,24 +33,13 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Apply bounded canonical formatting
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm exec prettier --single-quote --write \
-            apps/integration-service/src/plugin-operator-application.ts \
-            apps/integration-service/src/plugin-vault-operator-composition.ts
-          pnpm exec prettier --single-quote --check \
-            apps/integration-service/src/plugin-operator-application.ts \
-            apps/integration-service/src/plugin-vault-operator-composition.ts \
-            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
-            apps/integration-service/src/plugin-operator-delivery-origin.test.ts
-          git diff --check
-          actual="$(git diff --name-only | LC_ALL=C sort)"
-          expected="$(printf '%s\n' \
-            apps/integration-service/src/plugin-operator-application.ts \
-            apps/integration-service/src/plugin-vault-operator-composition.ts | LC_ALL=C sort)"
-          test "$actual" = "$expected"
+      - name: Verify canonical formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/integration-service/src/plugin-operator-application.ts
+          apps/integration-service/src/plugin-vault-operator-composition.ts
+          apps/integration-service/src/plugin-vault-hosted-runtime.ts
+          apps/integration-service/src/plugin-operator-delivery-origin.test.ts
 
       - name: Run focused delivery-origin operator contract
         run: >-
@@ -63,26 +52,16 @@ jobs:
       - name: Run complete Integration service suite
         run: pnpm --filter @life-os/integration-service test
 
-      - name: Publish proved formatting repair and retire purpose workflows
+      - name: Retire purpose-complete verification writer
         shell: bash
         env:
           TARGET_BRANCH: feat/plugin-delivery-origin-operator-v2
         run: |
           set -euo pipefail
-          git rm \
-            .github/workflows/prove-plugin-delivery-origin-operator-green.yml \
-            .github/workflows/repair-plugin-delivery-origin-format.yml
-          git add \
-            apps/integration-service/src/plugin-operator-application.ts \
-            apps/integration-service/src/plugin-vault-operator-composition.ts
-          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
-          expected="$(printf '%s\n' \
-            .github/workflows/prove-plugin-delivery-origin-operator-green.yml \
-            .github/workflows/repair-plugin-delivery-origin-format.yml \
-            apps/integration-service/src/plugin-operator-application.ts \
-            apps/integration-service/src/plugin-vault-operator-composition.ts | LC_ALL=C sort)"
-          test "$actual" = "$expected"
+          git rm .github/workflows/repair-plugin-delivery-origin-format.yml
+          actual="$(git diff --cached --name-only)"
+          test "$actual" = ".github/workflows/repair-plugin-delivery-origin-format.yml"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "style(integration): format delivery-origin composition"
+          git commit -m "ci(integration): retire delivery-origin verification writer"
           git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
