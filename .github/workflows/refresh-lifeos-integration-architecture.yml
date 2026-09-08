@@ -35,7 +35,7 @@ jobs:
 
           target = Path('ARCHITECTURE.md')
           text = target.read_text()
-          old = "Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration, operator-visible status and restart/recovery acceptance."
+          old = "Remaining LifeOS-owned work is bounded provider execution/outcome integration, operator-visible status and restart/recovery acceptance."
           new = """#258 extends the active unshipped Integration lifecycle with a read-only, exact delivery/workspace/requesting-user-scoped durable status boundary that is reconstructable after repository/runtime restart. Exact proof head `8855427b8fcfa3b364223e91cd088546df84d684`, run `34276065348`, job `102229247458`, completed GREEN on Ubuntu 24.04/PostgreSQL 16.15 after both application and PostgreSQL repository chronology boundaries were repaired to reject durable status evidence updated after the trusted read instant. Focused status/restart acceptance passed 2 files / 10 tests, Integration typecheck passed, and the complete Integration suite passed 460 tests with 3 environment-dependent skips across 81 files (79 passed / 2 skipped). Current #258 exact `33d15c0d40806bb6a76f291dd265690f94c34186` removes only the purpose-complete verifier. The status contract remains credential-free, exposes only derived claim state, creates no new persistence owner or migration, and grants no provider-execution or outbound-network authority. Remaining LifeOS-owned delivery work is bounded provider execution/outcome integration and authenticated operator HTTP composition; outbound I/O remains fail closed until an immutable released/versioned canonical egress contract exists."""
           count = text.count(old)
           if count != 1:
