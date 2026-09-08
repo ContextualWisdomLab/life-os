@@ -65,6 +65,14 @@ function invalidEvidence(): never {
   throw new PluginDeliveryAttemptPersistenceEvidenceError();
 }
 
+function boundedEvidenceRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidEvidence();
+  }
+}
+
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -95,7 +103,9 @@ function requireInputInstant(value: unknown): string {
 }
 
 function requireStoredInstant(value: unknown): string {
-  const candidate = value instanceof Date ? value.toISOString() : value;
+  const candidate = boundedEvidenceRead(() =>
+    value instanceof Date ? value.toISOString() : value,
+  );
   if (typeof candidate !== 'string' || !ISO_INSTANT_PATTERN.test(candidate)) {
     return invalidEvidence();
   }
@@ -132,8 +142,9 @@ function oneOrUndefined<Row>(
   if (result === null || typeof result !== 'object' || Array.isArray(result)) {
     return invalidEvidence();
   }
-  const rows = result.rows;
-  const rowCount = result.rowCount;
+  const [rows, rowCount] = boundedEvidenceRead(
+    () => [result.rows, result.rowCount] as const,
+  );
   if (
     !Array.isArray(rows) ||
     typeof rowCount !== 'number' ||
@@ -197,18 +208,34 @@ function parseRow(row: unknown): PluginDeliveryAttemptRecord {
     return invalidEvidence();
   }
   const candidate = row as PluginDeliveryAttemptRow;
+  const snapshot = boundedEvidenceRead(() => ({
+    authority_version: candidate.authority_version,
+    delivery_id: candidate.delivery_id,
+    grant_id: candidate.grant_id,
+    installation_id: candidate.installation_id,
+    workspace_id: candidate.workspace_id,
+    requested_by_user_id: candidate.requested_by_user_id,
+    delivery_status: candidate.delivery_status,
+    attempt_count: candidate.attempt_count,
+    max_attempts: candidate.max_attempts,
+    requested_at: candidate.requested_at,
+    updated_at: candidate.updated_at,
+    next_attempt_at: candidate.next_attempt_at,
+    terminal_at: candidate.terminal_at,
+    last_outcome_code: candidate.last_outcome_code,
+  }));
   if (
-    candidate.authority_version !== AUTHORITY_VERSION ||
-    candidate.delivery_status !== 'pending' ||
-    candidate.attempt_count !== 0 ||
-    candidate.terminal_at !== null ||
-    candidate.last_outcome_code !== null
+    snapshot.authority_version !== AUTHORITY_VERSION ||
+    snapshot.delivery_status !== 'pending' ||
+    snapshot.attempt_count !== 0 ||
+    snapshot.terminal_at !== null ||
+    snapshot.last_outcome_code !== null
   ) {
     return invalidEvidence();
   }
-  const requestedAt = requireStoredInstant(candidate.requested_at);
-  const updatedAt = requireStoredInstant(candidate.updated_at);
-  const nextAttemptAt = requireStoredInstant(candidate.next_attempt_at);
+  const requestedAt = requireStoredInstant(snapshot.requested_at);
+  const updatedAt = requireStoredInstant(snapshot.updated_at);
+  const nextAttemptAt = requireStoredInstant(snapshot.next_attempt_at);
   if (
     new Date(updatedAt).getTime() < new Date(requestedAt).getTime() ||
     new Date(nextAttemptAt).getTime() < new Date(requestedAt).getTime()
@@ -217,14 +244,14 @@ function parseRow(row: unknown): PluginDeliveryAttemptRecord {
   }
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireStoredUuid(candidate.delivery_id),
-    grantId: requireStoredUuid(candidate.grant_id),
-    installationId: requireStoredUuid(candidate.installation_id),
-    workspaceId: requireStoredUuid(candidate.workspace_id),
-    requestedByUserId: requireStoredUuid(candidate.requested_by_user_id),
+    deliveryId: requireStoredUuid(snapshot.delivery_id),
+    grantId: requireStoredUuid(snapshot.grant_id),
+    installationId: requireStoredUuid(snapshot.installation_id),
+    workspaceId: requireStoredUuid(snapshot.workspace_id),
+    requestedByUserId: requireStoredUuid(snapshot.requested_by_user_id),
     status: 'pending',
     attemptCount: 0,
-    maxAttempts: requireSmallInteger(candidate.max_attempts, 1, 10, true),
+    maxAttempts: requireSmallInteger(snapshot.max_attempts, 1, 10, true),
     requestedAt,
     updatedAt,
     nextAttemptAt,
