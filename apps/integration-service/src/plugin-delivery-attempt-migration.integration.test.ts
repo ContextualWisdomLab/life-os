@@ -2,7 +2,9 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { parsePluginDeliveryAttemptTestDatabaseTarget } from './plugin-delivery-attempt-test-database';
+import {
+  parsePluginDeliveryAttemptTestDatabaseTarget,
+} from './plugin-delivery-attempt-test-database';
 
 const DATABASE_URL = process.env.INTEGRATION_DATABASE_URL;
 const TEST_DATABASE_TARGET = DATABASE_URL
