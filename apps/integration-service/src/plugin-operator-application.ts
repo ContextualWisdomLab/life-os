@@ -3,6 +3,10 @@ import type {
   PluginCredentialBindingView,
 } from './plugin-credential';
 import type {
+  GrantPluginDeliveryOriginInput,
+  PluginDeliveryOriginGrantRecord,
+} from './plugin-delivery-origin-authority';
+import type {
   InstallPluginInput,
   PluginInstallationContext,
   PluginInstallationRecord,
@@ -42,12 +46,43 @@ export interface PluginCredentialOperatorPort {
   ): Promise<PluginCredentialBindingView>;
 }
 
+/** Delivery-origin lifecycle authority consumed only after exact signed operator verification. */
+export interface PluginDeliveryOriginOperatorPort {
+  /** Grants one exact HTTPS origin inside authenticated installation authority. */
+  grant(
+    trustedContext: PluginInstallationContext,
+    installationId: string,
+    input: GrantPluginDeliveryOriginInput,
+  ): Promise<PluginDeliveryOriginGrantRecord>;
+  /** Reads one exact durable origin grant inside authenticated installation authority. */
+  getGrant(
+    trustedContext: PluginInstallationContext,
+    installationId: string,
+    grantId: string,
+  ): Promise<PluginDeliveryOriginGrantRecord | undefined>;
+  /** Revokes one exact durable origin grant inside authenticated installation authority. */
+  revoke(
+    trustedContext: PluginInstallationContext,
+    installationId: string,
+    grantId: string,
+  ): Promise<PluginDeliveryOriginGrantRecord>;
+}
+
 /** Fixed dependency failure that never discloses credential material or provider details. */
 export class PluginOperatorDependencyError extends Error {
   /** Creates the bounded failure returned when credential composition is unavailable. */
   constructor() {
     super('Plugin credential capability is unavailable');
     this.name = 'PluginOperatorDependencyError';
+  }
+}
+
+/** Fixed dependency failure that does not reveal delivery-origin persistence details. */
+export class PluginDeliveryOriginOperatorDependencyError extends Error {
+  /** Creates the bounded failure returned when delivery-origin composition is unavailable. */
+  constructor() {
+    super('Plugin delivery-origin capability is unavailable');
+    this.name = 'PluginDeliveryOriginOperatorDependencyError';
   }
 }
 
@@ -71,7 +106,7 @@ function canonicalInstant(seconds: number): string {
 
 /**
  * Composes cryptographically verified operator identity with host-owned plugin
- * installation and credential applications.
+ * installation, credential, and delivery-origin applications.
  *
  * Every method constructs the exact server-owned method/path binding before any
  * downstream authority is invoked. Tenant/user identifiers are derived only from
@@ -88,6 +123,7 @@ export class PluginOperatorApplication {
     private readonly contextSecret: unknown,
     private readonly replayGuard: PluginOperatorReplayGuardPort | undefined,
     private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
+    private readonly deliveryOrigins?: PluginDeliveryOriginOperatorPort,
   ) {}
 
   /** Installs a plugin only under a signed POST collection authority. */
@@ -159,6 +195,60 @@ export class PluginOperatorApplication {
     );
   }
 
+  /** Grants one exact delivery origin only under its installation-scoped signed POST authority. */
+  async grantDeliveryOrigin(
+    headers: IntegrationOperatorContextHeaders,
+    installationId: string,
+    input: GrantPluginDeliveryOriginInput,
+  ): Promise<PluginDeliveryOriginGrantRecord> {
+    const trustedContext = await this.requireContext(
+      headers,
+      'POST',
+      `/v1/plugins/installations/${installationId}/delivery-origins`,
+    );
+    return this.requireDeliveryOrigins().grant(
+      trustedContext,
+      installationId,
+      input,
+    );
+  }
+
+  /** Reads one delivery-origin grant only under its exact signed dynamic GET authority. */
+  async getDeliveryOrigin(
+    headers: IntegrationOperatorContextHeaders,
+    installationId: string,
+    grantId: string,
+  ): Promise<PluginDeliveryOriginGrantRecord | undefined> {
+    const trustedContext = await this.requireContext(
+      headers,
+      'GET',
+      `/v1/plugins/installations/${installationId}/delivery-origins/${grantId}`,
+    );
+    return this.requireDeliveryOrigins().getGrant(
+      trustedContext,
+      installationId,
+      grantId,
+    );
+  }
+
+  /** Revokes one delivery-origin grant only under its exact signed dynamic POST authority. */
+  async revokeDeliveryOrigin(
+    headers: IntegrationOperatorContextHeaders,
+    installationId: string,
+    grantId: string,
+  ): Promise<PluginDeliveryOriginGrantRecord> {
+    const trustedContext = await this.requireContext(
+      headers,
+      'POST',
+      `/v1/plugins/installations/${installationId}/delivery-origins/${grantId}/revoke`,
+    );
+    return this.requireDeliveryOrigins().revoke(
+      trustedContext,
+      installationId,
+      grantId,
+    );
+  }
+
   /** Verifies and atomically consumes one signed request identity before downstream authority. */
   private async requireContext(
     headers: IntegrationOperatorContextHeaders,
@@ -200,5 +290,13 @@ export class PluginOperatorApplication {
       throw new PluginOperatorDependencyError();
     }
     return this.credentials;
+  }
+
+  /** Returns configured delivery-origin authority only after caller authentication succeeds. */
+  private requireDeliveryOrigins(): PluginDeliveryOriginOperatorPort {
+    if (!this.deliveryOrigins) {
+      throw new PluginDeliveryOriginOperatorDependencyError();
+    }
+    return this.deliveryOrigins;
   }
 }
