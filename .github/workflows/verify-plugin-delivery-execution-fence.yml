@@ -52,20 +52,14 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Diagnose canonical execution-fence formatting
+      - name: Check execution-fence formatting and diff hygiene
         run: |
-          pnpm exec prettier --single-quote --write \
+          pnpm exec prettier --single-quote --check \
             apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.ts \
             apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-execution-fence.integration.test.ts
-          git diff -- \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.integration.test.ts
-          git diff --quiet -- \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts \
-            apps/integration-service/src/plugin-delivery-attempt-execution-fence.integration.test.ts
+          git diff --check HEAD^
 
       - name: Build Plugin SDK dependency
         run: pnpm --filter @life-os/plugin-sdk build
