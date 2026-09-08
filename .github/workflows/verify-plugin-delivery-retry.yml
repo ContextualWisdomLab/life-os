@@ -16,6 +16,22 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_integration
+          POSTGRES_USER: life_os
+          POSTGRES_PASSWORD: life_os_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U life_os -d life_os_integration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os_test@127.0.0.1:5432/life_os_integration?sslmode=disable
     steps:
       - name: Checkout exact pushed head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -42,7 +58,9 @@ jobs:
           pnpm exec prettier --single-quote --check \
             apps/integration-service/src/plugin-delivery-attempt-retry.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry.test.ts \
-            apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry.integration.test.ts
           git diff --check HEAD^
 
       - name: Build Plugin SDK dependency
@@ -53,6 +71,16 @@ jobs:
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-delivery-attempt-retry.test.ts
           src/plugin-delivery-attempt-retry-repository.test.ts
+          --no-file-parallelism
+
+      - name: Run real PostgreSQL retry acceptance
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-retry.integration.test.ts
+          --no-file-parallelism
 
       - name: Typecheck Integration service
         run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration service suite
+        run: pnpm --filter @life-os/integration-service test
