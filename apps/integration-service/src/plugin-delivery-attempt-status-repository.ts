@@ -170,20 +170,22 @@ function oneOrUndefined<Row>(
   const [rows, rowCount] = boundedEvidenceRead(
     () => [envelope.rows, envelope.rowCount] as const,
   );
-  if (
-    !Array.isArray(rows) ||
-    typeof rowCount !== 'number' ||
-    !Number.isInteger(rowCount) ||
-    rowCount < 0 ||
-    rowCount !== rows.length ||
-    rows.length > 1
-  ) {
-    return invalidEvidence();
-  }
-  if (rows.length === 1 && rows[0] === undefined) {
-    return invalidEvidence();
-  }
-  return rows[0] as Row | undefined;
+  return boundedEvidenceRead(() => {
+    if (
+      !Array.isArray(rows) ||
+      typeof rowCount !== 'number' ||
+      !Number.isInteger(rowCount) ||
+      rowCount < 0 ||
+      rowCount !== rows.length ||
+      rows.length > 1
+    ) {
+      return invalidEvidence();
+    }
+    if (rows.length === 1 && rows[0] === undefined) {
+      return invalidEvidence();
+    }
+    return rows[0] as Row | undefined;
+  });
 }
 
 function validateCommand(
