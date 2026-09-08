@@ -1,0 +1,59 @@
+name: Update architecture for Integration 257
+
+on:
+  push:
+    branches:
+      - docs/canonical-product-architecture-mainline
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-architecture-integration-257
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+          ref: ${{ github.ref_name }}
+
+      - name: Replace bounded Plugin currentness tail
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('ARCHITECTURE.md')
+          text = path.read_text()
+          start_marker = 'Issue #130 remains **Partial**.'
+          end_marker = '## 6. AI proposal boundary'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          paragraphs = [
+              'Draft PR #257 is the direct #256 child and adds the Integration-owned per-attempt pre-execution revocation fence. Immediately before provider execution, the exact unexpired worker claim, active delivery-origin grant and active owning installation must still agree under the same workspace/user scope. The fence consumes neither provider credentials nor outbound-network authority. Exact `61c179a5886a79e2fa6bbca53b704275bcb3a0ea`, run `34266240410`, job `102196214538`, completed GREEN on Ubuntu 24.04/PostgreSQL 16 across focused real-PostgreSQL fence acceptance, Integration typecheck and the complete Integration suite.',
+              'Fresh authority review found that the raw UUIDv4 claim token was case-normalized before SHA-256 hashing, allowing a hex-case alias to acquire the same durable claim digest despite the exact raw-token capability contract. Regression-only `48b823903d14c3ca0c868bf335d023904b2dcf9d` / run `34267014048` / job `102198804685` passed exact checkout, frozen install, formatting and Plugin SDK build and then failed at the focused execution-fence acceptance as intended. Minimum repair `a40098db19ea9830367b6cabd1bc552a019a990a` requires the raw token to already be canonical lowercase UUIDv4 text and hashes those exact bytes without normalization. Exact run `34267152261` / job `102199270687` completed GREEN across focused execution-fence/PostgreSQL acceptance, Integration typecheck and the complete Integration suite. Current #257 exact `5ac3d2fcdf30e97be006405cf599f3d666cf5946` removes only the purpose-complete verifier.',
+              'Issue #130 remains **Partial**. Protected main does not yet contain the Vault/PostgreSQL/delivery-origin/delivery-attempt active stack. #252 establishes durable admission, #253 deterministic finite worker claim/lease, #254 claim-bound bounded retry/backoff, #255 append-only sanitized outcome evidence, #256 durable pause/resume/dead-letter control evidence with non-decreasing chronology, and #257 exact pre-execution claim/grant/installation revocation fencing. Remaining LifeOS-owned work is bounded provider execution/outcome integration, operator-visible status and restart/recovery acceptance. No active LifeOS PR supplies complete host-authorized outbound HTTPS. Outbound authority must come only from an immutable released/versioned canonical egress contract; otherwise the network boundary remains fail closed. Durable origin/delivery/claim/retry/outcome/control/fence identity is not network authorization.',
+          ]
+          replacement = '\n\n'.join(paragraphs) + '\n\n'
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+          rm .github/workflows/update-architecture-integration-257.yml
+          git diff --check
+
+      - name: Publish only if branch head is unchanged
+        shell: bash
+        run: |
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          git config user.name "life-os-maintainer"
+          git config user.email "actions@users.noreply.github.com"
+          git add ARCHITECTURE.md .github/workflows/update-architecture-integration-257.yml
+          git commit -m "docs: record Integration execution fence architecture"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
