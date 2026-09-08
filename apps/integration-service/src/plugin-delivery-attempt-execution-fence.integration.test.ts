@@ -113,7 +113,9 @@ async function prepareClaimedAttempt(): Promise<void> {
 
 function app(): PluginDeliveryAttemptExecutionFenceApplication {
   return new PluginDeliveryAttemptExecutionFenceApplication(
-    new PostgresPluginDeliveryAttemptExecutionFenceStore(new PoolSqlClient(pool)),
+    new PostgresPluginDeliveryAttemptExecutionFenceStore(
+      new PoolSqlClient(pool),
+    ),
     () => new Date(CHECKED_AT),
   );
 }
@@ -150,7 +152,9 @@ describeWithPostgres(
     });
 
     it('accepts only the exact live claim with active grant and installation', async () => {
-      await expect(app().check(context(), DELIVERY_ID, CLAIM_TOKEN)).resolves.toEqual({
+      await expect(
+        app().check(context(), DELIVERY_ID, CLAIM_TOKEN),
+      ).resolves.toEqual({
         authorityVersion: 'life-os.plugin-delivery-attempt-execution-fence.v1',
         deliveryId: DELIVERY_ID,
         grantId: GRANT_ID,
@@ -174,7 +178,9 @@ describeWithPostgres(
 
       await expect(
         app().check(context(), DELIVERY_ID, CLAIM_TOKEN),
-      ).rejects.toEqual(new PluginDeliveryAttemptExecutionFenceAuthorityError());
+      ).rejects.toEqual(
+        new PluginDeliveryAttemptExecutionFenceAuthorityError(),
+      );
       await expect(durableClaimSnapshot()).resolves.toEqual(before);
     });
 
@@ -189,7 +195,9 @@ describeWithPostgres(
 
       await expect(
         app().check(context(), DELIVERY_ID, CLAIM_TOKEN),
-      ).rejects.toEqual(new PluginDeliveryAttemptExecutionFenceAuthorityError());
+      ).rejects.toEqual(
+        new PluginDeliveryAttemptExecutionFenceAuthorityError(),
+      );
       await expect(durableClaimSnapshot()).resolves.toEqual(before);
     });
   },
