@@ -32,7 +32,9 @@ function durableRow(): Record<string, unknown> {
 }
 
 class FixedClient implements PluginDeliveryAttemptClaimSqlClient {
-  constructor(private readonly result: PluginDeliveryAttemptClaimSqlResult<unknown>) {}
+  constructor(
+    private readonly result: PluginDeliveryAttemptClaimSqlResult<unknown>,
+  ) {}
 
   async query<Row>(): Promise<PluginDeliveryAttemptClaimSqlResult<Row>> {
     return this.result as PluginDeliveryAttemptClaimSqlResult<Row>;
