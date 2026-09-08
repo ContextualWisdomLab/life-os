@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { PluginDeliveryAttemptRecord } from './plugin-delivery-attempt';
 import {
   PluginDeliveryAttemptPersistenceEvidenceError,
   PluginDeliveryAttemptPersistenceValidationError,
   PostgresPluginDeliveryAttemptStore,
   type PluginDeliveryAttemptSqlClient,
+  type PluginDeliveryAttemptSqlResult,
 } from './plugin-delivery-attempt-repository';
 
 const RECORD: PluginDeliveryAttemptRecord = Object.freeze({
@@ -24,37 +25,74 @@ const RECORD: PluginDeliveryAttemptRecord = Object.freeze({
   lastOutcomeCode: null,
 });
 
-function row(record: PluginDeliveryAttemptRecord = RECORD) {
+interface QueryCall {
+  readonly text: string;
+  readonly values: readonly unknown[];
+}
+
+class ScriptedSqlClient implements PluginDeliveryAttemptSqlClient {
+  readonly calls: QueryCall[] = [];
+
+  constructor(
+    private readonly results: PluginDeliveryAttemptSqlResult<Record<string, unknown>>[],
+  ) {}
+
+  async query<Row>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<PluginDeliveryAttemptSqlResult<Row>> {
+    this.calls.push({ text, values });
+    const next = this.results.shift();
+    if (!next) {
+      throw new Error('Unexpected SQL call');
+    }
+    return next as PluginDeliveryAttemptSqlResult<Row>;
+  }
+}
+
+function row(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
-    authority_version: record.authorityVersion,
-    delivery_id: record.deliveryId,
-    grant_id: record.grantId,
-    installation_id: record.installationId,
-    workspace_id: record.workspaceId,
-    requested_by_user_id: record.requestedByUserId,
-    delivery_status: record.status,
-    attempt_count: record.attemptCount,
-    max_attempts: record.maxAttempts,
-    requested_at: new Date(record.requestedAt),
-    updated_at: new Date(record.updatedAt),
-    next_attempt_at: new Date(record.nextAttemptAt),
-    terminal_at: record.terminalAt,
-    last_outcome_code: record.lastOutcomeCode,
+    authority_version: RECORD.authorityVersion,
+    delivery_id: RECORD.deliveryId,
+    grant_id: RECORD.grantId,
+    installation_id: RECORD.installationId,
+    workspace_id: RECORD.workspaceId,
+    requested_by_user_id: RECORD.requestedByUserId,
+    delivery_status: RECORD.status,
+    attempt_count: RECORD.attemptCount,
+    max_attempts: RECORD.maxAttempts,
+    requested_at: new Date(RECORD.requestedAt),
+    updated_at: new Date(RECORD.updatedAt),
+    next_attempt_at: new Date(RECORD.nextAttemptAt),
+    terminal_at: RECORD.terminalAt,
+    last_outcome_code: RECORD.lastOutcomeCode,
+    ...overrides,
   };
+}
+
+function result(
+  rows: readonly Record<string, unknown>[],
+): PluginDeliveryAttemptSqlResult<Record<string, unknown>> {
+  return { rows, rowCount: rows.length };
 }
 
 describe('PostgresPluginDeliveryAttemptStore', () => {
   it('uses one parameterized idempotent admission statement and returns exact durable scope', async () => {
-    const query = vi.fn(async () => ({ rows: [row()], rowCount: 1 }));
-    const store = new PostgresPluginDeliveryAttemptStore({ query });
+    const client = new ScriptedSqlClient([result([row()])]);
+    const store = new PostgresPluginDeliveryAttemptStore(client);
 
     await expect(store.createIfAbsent(RECORD)).resolves.toEqual(RECORD);
-    expect(query).toHaveBeenCalledTimes(1);
-    const [sql, values] = query.mock.calls[0] ?? [];
-    expect(sql).toContain('plugin_integration.plugin_delivery_attempt_record');
-    expect(sql).toContain('ON CONFLICT (delivery_id) DO NOTHING');
-    expect(sql).not.toContain(RECORD.deliveryId);
-    expect(values).toEqual([
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]?.text).toContain(
+      'plugin_integration.plugin_delivery_attempt_record',
+    );
+    expect(client.calls[0]?.text).toContain(
+      'ON CONFLICT (delivery_id) DO NOTHING',
+    );
+    expect(client.calls[0]?.text).not.toContain(RECORD.deliveryId);
+    expect(client.calls[0]?.values).toEqual([
       RECORD.authorityVersion,
       RECORD.deliveryId,
       RECORD.grantId,
@@ -67,27 +105,29 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
   });
 
   it('rejects malformed application records before issuing SQL', async () => {
-    const query = vi.fn();
-    const store = new PostgresPluginDeliveryAttemptStore({ query });
+    const client = new ScriptedSqlClient([]);
+    const store = new PostgresPluginDeliveryAttemptStore(client);
 
     await expect(
-      store.createIfAbsent({ ...RECORD, maxAttempts: 0 } as PluginDeliveryAttemptRecord),
+      store.createIfAbsent({
+        ...RECORD,
+        maxAttempts: 0,
+      } as PluginDeliveryAttemptRecord),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptPersistenceValidationError);
-    expect(query).not.toHaveBeenCalled();
+    expect(client.calls).toHaveLength(0);
   });
 
   it('fails closed when the durable idempotency winner is absent, ambiguous, or corrupt', async () => {
     const resultCases = [
-      { rows: [], rowCount: 0 },
-      { rows: [row(), row()], rowCount: 2 },
-      { rows: [{ ...row(), grant_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }], rowCount: 1 },
+      result([]),
+      result([row(), row()]),
+      result([row({ grant_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })]),
     ];
 
-    for (const result of resultCases) {
-      const client: PluginDeliveryAttemptSqlClient = {
-        query: vi.fn(async () => result),
-      };
-      const store = new PostgresPluginDeliveryAttemptStore(client);
+    for (const durableResult of resultCases) {
+      const store = new PostgresPluginDeliveryAttemptStore(
+        new ScriptedSqlClient([durableResult]),
+      );
       await expect(store.createIfAbsent(RECORD)).rejects.toBeInstanceOf(
         PluginDeliveryAttemptPersistenceEvidenceError,
       );
