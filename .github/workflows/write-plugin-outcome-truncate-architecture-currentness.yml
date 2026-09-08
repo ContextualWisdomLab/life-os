@@ -1,0 +1,61 @@
+name: Write plugin outcome truncation architecture currentness
+
+on:
+  push:
+    branches:
+      - docs/canonical-product-architecture-mainline
+
+permissions:
+  contents: write
+
+concurrency:
+  group: write-plugin-outcome-truncate-architecture-currentness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  write-and-retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+
+      - name: Replace only terminal Plugin delivery currentness block
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('ARCHITECTURE.md')
+          text = path.read_text()
+          start = 'Draft PR #254 is the direct #253 child'
+          end = 'Manifests and stored installations never self-authorize network capabilities.'
+          if text.count(start) != 1 or text.count(end) != 1:
+              raise SystemExit('bounded Plugin currentness markers are not unique')
+          a = text.index(start)
+          b = text.index(end, a) + len(end)
+          replacement = '''Draft PR #254 is the direct #253 child and adds Integration-owned claim-bound retry/backoff without provider execution or outbound HTTPS. Migration `0008_plugin_delivery_attempt_retry_transition.sql` preserves row-owned retry budgets and finite claim leases while admitting only explicit admission, active-claim, scheduled-retry and terminal-exhaustion shapes. Exact proof head `ca22c71e4f2ec11de6539df79632376d4134f90a`, run `34237354956`, job `102098403313`, completed GREEN on Ubuntu 24.04/PostgreSQL 16 across frozen install, formatting/diff hygiene, Plugin SDK build, focused retry acceptance, real PostgreSQL retry/exhaustion acceptance, Integration typecheck and the complete Integration suite. Current #254 exact `edc79d1291025b8787a9ccf16c39a10df4157023` removes only the purpose verifier and remains Draft/unshipped.\n\nDraft PR #255 is the direct #254 child and owns append-only sanitized retry/exhaustion outcome evidence. Migration `0009_plugin_delivery_attempt_outcome_record.sql` keeps provider payloads, response bodies, credentials, origin URI and network authority out of the ledger; `(delivery_id, attempt_number)` plus a bounded outcome discriminator and occurrence instant are retained as same-database lifecycle evidence. After the missing-table and claim-binding repairs, source-transition review proved and repaired direct forged INSERT. A subsequent append-only review found row-level UPDATE/DELETE immutability still allowed PostgreSQL `TRUNCATE` to erase accepted evidence. Regression `675460dbc0803e188b4d49aed43eb51f2a683cd8` plus verifier exact `f728835cbb57efb6840cd97f96d1e9ef392546c0`, run `34252044527`, job `102148573723`, passed checkout/PostgreSQL/frozen-install/format/build gates and failed at real PostgreSQL acceptance exactly because TRUNCATE succeeded while the other six focused outcome tests passed. Minimum migration-only repair `d731abda5da6931a684c73b2786a276c4288ab29` adds a statement-level `BEFORE TRUNCATE` guard that reuses the fixed SQLSTATE `55000` append-only rejection function. Exact run `34252162271`, job `102148973258`, completed GREEN with focused outcome acceptance 7/7, Integration typecheck and the complete Integration suite 434 passed / 3 environment-dependent skipped across 74 files (72 passed / 2 skipped). Current #255 exact `e201b649cdea7d50ee2b856ac98a01d2b6c1368e` removes only the purpose-complete truncation verifier after that proven head and remains active-PR evidence rather than protected shipped truth.\n\nIssue #130 remains **Partial**. Protected main does not yet contain this Vault/PostgreSQL/delivery-origin/delivery-attempt active stack. #252 establishes durable admission, #253 deterministic finite worker claim/lease, #254 claim-bound bounded retry/backoff and #255 append-only source-bound outcome evidence including UPDATE/DELETE/TRUNCATE mutation rejection. Dead-letter/pause/resume, the per-attempt revocation fence immediately before execution, operator-visible status, restart/recovery and provider execution remain successor work. No active LifeOS PR supplies complete host-authorized outbound HTTPS. Fresh `ContextualWisdomLab/EgressWeave` release inventory is empty, so the network boundary remains fail closed rather than consuming mutable sibling source. Durable origin/delivery/claim/retry/outcome identity is not network authorization. Manifests and stored installations never self-authorize network capabilities.'''
+          path.write_text(text[:a] + replacement + text[b:])
+          PY
+          git diff --check
+          test "$(git diff --name-only | tr '\n' ' ')" = "ARCHITECTURE.md "
+
+      - name: Retire writer and publish ordinary descendant
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/${BRANCH_NAME}" | cut -f1)"
+          test "${remote_head}" = "${EXPECTED_HEAD}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ARCHITECTURE.md
+          git rm .github/workflows/write-plugin-outcome-truncate-architecture-currentness.yml
+          git commit -m 'docs: record outcome truncation architecture proof'
+          git push origin "HEAD:${BRANCH_NAME}"
