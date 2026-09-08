@@ -30,7 +30,9 @@ export interface PluginDeliveryAttemptExecutionFenceSqlClient {
 export class PluginDeliveryAttemptExecutionFencePersistenceValidationError extends Error {
   /** Creates a fixed input failure without reflecting command data. */
   constructor() {
-    super('Plugin delivery attempt execution fence persistence input is invalid');
+    super(
+      'Plugin delivery attempt execution fence persistence input is invalid',
+    );
     this.name = 'PluginDeliveryAttemptExecutionFencePersistenceValidationError';
   }
 }
@@ -39,7 +41,9 @@ export class PluginDeliveryAttemptExecutionFencePersistenceValidationError exten
 export class PluginDeliveryAttemptExecutionFencePersistenceEvidenceError extends Error {
   /** Creates a fixed evidence failure without reflecting database detail. */
   constructor() {
-    super('Persisted plugin delivery attempt execution fence evidence is invalid');
+    super(
+      'Persisted plugin delivery attempt execution fence evidence is invalid',
+    );
     this.name = 'PluginDeliveryAttemptExecutionFencePersistenceEvidenceError';
   }
 }
