@@ -180,12 +180,16 @@ describeWithPostgres('plugin delivery-attempt claim lease PostgreSQL acceptance'
       );
     };
 
-    await expect(updateLease('2026-09-08T10:30:29.999Z')).rejects.toMatchObject({
+    await expect(
+      updateLease('2026-09-08T10:30:29.999Z'),
+    ).rejects.toMatchObject({
       code: '23514',
     });
 
     await prepareAttempt();
-    await expect(updateLease('2026-09-08T11:30:00.001Z')).rejects.toMatchObject({
+    await expect(
+      updateLease('2026-09-08T11:30:00.001Z'),
+    ).rejects.toMatchObject({
       code: '23514',
     });
   });
