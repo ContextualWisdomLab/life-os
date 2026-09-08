@@ -14,6 +14,9 @@ const INSTALLATION_ROUTE_PATTERN =
 /** Exact lowercase credential-revocation path; case variants are never aliases. */
 const CREDENTIAL_ROUTE_PATTERN =
   /^\/v1\/plugins\/credential-bindings\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/revoke$/u;
+/** Exact lowercase delivery-attempt status path; encoded or case aliases are never signed authority. */
+const DELIVERY_ATTEMPT_STATUS_ROUTE_PATTERN =
+  /^\/v1\/plugins\/delivery-attempts\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 /** Minimum UTF-8 verifier-key length required before any caller evidence is evaluated. */
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
 /** Maximum age of otherwise valid operator evidence before it is classified invalid. */
@@ -128,6 +131,16 @@ function requireOperatorRoute(
   ) {
     return Object.freeze({
       method: 'POST',
+      path: binding.path,
+    });
+  }
+  if (
+    binding.method === 'GET' &&
+    typeof binding.path === 'string' &&
+    DELIVERY_ATTEMPT_STATUS_ROUTE_PATTERN.test(binding.path)
+  ) {
+    return Object.freeze({
+      method: 'GET',
       path: binding.path,
     });
   }
