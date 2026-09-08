@@ -143,14 +143,14 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
 
   it('fails closed when the durable idempotency winner is absent, ambiguous, or corrupt', async () => {
     const resultCases = [
-      result([]),
-      result([row(), row()]),
-      result([row({ grant_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })]),
+      [result([]), result([])],
+      [result([row(), row()])],
+      [result([row({ grant_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })])],
     ];
 
-    for (const durableResult of resultCases) {
+    for (const durableResults of resultCases) {
       const store = new PostgresPluginDeliveryAttemptStore(
-        new ScriptedSqlClient([durableResult]),
+        new ScriptedSqlClient(durableResults),
       );
       await expect(store.createIfAbsent(RECORD)).rejects.toBeInstanceOf(
         PluginDeliveryAttemptPersistenceEvidenceError,
