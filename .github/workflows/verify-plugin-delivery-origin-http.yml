@@ -42,7 +42,24 @@ jobs:
       - name: Build Plugin SDK runtime dependency
         run: pnpm --filter @life-os/plugin-sdk build
 
-      - name: Run focused delivery-origin HTTP contract
+      - name: Prove exact parent HTTP RED
+        shell: bash
+        env:
+          PARENT_SHA: be4a209d56efe928c61d9d6cc3ce43a830fa2986
+        run: |
+          set -euo pipefail
+          git show "${PARENT_SHA}:apps/integration-service/src/main.ts" > apps/integration-service/src/main.ts
+          set +e
+          pnpm --filter @life-os/integration-service exec vitest run src/plugin-delivery-origin-http.integration.test.ts
+          red_status=$?
+          set -e
+          git checkout "${GITHUB_SHA}" -- apps/integration-service/src/main.ts
+          if [ "${red_status}" -eq 0 ]; then
+            echo "Expected exact parent ${PARENT_SHA} to fail the delivery-origin HTTP regression" >&2
+            exit 1
+          fi
+
+      - name: Run focused delivery-origin HTTP GREEN
         run: >-
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-delivery-origin-http.integration.test.ts
