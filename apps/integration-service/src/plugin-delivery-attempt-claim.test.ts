@@ -113,4 +113,33 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptClaimAuthorityError);
     expect(calls).toBe(0);
   });
+
+  it('collapses revoked durable claim evidence to the fixed authority error', async () => {
+    const revoked = Proxy.revocable(
+      {
+        authorityVersion: 'life-os.plugin-delivery-attempt-claim.v1' as const,
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        attemptNumber: 1,
+        claimedAt: CLAIMED_AT,
+        leaseExpiresAt: LEASE_EXPIRES_AT,
+      },
+      {},
+    );
+    const app = new PluginDeliveryAttemptClaimApplication(
+      { claimDue: async () => revoked.proxy },
+      () => new Date(CLAIMED_AT),
+      () => CLAIM_TOKEN,
+    );
+    revoked.revoke();
+
+    await expect(
+      app.claim(
+        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+        DELIVERY_ID,
+        60,
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptClaimAuthorityError);
+  });
 });
