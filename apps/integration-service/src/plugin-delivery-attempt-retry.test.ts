@@ -65,6 +65,34 @@ describe('PluginDeliveryAttemptRetryApplication', () => {
     ]);
   });
 
+  it('rejects terminal exhaustion evidence that cannot prove the retry budget was exhausted', async () => {
+    const app = new PluginDeliveryAttemptRetryApplication(
+      {
+        recordRetryableFailure: async () => ({
+          authorityVersion: 'life-os.plugin-delivery-attempt-retry.v1',
+          deliveryId: DELIVERY_ID,
+          workspaceId: WORKSPACE_ID,
+          requestedByUserId: USER_ID,
+          attemptNumber: 1,
+          deliveryStatus: 'failed',
+          occurredAt: OCCURRED_AT,
+          nextAttemptAt: null,
+          terminalAt: OCCURRED_AT,
+          outcomeCode: 'attempt_limit',
+        }),
+      },
+      () => new Date(OCCURRED_AT),
+    );
+
+    await expect(
+      app.recordRetryableFailure(
+        { workspaceId: WORKSPACE_ID, actorUserId: USER_ID },
+        DELIVERY_ID,
+        CLAIM_TOKEN,
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptRetryAuthorityError);
+  });
+
   it('fails closed when persistence rejects or no active claim is transitioned', async () => {
     for (const recordRetryableFailure of [
       async () => undefined,
