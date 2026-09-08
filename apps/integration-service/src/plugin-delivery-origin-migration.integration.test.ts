@@ -10,7 +10,9 @@ const MIGRATIONS = [
   '0002_plugin_credential_binding_record.sql',
   '0003_plugin_operator_context_replay_record.sql',
   '0004_plugin_delivery_origin_grant_record.sql',
-].map((name) => readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'));
+].map((name) =>
+  readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
+);
 
 interface SqlExecution {
   readonly status: number | null;
@@ -21,7 +23,9 @@ interface SqlExecution {
 /** Runs one isolated PostgreSQL client process against the disposable integration database. */
 function executeSql(sql: string): SqlExecution {
   if (!DATABASE_URL) {
-    throw new Error('A dedicated PostgreSQL integration test database URL is required');
+    throw new Error(
+      'A dedicated PostgreSQL integration test database URL is required',
+    );
   }
   const target = new URL(DATABASE_URL);
   const result = spawnSync(
@@ -49,14 +53,20 @@ function executeSql(sql: string): SqlExecution {
   if (result.error) {
     throw result.error;
   }
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 /** Applies fixed SQL while exposing only bounded diagnostics for failed test setup. */
 function requireSqlSuccess(sql: string): string {
   const result = executeSql(sql);
   if (result.status !== 0) {
-    throw new Error(`PostgreSQL test setup failed: ${result.stderr.slice(0, 500)}`);
+    throw new Error(
+      `PostgreSQL test setup failed: ${result.stderr.slice(0, 500)}`,
+    );
   }
   return result.stdout.trim();
 }
@@ -136,14 +146,20 @@ describeWithPostgres('plugin delivery-origin PostgreSQL lifecycle', () => {
         "'22222222-2222-4222-8222-222222222222'",
         "'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'",
       ),
-      'plugin_delivery_origin_installation_authority_fk',
+      'plugin_delivery_origin_active_installation_check',
     );
     expectSqlFailure(
-      GRANT_SQL.replace('https://api.example.com:8443', 'http://api.example.com'),
+      GRANT_SQL.replace(
+        'https://api.example.com:8443',
+        'http://api.example.com',
+      ),
       'plugin_delivery_origin_uri_format_check',
     );
     expectSqlFailure(
-      GRANT_SQL.replace('life-os.plugin-delivery-origin.v1', 'life-os.plugin-delivery-origin.v2'),
+      GRANT_SQL.replace(
+        'life-os.plugin-delivery-origin.v1',
+        'life-os.plugin-delivery-origin.v2',
+      ),
       'plugin_delivery_origin_authority_version_check',
     );
     expectSqlFailure(
