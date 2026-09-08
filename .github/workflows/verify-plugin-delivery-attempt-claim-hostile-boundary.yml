@@ -33,6 +33,8 @@ jobs:
           cache: pnpm
       - name: Install frozen dependency graph
         run: pnpm install --frozen-lockfile
+      - name: Build Plugin SDK runtime entry
+        run: pnpm --filter @life-os/plugin-sdk build
       - name: Check bounded source formatting
         run: pnpm exec prettier --single-quote --check apps/integration-service/src/plugin-delivery-attempt-claim-repository.ts apps/integration-service/src/plugin-delivery-attempt-claim-repository.test.ts
       - name: Check diff hygiene
