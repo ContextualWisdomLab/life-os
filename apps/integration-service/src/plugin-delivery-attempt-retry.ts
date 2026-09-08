@@ -133,7 +133,9 @@ function retryAt(occurredAt: string, attemptNumber: number): string {
     MAXIMUM_BACKOFF_SECONDS,
   );
   return requireInstant(
-    new Date(new Date(occurredAt).getTime() + delaySeconds * 1_000).toISOString(),
+    new Date(
+      new Date(occurredAt).getTime() + delaySeconds * 1_000,
+    ).toISOString(),
   );
 }
 
