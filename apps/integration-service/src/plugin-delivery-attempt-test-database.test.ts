@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parsePluginDeliveryAttemptTestDatabaseTarget,
-} from './plugin-delivery-attempt-test-database';
+import { parsePluginDeliveryAttemptTestDatabaseTarget } from './plugin-delivery-attempt-test-database';
 
 describe('parsePluginDeliveryAttemptTestDatabaseTarget', () => {
   it('accepts explicit local disposable PostgreSQL targets', () => {
