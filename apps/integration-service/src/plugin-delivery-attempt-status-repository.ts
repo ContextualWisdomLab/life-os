@@ -189,7 +189,11 @@ function oneOrUndefined<Row>(
 function validateCommand(
   command: PluginDeliveryAttemptStatusCommand,
 ): PluginDeliveryAttemptStatusCommand {
-  if (command === null || typeof command !== 'object' || Array.isArray(command)) {
+  if (
+    command === null ||
+    typeof command !== 'object' ||
+    Array.isArray(command)
+  ) {
     return invalidInput();
   }
   const snapshot = (() => {
@@ -349,7 +353,9 @@ function parseRow(
   rowValue: unknown,
   command: PluginDeliveryAttemptStatusCommand,
 ): PluginDeliveryAttemptStatusEvidence {
-  const row = requireObject(rowValue) as unknown as PluginDeliveryAttemptStatusRow;
+  const row = requireObject(
+    rowValue,
+  ) as unknown as PluginDeliveryAttemptStatusRow;
   const snapshot = boundedEvidenceRead(() => ({
     authorityVersion: row.authority_version,
     deliveryId: row.delivery_id,
@@ -450,9 +456,7 @@ function parseRow(
 }
 
 /** PostgreSQL adapter for exact scoped, credential-free delivery status reads. */
-export class PostgresPluginDeliveryAttemptStatusStore
-  implements PluginDeliveryAttemptStatusStore
-{
+export class PostgresPluginDeliveryAttemptStatusStore implements PluginDeliveryAttemptStatusStore {
   /** Creates the store over a bounded parameterized SQL client. */
   constructor(private readonly client: PluginDeliveryAttemptStatusSqlClient) {}
 

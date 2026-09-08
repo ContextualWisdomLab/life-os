@@ -218,7 +218,11 @@ function requireEvidence(
     MINIMUM_ATTEMPTS,
     MAXIMUM_ATTEMPTS,
   );
-  const attemptCount = requireSmallInteger(snapshot.attemptCount, 0, maxAttempts);
+  const attemptCount = requireSmallInteger(
+    snapshot.attemptCount,
+    0,
+    maxAttempts,
+  );
   const controlSequence = requireSmallInteger(
     snapshot.controlSequence,
     0,
