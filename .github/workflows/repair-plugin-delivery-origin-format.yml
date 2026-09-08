@@ -1,0 +1,88 @@
+name: Repair Plugin Delivery Origin Formatting
+
+on:
+  push:
+    branches: [feat/plugin-delivery-origin-operator-v2]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-plugin-delivery-origin-format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair-prove-and-retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact contributor head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply bounded canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts
+          pnpm exec prettier --single-quote --check \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            apps/integration-service/src/plugin-operator-delivery-origin.test.ts
+          git diff --check
+          actual="$(git diff --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+
+      - name: Run focused delivery-origin operator contract
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-operator-delivery-origin.test.ts
+
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration service suite
+        run: pnpm --filter @life-os/integration-service test
+
+      - name: Publish proved formatting repair and retire purpose workflows
+        shell: bash
+        env:
+          TARGET_BRANCH: feat/plugin-delivery-origin-operator-v2
+        run: |
+          set -euo pipefail
+          git rm \
+            .github/workflows/prove-plugin-delivery-origin-operator-green.yml \
+            .github/workflows/repair-plugin-delivery-origin-format.yml
+          git add \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts
+          actual="$(git diff --cached --name-only | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/prove-plugin-delivery-origin-operator-green.yml \
+            .github/workflows/repair-plugin-delivery-origin-format.yml \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(integration): format delivery-origin composition"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
