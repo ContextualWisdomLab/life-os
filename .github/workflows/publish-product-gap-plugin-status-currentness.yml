@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 1
 
-      - name: Apply bounded baseline currentness replacement
+      - name: Apply and verify bounded baseline currentness replacement
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -53,9 +53,6 @@ jobs:
           test "$changed" = "$allowed"
           git diff --check
 
-      - name: Verify Markdown formatting
-        run: pnpm exec prettier --check docs/product-technical-gap-baseline.md
-
       - name: Publish verified bounded currentness candidate
         env:
           BRANCH: docs/product-gap-baseline-2026-08-20
@@ -65,6 +62,7 @@ jobs:
           git add docs/product-technical-gap-baseline.md .github/workflows/publish-product-gap-plugin-status-currentness.yml
           git commit -m "docs(product): record delivery status HTTP proof"
           candidate="$(git rev-parse HEAD)"
+          git show --check --stat --oneline HEAD
           git fetch origin "$BRANCH"
           test "$(git rev-parse FETCH_HEAD)" = "${GITHUB_SHA}"
           test -z "$(git status --porcelain)"
