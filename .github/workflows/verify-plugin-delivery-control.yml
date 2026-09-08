@@ -6,7 +6,7 @@ on:
       - feat/plugin-delivery-attempt-control-v1
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: verify-plugin-delivery-control-${{ github.ref }}
@@ -35,7 +35,7 @@ jobs:
       - name: Checkout exact pushed head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
+          persist-credentials: true
           fetch-depth: 2
           ref: ${{ github.sha }}
 
@@ -68,33 +68,27 @@ jobs:
           src/plugin-delivery-attempt-control.test.ts
           --no-file-parallelism
 
-      - name: Prove pause and resume persistence
-        run: >-
-          pnpm --filter @life-os/integration-service exec vitest run
-          src/plugin-delivery-attempt-control.integration.test.ts
-          -t 'durably pauses and resumes'
-          --no-file-parallelism
-
-      - name: Prove active-claim exclusion
-        run: >-
-          pnpm --filter @life-os/integration-service exec vitest run
-          src/plugin-delivery-attempt-control.integration.test.ts
-          -t 'does not let pause steal'
-          --no-file-parallelism
-
-      - name: Prove terminal dead-letter persistence
-        run: >-
-          pnpm --filter @life-os/integration-service exec vitest run
-          src/plugin-delivery-attempt-control.integration.test.ts
-          -t 'dead-letters only real retry exhaustion'
-          --no-file-parallelism
-
-      - name: Prove control evidence immutability
-        run: >-
-          pnpm --filter @life-os/integration-service exec vitest run
-          src/plugin-delivery-attempt-control.integration.test.ts
-          -t 'rejects forged and mutable control evidence'
-          --no-file-parallelism
+      - name: Capture pause and resume persistence failure once
+        run: |
+          set +e
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-delivery-attempt-control.integration.test.ts \
+            -t 'durably pauses and resumes' \
+            --no-file-parallelism > /tmp/plugin-delivery-control-pause.txt 2>&1
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            mkdir -p .github/diagnostics
+            tail -n 200 /tmp/plugin-delivery-control-pause.txt \
+              | sed 's/postgresql:\/\/postgres:postgres@127\.0\.0\.1:5432\/life_os_integration_test?sslmode=disable/[REDACTED_TEST_DATABASE_URL]/g' \
+              > .github/diagnostics/plugin-delivery-control-pause.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add .github/diagnostics/plugin-delivery-control-pause.txt
+            git commit -m 'test(integration): capture delivery control failure evidence'
+            git push origin HEAD:${GITHUB_REF_NAME}
+            exit "$status"
+          fi
 
       - name: Run combined delivery control PostgreSQL acceptance
         run: >-
