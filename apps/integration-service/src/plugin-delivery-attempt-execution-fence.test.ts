@@ -26,9 +26,7 @@ class FakeStore implements PluginDeliveryAttemptExecutionFenceStore {
 
   constructor(
     private readonly result:
-      | PluginDeliveryAttemptExecutionFenceEvidence
-      | undefined
-      | Error,
+      PluginDeliveryAttemptExecutionFenceEvidence | undefined | Error,
   ) {}
 
   async check(
@@ -88,9 +86,9 @@ describe('PluginDeliveryAttemptExecutionFenceApplication', () => {
       () => new Date(CHECKED_AT),
     );
 
-    await expect(app.check(context(), DELIVERY_ID, CLAIM_TOKEN)).rejects.toEqual(
-      new PluginDeliveryAttemptExecutionFenceAuthorityError(),
-    );
+    await expect(
+      app.check(context(), DELIVERY_ID, CLAIM_TOKEN),
+    ).rejects.toEqual(new PluginDeliveryAttemptExecutionFenceAuthorityError());
   });
 
   it('collapses dependency rejection without reflecting backend detail', async () => {
@@ -99,8 +97,8 @@ describe('PluginDeliveryAttemptExecutionFenceApplication', () => {
       () => new Date(CHECKED_AT),
     );
 
-    await expect(app.check(context(), DELIVERY_ID, CLAIM_TOKEN)).rejects.toEqual(
-      new PluginDeliveryAttemptExecutionFenceAuthorityError(),
-    );
+    await expect(
+      app.check(context(), DELIVERY_ID, CLAIM_TOKEN),
+    ).rejects.toEqual(new PluginDeliveryAttemptExecutionFenceAuthorityError());
   });
 });
