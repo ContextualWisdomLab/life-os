@@ -9,6 +9,63 @@ CREATE TABLE IF NOT EXISTS plugin_integration.plugin_delivery_attempt_outcome_re
   PRIMARY KEY (delivery_id, attempt_number)
 );
 
+CREATE OR REPLACE FUNCTION plugin_integration.require_plugin_delivery_attempt_outcome_source_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF pg_trigger_depth() < 2 THEN
+    RAISE EXCEPTION 'plugin_delivery_attempt_outcome_source_transition_check'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'plugin_delivery_attempt_outcome_source_transition_check';
+  END IF;
+
+  PERFORM 1
+  FROM plugin_integration.plugin_delivery_attempt_record AS attempt
+  WHERE attempt.delivery_id = NEW.delivery_id
+    AND attempt.attempt_count = NEW.attempt_number
+    AND attempt.last_outcome_code = NEW.outcome_code
+    AND attempt.updated_at = NEW.occurred_at
+    AND attempt.claim_token_digest IS NULL
+    AND attempt.claim_started_at IS NULL
+    AND attempt.claim_expires_at IS NULL
+    AND (
+      (
+        NEW.outcome_code = 'retryable_failure'
+        AND attempt.delivery_status = 'pending'
+        AND attempt.attempt_count < attempt.max_attempts
+        AND attempt.next_attempt_at IS NOT NULL
+        AND attempt.terminal_at IS NULL
+      )
+      OR
+      (
+        NEW.outcome_code = 'attempt_limit'
+        AND attempt.delivery_status = 'failed'
+        AND attempt.attempt_count = attempt.max_attempts
+        AND attempt.next_attempt_at IS NULL
+        AND attempt.terminal_at = attempt.updated_at
+      )
+    )
+  FOR SHARE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'plugin_delivery_attempt_outcome_source_transition_check'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'plugin_delivery_attempt_outcome_source_transition_check';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS plugin_delivery_attempt_outcome_source_transition
+  ON plugin_integration.plugin_delivery_attempt_outcome_record;
+
+CREATE TRIGGER plugin_delivery_attempt_outcome_source_transition
+BEFORE INSERT ON plugin_integration.plugin_delivery_attempt_outcome_record
+FOR EACH ROW
+EXECUTE FUNCTION plugin_integration.require_plugin_delivery_attempt_outcome_source_transition();
+
 CREATE OR REPLACE FUNCTION plugin_integration.record_plugin_delivery_attempt_outcome()
 RETURNS trigger
 LANGUAGE plpgsql
