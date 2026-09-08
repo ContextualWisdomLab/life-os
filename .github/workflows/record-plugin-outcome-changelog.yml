@@ -1,0 +1,63 @@
+name: Record plugin outcome changelog
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-outcome-ledger-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: record-plugin-outcome-changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  record:
+    if: github.event.head_commit.message == 'docs(changelog): stage plugin outcome record'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact staging head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+          fetch-depth: 2
+          ref: ${{ github.sha }}
+
+      - name: Record bounded changelog delta and retire writer
+        shell: bash
+        env:
+          BRANCH: feat/plugin-delivery-attempt-outcome-ledger-v1
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch origin "$BRANCH"
+          test "$(git rev-parse "origin/$BRANCH")" = "$EXPECTED_HEAD"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('CHANGELOG.md')
+          text = path.read_text()
+          marker = '### Added\n\n'
+          bullet = (
+              '- Integration-owned plugin delivery attempts now append sanitized retry/exhaustion outcome evidence '
+              'in the same PostgreSQL transaction that consumes the exact worker claim; the durable ledger is '
+              'UPDATE/DELETE-immutable and rejects attempt-number changes or outcome timestamps outside the '
+              'consumed claim window.\n'
+          )
+          if bullet not in text:
+              if text.count(marker) != 1:
+                  raise SystemExit('expected one Unreleased Added section')
+              text = text.replace(marker, marker + bullet, 1)
+              path.write_text(text)
+          PY
+          git rm .github/workflows/record-plugin-outcome-changelog.yml
+          git diff --check
+          git config user.name "LifeOS commercial-development writer"
+          git config user.email "actions@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): record plugin outcome ledger"
+          git fetch origin "$BRANCH"
+          test "$(git rev-parse "origin/$BRANCH")" = "$EXPECTED_HEAD"
+          git push origin "HEAD:$BRANCH"
