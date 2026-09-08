@@ -119,10 +119,9 @@ async function prepareAttempt(maxAttempts = 2): Promise<void> {
   );
 }
 
-async function consumeClaim(occurredAt: string): Promise<void> {
+async function claimAttempt(): Promise<void> {
   const client = new PoolSqlClient(pool);
   const claims = new PostgresPluginDeliveryAttemptClaimStore(client);
-  const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
 
   await claims.claimDue({
     deliveryId: DELIVERY_ID,
@@ -132,6 +131,13 @@ async function consumeClaim(occurredAt: string): Promise<void> {
     claimedAt: '2026-09-08T13:00:00.000Z',
     leaseExpiresAt: '2026-09-08T13:01:00.000Z',
   });
+}
+
+async function consumeClaim(occurredAt: string): Promise<void> {
+  const client = new PoolSqlClient(pool);
+  const retries = new PostgresPluginDeliveryAttemptRetryStore(client);
+
+  await claimAttempt();
   await retries.recordRetryableFailure({
     deliveryId: DELIVERY_ID,
     workspaceId: WORKSPACE_ID,
@@ -216,5 +222,51 @@ describeWithPostgres('plugin delivery append-only outcome acceptance', () => {
     ).rejects.toMatchObject({ code: '55000' });
 
     expect(await readOutcomes()).toHaveLength(1);
+  });
+
+  it('rejects an outcome transition that changes the claimed attempt number', async () => {
+    await prepareAttempt(3);
+    await claimAttempt();
+
+    await expect(
+      pool.query(
+        `UPDATE plugin_integration.plugin_delivery_attempt_record
+            SET attempt_count = attempt_count + 1,
+                updated_at = '2026-09-08T13:00:10.000Z',
+                next_attempt_at = '2026-09-08T13:00:40.000Z',
+                last_outcome_code = 'retryable_failure',
+                claim_token_digest = NULL,
+                claim_started_at = NULL,
+                claim_expires_at = NULL
+          WHERE delivery_id = $1::uuid`,
+        [DELIVERY_ID],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'plugin_delivery_attempt_outcome_claim_transition_check',
+    });
+    expect(await readOutcomes()).toHaveLength(0);
+  });
+
+  it('rejects an outcome timestamp before the consumed claim began', async () => {
+    await claimAttempt();
+
+    await expect(
+      pool.query(
+        `UPDATE plugin_integration.plugin_delivery_attempt_record
+            SET updated_at = '2026-09-08T12:59:59.000Z',
+                next_attempt_at = '2026-09-08T13:00:29.000Z',
+                last_outcome_code = 'retryable_failure',
+                claim_token_digest = NULL,
+                claim_started_at = NULL,
+                claim_expires_at = NULL
+          WHERE delivery_id = $1::uuid`,
+        [DELIVERY_ID],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'plugin_delivery_attempt_outcome_claim_transition_check',
+    });
+    expect(await readOutcomes()).toHaveLength(0);
   });
 });
