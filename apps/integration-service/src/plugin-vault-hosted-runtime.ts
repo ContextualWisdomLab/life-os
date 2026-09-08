@@ -1,5 +1,7 @@
 import { PluginInstallationApplication } from './plugin-installation';
 import { PostgresPluginInstallationStore } from './plugin-installation-repository';
+import { PluginDeliveryOriginAuthority } from './plugin-delivery-origin-authority';
+import { PostgresPluginDeliveryOriginGrantStore } from './plugin-delivery-origin-repository';
 import { PostgresPluginCredentialBindingStore } from './plugin-credential-repository';
 import { PostgresPluginOperatorReplayGuard } from './plugin-operator-replay';
 import type { PluginOperatorApplication } from './plugin-operator-application';
@@ -150,10 +152,10 @@ async function closePool(pool: PluginHostedPostgresPool): Promise<void> {
  * Builds the hosted Plugin authority over one service-owned PostgreSQL pool.
  *
  * `INTEGRATION_DATABASE_URL` is the only accepted persistence authority. The same
- * pool backs installation lifecycle, credential metadata, and one-time operator
- * replay evidence, preventing cross-service SQL ownership or independent pool
- * lifecycles for one bounded context. Vault/operator composition happens only
- * after the pool and all three Integration-owned adapters exist. If subsequent
+ * pool backs installation lifecycle, delivery-origin grants, credential metadata,
+ * and one-time operator replay evidence, preventing cross-service SQL ownership or
+ * independent pool lifecycles for one bounded context. Vault/operator composition
+ * happens only after the pool and all Integration-owned adapters exist. If later
  * composition fails, the newly acquired pool is closed before the fixed startup
  * failure is returned.
  *
@@ -190,13 +192,16 @@ export async function createPluginVaultHostedRuntime(
   }
 
   try {
-    const installations = new PluginInstallationApplication(
-      new PostgresPluginInstallationStore(candidate),
+    const installationStore = new PostgresPluginInstallationStore(candidate);
+    const installations = new PluginInstallationApplication(installationStore);
+    const deliveryOrigins = new PluginDeliveryOriginAuthority(
+      new PostgresPluginDeliveryOriginGrantStore(candidate),
+      installationStore,
     );
     const bindingStore = new PostgresPluginCredentialBindingStore(candidate);
     const replayGuard = new PostgresPluginOperatorReplayGuard(candidate);
     const operator = createPluginVaultOperatorApplication(
-      { installations, bindingStore, replayGuard },
+      { installations, bindingStore, replayGuard, deliveryOrigins },
       environment,
     );
 
