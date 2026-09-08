@@ -1,0 +1,72 @@
+name: Refresh LifeOS Integration gap currentness
+
+on:
+  push:
+    branches: [docs/product-gap-baseline-2026-08-20]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-lifeos-gap-baseline-integration-currentness
+  cancel-in-progress: true
+
+jobs:
+  refresh-and-retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact documentation head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Refresh bounded Integration currentness block
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/product-technical-gap-baseline.md')
+          text = path.read_text(encoding='utf-8')
+          start_marker = '> **Currentness override — 2026-09-08 delivery-origin operator and HTTP transport.**'
+          end_marker = '\n## Canonical architecture and evidence rules'
+          if text.count(start_marker) != 1 or text.count(end_marker) != 1:
+              raise SystemExit('baseline currentness markers are not unique')
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''> **Currentness override — 2026-09-08 Integration delivery authority.** Draft #250 is exact `be4a209d56efe928c61d9d6cc3ce43a830fa2986`, stacked on #245. Hosted verifier run `34182864012`, job `101925292293`, passed canonical formatting, focused delivery-origin contract, Integration typecheck, Plugin SDK build, and the complete Integration suite on predecessor `2459058f2b84c19d9bc74604474483a64bec93ef`; its retention descendant removes only the purpose-complete verifier. Draft #251 is stacked exactly on #250 and current at `5641005c5ed0193b6206848f9c4c807050271ef7`. Hosted run `34186936889`, job `101937064591`, first proved the exact parent lacks the HTTP routes and then proved the pre-repair percent-encoded raw-route/HMAC alias defect. Its minimum transport repair compares the server-observed raw method and URL byte-for-byte with each canonical signed plugin-operator route before decoded parameters can reach durable authority. Focused real-HTTP GREEN passed 2 files / 4 tests, Integration typecheck passed, and the complete Integration suite passed 59 files / 376 tests with 5 files / 17 environment-dependent tests skipped; the same successful run ordinary-pushed the retained source and removed only its verifier. Draft #252 is a separate durable-delivery-attempt admission slice based directly on #245, not on mutable HTTP transport. Its current head is `41e8df4a3dbd42795adea4209e8d452294322f1e`; exact-head verifier run `34189756254`, job `101945221002`, is queued at this evidence point. The immediately preceding #252 run proved both committed regression lanes but failed at verifier formatting because five owned TypeScript files were noncanonical and the harness incorrectly passed migration SQL to Prettier. Commit `41e8df4...` repairs only that verification lane: it bounds Prettier to the five TypeScript files, ordinary-publishes a formatting descendant if needed, requires a fresh exact-head run, then retains focused PostgreSQL/application GREEN, Integration typecheck, complete-suite acceptance, and self-retirement. Queue state is not GREEN. Neither #250, #251 nor #252 authorizes outbound HTTPS; durable origin or attempt identity remains distinct from connect-time egress authorization, which must consume immutable released owner authority rather than copied mutable sibling source.
+'''
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Publish baseline refresh and retire writer
+        shell: bash
+        env:
+          TARGET_BRANCH: docs/product-gap-baseline-2026-08-20
+        run: |
+          set -euo pipefail
+          git add docs/product-technical-gap-baseline.md
+          git rm .github/workflows/refresh-lifeos-gap-baseline-integration-currentness.yml
+          mapfile -t actual < <(git diff --cached --name-only | sort)
+          expected=(
+            .github/workflows/refresh-lifeos-gap-baseline-integration-currentness.yml
+            docs/product-technical-gap-baseline.md
+          )
+          if [ "${#actual[@]}" -ne "${#expected[@]}" ]; then
+            printf 'Unexpected staged paths:\n%s\n' "${actual[*]}" >&2
+            exit 1
+          fi
+          for index in "${!expected[@]}"; do
+            if [ "${actual[$index]}" != "${expected[$index]}" ]; then
+              printf 'Unexpected staged paths:\n%s\n' "${actual[*]}" >&2
+              exit 1
+            fi
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(product): refresh Integration gap currentness"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
