@@ -121,4 +121,104 @@ describe('plugin delivery attempt admission', () => {
       }),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
   });
+
+  it('bounds throwing trusted-context access before origin or persistence authority', async () => {
+    const createIfAbsent = vi.fn();
+    const getGrant = vi.fn();
+    const hostileContext = {
+      get workspaceId(): never {
+        throw new Error('trusted-context accessor fixture detail');
+      },
+      actorUserId: CONTEXT.actorUserId,
+    };
+    const application = new PluginDeliveryAttemptApplication(
+      { createIfAbsent },
+      { getGrant },
+      () => NOW,
+    );
+
+    await expect(
+      application.schedule(hostileContext, INSTALLATION_ID, {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    expect(getGrant).not.toHaveBeenCalled();
+    expect(createIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it('bounds throwing request access before origin or persistence authority', async () => {
+    const createIfAbsent = vi.fn();
+    const getGrant = vi.fn();
+    const hostileInput = {
+      deliveryId: DELIVERY_ID,
+      grantId: GRANT_ID,
+      get maxAttempts(): never {
+        throw new Error('request accessor fixture detail');
+      },
+    };
+    const application = new PluginDeliveryAttemptApplication(
+      { createIfAbsent },
+      { getGrant },
+      () => NOW,
+    );
+
+    await expect(
+      application.schedule(CONTEXT, INSTALLATION_ID, hostileInput),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    expect(getGrant).not.toHaveBeenCalled();
+    expect(createIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it('bounds throwing origin evidence before persistence authority', async () => {
+    const createIfAbsent = vi.fn();
+    const hostileGrant = {
+      ...activeGrant(),
+      get status(): never {
+        throw new Error('origin accessor fixture detail');
+      },
+    } as unknown as PluginDeliveryOriginGrantRecord;
+    const application = new PluginDeliveryAttemptApplication(
+      { createIfAbsent },
+      { getGrant: vi.fn(async () => hostileGrant) },
+      () => NOW,
+    );
+
+    await expect(
+      application.schedule(CONTEXT, INSTALLATION_ID, {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    expect(createIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it('bounds throwing durable attempt evidence after persistence I/O', async () => {
+    const createIfAbsent = vi.fn(async (record: PluginDeliveryAttemptRecord) => {
+      const hostile = { ...record };
+      Object.defineProperty(hostile, 'status', {
+        enumerable: true,
+        get(): never {
+          throw new Error('durable attempt accessor fixture detail');
+        },
+      });
+      return hostile as PluginDeliveryAttemptRecord;
+    });
+    const application = new PluginDeliveryAttemptApplication(
+      { createIfAbsent },
+      { getGrant: vi.fn(async () => activeGrant()) },
+      () => NOW,
+    );
+
+    await expect(
+      application.schedule(CONTEXT, INSTALLATION_ID, {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    expect(createIfAbsent).toHaveBeenCalledTimes(1);
+  });
 });
