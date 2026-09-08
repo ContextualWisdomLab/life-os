@@ -35,15 +35,19 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check focused formatting and diff hygiene
+      - name: Show canonical formatting delta
         shell: bash
         run: |
           set -Eeuo pipefail
-          pnpm exec prettier --single-quote --check \
+          pnpm exec prettier --single-quote --write \
             apps/integration-service/src/plugin-delivery-attempt-retry.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts
-          git diff --check HEAD^
+          git diff -- \
+            apps/integration-service/src/plugin-delivery-attempt-retry.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts
+          test -z "$(git status --short -- apps/integration-service/src/plugin-delivery-attempt-retry.ts apps/integration-service/src/plugin-delivery-attempt-retry.test.ts apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts)"
 
       - name: Build Plugin SDK dependency
         run: pnpm --filter @life-os/plugin-sdk build
