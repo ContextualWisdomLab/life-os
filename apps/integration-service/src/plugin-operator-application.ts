@@ -87,7 +87,10 @@ export class PluginDeliveryOriginOperatorDependencyError extends Error {
 }
 
 /** Operator-selected installation fields; authenticated authority is never accepted from the body. */
-export type PluginOperatorInstallInput = Omit<InstallPluginInput, 'trustedContext'>;
+export type PluginOperatorInstallInput = Omit<
+  InstallPluginInput,
+  'trustedContext'
+>;
 
 /** Operator-selected credential fields; authenticated authority is never accepted from the body. */
 export type PluginOperatorCredentialInput = Omit<
@@ -122,7 +125,8 @@ export class PluginOperatorApplication {
     private readonly credentials: PluginCredentialOperatorPort | undefined,
     private readonly contextSecret: unknown,
     private readonly replayGuard: PluginOperatorReplayGuardPort | undefined,
-    private readonly nowSeconds: () => number = () => Math.floor(Date.now() / 1000),
+    private readonly nowSeconds: () => number = () =>
+      Math.floor(Date.now() / 1000),
     private readonly deliveryOrigins?: PluginDeliveryOriginOperatorPort,
   ) {}
 

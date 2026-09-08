@@ -81,14 +81,13 @@ function requireOperatorContextSecret(value: string): string {
 }
 
 /** Requires the installation port methods needed by operator, credential, and origin authority. */
-function requireInstallations(
-  value: unknown,
-): PluginInstallationOperatorPort {
+function requireInstallations(value: unknown): PluginInstallationOperatorPort {
   if (
     value === null ||
     typeof value !== 'object' ||
     typeof (value as PluginInstallationOperatorPort).install !== 'function' ||
-    typeof (value as PluginInstallationOperatorPort).getInstallation !== 'function' ||
+    typeof (value as PluginInstallationOperatorPort).getInstallation !==
+      'function' ||
     typeof (value as PluginInstallationOperatorPort).revoke !== 'function'
   ) {
     return unavailable();
@@ -102,7 +101,8 @@ function requireBindingStore(value: unknown): PluginCredentialBindingStore {
     value === null ||
     typeof value !== 'object' ||
     typeof (value as PluginCredentialBindingStore).findById !== 'function' ||
-    typeof (value as PluginCredentialBindingStore).createIfAbsent !== 'function' ||
+    typeof (value as PluginCredentialBindingStore).createIfAbsent !==
+      'function' ||
     typeof (value as PluginCredentialBindingStore).revokeActive !== 'function'
   ) {
     return unavailable();
@@ -121,7 +121,8 @@ function requireDeliveryOrigins(
     value === null ||
     typeof value !== 'object' ||
     typeof (value as PluginDeliveryOriginOperatorPort).grant !== 'function' ||
-    typeof (value as PluginDeliveryOriginOperatorPort).getGrant !== 'function' ||
+    typeof (value as PluginDeliveryOriginOperatorPort).getGrant !==
+      'function' ||
     typeof (value as PluginDeliveryOriginOperatorPort).revoke !== 'function'
   ) {
     return unavailable();
