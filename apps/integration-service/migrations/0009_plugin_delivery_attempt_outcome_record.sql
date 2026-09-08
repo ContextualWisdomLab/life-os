@@ -9,6 +9,40 @@ CREATE TABLE IF NOT EXISTS plugin_integration.plugin_delivery_attempt_outcome_re
   PRIMARY KEY (delivery_id, attempt_number)
 );
 
+CREATE OR REPLACE FUNCTION plugin_integration.record_plugin_delivery_attempt_outcome()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.claim_token_digest IS NOT NULL
+     AND NEW.claim_token_digest IS NULL
+     AND NEW.last_outcome_code IN ('retryable_failure', 'attempt_limit') THEN
+    INSERT INTO plugin_integration.plugin_delivery_attempt_outcome_record (
+      authority_version,
+      delivery_id,
+      attempt_number,
+      outcome_code,
+      occurred_at
+    ) VALUES (
+      'life-os.plugin-delivery-attempt-outcome.v1',
+      NEW.delivery_id,
+      NEW.attempt_count,
+      NEW.last_outcome_code,
+      NEW.updated_at
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS plugin_delivery_attempt_outcome_record_transition
+  ON plugin_integration.plugin_delivery_attempt_record;
+
+CREATE TRIGGER plugin_delivery_attempt_outcome_record_transition
+AFTER UPDATE ON plugin_integration.plugin_delivery_attempt_record
+FOR EACH ROW
+EXECUTE FUNCTION plugin_integration.record_plugin_delivery_attempt_outcome();
+
 CREATE OR REPLACE FUNCTION plugin_integration.reject_plugin_delivery_attempt_outcome_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
