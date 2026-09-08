@@ -68,7 +68,7 @@ Nielsen, S., Cetin, E., Schwendeman, P., Sun, Q., Xu, J., & Tang, Y. (2026). *Le
 
 PostgreSQL Global Development Group. (2026). *PostgreSQL 18 documentation: Transaction isolation*. https://www.postgresql.org/docs/18/transaction-iso.html
 
-PostgreSQL Global Development Group. (2026, August 13). *PostgreSQL 18.6, 17.11, 16.15, 15.19, 14.24 and 19 Beta 3 released!*. https://www.postgresql.org/about/news/postgresql-186-1711-1615-1519-1424-and-19-beta-3-released/
+PostgreSQL Global Development Group. (2026, August 13). *PostgreSQL 18.6, 17.11, 16.15, 15.19, 14.24 and 19 Beta 3 released!*. https://www.postgresql.org/about/news/postgresql-186-1711-1615-1519-1424-and-19-beta-3-released-3365/
 
 Sakana AI. (2026, June 22). *Sakana Fugu: One model to command them all* [Product and technical release]. https://sakana.ai/fugu-release/
 
