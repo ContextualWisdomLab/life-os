@@ -177,7 +177,9 @@ describe('plugin delivery attempt admission', () => {
       { createIfAbsent },
       {
         getGrant: vi.fn(async () => {
-          throw new Error('origin repository credential fixture must never escape');
+          throw new Error(
+            'origin repository credential fixture must never escape',
+          );
         }),
       },
       () => NOW,
