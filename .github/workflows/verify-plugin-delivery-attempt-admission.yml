@@ -1,0 +1,113 @@
+name: Verify Plugin Delivery Attempt Admission
+
+on:
+  push:
+    branches: [feat/plugin-delivery-attempt-lifecycle-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-plugin-delivery-attempt-admission-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prove-and-retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: life_os_integration
+          POSTGRES_USER: life_os
+          POSTGRES_PASSWORD: life_os_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U life_os -d life_os_integration"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os_test@127.0.0.1:5432/life_os_integration
+    steps:
+      - name: Checkout exact contributor head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Plugin SDK runtime dependency
+        run: pnpm --filter @life-os/plugin-sdk build
+
+      - name: Prove delivery-attempt capability RED
+        shell: bash
+        env:
+          RED_SHA: 788873a413caa24fd4597d57dc29b4276d3f9ad9
+        run: |
+          set -euo pipefail
+          git checkout --detach "${RED_SHA}"
+          set +e
+          pnpm --filter @life-os/integration-service exec vitest run src/plugin-delivery-attempt.test.ts
+          red_status=$?
+          set -e
+          git checkout --detach "${GITHUB_SHA}"
+          if [ "${red_status}" -eq 0 ]; then
+            echo "Expected regression-only ${RED_SHA} to fail before delivery-attempt admission exists" >&2
+            exit 1
+          fi
+
+      - name: Verify canonical source formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/integration-service/src/plugin-delivery-attempt.ts
+          apps/integration-service/src/plugin-delivery-attempt.test.ts
+          apps/integration-service/src/plugin-delivery-attempt-repository.ts
+          apps/integration-service/src/plugin-delivery-attempt-repository.test.ts
+          apps/integration-service/src/plugin-delivery-attempt-migration.integration.test.ts
+          apps/integration-service/migrations/0006_plugin_delivery_attempt_record.sql
+
+      - name: Verify source diff hygiene
+        run: git diff --check
+
+      - name: Run focused delivery-attempt GREEN
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt.test.ts
+          src/plugin-delivery-attempt-repository.test.ts
+          src/plugin-delivery-attempt-migration.integration.test.ts
+
+      - name: Typecheck Integration service
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration service suite
+        run: pnpm --filter @life-os/integration-service test
+
+      - name: Retire purpose-complete verifier
+        shell: bash
+        env:
+          TARGET_BRANCH: feat/plugin-delivery-attempt-lifecycle-v1
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/verify-plugin-delivery-attempt-admission.yml
+          mapfile -t actual < <(git diff --cached --name-only | sort)
+          if [ "${#actual[@]}" -ne 1 ] || [ "${actual[0]}" != '.github/workflows/verify-plugin-delivery-attempt-admission.yml' ]; then
+            printf 'Unexpected staged paths:\n%s\n' "${actual[*]}" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci(integration): retire delivery attempt verifier"
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
