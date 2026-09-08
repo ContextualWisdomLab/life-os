@@ -3,6 +3,11 @@ name: Verify Plugin Delivery Attempt Review Repairs
 on:
   push:
     branches: [feat/plugin-delivery-attempt-lifecycle-v1]
+  # A bounded repair writer publishes with GITHUB_TOKEN; GitHub intentionally does
+  # not recursively start a second workflow from that push. Keep an explicit
+  # dispatch entry point so the exact repaired descendant can be proved without
+  # no-op source churn or a privileged token.
+  workflow_dispatch:
 
 permissions:
   contents: read
