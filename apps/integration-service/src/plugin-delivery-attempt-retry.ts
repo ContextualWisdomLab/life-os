@@ -191,6 +191,7 @@ function requireEvidence(
     }
   } else if (snapshot.deliveryStatus === 'failed') {
     if (
+      snapshot.attemptNumber !== MAXIMUM_ATTEMPTS ||
       snapshot.outcomeCode !== 'attempt_limit' ||
       snapshot.nextAttemptAt !== null ||
       requireInstant(snapshot.terminalAt) !== occurredAt
