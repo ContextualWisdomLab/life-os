@@ -79,14 +79,6 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
-function requireCanonicalUuidV4(value: unknown): string {
-  const canonical = requireUuidV4(value);
-  if (value !== canonical) {
-    return invalid();
-  }
-  return canonical;
-}
-
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -193,9 +185,9 @@ function requireEvidence(
 
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireCanonicalUuidV4(snapshot.deliveryId),
-    workspaceId: requireCanonicalUuidV4(snapshot.workspaceId),
-    requestedByUserId: requireCanonicalUuidV4(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     controlSequence: snapshot.controlSequence,
     controlCode: expectedCode,
     deliveryStatus: snapshot.deliveryStatus,
