@@ -1,0 +1,94 @@
+name: Verify Integration coverage
+
+on:
+  push:
+    branches: [test/integration-service-quality-gates-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-integration-coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Generate canonical lockfile delta
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm install --lockfile-only --no-frozen-lockfile
+          git diff --check
+
+      - name: Build exact candidate and run coverage gate
+        id: coverage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          if ! git diff --quiet -- pnpm-lock.yaml; then
+            git add pnpm-lock.yaml
+            git commit -m 'chore(integration): refresh coverage lockfile'
+          fi
+
+          candidate_sha="$(git rev-parse HEAD)"
+          echo "candidate_sha=${candidate_sha}" >> "$GITHUB_OUTPUT"
+          echo "Exact candidate: ${candidate_sha}"
+
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --single-quote --check \
+            apps/integration-service/package.json \
+            apps/integration-service/vitest.config.ts \
+            .github/workflows/verify-integration-coverage.yml
+          pnpm --filter @life-os/integration-service typecheck
+
+          set +e
+          pnpm --filter @life-os/integration-service test:coverage
+          coverage_status=$?
+          set -e
+          echo "coverage_status=${coverage_status}" >> "$GITHUB_OUTPUT"
+
+          remote_sha="$(git ls-remote origin refs/heads/test/integration-service-quality-gates-v1 | cut -f1)"
+          if [ "$remote_sha" != "$GITHUB_SHA" ]; then
+            echo "Remote branch moved from workflow input ${GITHUB_SHA} to ${remote_sha}; refusing publication." >&2
+            exit 1
+          fi
+          if [ "$candidate_sha" != "$GITHUB_SHA" ]; then
+            git push origin HEAD:refs/heads/test/integration-service-quality-gates-v1
+          fi
+
+          exit "$coverage_status"
+
+      - name: Retire purpose-complete verifier
+        if: steps.coverage.outcome == 'success'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remote_sha="$(git ls-remote origin refs/heads/test/integration-service-quality-gates-v1 | cut -f1)"
+          candidate_sha="${{ steps.coverage.outputs.candidate_sha }}"
+          if [ "$remote_sha" != "$candidate_sha" ]; then
+            echo "Remote branch moved from verified candidate ${candidate_sha} to ${remote_sha}; refusing retirement." >&2
+            exit 1
+          fi
+          git rm .github/workflows/verify-integration-coverage.yml
+          git commit -m 'ci(integration): retire coverage verifier'
+          git push origin HEAD:refs/heads/test/integration-service-quality-gates-v1
