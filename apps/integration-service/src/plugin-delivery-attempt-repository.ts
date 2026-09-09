@@ -16,6 +16,7 @@ export interface PluginDeliveryAttemptSqlResult<Row> {
 
 /** Minimal fixed-query SQL authority required by the delivery-attempt store. */
 export interface PluginDeliveryAttemptSqlClient {
+  /** Executes one parameterized delivery-attempt statement without exposing connection authority. */
   query<Row>(
     text: string,
     values?: readonly unknown[],
@@ -40,6 +41,7 @@ export class PluginDeliveryAttemptPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw Integration-owned delivery-attempt row before durable evidence validation. */
 interface PluginDeliveryAttemptRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -57,14 +59,26 @@ interface PluginDeliveryAttemptRow {
   last_outcome_code: unknown;
 }
 
+/** Throws the fixed request-bound persistence validation error. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptPersistenceValidationError();
 }
 
+/** Throws the fixed durable-evidence persistence error. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptPersistenceEvidenceError();
 }
 
+/** Converts hostile synchronous command reads into the fixed input error. */
+function boundedInputRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidInput();
+  }
+}
+
+/** Converts hostile synchronous durable reads into the fixed evidence error. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -73,6 +87,18 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Converts rejected SQL dependency calls into the fixed durable-evidence error. */
+async function boundedEvidenceDependency<T>(
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    return invalidEvidence();
+  }
+}
+
+/** Requires one UUIDv4 input identifier and returns its canonical lowercase form. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -80,6 +106,7 @@ function requireInputUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires one canonical lowercase UUIDv4 from durable storage. */
 function requireStoredUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -91,6 +118,7 @@ function requireStoredUuid(value: unknown): string {
   return canonical;
 }
 
+/** Requires one exact canonical UTC instant from request authority. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -102,6 +130,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes a PostgreSQL Date/string instant or rejects malformed storage evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -119,6 +148,7 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Requires one bounded integer, selecting the correct fixed error authority. */
 function requireSmallInteger(
   value: unknown,
   minimum: number,
@@ -136,49 +166,77 @@ function requireSmallInteger(
   return value;
 }
 
+/** Admits only zero or one unambiguous row from a bounded SQL result envelope. */
 function oneOrUndefined<Row>(
   result: PluginDeliveryAttemptSqlResult<Row>,
 ): Row | undefined {
-  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+  if (result === null || typeof result !== 'object') {
+    return invalidEvidence();
+  }
+  if (boundedEvidenceRead(() => Array.isArray(result))) {
     return invalidEvidence();
   }
   const [rows, rowCount] = boundedEvidenceRead(
     () => [result.rows, result.rowCount] as const,
   );
+  if (!boundedEvidenceRead(() => Array.isArray(rows))) {
+    return invalidEvidence();
+  }
+  const rowsLength = boundedEvidenceRead(() => rows.length);
   if (
-    !Array.isArray(rows) ||
     typeof rowCount !== 'number' ||
     !Number.isInteger(rowCount) ||
     rowCount < 0 ||
-    rowCount !== rows.length ||
-    rows.length > 1
+    rowCount !== rowsLength ||
+    rowsLength > 1
   ) {
     return invalidEvidence();
   }
-  if (rows.length === 1 && rows[0] === undefined) {
-    return invalidEvidence();
+  if (rowsLength === 0) {
+    return undefined;
   }
-  return rows[0];
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
+/** Snapshots and validates one pending-attempt admission before SQL authority is exercised. */
 function validateCreate(
   record: PluginDeliveryAttemptRecord,
 ): PluginDeliveryAttemptRecord {
-  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+  if (record === null || typeof record !== 'object') {
     return invalidInput();
   }
+  if (boundedInputRead(() => Array.isArray(record))) {
+    return invalidInput();
+  }
+  const snapshot = boundedInputRead(() => ({
+    authorityVersion: record.authorityVersion,
+    deliveryId: record.deliveryId,
+    grantId: record.grantId,
+    installationId: record.installationId,
+    workspaceId: record.workspaceId,
+    requestedByUserId: record.requestedByUserId,
+    status: record.status,
+    attemptCount: record.attemptCount,
+    maxAttempts: record.maxAttempts,
+    requestedAt: record.requestedAt,
+    updatedAt: record.updatedAt,
+    nextAttemptAt: record.nextAttemptAt,
+    terminalAt: record.terminalAt,
+    lastOutcomeCode: record.lastOutcomeCode,
+  }));
   if (
-    record.authorityVersion !== AUTHORITY_VERSION ||
-    record.status !== 'pending' ||
-    record.attemptCount !== 0 ||
-    record.terminalAt !== null ||
-    record.lastOutcomeCode !== null
+    snapshot.authorityVersion !== AUTHORITY_VERSION ||
+    snapshot.status !== 'pending' ||
+    snapshot.attemptCount !== 0 ||
+    snapshot.terminalAt !== null ||
+    snapshot.lastOutcomeCode !== null
   ) {
     return invalidInput();
   }
-  const requestedAt = requireInputInstant(record.requestedAt);
-  const updatedAt = requireInputInstant(record.updatedAt);
-  const nextAttemptAt = requireInputInstant(record.nextAttemptAt);
+  const requestedAt = requireInputInstant(snapshot.requestedAt);
+  const updatedAt = requireInputInstant(snapshot.updatedAt);
+  const nextAttemptAt = requireInputInstant(snapshot.nextAttemptAt);
   if (
     new Date(updatedAt).getTime() < new Date(requestedAt).getTime() ||
     new Date(nextAttemptAt).getTime() < new Date(requestedAt).getTime()
@@ -187,14 +245,14 @@ function validateCreate(
   }
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireInputUuid(record.deliveryId),
-    grantId: requireInputUuid(record.grantId),
-    installationId: requireInputUuid(record.installationId),
-    workspaceId: requireInputUuid(record.workspaceId),
-    requestedByUserId: requireInputUuid(record.requestedByUserId),
+    deliveryId: requireInputUuid(snapshot.deliveryId),
+    grantId: requireInputUuid(snapshot.grantId),
+    installationId: requireInputUuid(snapshot.installationId),
+    workspaceId: requireInputUuid(snapshot.workspaceId),
+    requestedByUserId: requireInputUuid(snapshot.requestedByUserId),
     status: 'pending',
     attemptCount: 0,
-    maxAttempts: requireSmallInteger(record.maxAttempts, 1, 10, false),
+    maxAttempts: requireSmallInteger(snapshot.maxAttempts, 1, 10, false),
     requestedAt,
     updatedAt,
     nextAttemptAt,
@@ -203,8 +261,12 @@ function validateCreate(
   });
 }
 
+/** Validates one durable row and returns credential-free pending-attempt evidence. */
 function parseRow(row: unknown): PluginDeliveryAttemptRecord {
-  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+  if (row === null || typeof row !== 'object') {
+    return invalidEvidence();
+  }
+  if (boundedEvidenceRead(() => Array.isArray(row))) {
     return invalidEvidence();
   }
   const candidate = row as PluginDeliveryAttemptRow;
@@ -260,6 +322,7 @@ function parseRow(row: unknown): PluginDeliveryAttemptRecord {
   });
 }
 
+/** Stable durable column projection shared by admission and replay lookup. */
 const RETURNING_COLUMNS = `authority_version, delivery_id, grant_id, installation_id,
          workspace_id, requested_by_user_id, delivery_status, attempt_count,
          max_attempts, requested_at, updated_at, next_attempt_at, terminal_at,
@@ -275,8 +338,9 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
     record: PluginDeliveryAttemptRecord,
   ): Promise<PluginDeliveryAttemptRecord> {
     const safe = validateCreate(record);
-    const inserted = await this.client.query<PluginDeliveryAttemptRow>(
-      `INSERT INTO plugin_integration.plugin_delivery_attempt_record (
+    const inserted = await boundedEvidenceDependency(() =>
+      this.client.query<PluginDeliveryAttemptRow>(
+        `INSERT INTO plugin_integration.plugin_delivery_attempt_record (
          authority_version, delivery_id, grant_id, installation_id, workspace_id,
          requested_by_user_id, delivery_status, attempt_count, max_attempts,
          requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
@@ -287,25 +351,27 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
        )
        ON CONFLICT (delivery_id) DO NOTHING
        RETURNING ${RETURNING_COLUMNS}`,
-      [
-        safe.authorityVersion,
-        safe.deliveryId,
-        safe.grantId,
-        safe.installationId,
-        safe.workspaceId,
-        safe.requestedByUserId,
-        safe.maxAttempts,
-        safe.requestedAt,
-        safe.updatedAt,
-        safe.nextAttemptAt,
-      ],
+        [
+          safe.authorityVersion,
+          safe.deliveryId,
+          safe.grantId,
+          safe.installationId,
+          safe.workspaceId,
+          safe.requestedByUserId,
+          safe.maxAttempts,
+          safe.requestedAt,
+          safe.updatedAt,
+          safe.nextAttemptAt,
+        ],
+      ),
     );
     let durableRow = oneOrUndefined(inserted);
     if (durableRow === undefined) {
       // Read Committed can suppress INSERT on a concurrent conflict whose winner is
       // invisible to that statement snapshot; a second command gets the fresh snapshot.
-      const replay = await this.client.query<PluginDeliveryAttemptRow>(
-        `SELECT ${RETURNING_COLUMNS}
+      const replay = await boundedEvidenceDependency(() =>
+        this.client.query<PluginDeliveryAttemptRow>(
+          `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_delivery_attempt_record
          WHERE delivery_id = $1::uuid
            AND grant_id = $2::uuid
@@ -316,14 +382,15 @@ export class PostgresPluginDeliveryAttemptStore implements PluginDeliveryAttempt
            AND attempt_count = 0
            AND max_attempts = $6
          LIMIT 2`,
-        [
-          safe.deliveryId,
-          safe.grantId,
-          safe.installationId,
-          safe.workspaceId,
-          safe.requestedByUserId,
-          safe.maxAttempts,
-        ],
+          [
+            safe.deliveryId,
+            safe.grantId,
+            safe.installationId,
+            safe.workspaceId,
+            safe.requestedByUserId,
+            safe.maxAttempts,
+          ],
+        ),
       );
       durableRow = oneOrUndefined(replay);
     }
