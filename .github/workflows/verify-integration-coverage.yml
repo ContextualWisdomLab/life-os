@@ -76,6 +76,7 @@ jobs:
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
             apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-stored-instant-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-test-database.test.ts \
             apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
             .github/workflows/verify-integration-coverage.yml
@@ -91,6 +92,7 @@ jobs:
               apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
               apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
               apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts \
+              apps/integration-service/src/plugin-delivery-attempt-stored-instant-coverage.test.ts \
               apps/integration-service/src/plugin-delivery-attempt-test-database.test.ts \
               apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
               .github/workflows/verify-integration-coverage.yml
