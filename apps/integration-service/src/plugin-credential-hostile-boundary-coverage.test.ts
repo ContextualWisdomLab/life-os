@@ -371,15 +371,21 @@ describe('Plugin credential hostile-boundary coverage', () => {
   it('accepts a same-authority durable winner with a different opaque reference after removing the local orphan', async () => {
     const owned = ports();
     const durableReference = 'kms://life-os/plugin/durable-reference-002';
-    owned.bindingStore.createIfAbsent.mockResolvedValue(
-      binding({ secretReference: durableReference }),
-    );
+    const durable = binding({ secretReference: durableReference });
+    owned.bindingStore.findById
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(durable);
+    owned.bindingStore.createIfAbsent.mockResolvedValue(durable);
 
     await expect(application(owned).bind(BIND_INPUT)).resolves.toEqual(
       expect.objectContaining({ credentialBindingId: BINDING_ID }),
     );
     expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(
       SECRET_REFERENCE,
+    );
+    expect(owned.secretStore.verifySecret).toHaveBeenCalledWith(
+      durableReference,
+      expect.objectContaining({ credentialBindingId: BINDING_ID }),
     );
   });
 
