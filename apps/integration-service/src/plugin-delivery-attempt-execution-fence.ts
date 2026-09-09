@@ -62,10 +62,12 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
-/** Collapses persistence rejection into the fixed execution-fence error. */
-async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
+/** Keeps hostile durable values nested while collapsing persistence rejection to the fixed fence error. */
+async function boundedDependency<T>(
+  read: () => Promise<T>,
+): Promise<{ readonly value: T }> {
   try {
-    return await read();
+    return { value: await read() };
   } catch {
     return invalid();
   }
@@ -222,7 +224,9 @@ export class PluginDeliveryAttemptExecutionFenceApplication {
       claimTokenDigest: digestClaimToken(rawClaimToken),
       checkedAt,
     });
-    const evidence = await boundedDependency(() => this.store.check(command));
+    const { value: evidence } = await boundedDependency(() =>
+      this.store.check(command),
+    );
     if (evidence === undefined) {
       return invalid();
     }
