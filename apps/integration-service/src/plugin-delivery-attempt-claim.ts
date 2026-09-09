@@ -65,10 +65,12 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
-/** Collapses persistence rejection into the fixed claim authority failure. */
-async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
+/** Keeps hostile durable values nested while collapsing persistence rejection to the fixed authority failure. */
+async function boundedDependency<T>(
+  read: () => Promise<T>,
+): Promise<{ readonly value: T }> {
   try {
-    return await read();
+    return { value: await read() };
   } catch {
     return invalid();
   }
@@ -226,7 +228,9 @@ export class PluginDeliveryAttemptClaimApplication {
       claimedAt,
       leaseExpiresAt,
     });
-    const durable = await boundedDependency(() => this.store.claimDue(command));
+    const { value: durable } = await boundedDependency(() =>
+      this.store.claimDue(command),
+    );
     if (durable === undefined) {
       return invalid();
     }
