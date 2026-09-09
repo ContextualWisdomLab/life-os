@@ -232,7 +232,10 @@ describe('PostgresPluginDeliveryAttemptControlStore hostile evidence coverage', 
   });
 
   it('accepts canonical pause, resume, and dead-letter evidence and parameterizes SQL', async () => {
-    const calls: Array<{ text: string; values?: readonly unknown[] }> = [];
+    const calls: Array<{
+      text: string;
+      values: readonly unknown[] | undefined;
+    }> = [];
     const client: PluginDeliveryAttemptControlSqlClient = {
       async query<Row>(text: string, values?: readonly unknown[]) {
         calls.push({ text, values });
