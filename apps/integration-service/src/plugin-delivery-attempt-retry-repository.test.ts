@@ -57,7 +57,8 @@ function terminalRow() {
 }
 
 function harness(result: unknown) {
-  const calls: Array<{ text: string; values: readonly unknown[] | undefined }> = [];
+  const calls: Array<{ text: string; values: readonly unknown[] | undefined }> =
+    [];
   const client: PluginDeliveryAttemptRetrySqlClient = {
     async query<Row>(text: string, values?: readonly unknown[]) {
       calls.push({ text, values });
@@ -110,7 +111,9 @@ describe('PostgresPluginDeliveryAttemptRetryStore', () => {
 
   it('caps exponential retry delay at fifteen minutes', async () => {
     const { store } = harness(oneRow(pendingRow(6, 7)));
-    await expect(store.recordRetryableFailure(command())).resolves.toMatchObject({
+    await expect(
+      store.recordRetryableFailure(command()),
+    ).resolves.toMatchObject({
       attemptNumber: 6,
       maxAttempts: 7,
       nextAttemptAt: '2026-09-09T02:15:00.000Z',
@@ -136,7 +139,9 @@ describe('PostgresPluginDeliveryAttemptRetryStore', () => {
 
   it('returns undefined only for an unambiguous no-transition result', async () => {
     const { store } = harness({ rows: [], rowCount: 0 });
-    await expect(store.recordRetryableFailure(command())).resolves.toBeUndefined();
+    await expect(
+      store.recordRetryableFailure(command()),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects malformed commands before exercising SQL authority', async () => {
@@ -167,7 +172,9 @@ describe('PostgresPluginDeliveryAttemptRetryStore', () => {
     for (const invalid of invalidCommands) {
       const { store, calls } = harness(oneRow(pendingRow()));
       await expect(
-        store.recordRetryableFailure(invalid as PluginDeliveryAttemptRetryCommand),
+        store.recordRetryableFailure(
+          invalid as PluginDeliveryAttemptRetryCommand,
+        ),
       ).rejects.toEqual(
         new PluginDeliveryAttemptRetryPersistenceValidationError(),
       );
@@ -219,7 +226,10 @@ describe('PostgresPluginDeliveryAttemptRetryStore', () => {
       { ...pendingRow(), authority_version: 'unexpected' },
       { ...pendingRow(), delivery_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
       { ...pendingRow(), workspace_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
-      { ...pendingRow(), requested_by_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      {
+        ...pendingRow(),
+        requested_by_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
       { ...pendingRow(), attempt_count: '1' },
       { ...pendingRow(), attempt_count: 0 },
       { ...pendingRow(), max_attempts: '2' },

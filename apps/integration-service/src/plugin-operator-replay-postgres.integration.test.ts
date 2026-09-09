@@ -13,7 +13,9 @@ const describeWithPostgres = TEST_DATABASE_TARGET ? describe : describe.skip;
 const REPLAY_MIGRATIONS = [
   '0003_plugin_operator_context_replay_record.sql',
   '0012_plugin_operator_context_replay_consume.sql',
-].map((name) => readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'));
+].map((name) =>
+  readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'),
+);
 
 interface ConsumedRow extends QueryResultRow {
   readonly consumed: boolean;

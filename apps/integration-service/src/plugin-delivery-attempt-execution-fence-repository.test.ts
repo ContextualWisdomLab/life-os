@@ -42,7 +42,8 @@ function row() {
 }
 
 function harness(result: unknown | Error) {
-  const calls: Array<{ text: string; values: readonly unknown[] | undefined }> = [];
+  const calls: Array<{ text: string; values: readonly unknown[] | undefined }> =
+    [];
   const client: PluginDeliveryAttemptExecutionFenceSqlClient = {
     async query<Row>(text: string, values?: readonly unknown[]) {
       calls.push({ text, values });
@@ -173,7 +174,10 @@ describe('PostgresPluginDeliveryAttemptExecutionFenceStore', () => {
       { ...row(), authority_version: 'unexpected' },
       { ...row(), delivery_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
       { ...row(), workspace_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
-      { ...row(), requested_by_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      {
+        ...row(),
+        requested_by_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
       { ...row(), attempt_count: '1' },
       { ...row(), attempt_count: 0 },
       { ...row(), attempt_count: 11 },
