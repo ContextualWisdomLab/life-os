@@ -227,10 +227,11 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
 
   it('collapses a revoked durable evidence proxy to the fixed authority error', async () => {
     const revoked = Proxy.revocable(evidence(), {});
-    revoked.revoke();
-    const app = fixedApplication(
-      async () => revoked.proxy as PluginDeliveryAttemptClaimEvidence,
+    const durable = Promise.resolve(
+      revoked.proxy as PluginDeliveryAttemptClaimEvidence,
     );
+    revoked.revoke();
+    const app = fixedApplication(() => durable);
 
     await expect(app.claim(CONTEXT, DELIVERY_ID, 60)).rejects.toBeInstanceOf(
       PluginDeliveryAttemptClaimAuthorityError,
