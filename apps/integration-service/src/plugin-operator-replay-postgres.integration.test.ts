@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool, type QueryResultRow } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  parsePluginDeliveryAttemptTestDatabaseTarget,
-} from './plugin-delivery-attempt-test-database';
+import { parsePluginDeliveryAttemptTestDatabaseTarget } from './plugin-delivery-attempt-test-database';
 
 const DATABASE_URL = process.env.INTEGRATION_DATABASE_URL;
 const TEST_DATABASE_TARGET = DATABASE_URL
