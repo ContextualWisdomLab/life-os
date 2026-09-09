@@ -98,9 +98,9 @@ describe('Integration foundation remaining boundaries', () => {
   it('rejects a syntactically shaped but non-canonical replay instant before SQL', async () => {
     let queryCalls = 0;
     const client: PluginOperatorReplaySqlClient = {
-      query: async () => {
+      query: async <Row>() => {
         queryCalls += 1;
-        return { rows: [{ consumed: true }], rowCount: 1 };
+        return { rows: [] as readonly Row[], rowCount: 0 };
       },
     };
     const guard = new PostgresPluginOperatorReplayGuard(client);
