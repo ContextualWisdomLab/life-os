@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:
-      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os@postgres.performance.test:5432/life_os_integration?sslmode=verify-full
+      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os@postgres.performance.test:5432/life_os_integration
       INTEGRATION_OPERATOR_CONTEXT_SECRET: performance-context-secret-value-32-bytes-minimum
       INTEGRATION_PLUGIN_VAULT_ORIGIN: https://vault.performance.example.test
       INTEGRATION_PLUGIN_VAULT_TOKEN: performance-vault-fixture-token
@@ -163,9 +163,10 @@ jobs:
           psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
             'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()' |
             grep -Fx t
-          pnpm --filter @life-os/integration-service exec vitest run \
-            src/plugin-operator-replay-postgres.integration.test.ts \
-            --no-file-parallelism
+          INTEGRATION_DATABASE_URL="${INTEGRATION_DATABASE_URL}?sslmode=verify-full" \
+            pnpm --filter @life-os/integration-service exec vitest run \
+              src/plugin-operator-replay-postgres.integration.test.ts \
+              --no-file-parallelism
           psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 \
             -f apps/integration-service/perf/seed-plugin-delivery-attempt-status.sql
 
