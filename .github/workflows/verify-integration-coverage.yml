@@ -53,6 +53,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          pnpm exec prettier --single-quote apps/integration-service/src/plugin-delivery-attempt-execution-fence-coverage.test.ts > /tmp/execution-fence-coverage.formatted.ts
+          diff -u apps/integration-service/src/plugin-delivery-attempt-execution-fence-coverage.test.ts /tmp/execution-fence-coverage.formatted.ts || true
           pnpm exec prettier --single-quote --check \
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
