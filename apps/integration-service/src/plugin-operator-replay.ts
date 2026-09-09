@@ -1,7 +1,6 @@
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 
 /** One verified one-time operator evidence identity and its bounded lifetime. */
 export interface PluginOperatorReplayEvidence {
@@ -95,9 +94,7 @@ function replayEvidence(
  * unconditional network round trip from every authenticated operator request while the
  * expiry index continues to bound cleanup work.
  */
-export class PostgresPluginOperatorReplayGuard
-  implements PluginOperatorReplayGuardPort
-{
+export class PostgresPluginOperatorReplayGuard implements PluginOperatorReplayGuardPort {
   /** Creates the guard over a bounded parameterized SQL client. */
   constructor(private readonly client: PluginOperatorReplaySqlClient) {}
 
