@@ -7,6 +7,7 @@ import {
 
 describe('Plugin delivery attempt retry backoff policy', () => {
   it('keeps TypeScript retry timing on the canonical bounded exponential policy', () => {
+    expect(Object.isFrozen(PLUGIN_DELIVERY_ATTEMPT_RETRY_BACKOFF_POLICY)).toBe(true);
     expect(PLUGIN_DELIVERY_ATTEMPT_RETRY_BACKOFF_POLICY).toEqual({
       firstAttempt: 1,
       initialSeconds: 30,
