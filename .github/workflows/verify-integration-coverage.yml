@@ -184,12 +184,26 @@ jobs:
               }
               approved.tests = counts;
               if (Array.isArray(report?.testResults)) {
-                const workspace = nodePath.resolve(process.env.GITHUB_WORKSPACE || '.');
+                const workspace = nodePath.resolve(
+                  process.env.GITHUB_WORKSPACE || '.',
+                );
                 for (const result of report.testResults) {
-                  if (result?.status !== 'failed' || typeof result?.name !== 'string') continue;
-                  const relative = nodePath.relative(workspace, nodePath.resolve(result.name)).replaceAll('\\', '/');
-                  if (!/^apps\/integration-service\/src\/[A-Za-z0-9._/-]+\.test\.ts$/u.test(relative)) continue;
-                  if (relative.includes('/../') || relative.startsWith('../')) continue;
+                  if (
+                    result?.status !== 'failed' ||
+                    typeof result?.name !== 'string'
+                  )
+                    continue;
+                  const relative = nodePath
+                    .relative(workspace, nodePath.resolve(result.name))
+                    .replaceAll('\\', '/');
+                  if (
+                    !/^apps\/integration-service\/src\/[A-Za-z0-9._/-]+\.test\.ts$/u.test(
+                      relative,
+                    )
+                  )
+                    continue;
+                  if (relative.includes('/../') || relative.startsWith('../'))
+                    continue;
                   approved.failed_files.push(relative);
                   if (approved.failed_files.length >= 20) break;
                 }
@@ -204,7 +218,12 @@ jobs:
             const totals = {};
             for (const name of metricNames) {
               const metric = report?.total?.[name];
-              if (metric && ['total', 'covered', 'skipped', 'pct'].every((key) => Number.isFinite(metric[key]))) {
+              if (
+                metric &&
+                ['total', 'covered', 'skipped', 'pct'].every((key) =>
+                  Number.isFinite(metric[key]),
+                )
+              ) {
                 totals[name] = {
                   total: metric.total,
                   covered: metric.covered,
@@ -217,7 +236,9 @@ jobs:
           }
           const serialized = `${JSON.stringify(approved)}\n`;
           if (Buffer.byteLength(serialized, 'utf8') > 4096) {
-            throw new Error('coverage summary exceeded the approved 4096-byte boundary');
+            throw new Error(
+              'coverage summary exceeded the approved 4096-byte boundary',
+            );
           }
           fs.writeFileSync('.verification/integration-coverage.log', serialized, {
             encoding: 'utf8',
