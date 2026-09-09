@@ -58,6 +58,42 @@ describe('Integration-owned node-postgres method authority', () => {
     },
   );
 
+  it.each(['throwing', 'non-callable'] as const)(
+    'rejects a %s query accessor and closes the constructed pool before SQL authority crosses the runtime boundary',
+    async (mode) => {
+      let endCalls = 0;
+
+      class MalformedQueryPool {
+        on(): void {}
+
+        get query(): unknown {
+          if (mode === 'throwing') {
+            throw new Error('password=must-not-escape-query-accessor');
+          }
+          return 'not-a-function';
+        }
+
+        async end(): Promise<void> {
+          endCalls += 1;
+        }
+      }
+
+      const acquisition = Promise.resolve().then(() =>
+        createNodePostgresPluginPool(
+          'postgresql://integration:secret@db.example.invalid:5432/life_os',
+          MalformedQueryPool as unknown as NodePostgresPoolConstructor,
+          () => undefined,
+        ),
+      );
+
+      await expect(acquisition).rejects.toBeInstanceOf(
+        PluginNodePostgresConfigurationError,
+      );
+      await expect(acquisition).rejects.not.toThrow(/must-not-escape/u);
+      expect(endCalls).toBe(1);
+    },
+  );
+
   it(
     'captures the accepted shutdown method once before the pool crosses the runtime boundary',
     async () => {
