@@ -135,13 +135,7 @@ function storedInstant(value: unknown): string {
   let candidate: string;
   if (isDate) {
     const date = value as Date;
-    const [milliseconds, serialized] = boundedEvidenceRead(
-      () => [date.getTime(), date.toISOString()] as const,
-    );
-    if (!Number.isFinite(milliseconds)) {
-      return invalidEvidence();
-    }
-    candidate = serialized;
+    candidate = boundedEvidenceRead(() => date.toISOString());
   } else if (typeof value === 'string') {
     candidate = value;
   } else {
