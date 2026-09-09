@@ -80,7 +80,11 @@ describe('PluginDeliveryAttemptRetryApplication hostile evidence coverage', () =
 
     for (const candidate of [null, [], revoked.proxy, throwing]) {
       await expectAuthorityError(
-        app.recordRetryableFailure(candidate as never, DELIVERY_ID, CLAIM_TOKEN),
+        app.recordRetryableFailure(
+          candidate as never,
+          DELIVERY_ID,
+          CLAIM_TOKEN,
+        ),
       );
     }
     await expectAuthorityError(
