@@ -73,17 +73,60 @@ jobs:
           test "$(node -p "require('./package.json').pnpm.overrides.multer")" = '2.3.0'
           test "$(node -p "require('./package.json').pnpm.overrides.sharp")" = '0.35.4'
           test "$(node -p "require('./apps/web/package.json').dependencies.next")" = '^15.5.24'
-          grep -Fq 'qs@6.16.0' pnpm-lock.yaml
-          grep -Fq 'multer@2.3.0' pnpm-lock.yaml
-          grep -Fq 'sharp@0.35.4' pnpm-lock.yaml
-          grep -Fq 'next@15.5.24' pnpm-lock.yaml
+          pnpm list qs multer sharp next -r --depth Infinity --json > /tmp/dependency-list.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const graph = JSON.parse(fs.readFileSync('/tmp/dependency-list.json', 'utf8'));
+          const seen = new Map([
+            ['qs', new Set()],
+            ['multer', new Set()],
+            ['sharp', new Set()],
+            ['next', new Set()],
+          ]);
+
+          const visit = (value) => {
+            if (Array.isArray(value)) {
+              for (const entry of value) visit(entry);
+              return;
+            }
+            if (!value || typeof value !== 'object') return;
+            for (const [key, child] of Object.entries(value)) {
+              if (seen.has(key) && child && typeof child === 'object' && typeof child.version === 'string') {
+                seen.get(key).add(child.version);
+              }
+              visit(child);
+            }
+          };
+          visit(graph);
+
+          const exact = new Map([
+            ['qs', '6.16.0'],
+            ['multer', '2.3.0'],
+            ['sharp', '0.35.4'],
+          ]);
+          for (const [name, expected] of exact) {
+            const versions = [...seen.get(name)];
+            console.log(`${name}: ${versions.join(', ') || '<absent>'}`);
+            if (versions.length === 0 || versions.some((version) => version !== expected)) {
+              throw new Error(`${name} must resolve only to ${expected}`);
+            }
+          }
+
+          const nextVersions = [...seen.get('next')];
+          console.log(`next: ${nextVersions.join(', ') || '<absent>'}`);
+          if (nextVersions.length === 0 || nextVersions.some((version) => {
+            const match = /^15\.5\.(\d+)$/.exec(version);
+            return match === null || Number(match[1]) < 24;
+          })) {
+            throw new Error('next must resolve only to patched 15.5.24+ versions on the retained 15.5 line');
+          }
+          NODE
           for vulnerable in 'qs@6.15.3' 'multer@2.2.0' 'sharp@0.35.0'; do
             if grep -Fq "$vulnerable" pnpm-lock.yaml; then
               echo "::error::Vulnerable resolution remains: $vulnerable"
               exit 1
             fi
           done
-          pnpm list qs multer sharp next -r --depth Infinity
 
       - name: Retire writer before exact candidate verification
         shell: bash
