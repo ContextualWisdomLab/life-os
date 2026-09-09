@@ -61,6 +61,8 @@ jobs:
             apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
             apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-stored-instant-coverage.test.ts \
