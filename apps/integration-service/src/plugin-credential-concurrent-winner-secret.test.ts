@@ -91,7 +91,9 @@ class ConcurrentWinnerSecretStore implements PluginSecretStore {
   ): Promise<void> {
     this.verifications.push({ secretReference, input });
     if (!this.verificationMatches) {
-      throw new Error('concurrent durable winner contains different secret bytes');
+      throw new Error(
+        'concurrent durable winner contains different secret bytes',
+      );
     }
   }
 
@@ -135,48 +137,42 @@ const EXPECTED_SECRET_INPUT = Object.freeze({
 });
 
 describe('Plugin credential concurrent durable winner secret authority', () => {
-  it(
-    'rejects a concurrent durable winner until its provider-backed secret bytes are proven exact',
-    async () => {
-      const secretStore = new ConcurrentWinnerSecretStore(false);
+  it('rejects a concurrent durable winner until its provider-backed secret bytes are proven exact', async () => {
+    const secretStore = new ConcurrentWinnerSecretStore(false);
 
-      await expect(
-        application(secretStore).bind(BIND_INPUT),
-      ).rejects.toBeInstanceOf(PluginCredentialError);
+    await expect(
+      application(secretStore).bind(BIND_INPUT),
+    ).rejects.toBeInstanceOf(PluginCredentialError);
 
-      expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
-      expect(secretStore.verifications).toEqual([
-        {
-          secretReference: WINNER_SECRET_REFERENCE,
-          input: EXPECTED_SECRET_INPUT,
-        },
-      ]);
-    },
-  );
+    expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
+    expect(secretStore.verifications).toEqual([
+      {
+        secretReference: WINNER_SECRET_REFERENCE,
+        input: EXPECTED_SECRET_INPUT,
+      },
+    ]);
+  });
 
-  it(
-    'accepts an exact concurrent durable winner only after cleaning the loser and proving its secret bytes',
-    async () => {
-      const secretStore = new ConcurrentWinnerSecretStore(true);
+  it('accepts an exact concurrent durable winner only after cleaning the loser and proving its secret bytes', async () => {
+    const secretStore = new ConcurrentWinnerSecretStore(true);
 
-      await expect(application(secretStore).bind(BIND_INPUT)).resolves.toEqual({
-        credentialBindingId: BINDING_ID,
-        installationId: INSTALLATION_ID,
-        workspaceId: WORKSPACE_ID,
-        installedByUserId: USER_ID,
-        credentialName: 'webhook.signing',
-        status: 'active',
-        boundAt: OPERATION_AT,
-        revokedAt: null,
-      });
+    await expect(application(secretStore).bind(BIND_INPUT)).resolves.toEqual({
+      credentialBindingId: BINDING_ID,
+      installationId: INSTALLATION_ID,
+      workspaceId: WORKSPACE_ID,
+      installedByUserId: USER_ID,
+      credentialName: 'webhook.signing',
+      status: 'active',
+      boundAt: OPERATION_AT,
+      revokedAt: null,
+    });
 
-      expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
-      expect(secretStore.verifications).toEqual([
-        {
-          secretReference: WINNER_SECRET_REFERENCE,
-          input: EXPECTED_SECRET_INPUT,
-        },
-      ]);
-    },
-  );
+    expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
+    expect(secretStore.verifications).toEqual([
+      {
+        secretReference: WINNER_SECRET_REFERENCE,
+        input: EXPECTED_SECRET_INPUT,
+      },
+    ]);
+  });
 });
