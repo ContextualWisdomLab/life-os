@@ -115,6 +115,18 @@ function invalid(): never {
   throw new PluginCredentialError();
 }
 
+/** Collapses dependency rejection or hostile Promise assimilation into the fixed application error. */
+async function boundedDependency<T>(
+  read: () => Promise<T>,
+): Promise<{ readonly value: T }> {
+  try {
+    const value = await read();
+    return { value };
+  } catch {
+    return invalid();
+  }
+}
+
 /** Canonicalizes one UUIDv4 authority identifier before comparison or persistence use. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
@@ -394,10 +406,11 @@ export class PluginCredentialApplication {
     const credentialName = requireCredentialName(request.credentialName);
     const secretValue = requireSecretValue(request.secretValue);
     const boundAt = currentInstant(this.now);
-    const installation = await this.installationAuthority.getInstallation(
-      context,
-      installationId,
-    );
+    const installation = (
+      await boundedDependency(() =>
+        this.installationAuthority.getInstallation(context, installationId),
+      )
+    ).value;
     if (
       !installation ||
       installation.status !== 'active' ||
@@ -420,11 +433,15 @@ export class PluginCredentialApplication {
       installedByUserId: context.actorUserId,
       credentialName,
     } as const;
-    const existingEvidence = await this.bindingStore.findById(
-      credentialBindingId,
-      context.workspaceId,
-      context.actorUserId,
-    );
+    const existingEvidence = (
+      await boundedDependency(() =>
+        this.bindingStore.findById(
+          credentialBindingId,
+          context.workspaceId,
+          context.actorUserId,
+        ),
+      )
+    ).value;
     if (existingEvidence !== undefined) {
       const existing = requireBindingRecord(existingEvidence);
       if (
@@ -560,11 +577,15 @@ export class PluginCredentialApplication {
     const context = requireContext(trustedContext);
     const credentialBindingId = requireUuidV4(credentialBindingIdInput);
     const revokedAt = currentInstant(this.now);
-    const existingEvidence = await this.bindingStore.findById(
-      credentialBindingId,
-      context.workspaceId,
-      context.actorUserId,
-    );
+    const existingEvidence = (
+      await boundedDependency(() =>
+        this.bindingStore.findById(
+          credentialBindingId,
+          context.workspaceId,
+          context.actorUserId,
+        ),
+      )
+    ).value;
     if (existingEvidence === undefined) {
       return invalid();
     }
@@ -577,12 +598,16 @@ export class PluginCredentialApplication {
     ) {
       return invalid();
     }
-    const durableEvidence = await this.bindingStore.revokeActive({
-      credentialBindingId,
-      workspaceId: context.workspaceId,
-      installedByUserId: context.actorUserId,
-      revokedAt,
-    });
+    const durableEvidence = (
+      await boundedDependency(() =>
+        this.bindingStore.revokeActive({
+          credentialBindingId,
+          workspaceId: context.workspaceId,
+          installedByUserId: context.actorUserId,
+          revokedAt,
+        }),
+      )
+    ).value;
     if (durableEvidence === undefined) {
       return invalid();
     }
