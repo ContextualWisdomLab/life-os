@@ -191,7 +191,9 @@ describe('Plugin Vault operator composition coverage boundaries', () => {
       environment({
         INTEGRATION_OPERATOR_CONTEXT_SECRET: 'x'.repeat(8_193),
       }),
-      environment({ INTEGRATION_PLUGIN_VAULT_ORIGIN: 'http://vault.example.test' }),
+      environment({
+        INTEGRATION_PLUGIN_VAULT_ORIGIN: 'http://vault.example.test',
+      }),
     ];
 
     for (const candidate of invalidEnvironments) {
@@ -203,7 +205,9 @@ describe('Plugin Vault operator composition coverage boundaries', () => {
 
   it('uses the production default clocks while retaining signed operator and Vault boundaries', async () => {
     const issuedAt = Math.floor(Date.now() / 1_000);
-    const http = vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(200));
+    const http = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValue(response(200));
     const operator = createPluginVaultOperatorApplication(
       dependencies(),
       environment(),
@@ -220,7 +224,9 @@ describe('Plugin Vault operator composition coverage boundaries', () => {
     expect(result.status).toBe('active');
     expect(result.workspaceId).toBe(WORKSPACE_ID);
     expect(result.installedByUserId).toBe(USER_ID);
-    expect(result.boundAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
+    expect(result.boundAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u,
+    );
     expect(http).toHaveBeenCalledTimes(1);
   });
 });

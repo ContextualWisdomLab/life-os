@@ -130,13 +130,7 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
         () => new Date(CLAIMED_AT),
         () => CLAIM_TOKEN,
       ],
-      [
-        CONTEXT,
-        DELIVERY_ID,
-        29,
-        () => new Date(CLAIMED_AT),
-        () => CLAIM_TOKEN,
-      ],
+      [CONTEXT, DELIVERY_ID, 29, () => new Date(CLAIMED_AT), () => CLAIM_TOKEN],
       [
         CONTEXT,
         DELIVERY_ID,
@@ -144,13 +138,7 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
         () => new Date(CLAIMED_AT),
         () => CLAIM_TOKEN,
       ],
-      [
-        CONTEXT,
-        DELIVERY_ID,
-        60,
-        () => new Date(Number.NaN),
-        () => CLAIM_TOKEN,
-      ],
+      [CONTEXT, DELIVERY_ID, 60, () => new Date(Number.NaN), () => CLAIM_TOKEN],
       [
         CONTEXT,
         DELIVERY_ID,
@@ -169,7 +157,13 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
       ],
     ];
 
-    for (const [context, deliveryId, leaseSeconds, now, createClaimToken] of cases) {
+    for (const [
+      context,
+      deliveryId,
+      leaseSeconds,
+      now,
+      createClaimToken,
+    ] of cases) {
       let calls = 0;
       const app = fixedApplication(
         async () => {
@@ -216,8 +210,8 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
     ];
 
     for (const durable of cases) {
-      const app = fixedApplication(async () =>
-        durable as PluginDeliveryAttemptClaimEvidence,
+      const app = fixedApplication(
+        async () => durable as PluginDeliveryAttemptClaimEvidence,
       );
       await expect(app.claim(CONTEXT, DELIVERY_ID, 60)).rejects.toBeInstanceOf(
         PluginDeliveryAttemptClaimAuthorityError,
@@ -260,7 +254,8 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
     );
     expect(
-      new Date(lease.leaseExpiresAt).getTime() - new Date(lease.claimedAt).getTime(),
+      new Date(lease.leaseExpiresAt).getTime() -
+        new Date(lease.claimedAt).getTime(),
     ).toBe(30_000);
     expect(calls).toHaveLength(1);
     expect(calls[0]).not.toHaveProperty('claimToken');
@@ -275,9 +270,9 @@ describe('PluginDeliveryAttemptClaimApplication', () => {
     const revoked = Proxy.revocable(CONTEXT, {});
     revoked.revoke();
 
-    await expect(app.claim(revoked.proxy, DELIVERY_ID, 60)).rejects.toBeInstanceOf(
-      PluginDeliveryAttemptClaimAuthorityError,
-    );
+    await expect(
+      app.claim(revoked.proxy, DELIVERY_ID, 60),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptClaimAuthorityError);
     expect(calls).toBe(0);
   });
 });
