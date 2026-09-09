@@ -1,0 +1,57 @@
+name: Update Architecture 261 currentness
+
+on:
+  push:
+    branches: [docs/canonical-product-architecture-mainline]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-architecture-261-currentness
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Replace only the stale coverage sentence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('ARCHITECTURE.md')
+          text = path.read_text()
+          old = "The active candidate also lacks an owned coverage-percentage artifact, so 100% Test/Edge Coverage is not claimed."
+          new = """Draft PR #261 is the direct #260 quality-evidence descendant. It introduces direct Integration ownership of `@vitest/coverage-v8`, explicit `test:coverage`, and unchanged 100% statements/branches/functions/lines thresholds over production `src/**/*.ts`. Hosted verification first repaired two harness defects without weakening the gate: Plugin SDK build order, then replay PostgreSQL test isolation by applying production migrations `0003_plugin_operator_context_replay_record.sql` and `0012_plugin_operator_context_replay_consume.sql` to the guarded disposable schema. Exact head `20e8af0edd8cb2044cf18c21ba510cddd924a8ac`, run `34298516686`, job `102300245764`, completed frozen install, canonical formatting, Plugin SDK build, Integration typecheck and all enabled tests: 82 test files passed / 2 skipped and 468 tests passed / 3 skipped. V8 then produced the current real RED baseline of 89.38% statements, 81.15% branches, 93.85% functions and 89.38% lines against the unchanged 100% gates. The remaining skips are separately provisioned Vault/PostgreSQL acceptance; uncovered production branches remain a test gap, so 100% Test/Edge Coverage is not claimed."""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale coverage sentence, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          test "$(git diff --name-only | sort)" = "ARCHITECTURE.md"
+
+      - name: Publish bounded currentness and retire writer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remote_sha="$(git ls-remote origin refs/heads/docs/canonical-product-architecture-mainline | cut -f1)"
+          if [ "$remote_sha" != "$GITHUB_SHA" ]; then
+            echo "Architecture branch moved from ${GITHUB_SHA} to ${remote_sha}; refusing publication." >&2
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ARCHITECTURE.md
+          git rm .github/workflows/update-architecture-261-currentness.yml
+          git commit -m 'docs: record Integration coverage RED'
+          git push origin HEAD:refs/heads/docs/canonical-product-architecture-mainline
