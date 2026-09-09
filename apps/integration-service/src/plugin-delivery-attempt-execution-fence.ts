@@ -48,10 +48,12 @@ export interface PluginDeliveryAttemptExecutionFenceStore {
   ): Promise<PluginDeliveryAttemptExecutionFenceEvidence | undefined>;
 }
 
+/** Raises the fixed execution-fence authority error without reflecting hostile data. */
 function invalid(): never {
   throw new PluginDeliveryAttemptExecutionFenceAuthorityError();
 }
 
+/** Collapses hostile synchronous reads into the fixed execution-fence error. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -60,6 +62,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses persistence rejection into the fixed execution-fence error. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -68,6 +71,7 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Validates and canonicalizes one UUIDv4 authority identifier. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -75,6 +79,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Validates one exact millisecond-resolution UTC instant from durable or runtime evidence. */
 function requireInstant(value: unknown): string {
   const candidate = boundedRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -92,6 +97,7 @@ function requireInstant(value: unknown): string {
   return candidate;
 }
 
+/** Reads the injected clock without allowing clock failures to escape the boundary. */
 function currentInstant(now: () => Date): string {
   try {
     return requireInstant(now().toISOString());
@@ -100,6 +106,7 @@ function currentInstant(now: () => Date): string {
   }
 }
 
+/** Extracts canonical workspace and actor authority from the trusted request context. */
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return invalid();
@@ -114,6 +121,7 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Hashes only an exact lowercase UUIDv4 claim token; aliases fail before persistence. */
 function digestClaimToken(rawClaimToken: unknown): string {
   if (
     typeof rawClaimToken !== 'string' ||
@@ -125,6 +133,7 @@ function digestClaimToken(rawClaimToken: unknown): string {
   return createHash('sha256').update(rawClaimToken, 'utf8').digest('hex');
 }
 
+/** Revalidates durable fence evidence against the exact normalized lookup command. */
 function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptExecutionFenceCommand,
@@ -166,11 +175,11 @@ function requireEvidence(
   }
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireUuidV4(snapshot.deliveryId),
+    deliveryId: snapshot.deliveryId,
     grantId: requireUuidV4(snapshot.grantId),
     installationId: requireUuidV4(snapshot.installationId),
-    workspaceId: requireUuidV4(snapshot.workspaceId),
-    requestedByUserId: requireUuidV4(snapshot.requestedByUserId),
+    workspaceId: snapshot.workspaceId,
+    requestedByUserId: snapshot.requestedByUserId,
     attemptNumber: snapshot.attemptNumber,
     checkedAt,
     claimExpiresAt,
