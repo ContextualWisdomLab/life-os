@@ -71,12 +71,19 @@ jobs:
           pnpm --filter @life-os/integration-service build
           env -u INTEGRATION_DATABASE_URL \
             pnpm --filter @life-os/integration-service test
-          pnpm exec prettier --single-quote --check \
+          pnpm exec prettier --single-quote --write \
             .github/workflows/verify-plugin-delivery-status-k6.yml \
             apps/integration-service/src/plugin-operator-replay.ts \
             apps/integration-service/src/plugin-operator-replay.test.ts \
             apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
             apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
+          git diff -- \
+            .github/workflows/verify-plugin-delivery-status-k6.yml \
+            apps/integration-service/src/plugin-operator-replay.ts \
+            apps/integration-service/src/plugin-operator-replay.test.ts \
+            apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
+            apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
+          exit 1
 
       - name: Configure verified-TLS PostgreSQL fixture
         shell: bash
