@@ -1,50 +1,77 @@
 # ADR 0002: OAuth transactions and session tokens
 
-- **Status:** Accepted
-- **Date:** 2026-08-03
+**Status:** Accepted architecture  
+**Date:** 2026-08-03
 
 ## Context
 
-LifeOS accepts Google and GitHub sign-in while maintaining provider-neutral internal identity records. Authorization callbacks must resist cross-site request forgery, authorization-code injection, authorization-server mix-up, replay, redirect substitution, and bearer-token disclosure. Internal identifiers must remain opaque, non-numeric, and non-sequential.
+LifeOS supports Google and GitHub sign-in while maintaining provider-neutral internal identity. Authorization callbacks must resist CSRF, code injection, mix-up, replay, redirect substitution and bearer-token disclosure. Session rotation must not erase authentication provenance needed by sensitive operations such as data-rights requests.
 
-The repository already contained provider authorization and token-exchange builders. This decision hardens the shared `auth-security` transaction and session layer rather than introducing a second implementation.
+## Decision drivers
+
+- provider-neutral internal identity;
+- current OAuth security best practice;
+- server-verifiable and revocable browser sessions;
+- tenant/workspace binding independent from browser-selected IDs;
+- recent-authentication evidence that survives token/session rotation.
+
+## Alternatives considered
+
+1. Trust client OAuth state/callback metadata: rejected.
+2. Persist raw session bearer values: rejected.
+3. Reuse provider account IDs as LifeOS IDs: rejected by ADR 0001.
+4. Treat session rotation time as authentication time: rejected because it weakens sensitive-operation recency semantics.
+5. Server-owned OAuth transaction + hashed bearer/session lifecycle: selected.
 
 ## Decision
 
 ### Authorization transactions
 
-- Every authorization attempt receives a cryptographically random, one-time `state` value.
-- The server persists only a SHA-256 digest of `state`.
-- The transaction is bound to the selected provider, a digest of the initiating browser session identifier, and the normalized redirect URI.
-- The same redirect URI must be used when building the authorization request and exchanging the authorization code.
-- Transactions expire after ten minutes by default and are consumed once.
-- Provider adapters must consume transactions atomically. A PostgreSQL adapter must use a conditional update or delete with `RETURNING`, scoped to the provider, state digest, browser-session digest, unconsumed status, and expiry.
-- Authorization requests use PKCE with the `S256` method. The verifier is a 64-byte random base64url value and the challenge is `BASE64URL(SHA256(verifier))`.
-- The verifier and Google OIDC nonce are server-side material. Persistent implementations must encrypt them at rest; neither is returned to the browser except that the nonce is included in the Google authorization request.
-- Each provider uses a distinct callback route or equivalent issuer verification to prevent authorization-server mix-up.
-- Redirect URIs require HTTPS, except for loopback HTTP during local development, and may not contain credentials or fragments.
+- Use cryptographically random one-time `state`, storing only its SHA-256 digest.
+- Bind transaction to provider, initiating browser-session digest and normalized redirect URI.
+- Use the same exact redirect URI for authorization and token exchange.
+- Expire transactions after a bounded lifetime and consume them once atomically.
+- Use PKCE `S256` with server-held verifier and validate Google OIDC nonce where applicable.
+- Encrypt persistent PKCE verifier/nonce material at rest.
+- Use distinct provider callback/issuer validation to prevent mix-up.
+- Require HTTPS redirects except documented loopback HTTP development cases.
 
 ### Application sessions
 
-- Session bearer tokens are cryptographically random base64url values and are not entity identifiers.
-- Only a SHA-256 digest of a session token is persisted.
-- Session records use random UUIDv4 primary keys and bind both a user and one of that user's workspaces.
-- The database enforces workspace ownership with a composite foreign key.
-- Session rotation revokes the previous token before issuing a replacement and records the previous session ID.
-- Revocation is idempotent and does not disclose whether a supplied token existed.
-- Browser delivery uses `Secure`, `HttpOnly`, and an explicit `SameSite` policy. Production deployments must never place session tokens in URLs, logs, local storage, analytics payloads, or application telemetry.
-
-## Standards basis
-
-- RFC 7636, *Proof Key for Code Exchange by OAuth Public Clients*: https://www.rfc-editor.org/rfc/rfc7636
-- RFC 9700 / BCP 240, *Best Current Practice for OAuth 2.0 Security*: https://www.rfc-editor.org/rfc/rfc9700
-- GitHub OAuth authorization flow: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+- Session bearer tokens are random base64url secrets; only SHA-256 digests persist.
+- Session records use UUIDv4 and bind user plus authorized workspace.
+- Rotation revokes the predecessor before replacement and preserves lineage/authentication provenance.
+- Authentication age is not reset merely by rotation.
+- Browser delivery uses `Secure`, `HttpOnly` and explicit `SameSite`; tokens never enter URLs, logs, local storage or telemetry.
 
 ## Consequences
 
-- Stolen database rows do not directly reveal usable `state` or session bearer values.
-- OAuth transactions and sessions require expiry cleanup jobs.
-- A production repository needs encryption-key management for PKCE verifiers and OIDC nonces.
-- Existing callers must supply the initiating browser-session identifier and the exact redirect URI when creating and consuming transactions.
-- Existing sessions are backfilled to their owners' personal workspaces by migration `0003_oauth_binding_and_session_rotation.sql`.
-- Provider callback adapters remain responsible for network exchange, provider response validation, ID-token validation for Google, and profile retrieval; this ADR supplies the transaction and session primitives they must use.
+Production identity persistence requires cleanup and encryption-key management. Callers must supply exact transaction/session context instead of reconstructing authority from browser headers. Sensitive flows can enforce recent authentication correctly across rotation.
+
+## Failure and recovery
+
+Unknown/expired/consumed/malformed transactions fail closed. Revocation remains idempotent and non-enumerating. Migration of authentication provenance is staged/validated so legacy rows cannot silently gain fresh-auth status.
+
+## Security and privacy impact
+
+Database compromise does not directly expose usable state/session bearer values. Authentication provenance itself is security-sensitive metadata and follows identity-service access/retention controls.
+
+## Acceptance evidence
+
+Protected-main identity source/migrations/tests cover OAuth transaction security, session hashing/rotation, authentication-age persistence and recent-authentication policy. RFC 9700 is the current OAuth 2.0 security BCP; PKCE remains part of the provider flow contract.
+
+## Migration and rollback
+
+Migrations introduce workspace/session binding and authentication provenance with validation before final enforcement. Rollback cannot reinterpret newer authentication evidence as fresh; use explicit forward-fix/migration procedures.
+
+## Supersession
+
+This ADR is superseded only by a reviewed identity/session architecture change with provider, migration, recent-auth and browser-security compatibility evidence.
+
+## References
+
+GitHub. (n.d.). *Authorizing OAuth apps*. https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
+
+Lodderstedt, T., Bradley, J., Labunets, A., & Fett, D. (2025). *Best current practice for OAuth 2.0 security* (RFC 9700; BCP 240) [Published Best Current Practice]. RFC Editor. https://doi.org/10.17487/RFC9700
+
+Sakimura, N., Bradley, J., & Agarwal, N. (2015). *Proof key for code exchange by OAuth public clients* (RFC 7636) [Published Standards Track RFC]. RFC Editor. https://doi.org/10.17487/RFC7636

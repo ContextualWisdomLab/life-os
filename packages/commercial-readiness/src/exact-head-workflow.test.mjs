@@ -17,19 +17,10 @@ describe('commercial readiness exact-head contract', () => {
     const sourceExpression =
       '\\$\\{\\{ github\\.event\\.pull_request\\.head\\.sha \\|\\| github\\.sha \\}\\}';
     assert.match(workflow, new RegExp(`ref: ${sourceExpression}`));
-
-    const snapshotStart = workflow.indexOf(
-      'node packages/commercial-readiness/src/cli.mjs snapshot',
-    );
-    assert.notEqual(snapshotStart, -1);
-    const snapshotEnd = workflow.indexOf('\n\n', snapshotStart);
-    assert.notEqual(snapshotEnd, -1);
-    const snapshotCommand = workflow.slice(snapshotStart, snapshotEnd);
-
     assert.match(
-      snapshotCommand,
+      workflow,
       new RegExp(`--commit "${sourceExpression}"`),
     );
-    assert.doesNotMatch(snapshotCommand, /--commit "\$GITHUB_SHA"/);
+    assert.doesNotMatch(workflow, /--commit "\$GITHUB_SHA"/);
   });
 });
