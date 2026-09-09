@@ -209,7 +209,8 @@ function singleRow<Row>(
   if (rowsLength === 0) {
     return undefined;
   }
-  return boundedEvidenceRead(() => rows[0]);
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
 /** Validates one SQL row against the exact command and returns credential-free claim evidence. */
