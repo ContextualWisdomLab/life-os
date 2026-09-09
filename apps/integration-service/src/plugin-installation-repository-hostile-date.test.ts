@@ -221,7 +221,9 @@ describe('PostgresPluginInstallationStore hostile persistence coverage', () => {
     ).rejects.toBeInstanceOf(PluginInstallationPersistenceEvidenceError);
 
     const mismatchedRevocationWinner = new PostgresPluginInstallationStore(
-      new StaticSqlClient([revokedRow({ installation_id: OTHER_INSTALLATION_ID })]),
+      new StaticSqlClient([
+        revokedRow({ installation_id: OTHER_INSTALLATION_ID }),
+      ]),
     );
     await expect(
       mismatchedRevocationWinner.revokeActive({
