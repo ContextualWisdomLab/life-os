@@ -200,6 +200,33 @@ describe('Plugin Vault hosted bootstrap', () => {
     },
   );
 
+  it.each([false, true])(
+    'closes an unaccepted application before runtime cleanup and bounds close failure (cleanupRejects=%s)',
+    async (cleanupRejects) => {
+      const ownedPool = pool();
+      const close = vi.fn(async () => {
+        if (cleanupRejects) {
+          throw new Error('malformed application cleanup fixture secret');
+        }
+      });
+      const malformed = {
+        enableShutdownHooks: null,
+        listen: vi.fn(async () => undefined),
+        close,
+      } as unknown as PluginVaultHostedNestApplication;
+
+      await expectBootstrapFailure(
+        startPluginVaultHostedService(
+          () => ownedPool,
+          environment(),
+          async () => malformed,
+        ),
+      );
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(ownedPool.end).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('bounds a throwing application cleanup accessor and still closes the runtime', async () => {
     const ownedPool = pool();
     const malformed = {
