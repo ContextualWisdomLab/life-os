@@ -292,23 +292,18 @@ function requireActiveGrant(
   });
 }
 
-/** Compares only normalized admission authority and monotonic durable timestamps. */
+/** Compares variable idempotency scope after durable evidence has already been normalized. */
 function sameAdmission(
   durable: PluginDeliveryAttemptRecord,
   candidate: PluginDeliveryAttemptRecord,
 ): boolean {
   return (
-    durable.authorityVersion === candidate.authorityVersion &&
     durable.deliveryId === candidate.deliveryId &&
     durable.grantId === candidate.grantId &&
     durable.installationId === candidate.installationId &&
     durable.workspaceId === candidate.workspaceId &&
     durable.requestedByUserId === candidate.requestedByUserId &&
-    durable.status === 'pending' &&
-    durable.attemptCount === 0 &&
     durable.maxAttempts === candidate.maxAttempts &&
-    durable.terminalAt === null &&
-    durable.lastOutcomeCode === null &&
     new Date(durable.requestedAt).getTime() <=
       new Date(candidate.requestedAt).getTime() &&
     new Date(durable.updatedAt).getTime() <=
