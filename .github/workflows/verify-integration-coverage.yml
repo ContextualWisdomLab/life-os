@@ -56,9 +56,12 @@ jobs:
           pnpm exec prettier --single-quote --check \
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control.ts \
             apps/integration-service/src/plugin-delivery-attempt-control-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.ts \
             apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-status.ts \
