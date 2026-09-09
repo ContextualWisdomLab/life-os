@@ -76,6 +76,7 @@ function invalidEvidence(): never {
   throw new PluginDeliveryAttemptStatusPersistenceEvidenceError();
 }
 
+/** Collapses request-boundary parser/read failures into the fixed invalid-input contract. */
 function boundedInputRead<T>(read: () => T): T {
   try {
     return read();
@@ -84,6 +85,7 @@ function boundedInputRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses malformed persisted evidence reads into the fixed durable-evidence contract. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -92,6 +94,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Normalizes durable-evidence dependency rejection without leaking backend detail. */
 async function boundedEvidenceDependency<T>(
   read: () => Promise<T>,
 ): Promise<T> {
