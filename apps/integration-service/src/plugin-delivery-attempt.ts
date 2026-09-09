@@ -66,10 +66,12 @@ export interface SchedulePluginDeliveryAttemptInput {
   readonly maxAttempts: number;
 }
 
+/** Throws the fixed delivery-attempt authority error without reflecting hostile detail. */
 function invalid(): never {
   throw new PluginDeliveryAttemptAuthorityError();
 }
 
+/** Converts hostile synchronous reads into the fixed delivery-attempt authority error. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -78,6 +80,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Converts rejected origin or persistence dependencies into fixed authority failure. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -86,6 +89,7 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Requires one UUIDv4 identity and returns its canonical lowercase form. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -93,6 +97,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires one exact canonical UTC instant. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -104,6 +109,7 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Reads the injected clock and rejects invalid or hostile time evidence. */
 function currentInstant(now: () => Date): string {
   try {
     return requireInstant(now().toISOString());
@@ -112,8 +118,13 @@ function currentInstant(now: () => Date): string {
   }
 }
 
+/** Snapshots request-bound installation context before origin authority is exercised. */
 function requireContext(value: unknown): PluginInstallationContext {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    boundedRead(() => Array.isArray(value))
+  ) {
     return invalid();
   }
   const context = value as PluginInstallationContext;
@@ -126,8 +137,13 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Snapshots and validates one delivery-attempt scheduling command. */
 function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    boundedRead(() => Array.isArray(value))
+  ) {
     return invalid();
   }
   const input = value as SchedulePluginDeliveryAttemptInput;
@@ -149,14 +165,20 @@ function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
   });
 }
 
+/** Freezes normalized scheduling evidence before it crosses a durable boundary. */
 function freezeRecord(
   record: PluginDeliveryAttemptRecord,
 ): PluginDeliveryAttemptRecord {
   return Object.freeze({ ...record });
 }
 
+/** Validates hostile durable attempt evidence before idempotency comparison. */
 function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    boundedRead(() => Array.isArray(value))
+  ) {
     return invalid();
   }
   const record = value as PluginDeliveryAttemptRecord;
@@ -216,6 +238,7 @@ function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
   });
 }
 
+/** Credential-free active-grant fields consumed by delivery-attempt admission. */
 interface PluginDeliveryAttemptGrantEvidence {
   readonly grantId: string;
   readonly installationId: string;
@@ -226,6 +249,7 @@ interface PluginDeliveryAttemptGrantEvidence {
   readonly revokedAt: null;
 }
 
+/** Requires an exact active grant scoped to the request actor, installation, and time. */
 function requireActiveGrant(
   grant: PluginDeliveryOriginGrantRecord | undefined,
   context: PluginInstallationContext,
@@ -268,6 +292,7 @@ function requireActiveGrant(
   });
 }
 
+/** Compares only normalized admission authority and monotonic durable timestamps. */
 function sameAdmission(
   durable: PluginDeliveryAttemptRecord,
   candidate: PluginDeliveryAttemptRecord,
