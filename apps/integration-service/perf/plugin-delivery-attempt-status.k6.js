@@ -7,7 +7,9 @@ function boundedInteger(name, fallback, minimum, maximum) {
   const raw = __ENV[name];
   const value = raw === undefined || raw === '' ? fallback : Number(raw);
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+    throw new Error(
+      `${name} must be an integer between ${minimum} and ${maximum}`,
+    );
   }
   return value;
 }
@@ -27,7 +29,9 @@ if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/u.test(baseUrl)) {
 const authorities = new SharedArray('plugin-delivery-status-authority', () => {
   const parsed = JSON.parse(open(authorityFile));
   if (!Array.isArray(parsed) || parsed.length !== iterations) {
-    throw new Error('authority bundle must contain exactly K6_ITERATIONS entries');
+    throw new Error(
+      'authority bundle must contain exactly K6_ITERATIONS entries',
+    );
   }
   return parsed;
 });
@@ -65,11 +69,15 @@ export default function () {
   check(response, {
     'status is 200': (result) => result.status === 200,
     'status evidence matches delivery': (result) =>
-      result.status === 200 && result.json('deliveryId') === authority.deliveryId,
+      result.status === 200 &&
+      result.json('deliveryId') === authority.deliveryId,
     'status evidence remains credential-free': (result) =>
       result.status === 200 &&
       !Object.prototype.hasOwnProperty.call(result.json(), 'claimToken') &&
-      !Object.prototype.hasOwnProperty.call(result.json(), 'claimTokenDigest') &&
+      !Object.prototype.hasOwnProperty.call(
+        result.json(),
+        'claimTokenDigest',
+      ) &&
       !Object.prototype.hasOwnProperty.call(result.json(), 'credential'),
   });
 }
