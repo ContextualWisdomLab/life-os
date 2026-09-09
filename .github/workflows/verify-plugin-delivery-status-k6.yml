@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:
-      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@postgres.performance.test:5432/life_os_test
       INTEGRATION_OPERATOR_CONTEXT_SECRET: performance-context-secret-value-32-bytes-minimum
       INTEGRATION_PLUGIN_VAULT_ORIGIN: https://vault.performance.example.test
       INTEGRATION_PLUGIN_VAULT_TOKEN: performance-vault-fixture-token
@@ -27,6 +27,8 @@ jobs:
       K6_ITERATIONS: '1000'
       K6_VUS: '10'
       K6_AUTHORITY_FILE: /tmp/plugin-delivery-status-authority.json
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /tmp/integration-postgres-ca.crt
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -67,6 +69,77 @@ jobs:
           pnpm --filter @life-os/plugin-sdk build
           pnpm --filter @life-os/integration-service build
 
+      - name: Configure verified-TLS PostgreSQL fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          hostname=postgres.performance.test
+          ca_key=/tmp/integration-postgres-ca.key
+          ca_cert="$PGSSLROOTCERT"
+          server_key=/tmp/integration-postgres-server.key
+          server_csr=/tmp/integration-postgres-server.csr
+          server_cert=/tmp/integration-postgres-server.crt
+          server_ext=/tmp/integration-postgres-server.ext
+
+          mapfile -t postgres_containers < <(
+            docker ps --filter publish=5432 --format '{{.ID}}'
+          )
+          test "${#postgres_containers[@]}" -eq 1
+          postgres_container="${postgres_containers[0]}"
+
+          openssl genrsa -out "$ca_key" 2048
+          openssl req -x509 -new -sha256 -days 1 \
+            -key "$ca_key" \
+            -subj '/CN=LifeOS Integration CI PostgreSQL CA' \
+            -out "$ca_cert"
+          openssl genrsa -out "$server_key" 2048
+          openssl req -new -sha256 \
+            -key "$server_key" \
+            -subj "/CN=$hostname" \
+            -out "$server_csr"
+          printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\n' "$hostname" >"$server_ext"
+          openssl x509 -req -sha256 -days 1 \
+            -in "$server_csr" \
+            -CA "$ca_cert" \
+            -CAkey "$ca_key" \
+            -CAcreateserial \
+            -extfile "$server_ext" \
+            -out "$server_cert"
+          chmod 0600 "$server_key"
+
+          docker cp "$server_cert" "$postgres_container:/var/lib/postgresql/server.crt"
+          docker cp "$server_key" "$postgres_container:/var/lib/postgresql/server.key"
+          docker exec --user root "$postgres_container" \
+            chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key
+          docker exec --user root "$postgres_container" \
+            chmod 0644 /var/lib/postgresql/server.crt
+          docker exec --user root "$postgres_container" \
+            chmod 0600 /var/lib/postgresql/server.key
+          docker exec "$postgres_container" psql -U postgres -d life_os_test -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET ssl = 'on'" \
+            -c "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'" \
+            -c "ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/server.key'"
+          docker restart "$postgres_container" >/dev/null
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if docker exec "$postgres_container" pg_isready -U postgres -d life_os_test >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          printf '127.0.0.1 %s\n' "$hostname" | sudo tee -a /etc/hosts >/dev/null
+          printf 'NODE_EXTRA_CA_CERTS=%s\n' "$ca_cert" >>"$GITHUB_ENV"
+
+          rm -f \
+            "$ca_key" \
+            "$server_key" \
+            "$server_csr" \
+            "$server_ext" \
+            "${ca_cert}.srl"
+
       - name: Migrate and seed Integration-owned PostgreSQL
         shell: bash
         run: |
@@ -76,6 +149,9 @@ jobs:
           done
           psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 \
             -f apps/integration-service/perf/seed-plugin-delivery-attempt-status.sql
+          psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
+            'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()' |
+            grep -Fx t
 
       - name: Measure authenticated status path without warm-up exclusion
         shell: bash
@@ -107,6 +183,9 @@ jobs:
               "$K6_BASE_URL/v1/plugins/delivery-attempts/33333333-3333-4333-8333-333333333333" || true)
             if [ "$code" = '401' ]; then
               ready=1
+              break
+            fi
+            if ! kill -0 "$service_pid" 2>/dev/null; then
               break
             fi
             sleep 1
