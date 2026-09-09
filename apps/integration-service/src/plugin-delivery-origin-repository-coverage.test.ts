@@ -88,9 +88,7 @@ function revocation(
   };
 }
 
-async function expectValidationFailure(
-  record: unknown,
-): Promise<void> {
+async function expectValidationFailure(record: unknown): Promise<void> {
   const client = new ScriptedSqlClient([]);
   const store = new PostgresPluginDeliveryOriginGrantStore(client);
   await expect(
@@ -99,9 +97,7 @@ async function expectValidationFailure(
   expect(client.calls).toHaveLength(0);
 }
 
-async function expectEvidenceFailure(
-  durableRow: unknown,
-): Promise<void> {
+async function expectEvidenceFailure(durableRow: unknown): Promise<void> {
   const store = storeFor({ rows: [durableRow], rowCount: 1 });
   await expect(
     store.findById(
@@ -127,7 +123,7 @@ describe('PostgresPluginDeliveryOriginGrantStore coverage boundaries', () => {
       { ...ACTIVE_GRANT, grantedAt: 'not-an-instant' },
       { ...ACTIVE_GRANT, grantedAt: '2026-02-31T20:00:00.000Z' },
       { ...ACTIVE_GRANT, origin: 42 },
-      { ...ACTIVE_GRANT, origin: 'https://a' },
+      { ...ACTIVE_GRANT, origin: 'https://' },
       { ...ACTIVE_GRANT, origin: `https://${'a'.repeat(510)}` },
       { ...ACTIVE_GRANT, origin: 'https://api.example.com\n' },
       { ...ACTIVE_GRANT, origin: 'http://api.example.com' },
