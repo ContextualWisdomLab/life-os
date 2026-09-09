@@ -5,10 +5,23 @@ import { Pool, type QueryResultRow } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parsePluginDeliveryAttemptTestDatabaseTarget } from './plugin-delivery-attempt-test-database';
 
+const LOOPBACK_TEST_DATABASE_HOSTS = new Set([
+  '127.0.0.1',
+  '[::1]',
+  'localhost',
+]);
 const DATABASE_URL = process.env.INTEGRATION_DATABASE_URL;
 const TEST_DATABASE_TARGET = DATABASE_URL
   ? parsePluginDeliveryAttemptTestDatabaseTarget(DATABASE_URL)
   : undefined;
+if (
+  TEST_DATABASE_TARGET &&
+  !LOOPBACK_TEST_DATABASE_HOSTS.has(TEST_DATABASE_TARGET.hostname.toLowerCase())
+) {
+  throw new Error(
+    'Plugin operator replay destructive setup requires a loopback Integration test database',
+  );
+}
 const describeWithPostgres = TEST_DATABASE_TARGET ? describe : describe.skip;
 const REPLAY_MIGRATIONS = [
   '0003_plugin_operator_context_replay_record.sql',

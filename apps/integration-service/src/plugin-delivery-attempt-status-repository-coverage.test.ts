@@ -55,6 +55,9 @@ function harness(result: unknown) {
   const client: PluginDeliveryAttemptStatusSqlClient = {
     async query<Row>(text: string, values?: readonly unknown[]) {
       calls.push({ text, values });
+      if (result instanceof Error) {
+        throw result;
+      }
       return result as PluginDeliveryAttemptStatusSqlResult<Row>;
     },
   };
@@ -94,6 +97,13 @@ describe('PostgresPluginDeliveryAttemptStatusStore coverage boundaries', () => {
   it('returns undefined only for an unambiguous empty scoped result', async () => {
     const { store } = harness({ rows: [], rowCount: 0 });
     await expect(store.read(command())).resolves.toBeUndefined();
+  });
+
+  it('collapses SQL dependency rejection into fixed durable-evidence failure', async () => {
+    const { store } = harness(new Error('database-host=private.internal'));
+    await expect(store.read(command())).rejects.toEqual(
+      new PluginDeliveryAttemptStatusPersistenceEvidenceError(),
+    );
   });
 
   it('accepts every durable lifecycle shape admitted by the aggregate', async () => {
