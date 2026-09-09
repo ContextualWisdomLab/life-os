@@ -39,8 +39,8 @@ export class PluginOperatorReplayValidationError extends Error {
   }
 }
 
-interface ReplayEvidenceRow {
-  evidence_id: unknown;
+interface ReplayConsumeRow {
+  consumed: unknown;
 }
 
 /** Fails closed for malformed replay evidence without reflecting the value. */
@@ -87,10 +87,13 @@ function replayEvidence(
 /**
  * PostgreSQL implementation of the one-time operator evidence guard.
  *
- * A primary-key insert is the distributed compare-and-set boundary: exactly one
- * service instance can consume a signed evidence UUID. Expired rows are pruned
- * against the database clock, while still-valid rows remain durable across
- * processes so horizontal replicas cannot replay the same authority independently.
+ * The Integration-owned consume function is the distributed compare-and-set boundary:
+ * exactly one service instance can consume a still-valid signed evidence UUID. It performs
+ * a conflict-safe insert/expired replacement first, then bounded expiry cleanup with
+ * `SKIP LOCKED`, so cleanup cannot turn concurrent current evidence into a lock cycle.
+ * Keeping consume and cleanup inside one PostgreSQL invocation removes an otherwise
+ * unconditional network round trip from every authenticated operator request while the
+ * expiry index continues to bound cleanup work.
  */
 export class PostgresPluginOperatorReplayGuard
   implements PluginOperatorReplayGuardPort
@@ -101,33 +104,19 @@ export class PostgresPluginOperatorReplayGuard
   /** Atomically consumes one evidence UUID and returns false for an existing winner. */
   async consume(evidence: PluginOperatorReplayEvidence): Promise<boolean> {
     const safe = replayEvidence(evidence);
-    await this.client.query(
-      `DELETE FROM plugin_integration.plugin_operator_context_replay_record
-       WHERE expires_at < now()`,
-    );
-    const inserted = await this.client.query<ReplayEvidenceRow>(
-      `INSERT INTO plugin_integration.plugin_operator_context_replay_record (
-         evidence_id, consumed_at, expires_at
-       ) VALUES ($1::uuid, $2::timestamptz, $3::timestamptz)
-       ON CONFLICT (evidence_id) DO NOTHING
-       RETURNING evidence_id`,
+    const result = await this.client.query<ReplayConsumeRow>(
+      `SELECT plugin_integration.consume_plugin_operator_context_replay(
+         $1::uuid, $2::timestamptz, $3::timestamptz
+       ) AS consumed`,
       [safe.evidenceId, safe.consumedAt, safe.expiresAt],
     );
-    if (inserted.rows.length > 1 || inserted.rowCount === null) {
-      return invalid();
-    }
-    if (inserted.rows.length === 0) {
-      if (inserted.rowCount !== 0) {
-        return invalid();
-      }
-      return false;
-    }
     if (
-      inserted.rowCount !== 1 ||
-      evidenceId(inserted.rows[0]?.evidence_id) !== safe.evidenceId
+      result.rowCount !== 1 ||
+      result.rows.length !== 1 ||
+      typeof result.rows[0]?.consumed !== 'boolean'
     ) {
       return invalid();
     }
-    return true;
+    return result.rows[0].consumed;
   }
 }
