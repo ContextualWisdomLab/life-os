@@ -127,6 +127,15 @@ async function boundedDependency<T>(
   }
 }
 
+/** Collapses hostile synchronous envelope or evidence reads into the fixed application error. */
+function boundedRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalid();
+  }
+}
+
 /** Canonicalizes one UUIDv4 authority identifier before comparison or persistence use. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
@@ -152,40 +161,44 @@ function requireStoredUuid(value: unknown): string {
  * workspace/user UUIDv4 authority. Malformed envelopes fail without I/O.
  */
 function requireContext(value: unknown): PluginInstallationContext {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return invalid();
-  }
-  const context = value as PluginInstallationContext;
-  return Object.freeze({
-    workspaceId: requireUuidV4(context.workspaceId),
-    actorUserId: requireUuidV4(context.actorUserId),
+  return boundedRead(() => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return invalid();
+    }
+    const context = value as PluginInstallationContext;
+    return Object.freeze({
+      workspaceId: requireUuidV4(context.workspaceId),
+      actorUserId: requireUuidV4(context.actorUserId),
+    });
   });
 }
 
 /** Rejects malformed bind command envelopes before secret or persistence authority is touched. */
 function requireBindInput(value: unknown): BindPluginCredentialInput {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return invalid();
-  }
-  return value as BindPluginCredentialInput;
+  return boundedRead(() => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return invalid();
+    }
+    const input = value as BindPluginCredentialInput;
+    return Object.freeze({
+      trustedContext: input.trustedContext,
+      installationId: input.installationId,
+      credentialBindingId: input.credentialBindingId,
+      credentialName: input.credentialName,
+      secretValue: input.secretValue,
+    });
+  });
 }
 
 /** Captures one canonical operation instant before any authority, persistence, or secret I/O. */
 function currentInstant(now: () => Date): string {
-  let value: unknown;
-  try {
-    value = now();
-  } catch {
-    return invalid();
-  }
-  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
-    return invalid();
-  }
-  try {
+  return boundedRead(() => {
+    const value: unknown = now();
+    if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+      return invalid();
+    }
     return value.toISOString();
-  } catch {
-    return invalid();
-  }
+  });
 }
 
 /**
@@ -245,37 +258,39 @@ function requireSecretReference(value: unknown): string {
 
 /** Validates the complete durable binding lifecycle before any record becomes application authority. */
 function requireBindingRecord(value: unknown): PluginCredentialBindingRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return invalid();
-  }
-  const candidate = value as PluginCredentialBindingRecord;
-  const status =
-    candidate.status === 'active' || candidate.status === 'revoked'
-      ? candidate.status
-      : invalid();
-  const boundAt = requireStoredInstant(candidate.boundAt);
-  const revokedAt =
-    candidate.revokedAt === null
-      ? null
-      : requireStoredInstant(candidate.revokedAt);
-  if (
-    (status === 'active' && revokedAt !== null) ||
-    (status === 'revoked' && revokedAt === null) ||
-    (revokedAt !== null &&
-      instantMilliseconds(revokedAt) < instantMilliseconds(boundAt))
-  ) {
-    return invalid();
-  }
-  return Object.freeze({
-    credentialBindingId: requireStoredUuid(candidate.credentialBindingId),
-    installationId: requireStoredUuid(candidate.installationId),
-    workspaceId: requireStoredUuid(candidate.workspaceId),
-    installedByUserId: requireStoredUuid(candidate.installedByUserId),
-    credentialName: requireCredentialName(candidate.credentialName),
-    secretReference: requireSecretReference(candidate.secretReference),
-    status,
-    boundAt,
-    revokedAt,
+  return boundedRead(() => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return invalid();
+    }
+    const candidate = value as PluginCredentialBindingRecord;
+    const status =
+      candidate.status === 'active' || candidate.status === 'revoked'
+        ? candidate.status
+        : invalid();
+    const boundAt = requireStoredInstant(candidate.boundAt);
+    const revokedAt =
+      candidate.revokedAt === null
+        ? null
+        : requireStoredInstant(candidate.revokedAt);
+    if (
+      (status === 'active' && revokedAt !== null) ||
+      (status === 'revoked' && revokedAt === null) ||
+      (revokedAt !== null &&
+        instantMilliseconds(revokedAt) < instantMilliseconds(boundAt))
+    ) {
+      return invalid();
+    }
+    return Object.freeze({
+      credentialBindingId: requireStoredUuid(candidate.credentialBindingId),
+      installationId: requireStoredUuid(candidate.installationId),
+      workspaceId: requireStoredUuid(candidate.workspaceId),
+      installedByUserId: requireStoredUuid(candidate.installedByUserId),
+      credentialName: requireCredentialName(candidate.credentialName),
+      secretReference: requireSecretReference(candidate.secretReference),
+      status,
+      boundAt,
+      revokedAt,
+    });
   });
 }
 
@@ -411,17 +426,19 @@ export class PluginCredentialApplication {
         this.installationAuthority.getInstallation(context, installationId),
       )
     ).value;
-    if (
-      !installation ||
-      installation.status !== 'active' ||
-      installation.revokedAt !== null ||
-      installation.workspaceId !== context.workspaceId ||
-      installation.installedByUserId !== context.actorUserId ||
-      installation.installationId !== installationId
-    ) {
-      return invalid();
-    }
-    const installedAt = requireStoredInstant(installation.installedAt);
+    const installedAt = boundedRead(() => {
+      if (
+        !installation ||
+        installation.status !== 'active' ||
+        installation.revokedAt !== null ||
+        installation.workspaceId !== context.workspaceId ||
+        installation.installedByUserId !== context.actorUserId ||
+        installation.installationId !== installationId
+      ) {
+        return invalid();
+      }
+      return requireStoredInstant(installation.installedAt);
+    });
     if (instantMilliseconds(installedAt) > instantMilliseconds(boundAt)) {
       return invalid();
     }
@@ -472,15 +489,20 @@ export class PluginCredentialApplication {
       } catch {
         return invalid();
       }
-      if (
-        !currentInstallation ||
-        currentInstallation.status !== 'active' ||
-        currentInstallation.revokedAt !== null ||
-        currentInstallation.workspaceId !== context.workspaceId ||
-        currentInstallation.installedByUserId !== context.actorUserId ||
-        currentInstallation.installationId !== installationId ||
-        requireStoredInstant(currentInstallation.installedAt) !== installedAt
-      ) {
+      const currentInstalledAt = boundedRead(() => {
+        if (
+          !currentInstallation ||
+          currentInstallation.status !== 'active' ||
+          currentInstallation.revokedAt !== null ||
+          currentInstallation.workspaceId !== context.workspaceId ||
+          currentInstallation.installedByUserId !== context.actorUserId ||
+          currentInstallation.installationId !== installationId
+        ) {
+          return invalid();
+        }
+        return requireStoredInstant(currentInstallation.installedAt);
+      });
+      if (currentInstalledAt !== installedAt) {
         return invalid();
       }
       let currentBindingEvidence: PluginCredentialBindingRecord | undefined;
