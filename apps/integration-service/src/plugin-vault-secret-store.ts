@@ -172,12 +172,7 @@ function parseReference(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith(SECRET_REFERENCE_PREFIX)) {
     return unavailable();
   }
-  const bindingId = requireUuidV4(value.slice(SECRET_REFERENCE_PREFIX.length));
-  const canonical = `${SECRET_REFERENCE_PREFIX}${bindingId}`;
-  if (value !== canonical) {
-    return unavailable();
-  }
-  return bindingId;
+  return requireUuidV4(value.slice(SECRET_REFERENCE_PREFIX.length));
 }
 
 /** Compares secret UTF-8 bytes without early content comparison and zeroizes temporary buffers. */
