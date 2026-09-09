@@ -136,6 +136,20 @@ describe('Plugin credential hostile-boundary coverage', () => {
     expect(owned.installationAuthority.getInstallation).not.toHaveBeenCalled();
   });
 
+  it('bounds a hostile Date whose canonical serialization throws', async () => {
+    const owned = ports();
+    const hostileInstant = new Date(BOUND_AT);
+    Object.defineProperty(hostileInstant, 'toISOString', {
+      value: () => {
+        throw new Error('serialization fixture');
+      },
+    });
+    const subject = application(owned, () => hostileInstant);
+
+    await expectInvalid(subject.bind(BIND_INPUT));
+    expect(owned.installationAuthority.getInstallation).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, '', `safe${String.fromCharCode(0)}secret`])(
     'rejects malformed secret material %j before authority I/O',
     async (secretValue) => {
@@ -153,7 +167,11 @@ describe('Plugin credential hostile-boundary coverage', () => {
 
   it('uses the production clock when no explicit clock is injected', async () => {
     const owned = ports();
-    const subject = application(owned, undefined);
+    const subject = new PluginCredentialApplication(
+      owned.installationAuthority,
+      owned.bindingStore,
+      owned.secretStore,
+    );
 
     await expect(subject.bind(BIND_INPUT)).resolves.toEqual(
       expect.objectContaining({
