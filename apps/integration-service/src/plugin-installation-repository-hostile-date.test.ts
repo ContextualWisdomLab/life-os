@@ -139,7 +139,9 @@ describe('PostgresPluginInstallationStore hostile persistence coverage', () => {
   });
 
   it('normalizes malformed persisted instants and lifecycle contradictions to the fixed evidence error', async () => {
-    await expectReadEvidenceFailure(row({ installed_at: new Date(Number.NaN) }));
+    await expectReadEvidenceFailure(
+      row({ installed_at: new Date(Number.NaN) }),
+    );
     await expectReadEvidenceFailure(row({ installed_at: revokedDateProxy() }));
     await expectReadEvidenceFailure(row({ installed_at: '2026-08-10' }));
     await expectReadEvidenceFailure(
