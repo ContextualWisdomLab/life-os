@@ -210,9 +210,9 @@ function requireEvidence(
 
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireCanonicalUuidV4(snapshot.deliveryId),
-    workspaceId: requireCanonicalUuidV4(snapshot.workspaceId),
-    requestedByUserId: requireCanonicalUuidV4(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     attemptNumber: snapshot.attemptNumber,
     maxAttempts: snapshot.maxAttempts,
     deliveryStatus: snapshot.deliveryStatus,
