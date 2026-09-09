@@ -44,10 +44,13 @@ As of 2026-08-04, code-owner review requirements (`require_code_owner_reviews` i
 
 - AI proposals are inert, explainable suggestions and cannot silently mutate user-owned data.
 - `COPILOT_GITHUB_TOKEN` is prohibited.
-- Model-assisted tests and scheduled agents use `NVIDIA_NIM_API_KEY` through the approved OpenCode or contextual-orchestrator boundary.
+- All model capability is consumed through an immutable released `contextual-orchestrator` API/client/schema boundary. Model-assisted tests and scheduled agents use only virtual `orchestrator/free` plus the gateway authentication token; LifeOS does not select provider/model/group routes or configure a paid/provider fallback.
+- `BYTEZ`, `NVIDIA_NIM`/`NVIDIA_NIM_SUB`, `OPENROUTER`, `OPENAI`, embedding, responses/completions, audio/video/image and other provider capability or credential discovery remain contextual-orchestrator owner authority. LifeOS does not copy mutable owner source or seed those provider credentials directly.
+- If the released contextual-orchestrator contract or a required capability is unavailable, fail closed and repair/release the canonical owner before bumping the LifeOS consumer. Do not bypass an unavailable owner capability with direct-provider calls.
 - Do not alter or reuse the key scheme of existing review agents.
 - Provider credentials, browser cookies, bearer material, raw prompts, raw responses, hidden reasoning, and stack traces do not enter retained artifacts.
-- Live-provider availability is not a deterministic pull-request merge requirement; missing or unavailable providers produce explicit sanitized evidence.
+- Model timeout defaults remain owner-contract-driven; user cancellation, provider termination, administrative timeout, stream/tool-call lifecycle, and reasoning completion are distinct evidence classes rather than elapsed-time-only termination signals.
+- Live-provider availability is not a deterministic pull-request merge requirement; missing or unavailable provider capability produces explicit sanitized evidence.
 
 ### Test-time compute allocation
 
