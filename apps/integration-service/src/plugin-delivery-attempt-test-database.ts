@@ -54,13 +54,19 @@ export function parsePluginDeliveryAttemptTestDatabaseTarget(
   }
 
   const sslModes = target.searchParams.getAll('sslmode');
-  if (sslModes.length !== 1 || !TLS_MODES.has(sslModes[0])) {
+  if (sslModes.length !== 1) {
+    return invalidTarget(
+      'An explicit sslmode is required for the Integration test database',
+    );
+  }
+  const [sslModeCandidate] = sslModes;
+  if (sslModeCandidate === undefined || !TLS_MODES.has(sslModeCandidate)) {
     return invalidTarget(
       'An explicit sslmode is required for the Integration test database',
     );
   }
   const sslMode =
-    sslModes[0] as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
+    sslModeCandidate as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
   if (
     sslMode === 'disable' &&
     !LOOPBACK_HOSTS.has(target.hostname.toLowerCase())
