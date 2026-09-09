@@ -171,7 +171,9 @@ describe('PluginVaultSecretStore hostile boundary coverage', () => {
     const matching = vi
       .fn<PluginVaultHttpClient>()
       .mockResolvedValue(response(200, vaultRead()));
-    await expect(store(matching).verifySecret(REFERENCE, INPUT)).resolves.toBeUndefined();
+    await expect(
+      store(matching).verifySecret(REFERENCE, INPUT),
+    ).resolves.toBeUndefined();
 
     const noIo = vi.fn<PluginVaultHttpClient>();
     await expectUnavailable(
@@ -183,22 +185,29 @@ describe('PluginVaultSecretStore hostile boundary coverage', () => {
     expect(noIo).not.toHaveBeenCalled();
 
     await expectUnavailable(
-      store(vi.fn<PluginVaultHttpClient>().mockRejectedValue(new Error('vault down')))
-        .verifySecret(REFERENCE, INPUT),
+      store(
+        vi
+          .fn<PluginVaultHttpClient>()
+          .mockRejectedValue(new Error('vault down')),
+      ).verifySecret(REFERENCE, INPUT),
     );
     await expectUnavailable(
-      store(vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(404)))
-        .verifySecret(REFERENCE, INPUT),
+      store(
+        vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(404)),
+      ).verifySecret(REFERENCE, INPUT),
     );
     await expectUnavailable(
-      store(vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(200, '{')))
-        .verifySecret(REFERENCE, INPUT),
+      store(
+        vi.fn<PluginVaultHttpClient>().mockResolvedValue(response(200, '{')),
+      ).verifySecret(REFERENCE, INPUT),
     );
     await expectUnavailable(
       store(
         vi
           .fn<PluginVaultHttpClient>()
-          .mockResolvedValue(response(200, vaultRead({ secretValue: 'different secret' }))),
+          .mockResolvedValue(
+            response(200, vaultRead({ secretValue: 'different secret' })),
+          ),
       ).verifySecret(REFERENCE, INPUT),
     );
   });
