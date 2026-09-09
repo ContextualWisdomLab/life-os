@@ -204,7 +204,11 @@ function singleRow<Row>(
   ) {
     return invalidEvidence();
   }
-  return rowsLength === 0 ? undefined : boundedEvidenceRead(() => rows[0]);
+  if (rowsLength === 0) {
+    return undefined;
+  }
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
 function retryInstant(occurredAt: string, attemptNumber: number): string {
