@@ -54,7 +54,7 @@ export function parsePluginDeliveryAttemptTestDatabaseTarget(
   }
 
   const sslModes = target.searchParams.getAll('sslmode');
-  if (sslModes.length !== 1 || !TLS_MODES.has(sslModes[0] ?? '')) {
+  if (sslModes.length !== 1 || !TLS_MODES.has(sslModes[0])) {
     return invalidTarget(
       'An explicit sslmode is required for the Integration test database',
     );
