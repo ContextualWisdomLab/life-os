@@ -96,13 +96,6 @@ function requireInputUuid(value: unknown): string {
   return value;
 }
 
-function requireStoredUuid(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
-    return invalidEvidence();
-  }
-  return value;
-}
-
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -246,9 +239,9 @@ function parseEvidence(
   }
   return Object.freeze({
     authorityVersion: CONTROL_AUTHORITY_VERSION,
-    deliveryId: requireStoredUuid(snapshot.deliveryId),
-    workspaceId: requireStoredUuid(snapshot.workspaceId),
-    requestedByUserId: requireStoredUuid(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     controlSequence: snapshot.controlSequence,
     controlCode,
     deliveryStatus: snapshot.deliveryStatus as
