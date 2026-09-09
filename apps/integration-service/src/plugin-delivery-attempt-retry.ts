@@ -1,12 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
+import { pluginDeliveryAttemptRetryBackoffSeconds } from './plugin-delivery-attempt-retry-policy';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt-retry.v1' as const;
-const INITIAL_BACKOFF_SECONDS = 30;
-const MAXIMUM_BACKOFF_SECONDS = 900;
 const MAXIMUM_ATTEMPTS = 10;
 
 /** Fixed retry-transition failure without claim token or dependency detail. */
@@ -123,11 +122,7 @@ function digestClaimToken(value: unknown): string {
 }
 
 function retryAt(occurredAt: string, attemptNumber: number): string {
-  const exponent = attemptNumber - 1;
-  const delaySeconds = Math.min(
-    INITIAL_BACKOFF_SECONDS * 2 ** exponent,
-    MAXIMUM_BACKOFF_SECONDS,
-  );
+  const delaySeconds = pluginDeliveryAttemptRetryBackoffSeconds(attemptNumber);
   return requireInstant(
     new Date(
       new Date(occurredAt).getTime() + delaySeconds * 1_000,
