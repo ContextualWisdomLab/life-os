@@ -1,0 +1,86 @@
+name: Publish product gap baseline v54
+
+on:
+  push:
+    branches:
+      - docs/product-gap-baseline-2026-08-20
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-product-gap-baseline-v54
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Replace bounded #260 currentness block
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('docs/product-technical-gap-baseline.md')
+          text = path.read_text(encoding='utf-8')
+          start = '<!-- life-os-currentness:#260:start -->'
+          end = '<!-- life-os-currentness:#260:end -->'
+          block = '''<!-- life-os-currentness:#260:start -->
+> **#260 authenticated status performance — exact active-PR GREEN, still unshipped.** #260 is the direct #259 performance-acceptance descendant and remains Draft/unshipped. The first production-faithful k6 run `34293875857`, job `102286121337`, completed all 1,000 signed status requests with 3,000/3,000 functional checks and 0 HTTP failures but failed the unchanged buyer-path gate at **p95 21.7 ms**. Profiling found three sequential PostgreSQL invocations on the successful path: replay expiry cleanup, replay insert/conflict, then the scoped status read. The minimum causal repair adds Integration-owned `plugin_integration.consume_plugin_operator_context_replay(...)`, preserves exactly-one current replay winner, bounds opportunistic expired-row cleanup to 32 other rows with the existing expiry index plus `FOR UPDATE SKIP LOCKED`, and reduces replay consumption to one PostgreSQL invocation without caching, sample exclusion, threshold relaxation, cross-service SQL or weaker TLS. Exact proof head `a24862ee07b6522f37f60f17013b09f546c923f2`, run `34296446935`, job `102294001154`, completed GREEN on Ubuntu 24.04/PostgreSQL 16/k6 2.2.0: Integration typecheck/build and canonical formatting passed; the complete Integration unit suite passed 423 tests with 48 environment-dependent skips across 84 files; focused real-PostgreSQL replay acceptance passed 3/3 under peer-verified TLS; and the actual hosted executable completed 1,000/1,000 measured requests at 10 VUs with no warm-up exclusion, 3,000/3,000 checks, 0/1,000 HTTP failures and **p95 15.27 ms** (avg 11.5 ms, median 10.37 ms, p90 13.92 ms, p99 28.85 ms, max 114.73 ms). Current #260 exact `a81c8f243eaedb5f7efddc8a6c208083c8c256e3` removes only the purpose-complete verifier after that terminal GREEN. This is active-PR evidence, not protected-main or release authority. The p95 gap for this buyer path is therefore empirically satisfied on the active candidate; an owned coverage-percentage artifact remains missing and 100% Test/Edge Coverage is not claimed.
+>
+> Durable replay, delivery and status identity still grants no provider-execution or outbound-network authority. `ContextualWisdomLab/EgressWeave` has no immutable released/versioned contract consumable by LifeOS, so provider HTTPS remains fail closed. #260 does not change that boundary.
+<!-- life-os-currentness:#260:end -->'''
+
+          if start in text or end in text:
+              pattern = re.compile(re.escape(start) + r'.*?' + re.escape(end), re.S)
+              if len(pattern.findall(text)) != 1:
+                  raise SystemExit('expected exactly one existing #260 currentness block')
+              text = pattern.sub(block, text)
+          else:
+              anchor = '\n## Canonical architecture and evidence rules\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit('expected exactly one canonical architecture anchor')
+              text = text.replace(anchor, '\n\n' + block + anchor, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify bounded publication and retire writer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check
+          grep -Fq 'p95 15.27 ms' docs/product-technical-gap-baseline.md
+          grep -Fq 'a24862ee07b6522f37f60f17013b09f546c923f2' docs/product-technical-gap-baseline.md
+          grep -Fq 'a81c8f243eaedb5f7efddc8a6c208083c8c256e3' docs/product-technical-gap-baseline.md
+          git rm .github/workflows/publish-product-gap-baseline-v54.yml
+          mapfile -t changed < <(git diff --name-only)
+          printf '%s\n' "${changed[@]}" | sort > /tmp/changed
+          printf '%s\n' \
+            '.github/workflows/publish-product-gap-baseline-v54.yml' \
+            'docs/product-technical-gap-baseline.md' | sort > /tmp/allowed
+          diff -u /tmp/allowed /tmp/changed
+
+      - name: Publish only if writer input is still branch head
+        shell: bash
+        env:
+          INPUT_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch origin docs/product-gap-baseline-2026-08-20
+          test "$(git rev-parse origin/docs/product-gap-baseline-2026-08-20)" = "$INPUT_SHA"
+          git config user.name 'LifeOS commercial-development writer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add docs/product-technical-gap-baseline.md
+          git commit -m 'docs: record #260 status performance acceptance'
+          git push origin HEAD:docs/product-gap-baseline-2026-08-20
