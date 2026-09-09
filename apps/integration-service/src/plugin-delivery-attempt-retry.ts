@@ -4,7 +4,6 @@ import type { PluginInstallationContext } from './plugin-installation';
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt-retry.v1' as const;
 const INITIAL_BACKOFF_SECONDS = 30;
 const MAXIMUM_BACKOFF_SECONDS = 900;
@@ -120,15 +119,11 @@ function currentInstant(now: () => Date): string {
 
 function digestClaimToken(value: unknown): string {
   const token = requireCanonicalUuidV4(value);
-  const digest = createHash('sha256').update(token, 'utf8').digest('hex');
-  if (!SHA256_PATTERN.test(digest)) {
-    return invalid();
-  }
-  return digest;
+  return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
 function retryAt(occurredAt: string, attemptNumber: number): string {
-  const exponent = Math.max(0, attemptNumber - 1);
+  const exponent = attemptNumber - 1;
   const delaySeconds = Math.min(
     INITIAL_BACKOFF_SECONDS * 2 ** exponent,
     MAXIMUM_BACKOFF_SECONDS,
