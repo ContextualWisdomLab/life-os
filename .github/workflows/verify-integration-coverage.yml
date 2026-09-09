@@ -78,6 +78,7 @@ jobs:
             apps/integration-service/src/plugin-delivery-attempt-stored-instant-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-test-database.test.ts \
             apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
+            apps/integration-service/src/plugin-vault-operator-composition-coverage.test.ts \
             apps/integration-service/src/plugin-vault-secret-store-coverage.test.ts \
             .github/workflows/verify-integration-coverage.yml
           git diff --check
