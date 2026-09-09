@@ -105,18 +105,15 @@ describe('PluginVaultSecretStore hostile boundary coverage', () => {
         PluginVaultSecretStoreError,
       );
     }
-    expect(
-      () => new PluginVaultSecretStore(null as never, TOKEN),
-    ).toThrow(PluginVaultSecretStoreError);
-    expect(
-      () => new PluginVaultSecretStore('x'.repeat(2_049), TOKEN),
-    ).toThrow(PluginVaultSecretStoreError);
+    expect(() => new PluginVaultSecretStore(null as never, TOKEN)).toThrow(
+      PluginVaultSecretStoreError,
+    );
+    expect(() => new PluginVaultSecretStore('x'.repeat(2_049), TOKEN)).toThrow(
+      PluginVaultSecretStoreError,
+    );
     expect(
       () =>
-        new PluginVaultSecretStore(
-          'https://vault.example.test',
-          null as never,
-        ),
+        new PluginVaultSecretStore('https://vault.example.test', null as never),
     ).toThrow(PluginVaultSecretStoreError);
     expect(
       () =>
