@@ -196,7 +196,8 @@ function singleRow<Row>(
   if (rowsLength === 0) {
     return undefined;
   }
-  return boundedEvidenceRead(() => rows[0]);
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
 function parseEvidence(
