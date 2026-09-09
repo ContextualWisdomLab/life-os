@@ -150,6 +150,40 @@ describe('Plugin credential hostile-boundary coverage', () => {
     expect(owned.installationAuthority.getInstallation).not.toHaveBeenCalled();
   });
 
+  it('bounds a revoked operation-clock proxy before authority I/O', async () => {
+    const owned = ports();
+    const hostile = Proxy.revocable(new Date(BOUND_AT), {});
+    hostile.revoke();
+    const subject = application(owned, () => hostile.proxy);
+
+    await expectInvalid(subject.bind(BIND_INPUT));
+    expect(owned.installationAuthority.getInstallation).not.toHaveBeenCalled();
+  });
+
+  it('bounds hostile bind-command property reads before dependency I/O', async () => {
+    const owned = ports();
+    const hostileInput = new Proxy(BIND_INPUT, {
+      get(target, property, receiver) {
+        if (property === 'trustedContext') {
+          throw new Error('bind getter fixture');
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    await expectInvalid(application(owned).bind(hostileInput));
+    expect(owned.installationAuthority.getInstallation).not.toHaveBeenCalled();
+  });
+
+  it('bounds a revoked trusted-context proxy before revoke dependency I/O', async () => {
+    const owned = ports();
+    const hostile = Proxy.revocable(CONTEXT, {});
+    hostile.revoke();
+
+    await expectInvalid(application(owned).revoke(hostile.proxy, BINDING_ID));
+    expect(owned.bindingStore.findById).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, '', `safe${String.fromCharCode(0)}secret`])(
     'rejects malformed secret material %j before authority I/O',
     async (secretValue) => {
@@ -190,11 +224,43 @@ describe('Plugin credential hostile-boundary coverage', () => {
     await expectInvalid(application(owned).bind(BIND_INPUT));
   });
 
+  it('bounds hostile installation evidence after dependency resolution', async () => {
+    const owned = ports();
+    const hostileInstallation = new Proxy(installation(), {
+      get(target, property, receiver) {
+        if (property === 'status') {
+          throw new Error('installation getter fixture');
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    owned.installationAuthority.getInstallation.mockResolvedValue(
+      hostileInstallation,
+    );
+
+    await expectInvalid(application(owned).bind(BIND_INPUT));
+  });
+
   it('bounds initial binding-store rejection during bind', async () => {
     const owned = ports();
     owned.bindingStore.findById.mockRejectedValue(
       new Error('binding boundary fixture'),
     );
+
+    await expectInvalid(application(owned).bind(BIND_INPUT));
+  });
+
+  it('bounds hostile durable binding reads after dependency resolution', async () => {
+    const owned = ports();
+    const hostileBinding = new Proxy(binding(), {
+      get(target, property, receiver) {
+        if (property === 'status') {
+          throw new Error('binding getter fixture');
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    owned.bindingStore.findById.mockResolvedValue(hostileBinding);
 
     await expectInvalid(application(owned).bind(BIND_INPUT));
   });
