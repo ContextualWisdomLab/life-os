@@ -19,7 +19,7 @@ import {
   type DynamicModule,
   type ExceptionFilter,
 } from '@nestjs/common';
-import { APP_FILTER, NestFactory } from '@nestjs/core';
+import { APP_FILTER } from '@nestjs/core';
 import {
   getPluginContractDiscovery,
   type PluginContractDiscovery,
@@ -617,17 +617,4 @@ export class IntegrationAppModule {
       providers: [{ provide: PLUGIN_OPERATOR_APPLICATION, useValue: operator }],
     };
   }
-}
-
-async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(IntegrationAppModule);
-  app.enableShutdownHooks();
-  await app.listen(
-    Number(process.env.INTEGRATION_SERVICE_PORT ?? 4107),
-    '0.0.0.0',
-  );
-}
-
-if (require.main === module) {
-  void bootstrap();
 }
