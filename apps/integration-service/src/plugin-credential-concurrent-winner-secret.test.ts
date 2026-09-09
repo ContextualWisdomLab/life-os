@@ -54,21 +54,52 @@ const WINNER: PluginCredentialBindingRecord = Object.freeze({
   revokedAt: null,
 });
 
+class MutableInstallationAuthority {
+  private installation: PluginInstallationRecord = INSTALLATION;
+
+  async getInstallation(
+    _context: PluginInstallationContext,
+    _installationId: string,
+  ): Promise<PluginInstallationRecord> {
+    return this.installation;
+  }
+
+  revoke(): void {
+    this.installation = Object.freeze({
+      ...INSTALLATION,
+      status: 'revoked',
+      revokedAt: OPERATION_AT,
+    });
+  }
+}
+
 class ConcurrentWinnerStore implements PluginCredentialBindingStore {
+  private created = false;
+  private winner: PluginCredentialBindingRecord = WINNER;
+
   async findById(): Promise<PluginCredentialBindingRecord | undefined> {
-    return undefined;
+    return this.created ? this.winner : undefined;
   }
 
   async createIfAbsent(
     _record: PluginCredentialBindingRecord,
   ): Promise<PluginCredentialBindingRecord> {
-    return WINNER;
+    this.created = true;
+    return this.winner;
   }
 
   async revokeActive(
     _input: RevokePluginCredential,
   ): Promise<PluginCredentialBindingRecord | undefined> {
     return undefined;
+  }
+
+  revokeWinner(): void {
+    this.winner = Object.freeze({
+      ...WINNER,
+      status: 'revoked',
+      revokedAt: OPERATION_AT,
+    });
   }
 }
 
@@ -79,7 +110,10 @@ class ConcurrentWinnerSecretStore implements PluginSecretStore {
     readonly input: PutPluginSecretInput;
   }> = [];
 
-  constructor(private readonly verificationMatches: boolean) {}
+  constructor(
+    private readonly verificationMatches: boolean,
+    private readonly afterVerification: () => void = () => undefined,
+  ) {}
 
   async putSecret(_input: PutPluginSecretInput): Promise<string> {
     return NEW_SECRET_REFERENCE;
@@ -95,6 +129,7 @@ class ConcurrentWinnerSecretStore implements PluginSecretStore {
         'concurrent durable winner contains different secret bytes',
       );
     }
+    this.afterVerification();
   }
 
   async deleteSecret(secretReference: string): Promise<void> {
@@ -102,18 +137,14 @@ class ConcurrentWinnerSecretStore implements PluginSecretStore {
   }
 }
 
-function application(secretStore: ConcurrentWinnerSecretStore) {
-  const installationAuthority = {
-    async getInstallation(
-      _context: PluginInstallationContext,
-      _installationId: string,
-    ): Promise<PluginInstallationRecord> {
-      return INSTALLATION;
-    },
-  };
+function application(
+  secretStore: ConcurrentWinnerSecretStore,
+  installationAuthority = new MutableInstallationAuthority(),
+  bindingStore = new ConcurrentWinnerStore(),
+) {
   return new PluginCredentialApplication(
     installationAuthority,
-    new ConcurrentWinnerStore(),
+    bindingStore,
     secretStore,
     () => new Date(OPERATION_AT),
   );
@@ -174,5 +205,39 @@ describe('Plugin credential concurrent durable winner secret authority', () => {
         input: EXPECTED_SECRET_INPUT,
       },
     ]);
+  });
+
+  it('rejects a concurrent durable winner when installation authority is revoked during provider verification', async () => {
+    const installationAuthority = new MutableInstallationAuthority();
+    const bindingStore = new ConcurrentWinnerStore();
+    const secretStore = new ConcurrentWinnerSecretStore(true, () =>
+      installationAuthority.revoke(),
+    );
+
+    await expect(
+      application(secretStore, installationAuthority, bindingStore).bind(
+        BIND_INPUT,
+      ),
+    ).rejects.toBeInstanceOf(PluginCredentialError);
+
+    expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
+    expect(secretStore.verifications).toHaveLength(1);
+  });
+
+  it('rejects a concurrent durable winner when binding authority is revoked during provider verification', async () => {
+    const installationAuthority = new MutableInstallationAuthority();
+    const bindingStore = new ConcurrentWinnerStore();
+    const secretStore = new ConcurrentWinnerSecretStore(true, () =>
+      bindingStore.revokeWinner(),
+    );
+
+    await expect(
+      application(secretStore, installationAuthority, bindingStore).bind(
+        BIND_INPUT,
+      ),
+    ).rejects.toBeInstanceOf(PluginCredentialError);
+
+    expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
+    expect(secretStore.verifications).toHaveLength(1);
   });
 });
