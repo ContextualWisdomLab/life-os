@@ -74,6 +74,14 @@ jobs:
           pnpm exec prettier --single-quote --check \
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-test-database.test.ts \
+            apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
             .github/workflows/verify-integration-coverage.yml
           pnpm --filter @life-os/plugin-sdk build
           pnpm --filter @life-os/integration-service typecheck
