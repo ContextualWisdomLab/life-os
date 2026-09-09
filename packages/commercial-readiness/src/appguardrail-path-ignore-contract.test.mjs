@@ -24,10 +24,21 @@ function triggerBlock(workflow, trigger) {
   return lines.slice(start + 1, nextTrigger === -1 ? undefined : nextTrigger).join('\n');
 }
 
-function assertTriggerPathIgnoreContract(workflow, trigger) {
-  const block = triggerBlock(workflow, trigger);
+function pathsIgnoreBlock(workflow, trigger) {
+  const lines = triggerBlock(workflow, trigger).split('\n');
+  const start = lines.findIndex((line) => /^    paths-ignore:\s*$/.test(line));
+  assert.notEqual(start, -1, `missing ${trigger}.paths-ignore`);
 
-  assert.match(block, /^    paths-ignore:\s*$/mu);
+  const nextKey = lines.findIndex(
+    (line, index) => index > start && /^    [A-Za-z_][A-Za-z0-9_-]*:\s*(?:#.*)?$/.test(line),
+  );
+
+  return lines.slice(start + 1, nextKey === -1 ? undefined : nextKey).join('\n');
+}
+
+function assertTriggerPathIgnoreContract(workflow, trigger) {
+  const block = pathsIgnoreBlock(workflow, trigger);
+
   assert.match(block, /^      - docs\/\*\*\s*$/mu);
   assert.match(block, /^      - ['"]\*\.md['"]\s*$/mu);
   assert.doesNotMatch(block, /^      - ['"]\*\*\.md['"]\s*$/mu);
@@ -51,6 +62,17 @@ describe('AppGuardrail path-ignore contract', () => {
     const malformed = workflow.replace(
       "  push:\n    branches: [main]\n    paths-ignore:\n      - docs/**\n      - '*.md'",
       '  push:\n    branches: [main]\n    paths-ignore:\n      - docs/**',
+    );
+
+    assert.notEqual(malformed, workflow);
+    assert.throws(() => assertAppGuardrailPathIgnoreContract(malformed));
+  });
+
+  it('rejects path-ignore entries borrowed from another trigger-level list', async () => {
+    const workflow = await repositoryFile('.github/workflows/appguardrail.yml');
+    const malformed = workflow.replace(
+      "  push:\n    branches: [main]\n    paths-ignore:\n      - docs/**\n      - '*.md'",
+      "  push:\n    branches: [main]\n    paths-ignore:\n    paths:\n      - docs/**\n      - '*.md'",
     );
 
     assert.notEqual(malformed, workflow);
