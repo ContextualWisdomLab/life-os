@@ -56,7 +56,10 @@ function requiresDocstring(node: ts.Node): boolean {
 function inspectDocstrings(
   source: ts.SourceFile,
   relativeFile: string,
-): { readonly required: number; readonly missing: readonly MissingDocstring[] } {
+): {
+  readonly required: number;
+  readonly missing: readonly MissingDocstring[];
+} {
   const missing: MissingDocstring[] = [];
   let required = 0;
 
@@ -70,7 +73,9 @@ function inspectDocstrings(
     if (requiresDocstring(node) && (isTopLevel || isClassMember)) {
       required += 1;
       if (!hasDocstring(node)) {
-        const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+        const { line } = source.getLineAndCharacterOfPosition(
+          node.getStart(source),
+        );
         missing.push({
           file: relativeFile,
           line: line + 1,
@@ -103,7 +108,11 @@ async function productionSourceFiles(): Promise<readonly string[]> {
 
 /** Retains only repository-relative declaration coordinates and aggregate counts for RCA. */
 async function writeReport(report: DocstringVerificationReport): Promise<void> {
-  const verificationDirectory = path.resolve(process.cwd(), '../..', '.verification');
+  const verificationDirectory = path.resolve(
+    process.cwd(),
+    '../..',
+    '.verification',
+  );
   await mkdir(verificationDirectory, { recursive: true });
   const serialized = `${JSON.stringify(report)}\n`;
   if (Buffer.byteLength(serialized, 'utf8') > 65_536) {
@@ -124,7 +133,9 @@ describe('Integration production docstring contract', () => {
 
     for (const file of files) {
       const sourceText = await readFile(file, 'utf8');
-      const relativeFile = path.relative(process.cwd(), file).replaceAll('\\', '/');
+      const relativeFile = path
+        .relative(process.cwd(), file)
+        .replaceAll('\\', '/');
       const source = ts.createSourceFile(
         relativeFile,
         sourceText,
