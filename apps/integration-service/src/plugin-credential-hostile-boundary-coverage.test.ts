@@ -90,7 +90,9 @@ function ports(): {
     },
     bindingStore: {
       findById: vi.fn(async () => undefined),
-      createIfAbsent: vi.fn(async (record: PluginCredentialBindingRecord) => record),
+      createIfAbsent: vi.fn(
+        async (record: PluginCredentialBindingRecord) => record,
+      ),
       revokeActive: vi.fn(async () => undefined),
     },
     secretStore: {
@@ -143,7 +145,9 @@ describe('Plugin credential hostile-boundary coverage', () => {
       await expectInvalid(
         subject.bind({ ...BIND_INPUT, secretValue: secretValue as string }),
       );
-      expect(owned.installationAuthority.getInstallation).not.toHaveBeenCalled();
+      expect(
+        owned.installationAuthority.getInstallation,
+      ).not.toHaveBeenCalled();
     },
   );
 
@@ -162,7 +166,9 @@ describe('Plugin credential hostile-boundary coverage', () => {
   it('bounds replay secret verification rejection', async () => {
     const owned = ports();
     owned.bindingStore.findById.mockResolvedValue(binding());
-    owned.secretStore.verifySecret.mockRejectedValue(new Error('vault fixture'));
+    owned.secretStore.verifySecret.mockRejectedValue(
+      new Error('vault fixture'),
+    );
 
     await expectInvalid(application(owned).bind(BIND_INPUT));
   });
@@ -204,10 +210,14 @@ describe('Plugin credential hostile-boundary coverage', () => {
     owned.bindingStore.createIfAbsent.mockRejectedValue(
       new Error('database fixture'),
     );
-    owned.secretStore.deleteSecret.mockRejectedValue(new Error('cleanup fixture'));
+    owned.secretStore.deleteSecret.mockRejectedValue(
+      new Error('cleanup fixture'),
+    );
 
     await expectInvalid(application(owned).bind(BIND_INPUT));
-    expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(SECRET_REFERENCE);
+    expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(
+      SECRET_REFERENCE,
+    );
   });
 
   it('fails closed on an invalid durable winner even when cleanup rejects', async () => {
@@ -215,10 +225,14 @@ describe('Plugin credential hostile-boundary coverage', () => {
     owned.bindingStore.createIfAbsent.mockResolvedValue(
       binding({ credentialName: 'different.slot' }),
     );
-    owned.secretStore.deleteSecret.mockRejectedValue(new Error('cleanup fixture'));
+    owned.secretStore.deleteSecret.mockRejectedValue(
+      new Error('cleanup fixture'),
+    );
 
     await expectInvalid(application(owned).bind(BIND_INPUT));
-    expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(SECRET_REFERENCE);
+    expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(
+      SECRET_REFERENCE,
+    );
   });
 
   it('accepts a same-authority durable winner with a different opaque reference after removing the local orphan', async () => {
@@ -231,26 +245,36 @@ describe('Plugin credential hostile-boundary coverage', () => {
     await expect(application(owned).bind(BIND_INPUT)).resolves.toEqual(
       expect.objectContaining({ credentialBindingId: BINDING_ID }),
     );
-    expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(SECRET_REFERENCE);
+    expect(owned.secretStore.deleteSecret).toHaveBeenCalledWith(
+      SECRET_REFERENCE,
+    );
   });
 
   it('fails closed when local-orphan cleanup fails after a same-authority durable winner', async () => {
     const owned = ports();
     owned.bindingStore.createIfAbsent.mockResolvedValue(
-      binding({ secretReference: 'kms://life-os/plugin/durable-reference-003' }),
+      binding({
+        secretReference: 'kms://life-os/plugin/durable-reference-003',
+      }),
     );
-    owned.secretStore.deleteSecret.mockRejectedValue(new Error('cleanup fixture'));
+    owned.secretStore.deleteSecret.mockRejectedValue(
+      new Error('cleanup fixture'),
+    );
 
     await expectInvalid(application(owned).bind(BIND_INPUT));
   });
 
   it('rejects missing existing and missing durable revoke evidence', async () => {
     const missingExisting = ports();
-    await expectInvalid(application(missingExisting).revoke(CONTEXT, BINDING_ID));
+    await expectInvalid(
+      application(missingExisting).revoke(CONTEXT, BINDING_ID),
+    );
 
     const missingDurable = ports();
     missingDurable.bindingStore.findById.mockResolvedValue(binding());
-    await expectInvalid(application(missingDurable).revoke(CONTEXT, BINDING_ID));
+    await expectInvalid(
+      application(missingDurable).revoke(CONTEXT, BINDING_ID),
+    );
   });
 
   it('rejects revoke evidence that changes immutable binding authority', async () => {
@@ -265,7 +289,10 @@ describe('Plugin credential hostile-boundary coverage', () => {
     );
 
     await expectInvalid(
-      application(owned, () => new Date(REVOKED_AT)).revoke(CONTEXT, BINDING_ID),
+      application(owned, () => new Date(REVOKED_AT)).revoke(
+        CONTEXT,
+        BINDING_ID,
+      ),
     );
     expect(owned.secretStore.deleteSecret).not.toHaveBeenCalled();
   });
