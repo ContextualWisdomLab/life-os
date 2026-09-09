@@ -264,7 +264,9 @@ describe('PostgresPluginCredentialBindingStore coverage boundaries', () => {
       rejectingStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
     ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
 
-    const hostileResult = Object.create(null) as PluginCredentialSqlResult<CredentialRow>;
+    const hostileResult = Object.create(
+      null,
+    ) as PluginCredentialSqlResult<CredentialRow>;
     Object.defineProperty(hostileResult, 'rows', {
       get: () => {
         throw new Error('must-not-escape-evidence');
