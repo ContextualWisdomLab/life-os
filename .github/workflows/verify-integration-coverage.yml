@@ -105,7 +105,10 @@ jobs:
           safe_summary=.verification/integration-coverage.log
           trap 'rm -f "$raw_output" "$test_report"' EXIT
           set +e
-          pnpm --filter @life-os/integration-service test:coverage -- \
+          pnpm --filter @life-os/integration-service exec vitest run \
+            --coverage \
+            --passWithNoTests \
+            --no-file-parallelism \
             --reporter=json \
             --outputFile="$GITHUB_WORKSPACE/$test_report" \
             > "$raw_output" 2>&1
