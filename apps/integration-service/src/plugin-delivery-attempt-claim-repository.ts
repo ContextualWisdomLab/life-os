@@ -20,6 +20,7 @@ export interface PluginDeliveryAttemptClaimSqlResult<Row> {
 
 /** Minimal parameterized SQL authority required by the claim/lease store. */
 export interface PluginDeliveryAttemptClaimSqlClient {
+  /** Executes one parameterized claim statement without exposing connection authority. */
   query<Row>(
     text: string,
     values?: readonly unknown[],
@@ -44,6 +45,7 @@ export class PluginDeliveryAttemptClaimPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw Integration-owned claim row before durable evidence validation. */
 interface ClaimRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -56,14 +58,17 @@ interface ClaimRow {
   claim_expires_at: unknown;
 }
 
+/** Throws the fixed request-bound persistence validation error. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptClaimPersistenceValidationError();
 }
 
+/** Throws the fixed durable-evidence persistence error. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptClaimPersistenceEvidenceError();
 }
 
+/** Converts hostile synchronous command reads into the fixed input error. */
 function boundedInputRead<T>(read: () => T): T {
   try {
     return read();
@@ -72,6 +77,7 @@ function boundedInputRead<T>(read: () => T): T {
   }
 }
 
+/** Converts hostile synchronous durable reads into the fixed evidence error. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -80,6 +86,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Converts rejected SQL dependency calls into the fixed durable-evidence error. */
 async function boundedEvidenceDependency<T>(
   read: () => Promise<T>,
 ): Promise<T> {
@@ -90,6 +97,7 @@ async function boundedEvidenceDependency<T>(
   }
 }
 
+/** Requires one canonical UUIDv4 command identifier. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -97,13 +105,7 @@ function requireInputUuid(value: unknown): string {
   return value;
 }
 
-function requireStoredUuid(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
-    return invalidEvidence();
-  }
-  return value;
-}
-
+/** Requires one exact canonical UTC instant from trusted request authority. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -115,6 +117,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes a PostgreSQL Date/string instant or rejects malformed storage evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -132,6 +135,7 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Snapshots and validates one claim command before SQL authority is exercised. */
 function validateCommand(
   value: PluginDeliveryAttemptClaimCommand,
 ): PluginDeliveryAttemptClaimCommand {
@@ -176,6 +180,7 @@ function validateCommand(
   });
 }
 
+/** Admits only zero or one unambiguous row from the bounded SQL result envelope. */
 function singleRow<Row>(
   result: PluginDeliveryAttemptClaimSqlResult<Row>,
 ): Row | undefined {
@@ -207,6 +212,7 @@ function singleRow<Row>(
   return boundedEvidenceRead(() => rows[0]);
 }
 
+/** Validates one SQL row against the exact command and returns credential-free claim evidence. */
 function parseEvidence(
   row: unknown,
   command: PluginDeliveryAttemptClaimCommand,
@@ -250,16 +256,15 @@ function parseEvidence(
   const leaseExpiresAt = requireStoredInstant(snapshot.leaseExpiresAt);
   if (
     claimedAt !== command.claimedAt ||
-    leaseExpiresAt !== command.leaseExpiresAt ||
-    new Date(leaseExpiresAt).getTime() <= new Date(claimedAt).getTime()
+    leaseExpiresAt !== command.leaseExpiresAt
   ) {
     return invalidEvidence();
   }
   return Object.freeze({
     authorityVersion: CLAIM_AUTHORITY_VERSION,
-    deliveryId: requireStoredUuid(snapshot.deliveryId),
-    workspaceId: requireStoredUuid(snapshot.workspaceId),
-    requestedByUserId: requireStoredUuid(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     attemptNumber: snapshot.attemptNumber,
     claimedAt,
     leaseExpiresAt,
