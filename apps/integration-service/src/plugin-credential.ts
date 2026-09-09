@@ -110,10 +110,12 @@ export interface BindPluginCredentialInput extends Omit<
   readonly trustedContext: PluginInstallationContext;
 }
 
+/** Terminates malformed credential authority without reflecting secret or caller input. */
 function invalid(): never {
   throw new PluginCredentialError();
 }
 
+/** Canonicalizes one UUIDv4 authority identifier before comparison or persistence use. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -194,6 +196,7 @@ function instantMilliseconds(value: string): number {
   return new Date(value).getTime();
 }
 
+/** Restricts credential names to the stable identifier grammar persisted as binding authority. */
 function requireCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return invalid();
@@ -201,6 +204,7 @@ function requireCredentialName(value: unknown): string {
   return value;
 }
 
+/** Bounds plaintext secret material before it can cross the host-owned secret-store port. */
 function requireSecretValue(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -213,6 +217,7 @@ function requireSecretValue(value: unknown): string {
   return value;
 }
 
+/** Validates an opaque secret-store reference without dereferencing or logging secret material. */
 function requireSecretReference(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -262,6 +267,7 @@ function requireBindingRecord(value: unknown): PluginCredentialBindingRecord {
   });
 }
 
+/** Compares only immutable binding identity/scope/name fields used to accept durable replay. */
 function sameBindingAuthority(
   record: PluginCredentialBindingRecord,
   input: {
@@ -297,6 +303,7 @@ function bindingVisibleAt(
   );
 }
 
+/** Accepts only an active binding that preserves exact authority and opaque secret-reference shape. */
 function activeBinding(
   record: PluginCredentialBindingRecord,
   input: Parameters<typeof sameBindingAuthority>[1],
@@ -309,6 +316,7 @@ function activeBinding(
   );
 }
 
+/** Accepts only a revoked binding still scoped to the exact caller and opaque secret reference. */
 function revokedBinding(
   record: PluginCredentialBindingRecord,
   input: {
@@ -343,6 +351,7 @@ function sameImmutableBindingEvidence(
   );
 }
 
+/** Projects durable binding evidence into the public view that excludes secret references. */
 function view(
   record: PluginCredentialBindingRecord,
 ): PluginCredentialBindingView {
@@ -363,6 +372,7 @@ function view(
  * returning plaintext secret material.
  */
 export class PluginCredentialApplication {
+  /** Creates the credential application over installation authority, durable metadata, secret storage, and a trusted clock. */
   constructor(
     private readonly installationAuthority: PluginInstallationAuthority,
     private readonly bindingStore: PluginCredentialBindingStore,

@@ -44,6 +44,7 @@ export class PluginCredentialPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw credential-binding row before durable scope, lifecycle, and secret-reference validation. */
 interface PluginCredentialRow {
   credential_binding_id: unknown;
   installation_id: unknown;
@@ -56,14 +57,17 @@ interface PluginCredentialRow {
   revoked_at: unknown;
 }
 
+/** Terminates malformed credential commands before SQL authority is exercised. */
 function invalidInput(): never {
   throw new PluginCredentialPersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt durable credential evidence without reflecting backend detail. */
 function invalidEvidence(): never {
   throw new PluginCredentialPersistenceEvidenceError();
 }
 
+/** Canonicalizes an input UUIDv4 before it can become a SQL parameter. */
 function inputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -71,6 +75,7 @@ function inputUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires stored UUIDv4 evidence to already be canonical lowercase. */
 function storedUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -82,6 +87,7 @@ function storedUuid(value: unknown): string {
   return canonical;
 }
 
+/** Requires one exact input-side millisecond UTC instant before persistence access. */
 function inputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -93,6 +99,7 @@ function inputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes PostgreSQL Date/string timestamps into exact durable lifecycle evidence. */
 function storedInstant(value: unknown): string {
   let candidate: string;
   if (value instanceof Date) {
@@ -115,6 +122,7 @@ function storedInstant(value: unknown): string {
   return candidate;
 }
 
+/** Restricts input credential names to the host-owned stable identifier grammar. */
 function inputCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return invalidInput();
@@ -122,6 +130,7 @@ function inputCredentialName(value: unknown): string {
   return value;
 }
 
+/** Requires stored credential-name evidence to satisfy the same stable identifier grammar. */
 function storedCredentialName(value: unknown): string {
   if (typeof value !== 'string' || !CREDENTIAL_NAME_PATTERN.test(value)) {
     return invalidEvidence();
@@ -129,6 +138,7 @@ function storedCredentialName(value: unknown): string {
   return value;
 }
 
+/** Bounds opaque input secret references and rejects control/space characters before SQL. */
 function inputSecretReference(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -141,6 +151,7 @@ function inputSecretReference(value: unknown): string {
   return value;
 }
 
+/** Revalidates opaque stored secret references without dereferencing secret material. */
 function storedSecretReference(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -182,6 +193,7 @@ function oneOrUndefined<Row>(
   return rows[0];
 }
 
+/** Validates active create metadata before it can become durable credential authority. */
 function validateCreate(
   record: PluginCredentialBindingRecord,
 ): PluginCredentialBindingRecord {
@@ -204,6 +216,7 @@ function validateCreate(
   });
 }
 
+/** Validates exact scoped revocation identity and time before issuing the conditional UPDATE. */
 function validateRevocation(input: RevokePluginCredential): RevokePluginCredential {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     return invalidInput();
