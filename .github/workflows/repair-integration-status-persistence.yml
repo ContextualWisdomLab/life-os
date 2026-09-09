@@ -1,0 +1,119 @@
+name: Repair Integration status persistence
+
+on:
+  push:
+    branches: [test/integration-service-quality-gates-v1]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-integration-status-persistence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Apply bounded persistence repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('apps/integration-service/src/plugin-delivery-attempt-status-repository.ts')
+          text = source.read_text()
+
+          replacements = [
+              (
+                  "function invalidEvidence(): never {\n  throw new PluginDeliveryAttemptStatusPersistenceEvidenceError();\n}\n\nfunction boundedEvidenceRead<T>(read: () => T): T {",
+                  "function invalidEvidence(): never {\n  throw new PluginDeliveryAttemptStatusPersistenceEvidenceError();\n}\n\nfunction boundedInputRead<T>(read: () => T): T {\n  try {\n    return read();\n  } catch {\n    return invalidInput();\n  }\n}\n\nfunction boundedEvidenceRead<T>(read: () => T): T {",
+              ),
+              (
+                  "function requireObject(value: unknown): Record<string, unknown> {",
+                  "async function boundedEvidenceDependency<T>(\n  read: () => Promise<T>,\n): Promise<T> {\n  try {\n    return await read();\n  } catch {\n    return invalidEvidence();\n  }\n}\n\nfunction requireObject(value: unknown): Record<string, unknown> {",
+              ),
+              (
+                  "  if (\n    command === null ||\n    typeof command !== 'object' ||\n    Array.isArray(command)\n  ) {\n    return invalidInput();\n  }",
+                  "  if (command === null || typeof command !== 'object') {\n    return invalidInput();\n  }\n  if (boundedInputRead(() => Array.isArray(command))) {\n    return invalidInput();\n  }",
+              ),
+              (
+                  "    const result = await this.client.query<PluginDeliveryAttemptStatusRow>(",
+                  "    const result = await boundedEvidenceDependency(() =>\n      this.client.query<PluginDeliveryAttemptStatusRow>(",
+              ),
+              (
+                  "       LIMIT 2`,\n      [safe.deliveryId, safe.workspaceId, safe.requestedByUserId],\n    );\n    const row = oneOrUndefined(result);",
+                  "       LIMIT 2`,\n        [safe.deliveryId, safe.workspaceId, safe.requestedByUserId],\n      ),\n    );\n    const row = oneOrUndefined(result);",
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one status source match, found {count}: {old[:80]!r}')
+              text = text.replace(old, new)
+          source.write_text(text)
+
+          test = Path('apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts')
+          test_text = test.read_text()
+          uuid_replacements = {
+              "const DELIVERY_ID = '55555555-5555-4555-8555-555555555555';": "const DELIVERY_ID = 'a5555555-5555-4555-8555-555555555555';",
+              "const GRANT_ID = '11111111-1111-4111-8111-111111111111';": "const GRANT_ID = 'b1111111-1111-4111-8111-111111111111';",
+              "const INSTALLATION_ID = '22222222-2222-4222-8222-222222222222';": "const INSTALLATION_ID = 'c2222222-2222-4222-8222-222222222222';",
+              "const WORKSPACE_ID = '33333333-3333-4333-8333-333333333333';": "const WORKSPACE_ID = 'd3333333-3333-4333-8333-333333333333';",
+              "const USER_ID = '44444444-4444-4444-8444-444444444444';": "const USER_ID = 'e4444444-4444-4444-8444-444444444444';",
+          }
+          for old, new in uuid_replacements.items():
+              count = test_text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one status test fixture match, found {count}: {old!r}')
+              test_text = test_text.replace(old, new)
+          test.write_text(test_text)
+          PY
+
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts
+          pnpm --filter @life-os/plugin-sdk build
+          pnpm --filter @life-os/integration-service typecheck
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-delivery-attempt-status-repository-coverage.test.ts \
+            src/plugin-delivery-attempt-execution-fence-repository.test.ts \
+            src/plugin-delivery-attempt-retry-repository.test.ts \
+            --no-file-parallelism
+          git diff --check
+
+      - name: Publish exact repair and retire verifier
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          remote_sha="$(git ls-remote origin refs/heads/test/integration-service-quality-gates-v1 | cut -f1)"
+          if [ "$remote_sha" != "$GITHUB_SHA" ]; then
+            echo "Remote branch moved from workflow input ${GITHUB_SHA} to ${remote_sha}; refusing publication." >&2
+            exit 1
+          fi
+          git add \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts
+          git rm .github/workflows/repair-integration-status-persistence.yml
+          git commit -m 'fix(integration): bound status persistence evidence'
+          git push origin HEAD:refs/heads/test/integration-service-quality-gates-v1
