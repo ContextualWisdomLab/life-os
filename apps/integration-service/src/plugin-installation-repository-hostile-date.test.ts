@@ -129,6 +129,7 @@ describe('PostgresPluginInstallationStore hostile persistence coverage', () => {
       candidate({ grantedCapabilities: ['capability\u0000bad'] }),
       candidate({ grantedCapabilities: ['a', 'a'] }),
       candidate({ grantedCapabilities: ['b', 'a'] }),
+      candidate({ installedAt: 42 as unknown as string }),
       candidate({ installedAt: '2026-08-10' }),
       candidate({ installedAt: '2026-02-30T02:00:00.000Z' }),
     ];
