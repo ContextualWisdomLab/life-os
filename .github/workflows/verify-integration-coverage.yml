@@ -54,6 +54,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           for source in \
+            apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
             apps/integration-service/src/plugin-vault-operator-composition-coverage.test.ts; do
             formatted="/tmp/$(basename "$source").formatted.ts"
