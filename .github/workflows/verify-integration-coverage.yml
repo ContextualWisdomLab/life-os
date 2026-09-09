@@ -101,22 +101,67 @@ jobs:
           set -Eeuo pipefail
           mkdir -p .verification
           raw_output=.verification/integration-coverage.raw
+          test_report=.verification/integration-vitest.json
           safe_summary=.verification/integration-coverage.log
-          trap 'rm -f "$raw_output"' EXIT
+          trap 'rm -f "$raw_output" "$test_report"' EXIT
           set +e
-          pnpm --filter @life-os/integration-service test:coverage > "$raw_output" 2>&1
+          pnpm --filter @life-os/integration-service test:coverage -- \
+            --reporter=json \
+            --outputFile="$GITHUB_WORKSPACE/$test_report" \
+            > "$raw_output" 2>&1
           coverage_status=$?
           set -e
           COVERAGE_STATUS="$coverage_status" node <<'NODE'
           const fs = require('node:fs');
-          const path = 'apps/integration-service/coverage/coverage-summary.json';
+          const nodePath = require('node:path');
+          const coveragePath = 'apps/integration-service/coverage/coverage-summary.json';
+          const reportPath = '.verification/integration-vitest.json';
           const metricNames = ['statements', 'branches', 'functions', 'lines'];
           const approved = {
             coverage_status: Number(process.env.COVERAGE_STATUS),
+            tests: null,
+            failed_files: [],
             totals: null,
           };
-          if (fs.existsSync(path)) {
-            const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (fs.existsSync(reportPath)) {
+            try {
+              const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+              const countNames = [
+                'numTotalTestSuites',
+                'numPassedTestSuites',
+                'numFailedTestSuites',
+                'numPendingTestSuites',
+                'numTotalTests',
+                'numPassedTests',
+                'numFailedTests',
+                'numPendingTests',
+                'numTodoTests',
+              ];
+              const counts = {};
+              for (const name of countNames) {
+                if (Number.isSafeInteger(report?.[name]) && report[name] >= 0) {
+                  counts[name] = report[name];
+                }
+              }
+              approved.tests = counts;
+              if (Array.isArray(report?.testResults)) {
+                const workspace = nodePath.resolve(process.env.GITHUB_WORKSPACE || '.');
+                for (const result of report.testResults) {
+                  if (result?.status !== 'failed' || typeof result?.name !== 'string') continue;
+                  const relative = nodePath.relative(workspace, nodePath.resolve(result.name)).replaceAll('\\', '/');
+                  if (!/^apps\/integration-service\/src\/[A-Za-z0-9._/-]+\.test\.ts$/u.test(relative)) continue;
+                  if (relative.includes('/../') || relative.startsWith('../')) continue;
+                  approved.failed_files.push(relative);
+                  if (approved.failed_files.length >= 20) break;
+                }
+              }
+            } catch {
+              approved.tests = null;
+              approved.failed_files = [];
+            }
+          }
+          if (fs.existsSync(coveragePath)) {
+            const report = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
             const totals = {};
             for (const name of metricNames) {
               const metric = report?.total?.[name];
@@ -140,7 +185,7 @@ jobs:
             mode: 0o600,
           });
           NODE
-          rm -f "$raw_output"
+          rm -f "$raw_output" "$test_report"
           trap - EXIT
           echo "coverage_status=${coverage_status}" >> "$GITHUB_OUTPUT"
           exit "$coverage_status"
