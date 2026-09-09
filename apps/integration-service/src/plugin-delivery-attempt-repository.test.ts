@@ -348,7 +348,7 @@ describe('PostgresPluginDeliveryAttemptStore', () => {
       row({ last_outcome_code: 'retryable_failure' }),
       row({ delivery_id: 123 }),
       row({ delivery_id: 'not-a-uuid' }),
-      row({ delivery_id: RECORD.deliveryId.toUpperCase() }),
+      row({ delivery_id: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA' }),
       row({ grant_id: 'not-a-uuid' }),
       row({ installation_id: 'not-a-uuid' }),
       row({ workspace_id: 'not-a-uuid' }),
