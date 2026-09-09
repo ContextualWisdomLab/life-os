@@ -55,6 +55,8 @@ jobs:
           set -Eeuo pipefail
           for source in \
             apps/integration-service/src/integration-remaining-production-coverage.test.ts \
+            apps/integration-service/src/plugin-credential.ts \
+            apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
             apps/integration-service/src/plugin-credential-hostile-boundary-coverage.test.ts \
             apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
@@ -74,6 +76,8 @@ jobs:
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
             apps/integration-service/src/integration-remaining-production-coverage.test.ts \
+            apps/integration-service/src/plugin-credential.ts \
+            apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
             apps/integration-service/src/plugin-credential-hostile-boundary-coverage.test.ts \
             apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-claim.ts \
