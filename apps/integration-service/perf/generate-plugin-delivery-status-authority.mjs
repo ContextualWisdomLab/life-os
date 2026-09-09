@@ -22,7 +22,9 @@ function iterations(value) {
 
 function secret(value) {
   if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') < 32) {
-    return fail('INTEGRATION_OPERATOR_CONTEXT_SECRET must contain at least 32 UTF-8 bytes');
+    return fail(
+      'INTEGRATION_OPERATOR_CONTEXT_SECRET must contain at least 32 UTF-8 bytes',
+    );
   }
   return value;
 }
