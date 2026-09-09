@@ -12,14 +12,35 @@ async function repositoryFile(path) {
   return await readFile(resolve(repositoryRoot, path), 'utf8');
 }
 
+function triggerBlock(workflow, trigger) {
+  const lines = workflow.split('\n');
+  const start = lines.findIndex((line) => line === `  ${trigger}:`);
+  assert.notEqual(start, -1, `missing ${trigger} trigger`);
+
+  const nextTrigger = lines.findIndex(
+    (line, index) => index > start && /^  [A-Za-z_][A-Za-z0-9_-]*:\s*$/.test(line),
+  );
+
+  return lines.slice(start + 1, nextTrigger === -1 ? undefined : nextTrigger).join('\n');
+}
+
+function assertTriggerPathIgnoreContract(workflow, trigger) {
+  const block = triggerBlock(workflow, trigger);
+
+  assert.match(block, /^    paths-ignore:\s*$/mu);
+  assert.match(block, /^      - docs\/\*\*\s*$/mu);
+  assert.match(block, /^      - ['"]\*\.md['"]\s*$/mu);
+  assert.doesNotMatch(block, /^      - ['"]\*\*\.md['"]\s*$/mu);
+}
+
 function assertAppGuardrailPathIgnoreContract(workflow) {
-  assert.match(workflow, /^\s+- docs\/\*\*\s*$/mu);
-  assert.match(workflow, /^\s+- ['"]\*\.md['"]\s*$/mu);
-  assert.doesNotMatch(workflow, /^\s+- ['"]\*\*\.md['"]\s*$/mu);
+  for (const trigger of ['pull_request', 'push']) {
+    assertTriggerPathIgnoreContract(workflow, trigger);
+  }
 }
 
 describe('AppGuardrail path-ignore contract', () => {
-  it('keeps markdown exclusion limited to repository-root Markdown files', async () => {
+  it('keeps markdown exclusion limited to repository-root Markdown files for every code trigger', async () => {
     const workflow = await repositoryFile('.github/workflows/appguardrail.yml');
 
     assertAppGuardrailPathIgnoreContract(workflow);
