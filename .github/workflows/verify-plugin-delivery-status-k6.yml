@@ -60,7 +60,7 @@ jobs:
         with:
           k6-version: '2.2.0'
 
-      - name: Install and verify Integration source
+      - name: Install and expose canonical replay acceptance format
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -71,13 +71,11 @@ jobs:
           pnpm --filter @life-os/integration-service build
           env -u INTEGRATION_DATABASE_URL \
             pnpm --filter @life-os/integration-service test
-          pnpm exec prettier --single-quote --check \
-            .github/workflows/verify-plugin-delivery-status-k6.yml \
-            apps/integration-service/src/plugin-operator-replay.ts \
-            apps/integration-service/src/plugin-operator-replay.test.ts \
-            apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
-            apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
-            apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts
+          git diff -- \
+            apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts
+          exit 1
 
       - name: Configure verified-TLS PostgreSQL fixture
         shell: bash
