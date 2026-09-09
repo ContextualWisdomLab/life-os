@@ -835,7 +835,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       client.requestJson(
         `/repos/${repository}/compare/${encodeURIComponent(
           baseSha,
-        )}...${encodeURIComponent(headSha)}`,
+        )}...${encodeURIComponent(headSha)}?per_page=1&page=2`,
       ),
       unresolvedThreadCount(client, repository, number),
     ]);
