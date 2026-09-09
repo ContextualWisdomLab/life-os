@@ -65,6 +65,16 @@ describe('PluginVaultSecretStore final coverage boundaries', () => {
     expect(http).toHaveBeenCalledTimes(2);
   });
 
+  it('fails closed when create reconciliation cannot read a durable winner', async () => {
+    const http = vi
+      .fn<PluginVaultHttpClient>()
+      .mockResolvedValueOnce(response(409))
+      .mockResolvedValueOnce(response(404));
+
+    await expectUnavailable(store(http).putSecret(INPUT));
+    expect(http).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects a transport result that resolves as its request deadline expires', async () => {
     class DeadlineRaceController {
       readonly signal: AbortSignal;
