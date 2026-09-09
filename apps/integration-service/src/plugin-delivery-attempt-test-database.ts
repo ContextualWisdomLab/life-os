@@ -13,6 +13,7 @@ export interface PluginDeliveryAttemptTestDatabaseTarget {
   readonly sslMode: 'disable' | 'require' | 'verify-ca' | 'verify-full';
 }
 
+/** Raises the fixed test-target validation error without reflecting connection material. */
 function invalidTarget(message: string): never {
   throw new Error(message);
 }
