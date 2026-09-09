@@ -17,6 +17,7 @@ const INSTALLATION_ID = '11111111-1111-4111-8111-111111111111';
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const BINDING_ID = '44444444-4444-4444-8444-444444444444';
+const NON_CANONICAL_BINDING_ID = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
 const SECRET_REFERENCE = 'kms://life-os/plugin/durable-record-reference-001';
 const NOW = '2026-09-04T03:00:00.000Z';
 const CONTEXT = Object.freeze({
@@ -134,8 +135,21 @@ function harness(store = new DurableStore()): {
 
 describe('PluginCredentialApplication durable binding records', () => {
   it.each([
-    ['non-canonical UUID', binding({ credentialBindingId: BINDING_ID.toUpperCase() })],
+    [
+      'non-canonical UUID',
+      binding({ credentialBindingId: NON_CANONICAL_BINDING_ID }),
+    ],
     ['malformed boundAt', binding({ boundAt: 'not-an-instant' })],
+    [
+      'non-canonical calendar instant',
+      binding({ boundAt: '2026-02-30T01:00:00.000Z' }),
+    ],
+    ['malformed credential name', binding({ credentialName: '' })],
+    ['malformed secret reference', binding({ secretReference: 'short' })],
+    [
+      'malformed status',
+      binding({ status: 'unknown' as PluginCredentialBindingRecord['status'] }),
+    ],
   ])('rejects malformed existing %s before writing secret material', async (_label, existing) => {
     const store = new DurableStore();
     store.existing = existing;
