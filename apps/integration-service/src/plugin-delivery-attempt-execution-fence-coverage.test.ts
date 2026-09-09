@@ -185,10 +185,12 @@ describe('PluginDeliveryAttemptExecutionFenceApplication coverage boundaries', (
       () => new Date(CHECKED_AT),
     );
 
-    await expect(app.check(CONTEXT, DELIVERY_ID, CLAIM_TOKEN)).resolves.toEqual({
-      ...evidence(),
-      claimExpiresAt: '2026-09-09T02:01:00.000Z',
-    });
+    await expect(app.check(CONTEXT, DELIVERY_ID, CLAIM_TOKEN)).resolves.toEqual(
+      {
+        ...evidence(),
+        claimExpiresAt: '2026-09-09T02:01:00.000Z',
+      },
+    );
   });
 
   it('exercises the runtime clock default while retaining exact scoped evidence', async () => {
