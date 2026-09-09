@@ -71,6 +71,13 @@ class MutableInstallationAuthority {
       revokedAt: OPERATION_AT,
     });
   }
+
+  replaceInstalledAt(): void {
+    this.installation = Object.freeze({
+      ...INSTALLATION,
+      installedAt: '2026-09-09T23:59:30.000Z',
+    });
+  }
 }
 
 class ConcurrentWinnerStore implements PluginCredentialBindingStore {
@@ -212,6 +219,23 @@ describe('Plugin credential concurrent durable winner secret authority', () => {
     const bindingStore = new ConcurrentWinnerStore();
     const secretStore = new ConcurrentWinnerSecretStore(true, () =>
       installationAuthority.revoke(),
+    );
+
+    await expect(
+      application(secretStore, installationAuthority, bindingStore).bind(
+        BIND_INPUT,
+      ),
+    ).rejects.toBeInstanceOf(PluginCredentialError);
+
+    expect(secretStore.deletes).toEqual([NEW_SECRET_REFERENCE]);
+    expect(secretStore.verifications).toHaveLength(1);
+  });
+
+  it('rejects a concurrent durable winner when installation identity changes during provider verification', async () => {
+    const installationAuthority = new MutableInstallationAuthority();
+    const bindingStore = new ConcurrentWinnerStore();
+    const secretStore = new ConcurrentWinnerSecretStore(true, () =>
+      installationAuthority.replaceInstalledAt(),
     );
 
     await expect(
