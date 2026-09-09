@@ -53,8 +53,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          pnpm exec prettier --single-quote apps/integration-service/src/plugin-delivery-attempt-execution-fence-coverage.test.ts > /tmp/execution-fence-coverage.formatted.ts
-          diff -u apps/integration-service/src/plugin-delivery-attempt-execution-fence-coverage.test.ts /tmp/execution-fence-coverage.formatted.ts || true
+          for source in \
+            apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
+            apps/integration-service/src/plugin-vault-operator-composition-coverage.test.ts; do
+            formatted="/tmp/$(basename "$source").formatted.ts"
+            pnpm exec prettier --single-quote "$source" > "$formatted"
+            diff -u "$source" "$formatted" || true
+          done
           pnpm exec prettier --single-quote --check \
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
@@ -95,11 +100,48 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p .verification
+          raw_output=.verification/integration-coverage.raw
+          safe_summary=.verification/integration-coverage.log
+          trap 'rm -f "$raw_output"' EXIT
           set +e
-          set -o pipefail
-          pnpm --filter @life-os/integration-service test:coverage 2>&1 | tee .verification/integration-coverage.log
-          coverage_status=${PIPESTATUS[0]}
+          pnpm --filter @life-os/integration-service test:coverage > "$raw_output" 2>&1
+          coverage_status=$?
           set -e
+          COVERAGE_STATUS="$coverage_status" node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/integration-service/coverage/coverage-summary.json';
+          const metricNames = ['statements', 'branches', 'functions', 'lines'];
+          const approved = {
+            coverage_status: Number(process.env.COVERAGE_STATUS),
+            totals: null,
+          };
+          if (fs.existsSync(path)) {
+            const report = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const totals = {};
+            for (const name of metricNames) {
+              const metric = report?.total?.[name];
+              if (metric && ['total', 'covered', 'skipped', 'pct'].every((key) => Number.isFinite(metric[key]))) {
+                totals[name] = {
+                  total: metric.total,
+                  covered: metric.covered,
+                  skipped: metric.skipped,
+                  pct: metric.pct,
+                };
+              }
+            }
+            approved.totals = totals;
+          }
+          const serialized = `${JSON.stringify(approved)}\n`;
+          if (Buffer.byteLength(serialized, 'utf8') > 4096) {
+            throw new Error('coverage summary exceeded the approved 4096-byte boundary');
+          }
+          fs.writeFileSync('.verification/integration-coverage.log', serialized, {
+            encoding: 'utf8',
+            mode: 0o600,
+          });
+          NODE
+          rm -f "$raw_output"
+          trap - EXIT
           echo "coverage_status=${coverage_status}" >> "$GITHUB_OUTPUT"
           exit "$coverage_status"
 
