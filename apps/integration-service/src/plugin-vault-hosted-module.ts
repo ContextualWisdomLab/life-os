@@ -20,6 +20,7 @@ export const PLUGIN_VAULT_HOSTED_RUNTIME = Symbol(
 /** Closes the service-owned PostgreSQL runtime when the Nest application shuts down. */
 @Injectable()
 class PluginVaultHostedRuntimeShutdown implements OnApplicationShutdown {
+  /** Binds shutdown cleanup to the exact hosted runtime registered in this module. */
   constructor(
     @Inject(PLUGIN_VAULT_HOSTED_RUNTIME)
     private readonly runtime: PluginVaultHostedRuntime,
@@ -31,6 +32,7 @@ class PluginVaultHostedRuntimeShutdown implements OnApplicationShutdown {
   }
 }
 
+/** Nest module shell that owns the hosted runtime and its shutdown hook. */
 @Module({})
 class PluginVaultHostedModule {}
 

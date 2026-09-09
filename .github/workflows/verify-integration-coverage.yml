@@ -1,0 +1,263 @@
+name: Verify Integration coverage
+
+on:
+  push:
+    branches: [test/integration-service-quality-gates-v1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-integration-coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os@127.0.0.1:5432/life_os_integration?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_integration
+          POSTGRES_USER: life_os
+          POSTGRES_PASSWORD: life_os
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U life_os -d life_os_integration"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify canonical coverage-owned source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p .verification/format
+          pnpm exec prettier --single-quote \
+            apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
+            > .verification/format/plugin-credential-concurrent-winner-secret.test.ts
+          pnpm exec prettier --single-quote \
+            .github/workflows/verify-integration-coverage.yml \
+            > .verification/format/verify-integration-coverage.yml
+          for source in \
+            apps/integration-service/src/integration-remaining-production-coverage.test.ts \
+            apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
+            apps/integration-service/src/plugin-credential-hostile-boundary-coverage.test.ts \
+            apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-policy.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-policy.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
+            apps/integration-service/src/plugin-installation-repository-hostile-date.test.ts \
+            apps/integration-service/src/plugin-vault-final-coverage.test.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime-query-coverage.test.ts \
+            apps/integration-service/src/plugin-vault-operator-composition-coverage.test.ts; do
+            formatted="/tmp/$(basename "$source").formatted.ts"
+            pnpm exec prettier --single-quote "$source" > "$formatted"
+            diff -u "$source" "$formatted" || true
+          done
+          pnpm exec prettier --single-quote --check \
+            apps/integration-service/package.json \
+            apps/integration-service/vitest.config.ts \
+            apps/integration-service/src/integration-remaining-production-coverage.test.ts \
+            apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
+            apps/integration-service/src/plugin-credential-hostile-boundary-coverage.test.ts \
+            apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.ts \
+            apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control-repository-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-policy.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-policy.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-retry-repository.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-repository-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-stored-instant-coverage.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-test-database.test.ts \
+            apps/integration-service/src/plugin-installation-repository-hostile-date.test.ts \
+            apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
+            apps/integration-service/src/plugin-vault-final-coverage.test.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime-query-coverage.test.ts \
+            apps/integration-service/src/plugin-vault-operator-composition-coverage.test.ts \
+            apps/integration-service/src/plugin-vault-secret-store-coverage.test.ts \
+            .github/workflows/verify-integration-coverage.yml
+          git diff --check
+
+      - name: Upload bounded formatter diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-format-${{ github.run_id }}
+          path: .verification/format
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build Plugin SDK
+        run: pnpm --filter @life-os/plugin-sdk build
+
+      - name: Typecheck Integration
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run exact coverage gate
+        id: coverage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p .verification
+          raw_output=.verification/integration-coverage.raw
+          test_report=.verification/integration-vitest.json
+          safe_summary=.verification/integration-coverage.log
+          trap 'rm -f "$raw_output" "$test_report"' EXIT
+          set +e
+          pnpm --filter @life-os/integration-service exec vitest run \
+            --coverage \
+            --passWithNoTests \
+            --no-file-parallelism \
+            --reporter=json \
+            --outputFile="$GITHUB_WORKSPACE/$test_report" \
+            > "$raw_output" 2>&1
+          coverage_status=$?
+          set -e
+          COVERAGE_STATUS="$coverage_status" node <<'NODE'
+          const fs = require('node:fs');
+          const nodePath = require('node:path');
+          const coveragePath = 'apps/integration-service/coverage/coverage-summary.json';
+          const reportPath = '.verification/integration-vitest.json';
+          const metricNames = ['statements', 'branches', 'functions', 'lines'];
+          const approved = {
+            coverage_status: Number(process.env.COVERAGE_STATUS),
+            tests: null,
+            failed_files: [],
+            totals: null,
+          };
+          if (fs.existsSync(reportPath)) {
+            try {
+              const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+              const countNames = [
+                'numTotalTestSuites',
+                'numPassedTestSuites',
+                'numFailedTestSuites',
+                'numPendingTestSuites',
+                'numTotalTests',
+                'numPassedTests',
+                'numFailedTests',
+                'numPendingTests',
+                'numTodoTests',
+              ];
+              const counts = {};
+              for (const name of countNames) {
+                if (Number.isSafeInteger(report?.[name]) && report[name] >= 0) {
+                  counts[name] = report[name];
+                }
+              }
+              approved.tests = counts;
+              if (Array.isArray(report?.testResults)) {
+                const workspace = nodePath.resolve(
+                  process.env.GITHUB_WORKSPACE || '.',
+                );
+                for (const result of report.testResults) {
+                  if (
+                    result?.status !== 'failed' ||
+                    typeof result?.name !== 'string'
+                  )
+                    continue;
+                  const relative = nodePath
+                    .relative(workspace, nodePath.resolve(result.name))
+                    .replaceAll('\\', '/');
+                  if (
+                    !/^apps\/integration-service\/src\/[A-Za-z0-9._/-]+\.test\.ts$/u.test(
+                      relative,
+                    )
+                  )
+                    continue;
+                  if (relative.includes('/../') || relative.startsWith('../'))
+                    continue;
+                  approved.failed_files.push(relative);
+                  if (approved.failed_files.length >= 20) break;
+                }
+              }
+            } catch {
+              approved.tests = null;
+              approved.failed_files = [];
+            }
+          }
+          if (fs.existsSync(coveragePath)) {
+            const report = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+            const totals = {};
+            for (const name of metricNames) {
+              const metric = report?.total?.[name];
+              if (
+                metric &&
+                ['total', 'covered', 'skipped', 'pct'].every((key) =>
+                  Number.isFinite(metric[key]),
+                )
+              ) {
+                totals[name] = {
+                  total: metric.total,
+                  covered: metric.covered,
+                  skipped: metric.skipped,
+                  pct: metric.pct,
+                };
+              }
+            }
+            approved.totals = totals;
+          }
+          const serialized = `${JSON.stringify(approved)}\n`;
+          if (Buffer.byteLength(serialized, 'utf8') > 4096) {
+            throw new Error(
+              'coverage summary exceeded the approved 4096-byte boundary',
+            );
+          }
+          fs.writeFileSync('.verification/integration-coverage.log', serialized, {
+            encoding: 'utf8',
+            mode: 0o600,
+          });
+          NODE
+          rm -f "$raw_output" "$test_report"
+          trap - EXIT
+          echo "coverage_status=${coverage_status}" >> "$GITHUB_OUTPUT"
+          exit "$coverage_status"
+
+      - name: Upload exact coverage diagnostics
+        if: always() && steps.coverage.outputs.coverage_status != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-coverage-${{ github.run_id }}
+          path: |
+            .verification/integration-coverage.log
+            apps/integration-service/coverage/coverage-final.json
+            apps/integration-service/coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 7

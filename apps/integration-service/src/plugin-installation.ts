@@ -11,6 +11,7 @@ const MAXIMUM_GRANTED_CAPABILITIES = 32;
 
 /** Generic fail-closed installation authority failure without untrusted reflection. */
 export class PluginInstallationError extends Error {
+  /** Creates the fixed installation authority error without reflecting caller input. */
   constructor() {
     super('Plugin installation request is invalid');
     this.name = 'PluginInstallationError';
@@ -86,10 +87,12 @@ export interface InstallPluginInput {
   readonly grantedCapabilities: readonly string[];
 }
 
+/** Terminates malformed installation authority with the fixed public error. */
 function invalid(): never {
   throw new PluginInstallationError();
 }
 
+/** Canonicalizes a scoped UUIDv4 before it can become durable installation authority. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -97,6 +100,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Snapshots authenticated workspace and actor authority into canonical UUIDs. */
 function requireContext(input: PluginInstallationContext): PluginInstallationContext {
   return Object.freeze({
     workspaceId: requireUuidV4(input.workspaceId),
@@ -104,6 +108,7 @@ function requireContext(input: PluginInstallationContext): PluginInstallationCon
   });
 }
 
+/** Validates requested manifest intent without turning the manifest into host authority. */
 function requireManifest(input: PluginManifest): PluginManifest {
   try {
     return validatePluginManifest(input);
@@ -112,6 +117,7 @@ function requireManifest(input: PluginManifest): PluginManifest {
   }
 }
 
+/** Restricts the durable grant set to unique capabilities requested by the validated manifest. */
 function requireGrantedCapabilities(
   manifest: PluginManifest,
   input: readonly string[],
@@ -134,12 +140,14 @@ function requireGrantedCapabilities(
   return Object.freeze([...unique].sort());
 }
 
+/** Produces the canonical manifest digest persisted as immutable installation evidence. */
 function manifestDigest(manifest: PluginManifest): string {
   return createHash('sha256')
     .update(serializeCanonicalJson(manifest))
     .digest('hex');
 }
 
+/** Freezes a durable installation record and its capability collection before returning it. */
 function freezeRecord(record: PluginInstallationRecord): PluginInstallationRecord {
   return Object.freeze({
     ...record,
@@ -147,6 +155,7 @@ function freezeRecord(record: PluginInstallationRecord): PluginInstallationRecor
   });
 }
 
+/** Accepts an idempotent create replay only when every authority-bearing field matches. */
 function sameInstallation(
   existing: PluginInstallationRecord,
   candidate: PluginInstallationRecord,
@@ -174,6 +183,7 @@ function sameInstallation(
  * widen its own tenant or installer-user authority.
  */
 export class PluginInstallationApplication {
+  /** Creates the application over the Integration-owned installation persistence port and clock. */
   constructor(
     private readonly store: PluginInstallationStore,
     private readonly now: () => Date = () => new Date(),

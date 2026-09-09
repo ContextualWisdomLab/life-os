@@ -13,6 +13,7 @@ export interface PluginDeliveryAttemptTestDatabaseTarget {
   readonly sslMode: 'disable' | 'require' | 'verify-ca' | 'verify-full';
 }
 
+/** Raises the fixed test-target validation error without reflecting connection material. */
 function invalidTarget(message: string): never {
   throw new Error(message);
 }
@@ -54,13 +55,19 @@ export function parsePluginDeliveryAttemptTestDatabaseTarget(
   }
 
   const sslModes = target.searchParams.getAll('sslmode');
-  if (sslModes.length !== 1 || !TLS_MODES.has(sslModes[0] ?? '')) {
+  if (sslModes.length !== 1) {
+    return invalidTarget(
+      'An explicit sslmode is required for the Integration test database',
+    );
+  }
+  const sslModeCandidate = sslModes[0] as string;
+  if (!TLS_MODES.has(sslModeCandidate)) {
     return invalidTarget(
       'An explicit sslmode is required for the Integration test database',
     );
   }
   const sslMode =
-    sslModes[0] as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
+    sslModeCandidate as PluginDeliveryAttemptTestDatabaseTarget['sslMode'];
   if (
     sslMode === 'disable' &&
     !LOOPBACK_HOSTS.has(target.hostname.toLowerCase())

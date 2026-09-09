@@ -43,6 +43,7 @@ export class PluginDeliveryAttemptControlPersistenceEvidenceError extends Error 
   }
 }
 
+/** Raw Integration-owned control row before durable evidence validation. */
 interface ControlRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -55,14 +56,17 @@ interface ControlRow {
   terminal_at: unknown;
 }
 
+/** Terminates malformed command handling with the fixed persistence-input error. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptControlPersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt database evidence with the fixed persistence-evidence error. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptControlPersistenceEvidenceError();
 }
 
+/** Converts hostile synchronous command reads into the fixed input error before SQL execution. */
 function boundedInputRead<T>(read: () => T): T {
   try {
     return read();
@@ -71,6 +75,7 @@ function boundedInputRead<T>(read: () => T): T {
   }
 }
 
+/** Converts hostile synchronous durable reads into the fixed evidence error. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -79,6 +84,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Converts rejected SQL dependency calls into the fixed durable-evidence error without reflecting database detail. */
 async function boundedEvidenceDependency<T>(
   read: () => Promise<T>,
 ): Promise<T> {
@@ -89,6 +95,7 @@ async function boundedEvidenceDependency<T>(
   }
 }
 
+/** Requires one canonical UUIDv4 command identifier before it can become a SQL parameter. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -96,13 +103,7 @@ function requireInputUuid(value: unknown): string {
   return value;
 }
 
-function requireStoredUuid(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
-    return invalidEvidence();
-  }
-  return value;
-}
-
+/** Requires one exact millisecond UTC command instant before SQL authority is exercised. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -114,6 +115,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes a PostgreSQL Date or string instant and rejects malformed storage evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -131,10 +133,12 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Preserves a missing durable lifecycle instant while validating any present timestamp. */
 function requireNullableStoredInstant(value: unknown): string | null {
   return value === null ? null : requireStoredInstant(value);
 }
 
+/** Snapshots and validates one scoped control command before exercising SQL authority. */
 function validateCommand(
   value: PluginDeliveryAttemptControlCommand,
 ): PluginDeliveryAttemptControlCommand {
@@ -159,6 +163,7 @@ function validateCommand(
   });
 }
 
+/** Admits only zero or one unambiguous row from the bounded SQL result envelope. */
 function singleRow<Row>(
   result: PluginDeliveryAttemptControlSqlResult<Row>,
 ): Row | undefined {
@@ -187,6 +192,7 @@ function singleRow<Row>(
   return rowsLength === 0 ? undefined : boundedEvidenceRead(() => rows[0]);
 }
 
+/** Revalidates one SQL row against the exact control command and transition semantics. */
 function parseEvidence(
   row: unknown,
   command: PluginDeliveryAttemptControlCommand,
@@ -246,9 +252,9 @@ function parseEvidence(
   }
   return Object.freeze({
     authorityVersion: CONTROL_AUTHORITY_VERSION,
-    deliveryId: requireStoredUuid(snapshot.deliveryId),
-    workspaceId: requireStoredUuid(snapshot.workspaceId),
-    requestedByUserId: requireStoredUuid(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     controlSequence: snapshot.controlSequence,
     controlCode,
     deliveryStatus: snapshot.deliveryStatus as
@@ -285,6 +291,7 @@ export class PostgresPluginDeliveryAttemptControlStore implements PluginDelivery
     return this.apply('dead_letter', commandValue);
   }
 
+  /** Executes the transition-specific conditional UPDATE and parses only its exact returned evidence. */
   private async apply(
     controlCode: PluginDeliveryAttemptControlEvidence['controlCode'],
     commandValue: PluginDeliveryAttemptControlCommand,

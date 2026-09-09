@@ -59,6 +59,15 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
+function storeForResult(result: unknown): PostgresPluginDeliveryAttemptClaimStore {
+  const client: PluginDeliveryAttemptClaimSqlClient = {
+    async query<Row>(): Promise<PluginDeliveryAttemptClaimSqlResult<Row>> {
+      return result as PluginDeliveryAttemptClaimSqlResult<Row>;
+    },
+  };
+  return new PostgresPluginDeliveryAttemptClaimStore(client);
+}
+
 describe('PostgresPluginDeliveryAttemptClaimStore', () => {
   it('atomically increments the bounded attempt counter only for a due unleased pending row', async () => {
     const client = new ScriptedClient([{ rows: [row()], rowCount: 1 }]);
@@ -123,6 +132,35 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
     expect(client.calls).toHaveLength(0);
   });
 
+  it('rejects malformed command shapes, identities, digests, instants, and lease windows before SQL', async () => {
+    const invalidCommands: readonly unknown[] = [
+      null,
+      [],
+      { ...COMMAND, deliveryId: 123 },
+      { ...COMMAND, deliveryId: 'not-a-uuid' },
+      { ...COMMAND, workspaceId: 'not-a-uuid' },
+      { ...COMMAND, requestedByUserId: 'not-a-uuid' },
+      { ...COMMAND, claimTokenDigest: 123 },
+      { ...COMMAND, claimTokenDigest: 'not-a-digest' },
+      { ...COMMAND, claimedAt: 123 },
+      { ...COMMAND, claimedAt: 'not-an-instant' },
+      { ...COMMAND, claimedAt: '2026-02-31T10:30:00.000Z' },
+      { ...COMMAND, leaseExpiresAt: 'not-an-instant' },
+      { ...COMMAND, leaseExpiresAt: '2026-02-31T10:31:00.000Z' },
+      { ...COMMAND, leaseExpiresAt: '2026-09-08T10:30:29.999Z' },
+      { ...COMMAND, leaseExpiresAt: '2026-09-08T11:30:00.001Z' },
+    ];
+
+    for (const candidate of invalidCommands) {
+      const client = new ScriptedClient([]);
+      const store = new PostgresPluginDeliveryAttemptClaimStore(client);
+      await expect(store.claimDue(candidate as never)).rejects.toBeInstanceOf(
+        PluginDeliveryAttemptClaimPersistenceValidationError,
+      );
+      expect(client.calls).toHaveLength(0);
+    }
+  });
+
   it('fails closed on SQL dependency rejection without reflecting database detail', async () => {
     const store = new PostgresPluginDeliveryAttemptClaimStore({
       async query() {
@@ -155,29 +193,70 @@ describe('PostgresPluginDeliveryAttemptClaimStore', () => {
     }
   });
 
-  it('fails closed on ambiguous or malformed durable claim evidence', async () => {
-    for (const result of [
+  it('fails closed on malformed SQL result envelopes, including an undefined single row', async () => {
+    const revoked = Proxy.revocable({ rows: [row()], rowCount: 1 }, {});
+    revoked.revoke();
+    const malformedResults: readonly unknown[] = [
+      null,
+      'not-a-result',
+      [],
+      revoked.proxy,
+      { rows: 'not-an-array', rowCount: 0 },
+      { rows: [], rowCount: null },
+      { rows: [], rowCount: -1 },
+      { rows: [], rowCount: 0.5 },
+      { rows: [], rowCount: 1 },
       { rows: [row(), row()], rowCount: 2 },
-      { rows: [row({ attempt_count: 0 })], rowCount: 1 },
-      { rows: [row({ attempt_count: 3, max_attempts: 2 })], rowCount: 1 },
-      {
-        rows: [
-          row({
-            claim_token_digest:
-              'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          }),
-        ],
-        rowCount: 1,
-      },
-      {
-        rows: [row({ claim_expires_at: new Date(COMMAND.claimedAt) })],
-        rowCount: 1,
-      },
-    ]) {
-      const store = new PostgresPluginDeliveryAttemptClaimStore(
-        new ScriptedClient([result]),
+      { rows: [undefined], rowCount: 1 },
+    ];
+
+    for (const result of malformedResults) {
+      await expect(
+        storeForResult(result).claimDue(COMMAND),
+      ).rejects.toBeInstanceOf(
+        PluginDeliveryAttemptClaimPersistenceEvidenceError,
       );
-      await expect(store.claimDue(COMMAND)).rejects.toBeInstanceOf(
+    }
+  });
+
+  it('fails closed on ambiguous or malformed durable claim evidence', async () => {
+    const revoked = Proxy.revocable(row(), {});
+    revoked.revoke();
+    const malformedRows: readonly unknown[] = [
+      null,
+      'not-a-row',
+      [],
+      revoked.proxy,
+      row({ authority_version: 'life-os.plugin-delivery-attempt.v2' }),
+      row({ delivery_id: '77777777-7777-4777-8777-777777777777' }),
+      row({ workspace_id: '77777777-7777-4777-8777-777777777777' }),
+      row({ requested_by_user_id: '77777777-7777-4777-8777-777777777777' }),
+      row({
+        claim_token_digest:
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      }),
+      row({ attempt_count: '1' }),
+      row({ attempt_count: 1.5 }),
+      row({ attempt_count: 0 }),
+      row({ max_attempts: '4' }),
+      row({ max_attempts: 1.5 }),
+      row({ max_attempts: 0 }),
+      row({ max_attempts: 11 }),
+      row({ attempt_count: 3, max_attempts: 2 }),
+      row({ claim_started_at: new Date(Number.NaN) }),
+      row({ claim_started_at: 'not-an-instant' }),
+      row({ claim_started_at: '2026-02-31T10:30:00.000Z' }),
+      row({ claim_started_at: '2026-09-08T10:30:01.000Z' }),
+      row({ claim_expires_at: new Date(Number.NaN) }),
+      row({ claim_expires_at: 'not-an-instant' }),
+      row({ claim_expires_at: '2026-02-31T10:31:00.000Z' }),
+      row({ claim_expires_at: '2026-09-08T10:31:01.000Z' }),
+    ];
+
+    for (const malformedRow of malformedRows) {
+      await expect(
+        storeForResult({ rows: [malformedRow], rowCount: 1 }).claimDue(COMMAND),
+      ).rejects.toBeInstanceOf(
         PluginDeliveryAttemptClaimPersistenceEvidenceError,
       );
     }

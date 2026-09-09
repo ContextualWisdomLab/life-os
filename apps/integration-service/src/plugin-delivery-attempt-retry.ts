@@ -1,13 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
+import { pluginDeliveryAttemptRetryBackoffSeconds } from './plugin-delivery-attempt-retry-policy';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt-retry.v1' as const;
-const INITIAL_BACKOFF_SECONDS = 30;
-const MAXIMUM_BACKOFF_SECONDS = 900;
 const MAXIMUM_ATTEMPTS = 10;
 
 /** Fixed retry-transition failure without claim token or dependency detail. */
@@ -51,10 +49,12 @@ export interface PluginDeliveryAttemptRetryStore {
   ): Promise<PluginDeliveryAttemptRetryEvidence | undefined>;
 }
 
+/** Terminates malformed retry authority without reflecting claim or dependency detail. */
 function invalid(): never {
   throw new PluginDeliveryAttemptRetryAuthorityError();
 }
 
+/** Collapses hostile synchronous authority reads into the fixed retry error. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -63,6 +63,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses durable dependency rejection into the fixed retry error. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -71,6 +72,7 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Canonicalizes one scoped UUIDv4 before persistence or equality checks. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -78,6 +80,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires an already-canonical UUIDv4 for sensitive claim-token input. */
 function requireCanonicalUuidV4(value: unknown): string {
   const canonical = requireUuidV4(value);
   if (value !== canonical) {
@@ -86,6 +89,7 @@ function requireCanonicalUuidV4(value: unknown): string {
   return canonical;
 }
 
+/** Requires one exact millisecond UTC instant for retry lifecycle equality. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -97,6 +101,7 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Snapshots authenticated workspace and actor scope before retry persistence is exercised. */
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object') {
     return invalid();
@@ -114,25 +119,20 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Reads the trusted clock through the bounded retry-authority boundary. */
 function currentInstant(now: () => Date): string {
   return boundedRead(() => requireInstant(now().toISOString()));
 }
 
+/** Hashes the one-time claim token before any value can cross the persistence boundary. */
 function digestClaimToken(value: unknown): string {
   const token = requireCanonicalUuidV4(value);
-  const digest = createHash('sha256').update(token, 'utf8').digest('hex');
-  if (!SHA256_PATTERN.test(digest)) {
-    return invalid();
-  }
-  return digest;
+  return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
+/** Derives the deterministic next-attempt instant from the canonical retry policy. */
 function retryAt(occurredAt: string, attemptNumber: number): string {
-  const exponent = Math.max(0, attemptNumber - 1);
-  const delaySeconds = Math.min(
-    INITIAL_BACKOFF_SECONDS * 2 ** exponent,
-    MAXIMUM_BACKOFF_SECONDS,
-  );
+  const delaySeconds = pluginDeliveryAttemptRetryBackoffSeconds(attemptNumber);
   return requireInstant(
     new Date(
       new Date(occurredAt).getTime() + delaySeconds * 1_000,
@@ -140,6 +140,7 @@ function retryAt(occurredAt: string, attemptNumber: number): string {
   );
 }
 
+/** Revalidates durable retry evidence against exact command scope, counters, outcome, and schedule. */
 function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptRetryCommand,
@@ -210,9 +211,9 @@ function requireEvidence(
 
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireCanonicalUuidV4(snapshot.deliveryId),
-    workspaceId: requireCanonicalUuidV4(snapshot.workspaceId),
-    requestedByUserId: requireCanonicalUuidV4(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     attemptNumber: snapshot.attemptNumber,
     maxAttempts: snapshot.maxAttempts,
     deliveryStatus: snapshot.deliveryStatus,

@@ -38,6 +38,7 @@ export class PluginOperatorReplayValidationError extends Error {
   }
 }
 
+/** Raw PostgreSQL projection returned by the replay consume function. */
 interface ReplayConsumeRow {
   consumed: unknown;
 }

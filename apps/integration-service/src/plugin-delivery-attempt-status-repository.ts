@@ -47,6 +47,7 @@ export class PluginDeliveryAttemptStatusPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw delivery-attempt row projected without materializing claim-token digest bytes. */
 interface PluginDeliveryAttemptStatusRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -68,14 +69,26 @@ interface PluginDeliveryAttemptStatusRow {
   claim_expires_at: unknown;
 }
 
+/** Terminates malformed request handling before SQL authority is exercised. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptStatusPersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt durable status handling without backend reflection. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptStatusPersistenceEvidenceError();
 }
 
+/** Collapses request-boundary parser/read failures into the fixed invalid-input contract. */
+function boundedInputRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidInput();
+  }
+}
+
+/** Collapses malformed persisted evidence reads into the fixed durable-evidence contract. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -84,6 +97,18 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Normalizes durable-evidence dependency rejection without leaking backend detail. */
+async function boundedEvidenceDependency<T>(
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
+  } catch {
+    return invalidEvidence();
+  }
+}
+
+/** Requires one object-shaped durable envelope before stored fields are trusted. */
 function requireObject(value: unknown): Record<string, unknown> {
   const candidate = boundedEvidenceRead(() => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -97,6 +122,7 @@ function requireObject(value: unknown): Record<string, unknown> {
   return candidate;
 }
 
+/** Canonicalizes a request UUIDv4 before it can become a query parameter. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -104,6 +130,7 @@ function requireInputUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires stored UUIDv4 evidence to already be canonical lowercase. */
 function requireStoredUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -115,6 +142,7 @@ function requireStoredUuid(value: unknown): string {
   return canonical;
 }
 
+/** Requires one exact request-side millisecond UTC instant before persistence access. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -126,6 +154,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes PostgreSQL Date/string timestamps into exact durable UTC evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -143,10 +172,12 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Preserves absent stored lifecycle instants while validating every present value. */
 function requireNullableStoredInstant(value: unknown): string | null {
   return value === null ? null : requireStoredInstant(value);
 }
 
+/** Requires a bounded integer from durable status evidence. */
 function requireInteger(
   value: unknown,
   minimum: number,
@@ -163,6 +194,7 @@ function requireInteger(
   return value;
 }
 
+/** Admits at most one row from the fixed status query and rejects ambiguous SQL envelopes. */
 function oneOrUndefined<Row>(
   result: PluginDeliveryAttemptStatusSqlResult<Row>,
 ): Row | undefined {
@@ -188,14 +220,14 @@ function oneOrUndefined<Row>(
   });
 }
 
+/** Snapshots and validates exact status-query scope before issuing SQL. */
 function validateCommand(
   command: PluginDeliveryAttemptStatusCommand,
 ): PluginDeliveryAttemptStatusCommand {
-  if (
-    command === null ||
-    typeof command !== 'object' ||
-    Array.isArray(command)
-  ) {
+  if (command === null || typeof command !== 'object') {
+    return invalidInput();
+  }
+  if (boundedInputRead(() => Array.isArray(command))) {
     return invalidInput();
   }
   const snapshot = (() => {
@@ -218,6 +250,7 @@ function validateCommand(
   });
 }
 
+/** Admits only lifecycle states represented by the credential-free status contract. */
 function requireStatus(
   value: unknown,
 ): PluginDeliveryAttemptStatusEvidence['deliveryStatus'] {
@@ -232,6 +265,7 @@ function requireStatus(
   return value;
 }
 
+/** Admits only bounded retry outcomes safe to expose as operator status. */
 function requireOutcome(
   value: unknown,
 ): PluginDeliveryAttemptStatusEvidence['lastOutcomeCode'] {
@@ -245,11 +279,13 @@ function requireOutcome(
   return value;
 }
 
+/** Claim state derived from digest presence and bounded lease timestamps without exposing claim material. */
 interface ParsedClaim {
   readonly state: PluginDeliveryAttemptStatusEvidence['claimState'];
   readonly claimed: boolean;
 }
 
+/** Reduces stored claim evidence to unclaimed/active/expired while enforcing lease chronology. */
 function parseClaim(
   hasDigest: unknown,
   startedValue: unknown,
@@ -290,6 +326,7 @@ function parseClaim(
   });
 }
 
+/** Rejects impossible combinations of durable delivery state, retry counters, scheduling, terminal state and claim occupancy. */
 function validateLifecycle(
   status: PluginDeliveryAttemptStatusEvidence['deliveryStatus'],
   attemptCount: number,
@@ -357,6 +394,7 @@ function validateLifecycle(
   }
 }
 
+/** Parses one durable row into exact scoped, credential-free status evidence after full chronology validation. */
 function parseRow(
   rowValue: unknown,
   command: PluginDeliveryAttemptStatusCommand,
@@ -476,8 +514,9 @@ export class PostgresPluginDeliveryAttemptStatusStore implements PluginDeliveryA
     command: PluginDeliveryAttemptStatusCommand,
   ): Promise<PluginDeliveryAttemptStatusEvidence | undefined> {
     const safe = validateCommand(command);
-    const result = await this.client.query<PluginDeliveryAttemptStatusRow>(
-      `SELECT authority_version, delivery_id, grant_id, installation_id,
+    const result = await boundedEvidenceDependency(() =>
+      this.client.query<PluginDeliveryAttemptStatusRow>(
+        `SELECT authority_version, delivery_id, grant_id, installation_id,
               workspace_id, requested_by_user_id, delivery_status, attempt_count,
               max_attempts, requested_at, updated_at, next_attempt_at, terminal_at,
               last_outcome_code, control_sequence,
@@ -488,7 +527,8 @@ export class PostgresPluginDeliveryAttemptStatusStore implements PluginDeliveryA
          AND workspace_id = $2::uuid
          AND requested_by_user_id = $3::uuid
        LIMIT 2`,
-      [safe.deliveryId, safe.workspaceId, safe.requestedByUserId],
+        [safe.deliveryId, safe.workspaceId, safe.requestedByUserId],
+      ),
     );
     const row = oneOrUndefined(result);
     return row === undefined ? undefined : parseRow(row, safe);
