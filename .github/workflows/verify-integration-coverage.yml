@@ -54,6 +54,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           for source in \
+            apps/integration-service/src/integration-remaining-production-coverage.test.ts \
             apps/integration-service/src/plugin-credential-hostile-boundary-coverage.test.ts \
             apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-claim.test.ts \
@@ -71,6 +72,7 @@ jobs:
           pnpm exec prettier --single-quote --check \
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
+            apps/integration-service/src/integration-remaining-production-coverage.test.ts \
             apps/integration-service/src/plugin-credential-hostile-boundary-coverage.test.ts \
             apps/integration-service/src/plugin-credential-repository-coverage.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-claim.ts \
