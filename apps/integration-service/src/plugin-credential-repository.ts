@@ -67,6 +67,36 @@ function invalidEvidence(): never {
   throw new PluginCredentialPersistenceEvidenceError();
 }
 
+/** Collapses hostile synchronous command reads into the fixed persistence-input failure. */
+function boundedInputRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidInput();
+  }
+}
+
+/** Collapses hostile synchronous durable-evidence reads into the fixed persistence-evidence failure. */
+function boundedEvidenceRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidEvidence();
+  }
+}
+
+/** Collapses SQL rejection or hostile Promise assimilation into fixed persistence evidence failure. */
+async function boundedEvidenceDependency<T>(
+  read: () => Promise<T>,
+): Promise<{ readonly value: T }> {
+  try {
+    const value = await read();
+    return { value };
+  } catch {
+    return invalidEvidence();
+  }
+}
+
 /** Canonicalizes an input UUIDv4 before it can become a SQL parameter. */
 function inputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
@@ -101,12 +131,17 @@ function inputInstant(value: unknown): string {
 
 /** Canonicalizes PostgreSQL Date/string timestamps into exact durable lifecycle evidence. */
 function storedInstant(value: unknown): string {
+  const isDate = boundedEvidenceRead(() => value instanceof Date);
   let candidate: string;
-  if (value instanceof Date) {
-    if (!Number.isFinite(value.getTime())) {
+  if (isDate) {
+    const date = value as Date;
+    const [milliseconds, serialized] = boundedEvidenceRead(
+      () => [date.getTime(), date.toISOString()] as const,
+    );
+    if (!Number.isFinite(milliseconds)) {
       return invalidEvidence();
     }
-    candidate = value.toISOString();
+    candidate = serialized;
   } else if (typeof value === 'string') {
     candidate = value;
   } else {
@@ -172,60 +207,91 @@ function storedSecretReference(value: unknown): string {
 function oneOrUndefined<Row>(
   result: PluginCredentialSqlResult<Row>,
 ): Row | undefined {
-  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+  if (result === null || typeof result !== 'object') {
     return invalidEvidence();
   }
-  const rows = result.rows;
-  const rowCount = result.rowCount;
+  if (boundedEvidenceRead(() => Array.isArray(result))) {
+    return invalidEvidence();
+  }
+  const [rows, rowCount] = boundedEvidenceRead(
+    () => [result.rows, result.rowCount] as const,
+  );
+  if (!boundedEvidenceRead(() => Array.isArray(rows))) {
+    return invalidEvidence();
+  }
+  const rowsLength = boundedEvidenceRead(() => rows.length);
   if (
-    !Array.isArray(rows) ||
     typeof rowCount !== 'number' ||
     !Number.isInteger(rowCount) ||
     rowCount < 0 ||
-    rowCount !== rows.length ||
-    rows.length > 1
+    rowCount !== rowsLength ||
+    rowsLength > 1
   ) {
     return invalidEvidence();
   }
-  if (rows.length === 1 && rows[0] === undefined) {
-    return invalidEvidence();
+  if (rowsLength === 0) {
+    return undefined;
   }
-  return rows[0];
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
 /** Validates active create metadata before it can become durable credential authority. */
 function validateCreate(
   record: PluginCredentialBindingRecord,
 ): PluginCredentialBindingRecord {
-  if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+  if (record === null || typeof record !== 'object') {
     return invalidInput();
   }
-  if (record.status !== 'active' || record.revokedAt !== null) {
+  if (boundedInputRead(() => Array.isArray(record))) {
+    return invalidInput();
+  }
+  const snapshot = boundedInputRead(() => ({
+    credentialBindingId: record.credentialBindingId,
+    installationId: record.installationId,
+    workspaceId: record.workspaceId,
+    installedByUserId: record.installedByUserId,
+    credentialName: record.credentialName,
+    secretReference: record.secretReference,
+    status: record.status,
+    boundAt: record.boundAt,
+    revokedAt: record.revokedAt,
+  }));
+  if (snapshot.status !== 'active' || snapshot.revokedAt !== null) {
     return invalidInput();
   }
   return Object.freeze({
-    credentialBindingId: inputUuid(record.credentialBindingId),
-    installationId: inputUuid(record.installationId),
-    workspaceId: inputUuid(record.workspaceId),
-    installedByUserId: inputUuid(record.installedByUserId),
-    credentialName: inputCredentialName(record.credentialName),
-    secretReference: inputSecretReference(record.secretReference),
+    credentialBindingId: inputUuid(snapshot.credentialBindingId),
+    installationId: inputUuid(snapshot.installationId),
+    workspaceId: inputUuid(snapshot.workspaceId),
+    installedByUserId: inputUuid(snapshot.installedByUserId),
+    credentialName: inputCredentialName(snapshot.credentialName),
+    secretReference: inputSecretReference(snapshot.secretReference),
     status: 'active',
-    boundAt: inputInstant(record.boundAt),
+    boundAt: inputInstant(snapshot.boundAt),
     revokedAt: null,
   });
 }
 
 /** Validates exact scoped revocation identity and time before issuing the conditional UPDATE. */
 function validateRevocation(input: RevokePluginCredential): RevokePluginCredential {
-  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+  if (input === null || typeof input !== 'object') {
     return invalidInput();
   }
+  if (boundedInputRead(() => Array.isArray(input))) {
+    return invalidInput();
+  }
+  const snapshot = boundedInputRead(() => ({
+    credentialBindingId: input.credentialBindingId,
+    workspaceId: input.workspaceId,
+    installedByUserId: input.installedByUserId,
+    revokedAt: input.revokedAt,
+  }));
   return Object.freeze({
-    credentialBindingId: inputUuid(input.credentialBindingId),
-    workspaceId: inputUuid(input.workspaceId),
-    installedByUserId: inputUuid(input.installedByUserId),
-    revokedAt: inputInstant(input.revokedAt),
+    credentialBindingId: inputUuid(snapshot.credentialBindingId),
+    workspaceId: inputUuid(snapshot.workspaceId),
+    installedByUserId: inputUuid(snapshot.installedByUserId),
+    revokedAt: inputInstant(snapshot.revokedAt),
   });
 }
 
@@ -235,18 +301,31 @@ function validateRevocation(input: RevokePluginCredential): RevokePluginCredenti
  * secret reference is validated before the row can become application authority.
  */
 function parseRow(row: unknown): PluginCredentialBindingRecord {
-  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+  if (row === null || typeof row !== 'object') {
+    return invalidEvidence();
+  }
+  if (boundedEvidenceRead(() => Array.isArray(row))) {
     return invalidEvidence();
   }
   const candidate = row as PluginCredentialRow;
+  const snapshot = boundedEvidenceRead(() => ({
+    credentialBindingId: candidate.credential_binding_id,
+    installationId: candidate.installation_id,
+    workspaceId: candidate.workspace_id,
+    installedByUserId: candidate.installed_by_user_id,
+    credentialName: candidate.credential_name,
+    secretReference: candidate.secret_reference,
+    status: candidate.credential_status,
+    boundAt: candidate.bound_at,
+    revokedAt: candidate.revoked_at,
+  }));
   const status =
-    candidate.credential_status === 'active' ||
-    candidate.credential_status === 'revoked'
-      ? candidate.credential_status
+    snapshot.status === 'active' || snapshot.status === 'revoked'
+      ? snapshot.status
       : invalidEvidence();
-  const boundAt = storedInstant(candidate.bound_at);
+  const boundAt = storedInstant(snapshot.boundAt);
   const revokedAt =
-    candidate.revoked_at === null ? null : storedInstant(candidate.revoked_at);
+    snapshot.revokedAt === null ? null : storedInstant(snapshot.revokedAt);
   if (
     (status === 'active' && revokedAt !== null) ||
     (status === 'revoked' && revokedAt === null) ||
@@ -256,12 +335,12 @@ function parseRow(row: unknown): PluginCredentialBindingRecord {
     return invalidEvidence();
   }
   return Object.freeze({
-    credentialBindingId: storedUuid(candidate.credential_binding_id),
-    installationId: storedUuid(candidate.installation_id),
-    workspaceId: storedUuid(candidate.workspace_id),
-    installedByUserId: storedUuid(candidate.installed_by_user_id),
-    credentialName: storedCredentialName(candidate.credential_name),
-    secretReference: storedSecretReference(candidate.secret_reference),
+    credentialBindingId: storedUuid(snapshot.credentialBindingId),
+    installationId: storedUuid(snapshot.installationId),
+    workspaceId: storedUuid(snapshot.workspaceId),
+    installedByUserId: storedUuid(snapshot.installedByUserId),
+    credentialName: storedCredentialName(snapshot.credentialName),
+    secretReference: storedSecretReference(snapshot.secretReference),
     status,
     boundAt,
     revokedAt,
@@ -284,35 +363,43 @@ export class PostgresPluginCredentialBindingStore
     record: PluginCredentialBindingRecord,
   ): Promise<PluginCredentialBindingRecord> {
     const safe = validateCreate(record);
-    const inserted = await this.client.query<PluginCredentialRow>(
-      `INSERT INTO plugin_integration.plugin_credential_binding_record (
+    const inserted = (
+      await boundedEvidenceDependency(() =>
+        this.client.query<PluginCredentialRow>(
+          `INSERT INTO plugin_integration.plugin_credential_binding_record (
          credential_binding_id, installation_id, workspace_id,
          installed_by_user_id, credential_name, secret_reference,
          credential_status, bound_at
        ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, 'active', $7::timestamptz)
        ON CONFLICT (credential_binding_id) DO NOTHING
        RETURNING ${RETURNING_COLUMNS}`,
-      [
-        safe.credentialBindingId,
-        safe.installationId,
-        safe.workspaceId,
-        safe.installedByUserId,
-        safe.credentialName,
-        safe.secretReference,
-        safe.boundAt,
-      ],
-    );
+          [
+            safe.credentialBindingId,
+            safe.installationId,
+            safe.workspaceId,
+            safe.installedByUserId,
+            safe.credentialName,
+            safe.secretReference,
+            safe.boundAt,
+          ],
+        ),
+      )
+    ).value;
     let row = oneOrUndefined(inserted);
     if (row === undefined) {
-      const existing = await this.client.query<PluginCredentialRow>(
-        `SELECT ${RETURNING_COLUMNS}
+      const existing = (
+        await boundedEvidenceDependency(() =>
+          this.client.query<PluginCredentialRow>(
+            `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_credential_binding_record
          WHERE credential_binding_id = $1::uuid
            AND workspace_id = $2::uuid
            AND installed_by_user_id = $3::uuid
          LIMIT 2`,
-        [safe.credentialBindingId, safe.workspaceId, safe.installedByUserId],
-      );
+            [safe.credentialBindingId, safe.workspaceId, safe.installedByUserId],
+          ),
+        )
+      ).value;
       row = oneOrUndefined(existing);
     }
     if (row === undefined) {
@@ -330,15 +417,19 @@ export class PostgresPluginCredentialBindingStore
     const credentialBindingId = inputUuid(credentialBindingIdInput);
     const workspaceId = inputUuid(workspaceIdInput);
     const installedByUserId = inputUuid(installedByUserIdInput);
-    const result = await this.client.query<PluginCredentialRow>(
-      `SELECT ${RETURNING_COLUMNS}
+    const result = (
+      await boundedEvidenceDependency(() =>
+        this.client.query<PluginCredentialRow>(
+          `SELECT ${RETURNING_COLUMNS}
        FROM plugin_integration.plugin_credential_binding_record
        WHERE credential_binding_id = $1::uuid
          AND workspace_id = $2::uuid
          AND installed_by_user_id = $3::uuid
        LIMIT 2`,
-      [credentialBindingId, workspaceId, installedByUserId],
-    );
+          [credentialBindingId, workspaceId, installedByUserId],
+        ),
+      )
+    ).value;
     const row = oneOrUndefined(result);
     if (row === undefined) {
       return undefined;
@@ -359,8 +450,10 @@ export class PostgresPluginCredentialBindingStore
     input: RevokePluginCredential,
   ): Promise<PluginCredentialBindingRecord | undefined> {
     const safe = validateRevocation(input);
-    const updated = await this.client.query<PluginCredentialRow>(
-      `UPDATE plugin_integration.plugin_credential_binding_record
+    const updated = (
+      await boundedEvidenceDependency(() =>
+        this.client.query<PluginCredentialRow>(
+          `UPDATE plugin_integration.plugin_credential_binding_record
        SET credential_status = 'revoked',
            revoked_at = $4::timestamptz
        WHERE credential_binding_id = $1::uuid
@@ -369,25 +462,31 @@ export class PostgresPluginCredentialBindingStore
          AND credential_status = 'active'
          AND bound_at <= $4::timestamptz
        RETURNING ${RETURNING_COLUMNS}`,
-      [
-        safe.credentialBindingId,
-        safe.workspaceId,
-        safe.installedByUserId,
-        safe.revokedAt,
-      ],
-    );
+          [
+            safe.credentialBindingId,
+            safe.workspaceId,
+            safe.installedByUserId,
+            safe.revokedAt,
+          ],
+        ),
+      )
+    ).value;
     let row = oneOrUndefined(updated);
     if (row === undefined) {
-      const replay = await this.client.query<PluginCredentialRow>(
-        `SELECT ${RETURNING_COLUMNS}
+      const replay = (
+        await boundedEvidenceDependency(() =>
+          this.client.query<PluginCredentialRow>(
+            `SELECT ${RETURNING_COLUMNS}
          FROM plugin_integration.plugin_credential_binding_record
          WHERE credential_binding_id = $1::uuid
            AND workspace_id = $2::uuid
            AND installed_by_user_id = $3::uuid
            AND credential_status = 'revoked'
          LIMIT 2`,
-        [safe.credentialBindingId, safe.workspaceId, safe.installedByUserId],
-      );
+            [safe.credentialBindingId, safe.workspaceId, safe.installedByUserId],
+          ),
+        )
+      ).value;
       row = oneOrUndefined(replay);
     }
     if (row === undefined) {
