@@ -4,7 +4,6 @@ import type { PluginInstallationContext } from './plugin-installation';
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt-claim.v1' as const;
 const MINIMUM_LEASE_SECONDS = 30;
 const MAXIMUM_LEASE_SECONDS = 3_600;
@@ -52,10 +51,12 @@ export interface PluginDeliveryAttemptClaimStore {
   ): Promise<PluginDeliveryAttemptClaimEvidence | undefined>;
 }
 
+/** Raises the fixed application authority failure without reflecting hostile data. */
 function invalid(): never {
   throw new PluginDeliveryAttemptClaimAuthorityError();
 }
 
+/** Collapses hostile synchronous reads into the fixed claim authority failure. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -64,6 +65,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses persistence rejection into the fixed claim authority failure. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -72,6 +74,7 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Validates and canonicalizes one UUIDv4 authority identifier. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -79,14 +82,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
-function requireCanonicalUuidV4(value: unknown): string {
-  const canonical = requireUuidV4(value);
-  if (value !== canonical) {
-    return invalid();
-  }
-  return canonical;
-}
-
+/** Validates one exact millisecond-resolution UTC instant. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -98,10 +94,12 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Reads the injected clock without allowing clock failures to escape the boundary. */
 function currentInstant(now: () => Date): string {
   return boundedRead(() => requireInstant(now().toISOString()));
 }
 
+/** Extracts only canonical workspace and actor authority from trusted context. */
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object') {
     return invalid();
@@ -119,6 +117,7 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Restricts worker leases to the production 30–3600 second policy window. */
 function requireLeaseSeconds(value: unknown): number {
   if (
     typeof value !== 'number' ||
@@ -131,14 +130,12 @@ function requireLeaseSeconds(value: unknown): number {
   return value;
 }
 
+/** Derives the fixed-length SHA-256 persistence token without storing raw claim material. */
 function digestToken(token: string): string {
-  const digest = createHash('sha256').update(token, 'utf8').digest('hex');
-  if (!SHA256_PATTERN.test(digest)) {
-    return invalid();
-  }
-  return digest;
+  return createHash('sha256').update(token, 'utf8').digest('hex');
 }
 
+/** Revalidates durable claim evidence against the exact normalized persistence command. */
 function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptClaimCommand,
@@ -179,9 +176,9 @@ function requireEvidence(
   }
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireCanonicalUuidV4(snapshot.deliveryId),
-    workspaceId: requireCanonicalUuidV4(snapshot.workspaceId),
-    requestedByUserId: requireCanonicalUuidV4(snapshot.requestedByUserId),
+    deliveryId: snapshot.deliveryId,
+    workspaceId: snapshot.workspaceId,
+    requestedByUserId: snapshot.requestedByUserId,
     attemptNumber: snapshot.attemptNumber,
     claimedAt,
     leaseExpiresAt,
