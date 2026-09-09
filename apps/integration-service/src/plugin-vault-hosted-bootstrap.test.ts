@@ -1,4 +1,5 @@
 import type { DynamicModule } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   startPluginVaultHostedService,
@@ -121,6 +122,28 @@ describe('Plugin Vault hosted bootstrap', () => {
     );
 
     expect(hostedApp.listen).toHaveBeenCalledWith(4107, '0.0.0.0');
+  });
+
+  it('uses the default Nest application factory over the runtime-owning module', async () => {
+    const ownedPool = pool();
+    const hostedApp = app();
+    const createApplication = vi
+      .spyOn(NestFactory, 'create')
+      .mockResolvedValue(hostedApp as never);
+
+    try {
+      const result = await startPluginVaultHostedService(
+        () => ownedPool,
+        environment(),
+      );
+
+      expect(result).toBe(hostedApp);
+      expect(createApplication).toHaveBeenCalledTimes(1);
+      expect(hostedApp.enableShutdownHooks).toHaveBeenCalledTimes(1);
+      expect(hostedApp.listen).toHaveBeenCalledWith(4107, '0.0.0.0');
+    } finally {
+      createApplication.mockRestore();
+    }
   });
 
   it('rejects a malformed application factory before pool acquisition', async () => {
