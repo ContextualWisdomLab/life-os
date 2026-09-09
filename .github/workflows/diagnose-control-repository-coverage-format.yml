@@ -1,0 +1,44 @@
+name: Diagnose control repository coverage formatting
+
+on:
+  push:
+    branches: [test/integration-service-quality-gates-v1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-control-repository-coverage-format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Print canonical formatter delta
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/plugin-delivery-attempt-control-repository-coverage.test.ts
+          git diff --check
+          git diff --no-ext-diff --unified=1000 -- \
+            apps/integration-service/src/plugin-delivery-attempt-control-repository-coverage.test.ts
