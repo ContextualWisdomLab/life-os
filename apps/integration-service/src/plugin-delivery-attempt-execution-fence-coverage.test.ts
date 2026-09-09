@@ -159,12 +159,26 @@ describe('PluginDeliveryAttemptExecutionFenceApplication coverage boundaries', (
 
   it('collapses revoked durable evidence getters to the fixed authority error', async () => {
     const revoked = Proxy.revocable(evidence(), {});
+    const durable = Promise.resolve(
+      revoked.proxy as PluginDeliveryAttemptExecutionFenceEvidence,
+    );
     revoked.revoke();
-    const { app } = application(revoked.proxy);
+    const commands: PluginDeliveryAttemptExecutionFenceCommand[] = [];
+    const store: PluginDeliveryAttemptExecutionFenceStore = {
+      check: (command) => {
+        commands.push(command);
+        return durable;
+      },
+    };
+    const app = new PluginDeliveryAttemptExecutionFenceApplication(
+      store,
+      () => new Date(CHECKED_AT),
+    );
 
     await expect(
       app.check(CONTEXT, DELIVERY_ID, CLAIM_TOKEN),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptExecutionFenceAuthorityError);
+    expect(commands).toHaveLength(1);
   });
 
   it('accepts Date-backed durable instants and canonicalizes grant authority', async () => {
