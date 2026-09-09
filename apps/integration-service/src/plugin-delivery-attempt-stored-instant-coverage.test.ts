@@ -138,9 +138,7 @@ describe('persisted delivery instant canonicality', () => {
         claimTokenDigest: CLAIM_TOKEN_DIGEST,
         occurredAt: INSTANT,
       }),
-    ).rejects.toEqual(
-      new PluginDeliveryAttemptRetryPersistenceEvidenceError(),
-    );
+    ).rejects.toEqual(new PluginDeliveryAttemptRetryPersistenceEvidenceError());
   });
 
   it('rejects calendar-invalid status instants that match the wire shape', async () => {
