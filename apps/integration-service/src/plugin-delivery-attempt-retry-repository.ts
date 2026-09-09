@@ -314,9 +314,7 @@ function parseEvidence(
 }
 
 /** PostgreSQL adapter for deterministic Integration-owned retry/backoff transitions. */
-export class PostgresPluginDeliveryAttemptRetryStore
-  implements PluginDeliveryAttemptRetryStore
-{
+export class PostgresPluginDeliveryAttemptRetryStore implements PluginDeliveryAttemptRetryStore {
   /** Creates the store over one bounded parameterized SQL client. */
   constructor(private readonly client: PluginDeliveryAttemptRetrySqlClient) {}
 
