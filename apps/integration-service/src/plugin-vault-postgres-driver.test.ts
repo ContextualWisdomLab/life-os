@@ -139,6 +139,25 @@ describe('Integration-owned node-postgres Plugin pool', () => {
     expect(JSON.stringify(records)).not.toContain('must-not-enter-logs');
   });
 
+  it('uses the bounded default idle-client logger without exposing native database detail', () => {
+    const test = fixture();
+
+    void createNodePostgresPluginPool(
+      'postgresql://integration:secret@db.example.test:5432/life_os',
+      test.constructor,
+    );
+
+    const nativeError = Object.assign(
+      new Error('password=must-not-enter-default-logs'),
+      {
+        name: 'DatabaseError',
+        code: '57P01',
+      },
+    );
+
+    expect(() => test.emitIdleError(nativeError)).not.toThrow();
+  });
+
   it('rejects arbitrary credential-shaped error classifications from retained logs', () => {
     const test = fixture();
     const records: IdleErrorRecord[] = [];
@@ -235,7 +254,9 @@ describe('Integration-owned node-postgres Plugin pool', () => {
   });
 
   it.each([
+    ['empty connection string', ''],
     ['malformed URI', 'not-a-postgres-uri'],
+    ['opaque PostgreSQL URI', 'postgresql:opaque'],
     [
       'non-PostgreSQL scheme',
       'https://integration:secret@db.example.test:5432/life_os',
