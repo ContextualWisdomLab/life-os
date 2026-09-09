@@ -304,6 +304,18 @@ describe('Plugin credential hostile-boundary coverage', () => {
     await expectInvalid(application(owned).bind(BIND_INPUT));
   });
 
+  it('rejects replay when installation identity drifts between authority reads', async () => {
+    const owned = ports();
+    owned.bindingStore.findById.mockResolvedValue(binding());
+    owned.installationAuthority.getInstallation
+      .mockResolvedValueOnce(installation())
+      .mockResolvedValueOnce(
+        installation({ installedAt: '2026-08-10T06:00:01.000Z' }),
+      );
+
+    await expectInvalid(application(owned).bind(BIND_INPUT));
+  });
+
   it('bounds replay binding re-read rejection and disappearance', async () => {
     const rejecting = ports();
     rejecting.bindingStore.findById
