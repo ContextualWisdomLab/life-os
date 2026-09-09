@@ -78,9 +78,11 @@ jobs:
           pnpm --filter @life-os/plugin-sdk build
           pnpm --filter @life-os/integration-service typecheck
 
+          mkdir -p .verification
           set +e
-          pnpm --filter @life-os/integration-service test:coverage
-          coverage_status=$?
+          set -o pipefail
+          pnpm --filter @life-os/integration-service test:coverage 2>&1 | tee .verification/integration-coverage.log
+          coverage_status=${PIPESTATUS[0]}
           set -e
           echo "coverage_status=${coverage_status}" >> "$GITHUB_OUTPUT"
 
@@ -101,6 +103,7 @@ jobs:
         with:
           name: integration-coverage-${{ github.run_id }}
           path: |
+            .verification/integration-coverage.log
             apps/integration-service/coverage/coverage-final.json
             apps/integration-service/coverage/coverage-summary.json
           if-no-files-found: error
