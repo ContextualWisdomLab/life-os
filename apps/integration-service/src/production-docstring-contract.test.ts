@@ -67,8 +67,7 @@ function inspectDocstrings(
     const isTopLevel = node.parent === source;
     const isClassMember =
       node.parent !== undefined &&
-      (ts.isClassDeclaration(node.parent) ||
-        ts.isClassExpression(node.parent));
+      (ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent));
 
     if (requiresDocstring(node) && (isTopLevel || isClassMember)) {
       required += 1;
@@ -116,7 +115,9 @@ async function writeReport(report: DocstringVerificationReport): Promise<void> {
   await mkdir(verificationDirectory, { recursive: true });
   const serialized = `${JSON.stringify(report)}\n`;
   if (Buffer.byteLength(serialized, 'utf8') > 65_536) {
-    throw new Error('Docstring verification report exceeded the 65536-byte boundary');
+    throw new Error(
+      'Docstring verification report exceeded the 65536-byte boundary',
+    );
   }
   await writeFile(
     path.join(verificationDirectory, 'integration-docstrings.json'),
