@@ -175,8 +175,7 @@ function requireEvidence(
   const leaseExpiresAt = requireInstant(snapshot.leaseExpiresAt);
   if (
     claimedAt !== command.claimedAt ||
-    leaseExpiresAt !== command.leaseExpiresAt ||
-    new Date(leaseExpiresAt).getTime() <= new Date(claimedAt).getTime()
+    leaseExpiresAt !== command.leaseExpiresAt
   ) {
     return invalid();
   }
