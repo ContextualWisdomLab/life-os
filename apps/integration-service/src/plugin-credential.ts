@@ -450,6 +450,10 @@ export class PluginCredentialApplication {
       installedByUserId: context.actorUserId,
       credentialName,
     } as const;
+    const secretInput = Object.freeze({
+      ...authority,
+      secretValue,
+    });
     const existingEvidence = (
       await boundedDependency(() =>
         this.bindingStore.findById(
@@ -469,14 +473,7 @@ export class PluginCredentialApplication {
         return invalid();
       }
       try {
-        await this.secretStore.verifySecret(existing.secretReference, {
-          credentialBindingId,
-          installationId,
-          workspaceId: context.workspaceId,
-          installedByUserId: context.actorUserId,
-          credentialName,
-          secretValue,
-        });
+        await this.secretStore.verifySecret(existing.secretReference, secretInput);
       } catch {
         return invalid();
       }
@@ -532,14 +529,7 @@ export class PluginCredentialApplication {
     let secretReference: string;
     try {
       secretReference = requireSecretReference(
-        await this.secretStore.putSecret({
-          credentialBindingId,
-          installationId,
-          workspaceId: context.workspaceId,
-          installedByUserId: context.actorUserId,
-          credentialName,
-          secretValue,
-        }),
+        await this.secretStore.putSecret(secretInput),
       );
     } catch {
       return invalid();
@@ -581,6 +571,11 @@ export class PluginCredentialApplication {
     if (durable.secretReference !== secretReference) {
       try {
         await this.secretStore.deleteSecret(secretReference);
+      } catch {
+        return invalid();
+      }
+      try {
+        await this.secretStore.verifySecret(durable.secretReference, secretInput);
       } catch {
         return invalid();
       }
