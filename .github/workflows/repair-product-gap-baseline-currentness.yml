@@ -32,7 +32,7 @@ jobs:
           const fs = require('node:fs');
           const path = 'docs/product-technical-gap-baseline.md';
           let source = fs.readFileSync(path, 'utf8');
-          source = source.replace('**Baseline date:** 2026-09-08 (KST)', '**Baseline date:** 2026-09-10 (KST)');
+          source = source.replace('**Baseline date:** 2026-09-08 (KST)  ', '**Baseline date:** 2026-09-10 (KST)');
 
           const start = '<!-- life-os-currentness:#260:start -->';
           const end = '<!-- life-os-currentness:#260:end -->';
