@@ -242,7 +242,11 @@ describe('PluginDeliveryAttemptStatusApplication hostile evidence coverage', () 
   it('rejects non-representable lifecycle combinations', async () => {
     const malformed: unknown[] = [
       evidence({ attemptCount: 0, claimState: 'active' }),
-      evidence({ attemptCount: 3, lastOutcomeCode: 'retryable_failure' }),
+      evidence({
+        attemptCount: 3,
+        lastOutcomeCode: 'retryable_failure',
+        claimState: 'unclaimed',
+      }),
       evidence({ deliveryStatus: 'paused', claimState: 'active' }),
       evidence({
         deliveryStatus: 'failed',
