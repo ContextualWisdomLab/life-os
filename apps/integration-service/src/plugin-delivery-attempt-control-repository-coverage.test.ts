@@ -239,9 +239,9 @@ describe('PostgresPluginDeliveryAttemptControlStore hostile evidence coverage', 
     const client: PluginDeliveryAttemptControlSqlClient = {
       async query<Row>(text: string, values?: readonly unknown[]) {
         calls.push({ text, values });
-        const durable = text.includes("delivery_status = 'paused'")
+        const durable = text.includes("SET delivery_status = 'paused'")
           ? row()
-          : text.includes("delivery_status = 'pending'")
+          : text.includes("SET delivery_status = 'pending'")
             ? row({ delivery_status: 'pending' })
             : row({
                 delivery_status: 'dead_lettered',
