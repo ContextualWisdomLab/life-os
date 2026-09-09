@@ -85,6 +85,7 @@ export type PluginPostgresPoolErrorLogger = (
   record: PluginPostgresPoolErrorRecord,
 ) => void;
 
+/** Raw one-row readiness projection returned by the fixed PostgreSQL probe. */
 interface PluginPostgresReadinessRow {
   readonly integration_plugin_runtime_ready?: unknown;
 }
