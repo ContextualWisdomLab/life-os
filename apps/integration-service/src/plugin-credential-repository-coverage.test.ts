@@ -113,150 +113,128 @@ class QueueClient implements PluginCredentialSqlClient {
 }
 
 describe('PostgresPluginCredentialBindingStore coverage boundaries', () => {
-  it(
-    'covers scoped create replay success and missing durable winner',
-    async () => {
-      const replayClient = new QueueClient([
-        zeroRows(),
-        { rows: [row()], rowCount: 1 },
-      ]);
-      const replayStore = new PostgresPluginCredentialBindingStore(
-        replayClient,
-      );
+  it('covers scoped create replay success and missing durable winner', async () => {
+    const replayClient = new QueueClient([
+      zeroRows(),
+      { rows: [row()], rowCount: 1 },
+    ]);
+    const replayStore = new PostgresPluginCredentialBindingStore(replayClient);
 
-      await expect(replayStore.createIfAbsent(activeRecord())).resolves.toEqual(
-        activeRecord(),
-      );
-      expect(replayClient.calls).toHaveLength(2);
-      expect(replayClient.calls[1]?.text).toContain('LIMIT 2');
+    await expect(replayStore.createIfAbsent(activeRecord())).resolves.toEqual(
+      activeRecord(),
+    );
+    expect(replayClient.calls).toHaveLength(2);
+    expect(replayClient.calls[1]?.text).toContain('LIMIT 2');
 
-      const missingStore = new PostgresPluginCredentialBindingStore(
-        new QueueClient([zeroRows(), zeroRows()]),
-      );
-      await expect(missingStore.createIfAbsent(activeRecord())).rejects.toEqual(
-        new PluginCredentialPersistenceEvidenceError(),
-      );
-    },
-  );
+    const missingStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([zeroRows(), zeroRows()]),
+    );
+    await expect(missingStore.createIfAbsent(activeRecord())).rejects.toEqual(
+      new PluginCredentialPersistenceEvidenceError(),
+    );
+  });
 
-  it(
-    'covers empty and scope-mismatched reads without broadening authority',
-    async () => {
-      const emptyStore = new PostgresPluginCredentialBindingStore(
-        new QueueClient([zeroRows()]),
+  it('covers empty and scope-mismatched reads without broadening authority', async () => {
+    const emptyStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([zeroRows()]),
+    );
+    await expect(
+      emptyStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
+    ).resolves.toBeUndefined();
+
+    const mismatchedStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([
+        {
+          rows: [row({ credential_binding_id: OTHER_BINDING_ID })],
+          rowCount: 1,
+        },
+      ]),
+    );
+    await expect(
+      mismatchedStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
+    ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
+  });
+
+  it('covers revoked replay, absent revocation and mismatched revoked evidence', async () => {
+    const replayStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([zeroRows(), { rows: [revokedRow()], rowCount: 1 }]),
+    );
+    await expect(
+      replayStore.revokeActive(revokeInput()),
+    ).resolves.toMatchObject({
+      status: 'revoked',
+      revokedAt: REVOKED_AT,
+    });
+
+    const absentStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([zeroRows(), zeroRows()]),
+    );
+    await expect(
+      absentStore.revokeActive(revokeInput()),
+    ).resolves.toBeUndefined();
+
+    const mismatchedStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([
+        {
+          rows: [revokedRow({ workspace_id: OTHER_WORKSPACE_ID })],
+          rowCount: 1,
+        },
+      ]),
+    );
+    await expect(mismatchedStore.revokeActive(revokeInput())).rejects.toEqual(
+      new PluginCredentialPersistenceEvidenceError(),
+    );
+  });
+
+  it('rejects impossible input instants before persistence access', async () => {
+    const invalidInstants = [
+      '2026-13-01T08:00:00.000Z',
+      '2026-02-30T08:00:00.000Z',
+    ];
+
+    for (const boundAt of invalidInstants) {
+      const client = new QueueClient([]);
+      const store = new PostgresPluginCredentialBindingStore(client);
+      await expect(
+        store.createIfAbsent(activeRecord({ boundAt })),
+      ).rejects.toEqual(new PluginCredentialPersistenceValidationError());
+      expect(client.calls).toEqual([]);
+    }
+
+    for (const revokedAt of invalidInstants) {
+      const client = new QueueClient([]);
+      const store = new PostgresPluginCredentialBindingStore(client);
+      await expect(
+        store.revokeActive(revokeInput({ revokedAt })),
+      ).rejects.toEqual(new PluginCredentialPersistenceValidationError());
+      expect(client.calls).toEqual([]);
+    }
+  });
+
+  it('rejects malformed result and durable field evidence at the repository boundary', async () => {
+    const malformedResults: Array<PluginCredentialSqlResult<CredentialRow>> = [
+      { rows: [undefined as unknown as CredentialRow], rowCount: 1 },
+      {
+        rows: [row({ bound_at: new Date(Number.NaN) })],
+        rowCount: 1,
+      },
+      {
+        rows: [row({ bound_at: '2026-02-30T08:00:00.000Z' })],
+        rowCount: 1,
+      },
+      {
+        rows: [row({ credential_name: 'Webhook.Signing' })],
+        rowCount: 1,
+      },
+    ];
+
+    for (const result of malformedResults) {
+      const store = new PostgresPluginCredentialBindingStore(
+        new QueueClient([result]),
       );
       await expect(
-        emptyStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
-      ).resolves.toBeUndefined();
-
-      const mismatchedStore = new PostgresPluginCredentialBindingStore(
-        new QueueClient([
-          {
-            rows: [row({ credential_binding_id: OTHER_BINDING_ID })],
-            rowCount: 1,
-          },
-        ]),
-      );
-      await expect(
-        mismatchedStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
+        store.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
       ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
-    },
-  );
-
-  it(
-    'covers revoked replay, absent revocation and mismatched revoked evidence',
-    async () => {
-      const replayStore = new PostgresPluginCredentialBindingStore(
-        new QueueClient([
-          zeroRows(),
-          { rows: [revokedRow()], rowCount: 1 },
-        ]),
-      );
-      await expect(
-        replayStore.revokeActive(revokeInput()),
-      ).resolves.toMatchObject({
-        status: 'revoked',
-        revokedAt: REVOKED_AT,
-      });
-
-      const absentStore = new PostgresPluginCredentialBindingStore(
-        new QueueClient([zeroRows(), zeroRows()]),
-      );
-      await expect(
-        absentStore.revokeActive(revokeInput()),
-      ).resolves.toBeUndefined();
-
-      const mismatchedStore = new PostgresPluginCredentialBindingStore(
-        new QueueClient([
-          {
-            rows: [revokedRow({ workspace_id: OTHER_WORKSPACE_ID })],
-            rowCount: 1,
-          },
-        ]),
-      );
-      await expect(mismatchedStore.revokeActive(revokeInput())).rejects.toEqual(
-        new PluginCredentialPersistenceEvidenceError(),
-      );
-    },
-  );
-
-  it(
-    'rejects impossible input instants before persistence access',
-    async () => {
-      const invalidInstants = [
-        '2026-13-01T08:00:00.000Z',
-        '2026-02-30T08:00:00.000Z',
-      ];
-
-      for (const boundAt of invalidInstants) {
-        const client = new QueueClient([]);
-        const store = new PostgresPluginCredentialBindingStore(client);
-        await expect(
-          store.createIfAbsent(activeRecord({ boundAt })),
-        ).rejects.toEqual(new PluginCredentialPersistenceValidationError());
-        expect(client.calls).toEqual([]);
-      }
-
-      for (const revokedAt of invalidInstants) {
-        const client = new QueueClient([]);
-        const store = new PostgresPluginCredentialBindingStore(client);
-        await expect(
-          store.revokeActive(revokeInput({ revokedAt })),
-        ).rejects.toEqual(new PluginCredentialPersistenceValidationError());
-        expect(client.calls).toEqual([]);
-      }
-    },
-  );
-
-  it(
-    'rejects malformed result and durable field evidence at the repository boundary',
-    async () => {
-      const malformedResults: Array<
-        PluginCredentialSqlResult<CredentialRow>
-      > = [
-        { rows: [undefined as unknown as CredentialRow], rowCount: 1 },
-        {
-          rows: [row({ bound_at: new Date(Number.NaN) })],
-          rowCount: 1,
-        },
-        {
-          rows: [row({ bound_at: '2026-02-30T08:00:00.000Z' })],
-          rowCount: 1,
-        },
-        {
-          rows: [row({ credential_name: 'Webhook.Signing' })],
-          rowCount: 1,
-        },
-      ];
-
-      for (const result of malformedResults) {
-        const store = new PostgresPluginCredentialBindingStore(
-          new QueueClient([result]),
-        );
-        await expect(
-          store.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
-        ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
-      }
-    },
-  );
+    }
+  });
 });
