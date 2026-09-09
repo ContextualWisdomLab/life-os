@@ -59,6 +59,7 @@ jobs:
             apps/integration-service/package.json \
             apps/integration-service/vitest.config.ts \
             .github/workflows/verify-integration-coverage.yml
+          pnpm --filter @life-os/plugin-sdk build
           pnpm --filter @life-os/integration-service typecheck
 
           set +e
