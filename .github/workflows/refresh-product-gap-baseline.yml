@@ -1,0 +1,86 @@
+name: Refresh product gap baseline currentness
+
+on:
+  push:
+    branches:
+      - docs/product-gap-baseline-2026-08-20
+    paths:
+      - .github/workflows/refresh-product-gap-baseline.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify exact input and refresh canonical currentness block
+        env:
+          START_SHA: ${{ github.sha }}
+        shell: python3 {0}
+        run: |
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          start_sha = os.environ['START_SHA']
+          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if actual != start_sha:
+              raise SystemExit(f'exact input mismatch: expected {start_sha}, got {actual}')
+
+          path = Path('docs/product-technical-gap-baseline.md')
+          text = path.read_text(encoding='utf-8')
+          start = '> **Currentness override — 2026-09-08 package/control-plane authority.**'
+          end = '> **Currentness override — 2026-09-09 Integration delivery authority.**'
+          if text.count(start) != 1 or text.count(end) != 1:
+              raise SystemExit('canonical currentness markers are missing or ambiguous')
+
+          replacement = '''> **Currentness override — 2026-09-10 package/control-plane authority.** Root package owner #249 is current exact `34dae7a2c767511b555ae3b869a300eccccabe25`, open Draft/mergeable on protected `main@193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`. The package-manager-owned repair enforces `qs@6.16.0`, `multer@2.3.0`, a Next.js 15.5 minimum of `15.5.24` with current lock resolution `15.5.25`, and `sharp@0.35.4` under repository-declared `pnpm@10.15.0`. It also carries the bounded GitHub Compare repair `?per_page=1&page=2`, retaining exact compare/base/merge-base/behind provenance while avoiding changed-file payloads that can exceed the unchanged 1 MiB response envelope. Review regression `331eaffa87d304158db7e56888cfe1c672de56d2` proved one AppGuardrail trigger could lose root `*.md` while whole-workflow regexes still passed; repair `a3065b2258e4d3fc713a21200984ffd6fc97611b` validates `pull_request` and `push` independently. That predecessor exact head reached CI `34410560073`, Commercial Readiness `34410560128`, AppGuardrail `34410560060`, and SAST `34410560056` GREEN; Security Scan `34410559942` remained fail-closed solely because central dependency-review job `102666705381` received HTTP 403 / curl exit 0 for the exact public base/head comparison while OSV, Trivy FS and Scorecard were GREEN, and CodeQL `34410560002` remained RED at central current-head terminal-verdict enforcement although later dispatch succeeded. Those incidents are canonical-owner work in `ContextualWisdomLab/.github#810` and `#1929`, not grounds for LifeOS-local bypass. Current `34dae7a2...` is a documentation-only descendant correcting the distinction between the Next.js manifest minimum and lock resolution; its fresh exact-head checks and review must be reacquired and predecessor GREEN does not transfer.\n\n'''
+
+          pattern = re.escape(start) + r'.*?(?=' + re.escape(end) + r')'
+          updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'expected one currentness replacement, got {count}')
+          if '15eb89ca7a3c4585109440914490e78044d66386' in updated.split(end, 1)[0]:
+              raise SystemExit('obsolete package authority remained in currentness block')
+          path.write_text(updated, encoding='utf-8')
+
+      - name: Retire writer and validate diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/refresh-product-gap-baseline.yml
+          git diff --check
+          grep -Fq 'Currentness override — 2026-09-10 package/control-plane authority.' docs/product-technical-gap-baseline.md
+          grep -Fq '34dae7a2c767511b555ae3b869a300eccccabe25' docs/product-technical-gap-baseline.md
+          if git grep -Fq '15eb89ca7a3c4585109440914490e78044d66386' -- docs/product-technical-gap-baseline.md; then
+            echo '::error::obsolete package exact head remains in canonical baseline'
+            exit 1
+          fi
+          test ! -e .github/workflows/refresh-product-gap-baseline.yml
+
+      - name: Publish only on unchanged writer branch
+        env:
+          START_SHA: ${{ github.sha }}
+          BRANCH: docs/product-gap-baseline-2026-08-20
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/${BRANCH}" | awk '{print $1}')"
+          if [ "$remote_sha" != "$START_SHA" ]; then
+            echo "::error::writer branch moved: expected ${START_SHA}, found ${remote_sha}"
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/product-technical-gap-baseline.md .github/workflows/refresh-product-gap-baseline.yml
+          git commit -m 'docs(gaps): refresh package control-plane authority'
+          git push origin "HEAD:refs/heads/${BRANCH}"
