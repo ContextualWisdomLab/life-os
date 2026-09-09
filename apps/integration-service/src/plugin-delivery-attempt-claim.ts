@@ -140,7 +140,11 @@ function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptClaimCommand,
 ): PluginDeliveryAttemptClaimEvidence {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    boundedRead(() => Array.isArray(value))
+  ) {
     return invalid();
   }
   const evidence = value as PluginDeliveryAttemptClaimEvidence;
