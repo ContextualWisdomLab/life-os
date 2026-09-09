@@ -53,6 +53,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          mkdir -p .verification/format
+          pnpm exec prettier --single-quote \
+            apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
+            > .verification/format/plugin-credential-concurrent-winner-secret.test.ts
+          pnpm exec prettier --single-quote \
+            .github/workflows/verify-integration-coverage.yml \
+            > .verification/format/verify-integration-coverage.yml
           for source in \
             apps/integration-service/src/integration-remaining-production-coverage.test.ts \
             apps/integration-service/src/plugin-credential-concurrent-winner-secret.test.ts \
@@ -107,6 +114,15 @@ jobs:
             apps/integration-service/src/plugin-vault-secret-store-coverage.test.ts \
             .github/workflows/verify-integration-coverage.yml
           git diff --check
+
+      - name: Upload bounded formatter diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-format-${{ github.run_id }}
+          path: .verification/format
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build Plugin SDK
         run: pnpm --filter @life-os/plugin-sdk build
