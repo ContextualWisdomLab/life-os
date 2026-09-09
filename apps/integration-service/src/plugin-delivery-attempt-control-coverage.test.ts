@@ -14,7 +14,10 @@ const OCCURRED_AT = '2026-09-09T01:00:00.000Z';
 const NEXT_ATTEMPT_AT = '2026-09-09T01:05:00.000Z';
 const TERMINAL_AT = '2026-09-09T00:59:00.000Z';
 
-function context(): { readonly workspaceId: string; readonly actorUserId: string } {
+function context(): {
+  readonly workspaceId: string;
+  readonly actorUserId: string;
+} {
   return { workspaceId: WORKSPACE_ID, actorUserId: USER_ID };
 }
 
@@ -79,9 +82,7 @@ describe('PluginDeliveryAttemptControlApplication hostile evidence coverage', ()
     });
 
     for (const candidate of [null, [], revoked.proxy, throwing]) {
-      await expectAuthorityError(
-        app.pause(candidate as never, DELIVERY_ID),
-      );
+      await expectAuthorityError(app.pause(candidate as never, DELIVERY_ID));
     }
     await expectAuthorityError(app.pause(context(), 'not-a-uuid'));
 
@@ -128,7 +129,10 @@ describe('PluginDeliveryAttemptControlApplication hostile evidence coverage', ()
 
   it('rejects durable identity, version, code, sequence, and occurrence mismatches', async () => {
     const malformed: unknown[] = [
-      evidence({ authorityVersion: 'life-os.plugin-delivery-attempt-control.v1' as never, deliveryId: OTHER_DELIVERY_ID }),
+      evidence({
+        authorityVersion: 'life-os.plugin-delivery-attempt-control.v1' as never,
+        deliveryId: OTHER_DELIVERY_ID,
+      }),
       evidence({ workspaceId: '77777777-7777-4777-8777-777777777777' }),
       evidence({ requestedByUserId: '88888888-8888-4888-8888-888888888888' }),
       evidence({ controlCode: 'resume' }),
