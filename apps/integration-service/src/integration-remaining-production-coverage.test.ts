@@ -24,7 +24,9 @@ const DELIVERY_ID = '55555555-5555-4555-8555-555555555555';
 const TOKEN = 'test-vault-token-not-a-real-credential';
 const REFERENCE = `lifeos-plugin-vault://${BINDING_ID}`;
 const encoder = new TextEncoder();
-const openApplications = new Set<Awaited<ReturnType<typeof NestFactory.create>>>();
+const openApplications = new Set<
+  Awaited<ReturnType<typeof NestFactory.create>>
+>();
 
 const SECRET_INPUT: PutPluginSecretInput = Object.freeze({
   credentialBindingId: BINDING_ID,
@@ -62,7 +64,9 @@ function vaultStore(http: PluginVaultHttpClient): PluginVaultSecretStore {
   );
 }
 
-async function expectVaultUnavailable(operation: Promise<unknown>): Promise<void> {
+async function expectVaultUnavailable(
+  operation: Promise<unknown>,
+): Promise<void> {
   await expect(operation).rejects.toBeInstanceOf(PluginVaultSecretStoreError);
 }
 
@@ -75,7 +79,8 @@ function streamWithReader(reader: object): ReadableStream<Uint8Array> {
 function problemCode(error: unknown): string | undefined {
   if (!(error instanceof HttpException)) return undefined;
   const body = error.getResponse();
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) return undefined;
+  if (body === null || typeof body !== 'object' || Array.isArray(body))
+    return undefined;
   return (body as { readonly code?: string }).code;
 }
 
@@ -99,7 +104,9 @@ describe('Integration remaining production coverage', () => {
 
     const hostile = Proxy.revocable({}, {});
     hostile.revoke();
-    expect(() => baseController.validateManifest(hostile.proxy)).toThrow(TypeError);
+    expect(() => baseController.validateManifest(hostile.proxy)).toThrow(
+      TypeError,
+    );
 
     const install = vi.fn();
     const revokeInstallation = vi.fn(async () => {
@@ -111,9 +118,17 @@ describe('Integration remaining production coverage', () => {
     } as unknown as PluginOperatorApplication);
 
     await expect(
-      controller.install(undefined, undefined, undefined, undefined, undefined, []),
+      controller.install(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        [],
+      ),
     ).rejects.toSatisfy(
-      (error: unknown) => problemCode(error) === 'invalid_plugin_operator_request',
+      (error: unknown) =>
+        problemCode(error) === 'invalid_plugin_operator_request',
     );
     expect(install).not.toHaveBeenCalled();
 
@@ -165,7 +180,8 @@ describe('Integration remaining production coverage', () => {
         undefined,
       ),
     ).rejects.toSatisfy(
-      (error: unknown) => problemCode(error) === 'invalid_plugin_operator_context',
+      (error: unknown) =>
+        problemCode(error) === 'invalid_plugin_operator_context',
     );
   });
 
@@ -213,9 +229,10 @@ describe('Integration remaining production coverage', () => {
     const fetchMock = vi.fn().mockResolvedValue(vaultResponse(204));
     vi.stubGlobal('fetch', fetchMock);
     await expect(
-      new PluginVaultSecretStore('https://vault.example.test', TOKEN).deleteSecret(
-        REFERENCE,
-      ),
+      new PluginVaultSecretStore(
+        'https://vault.example.test',
+        TOKEN,
+      ).deleteSecret(REFERENCE),
     ).resolves.toBeUndefined();
     expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty('body');
     vi.unstubAllGlobals();
@@ -223,7 +240,9 @@ describe('Integration remaining production coverage', () => {
     const unavailableHttp = vi
       .fn<PluginVaultHttpClient>()
       .mockRejectedValue(new Error('provider unavailable'));
-    await expectVaultUnavailable(vaultStore(unavailableHttp).putSecret(SECRET_INPUT));
+    await expectVaultUnavailable(
+      vaultStore(unavailableHttp).putSecret(SECRET_INPUT),
+    );
     expect(unavailableHttp).toHaveBeenCalledTimes(2);
   });
 
@@ -236,8 +255,12 @@ describe('Integration remaining production coverage', () => {
     const malformedHttp = vi
       .fn<PluginVaultHttpClient>()
       .mockResolvedValueOnce(vaultResponse(400))
-      .mockResolvedValueOnce(vaultResponse(200, streamWithReader(malformedReader)));
-    await expectVaultUnavailable(vaultStore(malformedHttp).putSecret(SECRET_INPUT));
+      .mockResolvedValueOnce(
+        vaultResponse(200, streamWithReader(malformedReader)),
+      );
+    await expectVaultUnavailable(
+      vaultStore(malformedHttp).putSecret(SECRET_INPUT),
+    );
     expect(malformedReader.cancel).toHaveBeenCalledTimes(1);
 
     let readCount = 0;
@@ -254,8 +277,12 @@ describe('Integration remaining production coverage', () => {
     const invalidUtf8Http = vi
       .fn<PluginVaultHttpClient>()
       .mockResolvedValueOnce(vaultResponse(400))
-      .mockResolvedValueOnce(vaultResponse(200, streamWithReader(invalidUtf8Reader)));
-    await expectVaultUnavailable(vaultStore(invalidUtf8Http).putSecret(SECRET_INPUT));
+      .mockResolvedValueOnce(
+        vaultResponse(200, streamWithReader(invalidUtf8Reader)),
+      );
+    await expectVaultUnavailable(
+      vaultStore(invalidUtf8Http).putSecret(SECRET_INPUT),
+    );
   });
 
   it('accepts exact replay evidence even when releaseLock reports an already-released reader', async () => {
@@ -278,7 +305,9 @@ describe('Integration remaining production coverage', () => {
       .mockResolvedValueOnce(vaultResponse(409))
       .mockResolvedValueOnce(vaultResponse(200, streamWithReader(reader)));
 
-    await expect(vaultStore(http).putSecret(SECRET_INPUT)).resolves.toBe(REFERENCE);
+    await expect(vaultStore(http).putSecret(SECRET_INPUT)).resolves.toBe(
+      REFERENCE,
+    );
     expect(reader.releaseLock).toHaveBeenCalledTimes(1);
   });
 });
