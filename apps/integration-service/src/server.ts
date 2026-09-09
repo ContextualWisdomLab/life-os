@@ -58,6 +58,18 @@ export async function runIntegrationServiceEntrypoint(
   }
 }
 
-if (require.main === module) {
-  void runIntegrationServiceEntrypoint();
+/**
+ * Starts the process boundary only when this compiled module owns the Node entrypoint.
+ * Explicit module identity keeps the executable guard testable without opening durable dependencies.
+ */
+export function runIntegrationServiceEntrypointIfMain(
+  currentModule: NodeModule,
+  mainModule: NodeModule | undefined = require.main,
+  run: () => Promise<void> = runIntegrationServiceEntrypoint,
+): void {
+  if (mainModule === currentModule) {
+    void run();
+  }
 }
+
+runIntegrationServiceEntrypointIfMain(module);
