@@ -15,6 +15,22 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      INTEGRATION_DATABASE_URL: postgresql://life_os:life_os@127.0.0.1:5432/life_os_integration?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_integration
+          POSTGRES_USER: life_os
+          POSTGRES_PASSWORD: life_os
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U life_os -d life_os_integration"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
