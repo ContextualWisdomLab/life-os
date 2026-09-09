@@ -8,6 +8,12 @@ import {
 
 const READINESS_SQL = 'SELECT 1 AS integration_plugin_runtime_ready';
 
+type MalformedReadinessResult =
+  | 'wrong-ready-value'
+  | 'null-result'
+  | 'empty-rows'
+  | 'null-row';
+
 function registrationFailurePool(options: {
   readonly cleanupRejects: boolean;
 }): {
@@ -44,7 +50,7 @@ function registrationFailurePool(options: {
 
 function readinessFailurePool(options: {
   readonly cleanupRejects: boolean;
-  readonly malformedResult?: boolean;
+  readonly malformedResult?: MalformedReadinessResult;
   readonly throwingRowsAccessor?: boolean;
 }): {
   readonly constructor: NodePostgresPoolConstructor;
@@ -83,7 +89,25 @@ function readinessFailurePool(options: {
           rowCount: 1,
         };
       }
-      if (options.malformedResult) {
+      if (options.malformedResult === 'null-result') {
+        return null as unknown as {
+          readonly rows: readonly Row[];
+          readonly rowCount: number | null;
+        };
+      }
+      if (options.malformedResult === 'empty-rows') {
+        return {
+          rows: [],
+          rowCount: 1,
+        };
+      }
+      if (options.malformedResult === 'null-row') {
+        return {
+          rows: [null] as unknown as readonly Row[],
+          rowCount: 1,
+        };
+      }
+      if (options.malformedResult === 'wrong-ready-value') {
         return {
           rows: [
             { integration_plugin_runtime_ready: 0 },
@@ -174,7 +198,7 @@ describe('Integration PostgreSQL pool acquisition boundary', () => {
   it('rejects malformed PostgreSQL readiness evidence before runtime authority crosses the acquisition boundary', async () => {
     const test = readinessFailurePool({
       cleanupRejects: false,
-      malformedResult: true,
+      malformedResult: 'wrong-ready-value',
     });
 
     const acquisition = Promise.resolve(
@@ -190,6 +214,33 @@ describe('Integration PostgreSQL pool acquisition boundary', () => {
     expect(test.queryCalls()).toEqual([READINESS_SQL]);
     expect(test.endCalls()).toBe(1);
   });
+
+  it.each([
+    ['null result', 'null-result'],
+    ['empty rows', 'empty-rows'],
+    ['null row', 'null-row'],
+  ] as const)(
+    'rejects structurally malformed PostgreSQL readiness evidence (%s)',
+    async (_label, malformedResult) => {
+      const test = readinessFailurePool({
+        cleanupRejects: false,
+        malformedResult,
+      });
+
+      const acquisition = Promise.resolve(
+        createNodePostgresPluginPool(
+          'postgresql://integration:secret@db.example.test:5432/life_os',
+          test.constructor,
+        ),
+      );
+
+      await expect(acquisition).rejects.toBeInstanceOf(
+        PluginNodePostgresConfigurationError,
+      );
+      expect(test.queryCalls()).toEqual([READINESS_SQL]);
+      expect(test.endCalls()).toBe(1);
+    },
+  );
 
   it('bounds throwing readiness collection accessors and closes the acquired pool', async () => {
     const test = readinessFailurePool({
