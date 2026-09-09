@@ -181,6 +181,43 @@ describe('Plugin credential hostile-boundary coverage', () => {
     );
   });
 
+  it('bounds initial installation-authority rejection during bind', async () => {
+    const owned = ports();
+    owned.installationAuthority.getInstallation.mockRejectedValue(
+      new Error('installation boundary fixture'),
+    );
+
+    await expectInvalid(application(owned).bind(BIND_INPUT));
+  });
+
+  it('bounds initial binding-store rejection during bind', async () => {
+    const owned = ports();
+    owned.bindingStore.findById.mockRejectedValue(
+      new Error('binding boundary fixture'),
+    );
+
+    await expectInvalid(application(owned).bind(BIND_INPUT));
+  });
+
+  it('bounds initial binding-store rejection during revoke', async () => {
+    const owned = ports();
+    owned.bindingStore.findById.mockRejectedValue(
+      new Error('revoke read boundary fixture'),
+    );
+
+    await expectInvalid(application(owned).revoke(CONTEXT, BINDING_ID));
+  });
+
+  it('bounds revocation-store rejection after scoped evidence is read', async () => {
+    const owned = ports();
+    owned.bindingStore.findById.mockResolvedValue(binding());
+    owned.bindingStore.revokeActive.mockRejectedValue(
+      new Error('revoke write boundary fixture'),
+    );
+
+    await expectInvalid(application(owned).revoke(CONTEXT, BINDING_ID));
+  });
+
   it('bounds replay secret verification rejection', async () => {
     const owned = ports();
     owned.bindingStore.findById.mockResolvedValue(binding());
