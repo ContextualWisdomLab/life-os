@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Pool, type QueryResultRow } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parsePluginDeliveryAttemptTestDatabaseTarget } from './plugin-delivery-attempt-test-database';
@@ -8,6 +10,10 @@ const TEST_DATABASE_TARGET = DATABASE_URL
   ? parsePluginDeliveryAttemptTestDatabaseTarget(DATABASE_URL)
   : undefined;
 const describeWithPostgres = TEST_DATABASE_TARGET ? describe : describe.skip;
+const REPLAY_MIGRATIONS = [
+  '0003_plugin_operator_context_replay_record.sql',
+  '0012_plugin_operator_context_replay_consume.sql',
+].map((name) => readFileSync(join(__dirname, '..', 'migrations', name), 'utf8'));
 
 interface ConsumedRow extends QueryResultRow {
   readonly consumed: boolean;
@@ -15,9 +21,14 @@ interface ConsumedRow extends QueryResultRow {
 
 let pool: Pool;
 
-beforeAll(() => {
+beforeAll(async () => {
   if (TEST_DATABASE_TARGET && DATABASE_URL) {
     pool = new Pool({ connectionString: DATABASE_URL, max: 10 });
+    await pool.query('DROP SCHEMA IF EXISTS plugin_integration CASCADE;');
+    await pool.query('CREATE SCHEMA plugin_integration;');
+    for (const migration of REPLAY_MIGRATIONS) {
+      await pool.query(migration);
+    }
   }
 });
 
