@@ -71,19 +71,13 @@ jobs:
           pnpm --filter @life-os/integration-service build
           env -u INTEGRATION_DATABASE_URL \
             pnpm --filter @life-os/integration-service test
-          pnpm exec prettier --single-quote --write \
+          pnpm exec prettier --single-quote --check \
             .github/workflows/verify-plugin-delivery-status-k6.yml \
             apps/integration-service/src/plugin-operator-replay.ts \
             apps/integration-service/src/plugin-operator-replay.test.ts \
+            apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
             apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
             apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
-          git diff -- \
-            .github/workflows/verify-plugin-delivery-status-k6.yml \
-            apps/integration-service/src/plugin-operator-replay.ts \
-            apps/integration-service/src/plugin-operator-replay.test.ts \
-            apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
-            apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
-          exit 1
 
       - name: Configure verified-TLS PostgreSQL fixture
         shell: bash
@@ -156,18 +150,21 @@ jobs:
             "$server_ext" \
             "${ca_cert}.srl"
 
-      - name: Migrate and seed Integration-owned PostgreSQL
+      - name: Migrate and verify Integration-owned PostgreSQL
         shell: bash
         run: |
           set -Eeuo pipefail
           for migration in apps/integration-service/migrations/*.sql; do
             psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
           done
-          psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 \
-            -f apps/integration-service/perf/seed-plugin-delivery-attempt-status.sql
           psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
             'SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()' |
             grep -Fx t
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-operator-replay-postgres.integration.test.ts \
+            --no-file-parallelism
+          psql "$INTEGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -f apps/integration-service/perf/seed-plugin-delivery-attempt-status.sql
 
       - name: Measure authenticated status path without warm-up exclusion
         shell: bash
