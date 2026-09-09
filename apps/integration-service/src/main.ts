@@ -231,14 +231,22 @@ function isPluginOperatorPath(path: string): boolean {
   );
 }
 
+/** Selects the framework-observed raw path once without inventing a route when both URL fields are absent. */
+function integrationRequestPath(request: IntegrationHttpRequest): string {
+  const rawUrl = request.originalUrl ?? request.url;
+  if (rawUrl === undefined) {
+    return '';
+  }
+  return rawUrl.split('?', 1)[0]!;
+}
+
 /** Requires the server-observed raw route to match the signed canonical route byte-for-byte. */
 function requireExactPluginOperatorRoute(
   request: IntegrationHttpRequest,
   method: 'GET' | 'POST',
   canonicalPath: string,
 ): void {
-  const rawPath =
-    (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+  const rawPath = integrationRequestPath(request);
   if (request.method !== method || rawPath !== canonicalPath) {
     return invalidPluginOperatorContext();
   }
@@ -254,8 +262,7 @@ class IntegrationBadRequestFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const request = http.getRequest<IntegrationHttpRequest>();
     const response = http.getResponse<IntegrationHttpResponse>();
-    const path =
-      (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+    const path = integrationRequestPath(request);
 
     if (isPluginOperatorPath(path)) {
       response.status(400).json({
