@@ -3,6 +3,10 @@ import type {
   PluginDeliveryAttemptRetryEvidence,
   PluginDeliveryAttemptRetryStore,
 } from './plugin-delivery-attempt-retry';
+import {
+  PLUGIN_DELIVERY_ATTEMPT_RETRY_BACKOFF_SQL,
+  pluginDeliveryAttemptRetryBackoffSeconds,
+} from './plugin-delivery-attempt-retry-policy';
 
 const ATTEMPT_AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt.v1' as const;
 const RETRY_AUTHORITY_VERSION =
@@ -11,8 +15,6 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const INITIAL_BACKOFF_SECONDS = 30;
-const MAXIMUM_BACKOFF_SECONDS = 900;
 
 /** Result returned by the bounded delivery-retry SQL client. */
 export interface PluginDeliveryAttemptRetrySqlResult<Row> {
@@ -205,10 +207,7 @@ function singleRow<Row>(
 }
 
 function retryInstant(occurredAt: string, attemptNumber: number): string {
-  const delaySeconds = Math.min(
-    INITIAL_BACKOFF_SECONDS * 2 ** Math.max(0, attemptNumber - 1),
-    MAXIMUM_BACKOFF_SECONDS,
-  );
+  const delaySeconds = pluginDeliveryAttemptRetryBackoffSeconds(attemptNumber);
   return new Date(
     new Date(occurredAt).getTime() + delaySeconds * 1_000,
   ).toISOString();
@@ -315,7 +314,9 @@ function parseEvidence(
 }
 
 /** PostgreSQL adapter for deterministic Integration-owned retry/backoff transitions. */
-export class PostgresPluginDeliveryAttemptRetryStore implements PluginDeliveryAttemptRetryStore {
+export class PostgresPluginDeliveryAttemptRetryStore
+  implements PluginDeliveryAttemptRetryStore
+{
   /** Creates the store over one bounded parameterized SQL client. */
   constructor(private readonly client: PluginDeliveryAttemptRetrySqlClient) {}
 
@@ -335,10 +336,7 @@ export class PostgresPluginDeliveryAttemptRetryStore implements PluginDeliveryAt
            next_attempt_at = CASE
              WHEN attempt_count >= max_attempts THEN NULL
              ELSE $2::timestamptz + make_interval(
-               secs => LEAST(
-                 900,
-                 30 * power(2, GREATEST(attempt_count - 1, 0))
-               )::double precision
+               secs => ${PLUGIN_DELIVERY_ATTEMPT_RETRY_BACKOFF_SQL}::double precision
              )
            END,
            terminal_at = CASE
