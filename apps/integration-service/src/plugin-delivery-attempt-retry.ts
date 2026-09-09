@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
-import { pluginDeliveryAttemptRetryBackoffSeconds } from './plugin-delivery-attempt-retry-policy';
+import {
+  pluginDeliveryAttemptRetryBackoffSeconds,
+} from './plugin-delivery-attempt-retry-policy';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
