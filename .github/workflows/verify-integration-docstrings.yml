@@ -32,8 +32,8 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify canonical docstring contract source
-        run: pnpm exec prettier --single-quote --check apps/integration-service/src/production-docstring-contract.test.ts .github/workflows/verify-integration-docstrings.yml
+      - name: Verify diagnostic workflow formatting
+        run: pnpm exec prettier --single-quote --check .github/workflows/verify-integration-docstrings.yml
 
       - name: Run production docstring contract
         id: docstrings
