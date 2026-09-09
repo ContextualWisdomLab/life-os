@@ -237,4 +237,45 @@ describe('PostgresPluginCredentialBindingStore coverage boundaries', () => {
       ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
     }
   });
+
+  it('converts hostile command, SQL, and durable reads to fixed repository errors', async () => {
+    const hostileRecord = activeRecord();
+    Object.defineProperty(hostileRecord, 'credentialName', {
+      get: () => {
+        throw new Error('must-not-escape-input');
+      },
+    });
+    const inputClient = new QueueClient([]);
+    const inputStore = new PostgresPluginCredentialBindingStore(inputClient);
+    await expect(inputStore.createIfAbsent(hostileRecord)).rejects.toEqual(
+      new PluginCredentialPersistenceValidationError(),
+    );
+    expect(inputClient.calls).toEqual([]);
+
+    const rejectingClient: PluginCredentialSqlClient = {
+      query: async () => {
+        throw new Error('must-not-escape-sql');
+      },
+    };
+    const rejectingStore = new PostgresPluginCredentialBindingStore(
+      rejectingClient,
+    );
+    await expect(
+      rejectingStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
+    ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
+
+    const hostileResult = Object.create(null) as PluginCredentialSqlResult<CredentialRow>;
+    Object.defineProperty(hostileResult, 'rows', {
+      get: () => {
+        throw new Error('must-not-escape-evidence');
+      },
+    });
+    Object.defineProperty(hostileResult, 'rowCount', { value: 1 });
+    const hostileStore = new PostgresPluginCredentialBindingStore(
+      new QueueClient([hostileResult]),
+    );
+    await expect(
+      hostileStore.findById(BINDING_ID, WORKSPACE_ID, USER_ID),
+    ).rejects.toEqual(new PluginCredentialPersistenceEvidenceError());
+  });
 });
