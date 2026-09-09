@@ -8,18 +8,16 @@ import {
   type PluginDeliveryAttemptStatusSqlResult,
 } from './plugin-delivery-attempt-status-repository';
 
-const DELIVERY_ID = '55555555-5555-4555-8555-555555555555';
-const GRANT_ID = '11111111-1111-4111-8111-111111111111';
-const INSTALLATION_ID = '22222222-2222-4222-8222-222222222222';
-const WORKSPACE_ID = '33333333-3333-4333-8333-333333333333';
-const USER_ID = '44444444-4444-4444-8444-444444444444';
+const DELIVERY_ID = 'a5555555-5555-4555-8555-555555555555';
+const GRANT_ID = 'b1111111-1111-4111-8111-111111111111';
+const INSTALLATION_ID = 'c2222222-2222-4222-8222-222222222222';
+const WORKSPACE_ID = 'd3333333-3333-4333-8333-333333333333';
+const USER_ID = 'e4444444-4444-4444-8444-444444444444';
 const REQUESTED_AT = '2026-09-09T01:20:00.000Z';
 const UPDATED_AT = '2026-09-09T02:55:00.000Z';
 const CHECKED_AT = '2026-09-09T03:00:00.000Z';
 
-function command(
-  checkedAt = CHECKED_AT,
-): PluginDeliveryAttemptStatusCommand {
+function command(checkedAt = CHECKED_AT): PluginDeliveryAttemptStatusCommand {
   return {
     deliveryId: DELIVERY_ID,
     workspaceId: WORKSPACE_ID,
@@ -52,7 +50,8 @@ function activeRow() {
 }
 
 function harness(result: unknown) {
-  const calls: Array<{ text: string; values: readonly unknown[] | undefined }> = [];
+  const calls: Array<{ text: string; values: readonly unknown[] | undefined }> =
+    [];
   const client: PluginDeliveryAttemptStatusSqlClient = {
     async query<Row>(text: string, values?: readonly unknown[]) {
       calls.push({ text, values });
@@ -257,10 +256,22 @@ describe('PostgresPluginDeliveryAttemptStatusStore coverage boundaries', () => {
       { ...activeRow(), terminal_at: 'not-an-instant' },
       { ...activeRow(), has_claim_token_digest: 'yes' },
       { ...activeRow(), has_claim_token_digest: false },
-      { ...activeRow(), claim_started_at: new Date('2026-09-09T01:19:59.000Z') },
-      { ...activeRow(), claim_started_at: new Date('2026-09-09T02:56:00.000Z') },
-      { ...activeRow(), claim_expires_at: new Date('2026-09-09T02:55:29.999Z') },
-      { ...activeRow(), claim_expires_at: new Date('2026-09-09T03:55:00.001Z') },
+      {
+        ...activeRow(),
+        claim_started_at: new Date('2026-09-09T01:19:59.000Z'),
+      },
+      {
+        ...activeRow(),
+        claim_started_at: new Date('2026-09-09T02:56:00.000Z'),
+      },
+      {
+        ...activeRow(),
+        claim_expires_at: new Date('2026-09-09T02:55:29.999Z'),
+      },
+      {
+        ...activeRow(),
+        claim_expires_at: new Date('2026-09-09T03:55:00.001Z'),
+      },
       { ...activeRow(), delivery_status: 'failed' },
       { ...activeRow(), next_attempt_at: new Date('2026-09-09T01:19:59.000Z') },
     ];

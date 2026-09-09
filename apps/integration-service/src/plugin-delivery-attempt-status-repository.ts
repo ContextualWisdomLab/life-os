@@ -76,9 +76,27 @@ function invalidEvidence(): never {
   throw new PluginDeliveryAttemptStatusPersistenceEvidenceError();
 }
 
+function boundedInputRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalidInput();
+  }
+}
+
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
+  } catch {
+    return invalidEvidence();
+  }
+}
+
+async function boundedEvidenceDependency<T>(
+  read: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await read();
   } catch {
     return invalidEvidence();
   }
@@ -191,11 +209,10 @@ function oneOrUndefined<Row>(
 function validateCommand(
   command: PluginDeliveryAttemptStatusCommand,
 ): PluginDeliveryAttemptStatusCommand {
-  if (
-    command === null ||
-    typeof command !== 'object' ||
-    Array.isArray(command)
-  ) {
+  if (command === null || typeof command !== 'object') {
+    return invalidInput();
+  }
+  if (boundedInputRead(() => Array.isArray(command))) {
     return invalidInput();
   }
   const snapshot = (() => {
@@ -476,8 +493,9 @@ export class PostgresPluginDeliveryAttemptStatusStore implements PluginDeliveryA
     command: PluginDeliveryAttemptStatusCommand,
   ): Promise<PluginDeliveryAttemptStatusEvidence | undefined> {
     const safe = validateCommand(command);
-    const result = await this.client.query<PluginDeliveryAttemptStatusRow>(
-      `SELECT authority_version, delivery_id, grant_id, installation_id,
+    const result = await boundedEvidenceDependency(() =>
+      this.client.query<PluginDeliveryAttemptStatusRow>(
+        `SELECT authority_version, delivery_id, grant_id, installation_id,
               workspace_id, requested_by_user_id, delivery_status, attempt_count,
               max_attempts, requested_at, updated_at, next_attempt_at, terminal_at,
               last_outcome_code, control_sequence,
@@ -488,7 +506,8 @@ export class PostgresPluginDeliveryAttemptStatusStore implements PluginDeliveryA
          AND workspace_id = $2::uuid
          AND requested_by_user_id = $3::uuid
        LIMIT 2`,
-      [safe.deliveryId, safe.workspaceId, safe.requestedByUserId],
+        [safe.deliveryId, safe.workspaceId, safe.requestedByUserId],
+      ),
     );
     const row = oneOrUndefined(result);
     return row === undefined ? undefined : parseRow(row, safe);
