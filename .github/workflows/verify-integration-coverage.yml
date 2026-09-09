@@ -60,6 +60,7 @@ jobs:
             apps/integration-service/src/plugin-delivery-attempt-retry-policy.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-policy.test.ts \
             apps/integration-service/src/plugin-delivery-attempt-retry-repository.ts \
+            apps/integration-service/src/plugin-installation-repository-hostile-date.test.ts \
             apps/integration-service/src/plugin-vault-operator-composition-coverage.test.ts; do
             formatted="/tmp/$(basename "$source").formatted.ts"
             pnpm exec prettier --single-quote "$source" > "$formatted"
