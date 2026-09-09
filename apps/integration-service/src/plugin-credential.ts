@@ -202,6 +202,30 @@ function currentInstant(now: () => Date): string {
 }
 
 /**
+ * Requires one installation snapshot to remain active under the exact trusted
+ * workspace/user/installation authority and returns its canonical installed instant.
+ */
+function requireActiveInstallationInstalledAt(
+  installation: PluginInstallationRecord | undefined,
+  context: PluginInstallationContext,
+  installationId: string,
+): string {
+  return boundedRead(() => {
+    if (
+      !installation ||
+      installation.status !== 'active' ||
+      installation.revokedAt !== null ||
+      installation.workspaceId !== context.workspaceId ||
+      installation.installedByUserId !== context.actorUserId ||
+      installation.installationId !== installationId
+    ) {
+      return invalid();
+    }
+    return requireStoredInstant(installation.installedAt);
+  });
+}
+
+/**
  * Requires persisted lifecycle time to be the canonical millisecond UTC instant
  * representation used by credential authority; equivalent alternate text is rejected.
  */
@@ -378,6 +402,30 @@ function sameImmutableBindingEvidence(
   );
 }
 
+/**
+ * Revalidates one current active binding after asynchronous provider work so stale
+ * pre-I/O evidence cannot regain application authority after revocation or replacement.
+ */
+function requireCurrentActiveBinding(
+  currentEvidence: PluginCredentialBindingRecord | undefined,
+  authority: Parameters<typeof sameBindingAuthority>[1],
+  priorEvidence: PluginCredentialBindingRecord,
+  operationAt: string,
+): PluginCredentialBindingRecord {
+  if (currentEvidence === undefined) {
+    return invalid();
+  }
+  const current = requireBindingRecord(currentEvidence);
+  if (
+    !activeBinding(current, authority) ||
+    !sameImmutableBindingEvidence(current, priorEvidence) ||
+    !bindingVisibleAt(current, operationAt)
+  ) {
+    return invalid();
+  }
+  return current;
+}
+
 /** Projects durable binding evidence into the public view that excludes secret references. */
 function view(
   record: PluginCredentialBindingRecord,
@@ -426,19 +474,11 @@ export class PluginCredentialApplication {
         this.installationAuthority.getInstallation(context, installationId),
       )
     ).value;
-    const installedAt = boundedRead(() => {
-      if (
-        !installation ||
-        installation.status !== 'active' ||
-        installation.revokedAt !== null ||
-        installation.workspaceId !== context.workspaceId ||
-        installation.installedByUserId !== context.actorUserId ||
-        installation.installationId !== installationId
-      ) {
-        return invalid();
-      }
-      return requireStoredInstant(installation.installedAt);
-    });
+    const installedAt = requireActiveInstallationInstalledAt(
+      installation,
+      context,
+      installationId,
+    );
     if (instantMilliseconds(installedAt) > instantMilliseconds(boundAt)) {
       return invalid();
     }
@@ -477,52 +517,34 @@ export class PluginCredentialApplication {
       } catch {
         return invalid();
       }
-      let currentInstallation: PluginInstallationRecord | undefined;
-      try {
-        currentInstallation = await this.installationAuthority.getInstallation(
-          context,
-          installationId,
-        );
-      } catch {
-        return invalid();
-      }
-      const currentInstalledAt = boundedRead(() => {
-        if (
-          !currentInstallation ||
-          currentInstallation.status !== 'active' ||
-          currentInstallation.revokedAt !== null ||
-          currentInstallation.workspaceId !== context.workspaceId ||
-          currentInstallation.installedByUserId !== context.actorUserId ||
-          currentInstallation.installationId !== installationId
-        ) {
-          return invalid();
-        }
-        return requireStoredInstant(currentInstallation.installedAt);
-      });
+      const currentInstallation = (
+        await boundedDependency(() =>
+          this.installationAuthority.getInstallation(context, installationId),
+        )
+      ).value;
+      const currentInstalledAt = requireActiveInstallationInstalledAt(
+        currentInstallation,
+        context,
+        installationId,
+      );
       if (currentInstalledAt !== installedAt) {
         return invalid();
       }
-      let currentBindingEvidence: PluginCredentialBindingRecord | undefined;
-      try {
-        currentBindingEvidence = await this.bindingStore.findById(
-          credentialBindingId,
-          context.workspaceId,
-          context.actorUserId,
-        );
-      } catch {
-        return invalid();
-      }
-      if (currentBindingEvidence === undefined) {
-        return invalid();
-      }
-      const currentBinding = requireBindingRecord(currentBindingEvidence);
-      if (
-        !activeBinding(currentBinding, authority) ||
-        !sameImmutableBindingEvidence(currentBinding, existing) ||
-        !bindingVisibleAt(currentBinding, boundAt)
-      ) {
-        return invalid();
-      }
+      const currentBindingEvidence = (
+        await boundedDependency(() =>
+          this.bindingStore.findById(
+            credentialBindingId,
+            context.workspaceId,
+            context.actorUserId,
+          ),
+        )
+      ).value;
+      const currentBinding = requireCurrentActiveBinding(
+        currentBindingEvidence,
+        authority,
+        existing,
+        boundAt,
+      );
       return view(currentBinding);
     }
 
@@ -579,6 +601,35 @@ export class PluginCredentialApplication {
       } catch {
         return invalid();
       }
+      const currentInstallation = (
+        await boundedDependency(() =>
+          this.installationAuthority.getInstallation(context, installationId),
+        )
+      ).value;
+      const currentInstalledAt = requireActiveInstallationInstalledAt(
+        currentInstallation,
+        context,
+        installationId,
+      );
+      if (currentInstalledAt !== installedAt) {
+        return invalid();
+      }
+      const currentBindingEvidence = (
+        await boundedDependency(() =>
+          this.bindingStore.findById(
+            credentialBindingId,
+            context.workspaceId,
+            context.actorUserId,
+          ),
+        )
+      ).value;
+      const currentBinding = requireCurrentActiveBinding(
+        currentBindingEvidence,
+        authority,
+        durable,
+        boundAt,
+      );
+      return view(currentBinding);
     }
     return view(durable);
   }
