@@ -108,7 +108,10 @@ function currentInstant(now: () => Date): string {
 
 /** Extracts canonical workspace and actor authority from the trusted request context. */
 function requireContext(value: unknown): PluginInstallationContext {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value === null || typeof value !== 'object') {
+    return invalid();
+  }
+  if (boundedRead(() => Array.isArray(value))) {
     return invalid();
   }
   const context = value as PluginInstallationContext;
@@ -138,7 +141,11 @@ function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptExecutionFenceCommand,
 ): PluginDeliveryAttemptExecutionFenceEvidence {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    boundedRead(() => Array.isArray(value))
+  ) {
     return invalid();
   }
   const evidence = value as PluginDeliveryAttemptExecutionFenceEvidence;
