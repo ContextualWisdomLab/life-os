@@ -36,7 +36,11 @@ jobs:
         run: pnpm exec prettier --single-quote --check .github/workflows/verify-integration-docstrings.yml
 
       - name: Format detached diagnostic copy
-        run: pnpm exec prettier --single-quote --write apps/integration-service/src/production-docstring-contract.test.ts
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/integration-service/src/production-docstring-contract.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control.ts \
+            apps/integration-service/src/plugin-delivery-attempt-control-repository.ts
 
       - name: Run production docstring contract
         id: docstrings
@@ -61,5 +65,7 @@ jobs:
           path: |
             .verification/integration-docstrings.json
             apps/integration-service/src/production-docstring-contract.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-control.ts
+            apps/integration-service/src/plugin-delivery-attempt-control-repository.ts
           if-no-files-found: error
           retention-days: 3
