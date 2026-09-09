@@ -48,6 +48,7 @@ export class PluginDeliveryAttemptExecutionFencePersistenceEvidenceError extends
   }
 }
 
+/** Raw execution-fence row before exact scope, identity, and claim-expiry validation. */
 interface ExecutionFenceRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -60,14 +61,17 @@ interface ExecutionFenceRow {
   claim_expires_at: unknown;
 }
 
+/** Terminates malformed fence commands before SQL authority is exercised. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptExecutionFencePersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt fence evidence without reflecting database detail. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptExecutionFencePersistenceEvidenceError();
 }
 
+/** Collapses hostile synchronous command reads into the fixed persistence-input failure. */
 function boundedInputRead<T>(read: () => T): T {
   try {
     return read();
@@ -76,6 +80,7 @@ function boundedInputRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses hostile synchronous durable-evidence reads into the fixed persistence-evidence failure. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -84,6 +89,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses rejected SQL dependency calls into the fixed durable-evidence failure. */
 async function boundedEvidenceDependency<T>(
   read: () => Promise<T>,
 ): Promise<T> {
@@ -94,6 +100,7 @@ async function boundedEvidenceDependency<T>(
   }
 }
 
+/** Requires one canonical UUIDv4 fence-scope identifier before it can reach SQL. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -101,6 +108,7 @@ function requireInputUuid(value: unknown): string {
   return value;
 }
 
+/** Requires one canonical UUIDv4 from durable execution-fence evidence. */
 function requireStoredUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -108,6 +116,7 @@ function requireStoredUuid(value: unknown): string {
   return value;
 }
 
+/** Requires one exact command-side millisecond UTC instant before the fence query. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -119,6 +128,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes PostgreSQL Date/string timestamps into exact durable fence evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -136,6 +146,7 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Snapshots exact delivery scope, claim digest, and check instant before issuing SQL. */
 function validateCommand(
   value: PluginDeliveryAttemptExecutionFenceCommand,
 ): PluginDeliveryAttemptExecutionFenceCommand {
@@ -168,6 +179,7 @@ function validateCommand(
   });
 }
 
+/** Admits zero or one unambiguous row from the bounded execution-fence result envelope. */
 function singleRow<Row>(
   result: PluginDeliveryAttemptExecutionFenceSqlResult<Row>,
 ): Row | undefined {
@@ -200,6 +212,7 @@ function singleRow<Row>(
   return row === undefined ? invalidEvidence() : row;
 }
 
+/** Parses one successful fence query into exact, unexpired execution evidence. */
 function parseEvidence(
   row: unknown,
   command: PluginDeliveryAttemptExecutionFenceCommand,

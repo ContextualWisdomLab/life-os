@@ -49,6 +49,7 @@ export class PluginDeliveryAttemptRetryPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw retry-transition row before exact scope, chronology, and claim-consumption validation. */
 interface RetryRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -66,14 +67,17 @@ interface RetryRow {
   claim_expires_at: unknown;
 }
 
+/** Terminates malformed retry commands before SQL authority is exercised. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptRetryPersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt durable retry evidence without reflecting database detail. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptRetryPersistenceEvidenceError();
 }
 
+/** Collapses hostile synchronous command reads into the fixed persistence-input failure. */
 function boundedInputRead<T>(read: () => T): T {
   try {
     return read();
@@ -82,6 +86,7 @@ function boundedInputRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses hostile synchronous durable-evidence reads into the fixed persistence-evidence failure. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -90,6 +95,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses rejected SQL dependency calls into the fixed durable-evidence failure. */
 async function boundedEvidenceDependency<T>(
   read: () => Promise<T>,
 ): Promise<T> {
@@ -100,6 +106,7 @@ async function boundedEvidenceDependency<T>(
   }
 }
 
+/** Requires one canonical UUIDv4 retry-scope identifier before it can become a SQL parameter. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -107,6 +114,7 @@ function requireInputUuid(value: unknown): string {
   return value;
 }
 
+/** Requires one exact command-side millisecond UTC instant before retry persistence. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -118,6 +126,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes PostgreSQL Date/string timestamps into exact durable retry evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -135,10 +144,12 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Preserves absent retry/terminal instants while validating any present timestamp. */
 function requireNullableStoredInstant(value: unknown): string | null {
   return value === null ? null : requireStoredInstant(value);
 }
 
+/** Snapshots exact retry command scope and digest before issuing the conditional UPDATE. */
 function validateCommand(
   value: PluginDeliveryAttemptRetryCommand,
 ): PluginDeliveryAttemptRetryCommand {
@@ -174,6 +185,7 @@ function validateCommand(
   });
 }
 
+/** Admits zero or one unambiguous row from the retry UPDATE result envelope. */
 function singleRow<Row>(
   result: PluginDeliveryAttemptRetrySqlResult<Row>,
 ): Row | undefined {
@@ -206,6 +218,7 @@ function singleRow<Row>(
   return row === undefined ? invalidEvidence() : row;
 }
 
+/** Mirrors the shared retry policy in application time for exact SQL/result parity checks. */
 function retryInstant(occurredAt: string, attemptNumber: number): string {
   const delaySeconds = pluginDeliveryAttemptRetryBackoffSeconds(attemptNumber);
   return new Date(
@@ -213,6 +226,7 @@ function retryInstant(occurredAt: string, attemptNumber: number): string {
   ).toISOString();
 }
 
+/** Parses one consumed-claim row into bounded retry or terminal-exhaustion evidence. */
 function parseEvidence(
   row: unknown,
   command: PluginDeliveryAttemptRetryCommand,
