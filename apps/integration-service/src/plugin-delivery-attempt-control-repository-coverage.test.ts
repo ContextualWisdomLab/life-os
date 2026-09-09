@@ -26,9 +26,7 @@ function command(
   };
 }
 
-function row(
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
+function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     authority_version: 'life-os.plugin-delivery-attempt-control.v1',
     delivery_id: DELIVERY_ID,
@@ -208,7 +206,11 @@ describe('PostgresPluginDeliveryAttemptControlStore hostile evidence coverage', 
     }
 
     for (const durable of [
-      row({ delivery_status: 'failed', next_attempt_at: null, terminal_at: TERMINAL_AT }),
+      row({
+        delivery_status: 'failed',
+        next_attempt_at: null,
+        terminal_at: TERMINAL_AT,
+      }),
       row({ delivery_status: 'dead_lettered', terminal_at: TERMINAL_AT }),
       row({
         delivery_status: 'dead_lettered',
@@ -271,7 +273,9 @@ describe('PostgresPluginDeliveryAttemptControlStore hostile evidence coverage', 
         WORKSPACE_ID,
         USER_ID,
       ]);
-      expect(call.text).toContain('plugin_integration.plugin_delivery_attempt_record');
+      expect(call.text).toContain(
+        'plugin_integration.plugin_delivery_attempt_record',
+      );
     }
   });
 });
