@@ -17,7 +17,10 @@ const OTHER_TASK_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const FIRST_COMPLETED_AT = '2026-09-10T15:59:00.000Z';
 const COMPLETED_AT = '2026-09-10T16:00:00.000Z';
 
-type CompletionEvidenceOverride = Partial<TaskCompletionEvidence> & {
+type CompletionEvidenceOverride = Omit<
+  Partial<TaskCompletionEvidence>,
+  'completedAt'
+> & {
   completedAt?: unknown;
 };
 
@@ -148,7 +151,7 @@ describe('TaskCompletionService', () => {
   it.each([
     ['workspace identity', { workspaceId: OTHER_WORKSPACE_ID }],
     ['task identity', { taskId: OTHER_TASK_ID }],
-    ['durable status', { status: 'todo', completedAt: null }],
+    ['durable status', { status: 'todo' as const, completedAt: null }],
   ])('fails closed when persistence distorts %s', async (_name, override) => {
     const service = new TaskCompletionService(
       new RecordingCompletionRepository(true, override),
