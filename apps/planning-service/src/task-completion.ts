@@ -197,7 +197,9 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
     return boundedPersistenceCall(async () => {
       const result = await this.client.query<TaskCompletionRow>(
         `WITH previous AS (
-           SELECT workspace_id, id, status AS previous_status
+           SELECT workspace_id AS previous_workspace_id,
+                  id AS previous_id,
+                  status AS previous_status
            FROM planning.tasks
            WHERE workspace_id = $1 AND id = $2
            FOR UPDATE
@@ -212,13 +214,9 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
                  ELSE NULL
                END
            FROM previous
-           WHERE planning.tasks.workspace_id = previous.workspace_id
-             AND planning.tasks.id = previous.id
-           RETURNING planning.tasks.workspace_id,
-                     planning.tasks.id,
-                     planning.tasks.status,
-                     planning.tasks.completed_at,
-                     previous.previous_status
+           WHERE planning.tasks.workspace_id = previous.previous_workspace_id
+             AND planning.tasks.id = previous.previous_id
+           RETURNING workspace_id, id, status, completed_at, previous.previous_status
          ),
          completion_fact AS (
            INSERT INTO planning.task_completion_facts (
