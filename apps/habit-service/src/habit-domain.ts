@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -62,6 +62,8 @@ export interface HabitReviewProjectionEntry {
 /** Versioned Habit-owned projection for one Monday-to-Sunday Review period. */
 export interface HabitReviewWeekProjection {
   schemaVersion: 'life-os.habit-review-projection.v1';
+  producer: 'habit';
+  projectionRevision: string;
   periodStartDate: string;
   periodEndDate: string;
   periodBasis: 'habit-local-date';
@@ -621,15 +623,27 @@ export class HabitService {
       (sum, entry) => sum + entry.completedOpportunityCount,
       0,
     );
-
-    return Object.freeze({
-      schemaVersion: 'life-os.habit-review-projection.v1',
+    const producer = 'habit' as const;
+    const periodBasis = 'habit-local-date' as const;
+    const normalizedProjection = {
+      schemaVersion: 'life-os.habit-review-projection.v1' as const,
+      producer,
       periodStartDate: periodStart.text,
       periodEndDate,
-      periodBasis: 'habit-local-date',
-      asOf,
+      periodBasis,
       scheduledOpportunityCount,
       completedOpportunityCount,
+      habits: entries,
+    };
+    // `asOf` is freshness metadata; excluding it keeps the revision stable when semantic evidence is unchanged.
+    const projectionRevision = `sha256:${createHash('sha256')
+      .update(JSON.stringify(normalizedProjection), 'utf8')
+      .digest('hex')}`;
+
+    return Object.freeze({
+      ...normalizedProjection,
+      projectionRevision,
+      asOf,
       habits: Object.freeze(
         entries.map((entry) => Object.freeze({ ...entry })),
       ),
