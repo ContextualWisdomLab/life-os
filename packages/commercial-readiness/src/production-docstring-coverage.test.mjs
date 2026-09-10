@@ -29,7 +29,8 @@ function documentationOwner(node) {
 function hasCallableInitializer(node) {
   return (
     node.initializer !== undefined &&
-    (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    (ts.isArrowFunction(node.initializer) ||
+      ts.isFunctionExpression(node.initializer))
   );
 }
 
@@ -113,7 +114,10 @@ test('docstring ownership requires an adjacent JSDoc block', () => {
   const source = `/** unrelated note */\nconst marker = 1;\nfunction undocumented() {}\n/** Explains the callable contract. */\nconst documented = () => true;\n`;
   const evidence = collectDocumentationEvidence('fixture.mjs', source);
   assert.deepEqual(
-    evidence.map(({ declaration, documented }) => ({ declaration, documented })),
+    evidence.map(({ declaration, documented }) => ({
+      declaration,
+      documented,
+    })),
     [
       { declaration: 'undocumented', documented: false },
       { declaration: 'documented', documented: true },
@@ -123,7 +127,10 @@ test('docstring ownership requires an adjacent JSDoc block', () => {
 
 test('every Commercial Readiness production declaration has explanatory JSDoc', async () => {
   const sourceFiles = await discoverProductionSources(SOURCE_DIRECTORY);
-  assert.ok(sourceFiles.length > 0, 'Commercial Readiness production surface is empty');
+  assert.ok(
+    sourceFiles.length > 0,
+    'Commercial Readiness production surface is empty',
+  );
 
   const evidence = (
     await Promise.all(
@@ -134,7 +141,8 @@ test('every Commercial Readiness production declaration has explanatory JSDoc', 
   ).flat();
   const missing = evidence.filter((item) => !item.documented);
   const documented = evidence.length - missing.length;
-  const coverage = evidence.length === 0 ? 100 : (documented / evidence.length) * 100;
+  const coverage =
+    evidence.length === 0 ? 100 : (documented / evidence.length) * 100;
 
   assert.equal(
     missing.length,
