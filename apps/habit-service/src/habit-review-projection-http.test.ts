@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -16,7 +17,7 @@ import { HabitController } from './main';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const PERIOD_START_DATE = '2026-09-07';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
-const CONTROLLER_SOURCE = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+const CONTROLLER_SOURCE = readFileSync(join(__dirname, 'main.ts'), 'utf8');
 
 interface ReviewHttpRequest {
   readonly method?: string;
