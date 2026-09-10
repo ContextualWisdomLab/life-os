@@ -17,7 +17,7 @@ function signature(
 ): string {
   return createHmac('sha256', CONTEXT_SECRET)
     .update(
-      `life-os.habit-review-context.v1\n${WORKSPACE_ID}\n${issuedAt}\n${method}\n${path}`,
+      `life-os.habit-context.v2\n${WORKSPACE_ID}\n${issuedAt}\n${method}\n${path}`,
       'utf8',
     )
     .digest('base64url');
