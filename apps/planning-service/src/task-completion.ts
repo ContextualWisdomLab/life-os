@@ -209,7 +209,12 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
              END
          WHERE workspace_id = $1 AND id = $2
          RETURNING workspace_id, id, status, completed_at`,
-        [safeWorkspaceId, safeTaskId, transition.status, transition.completedAt],
+        [
+          safeWorkspaceId,
+          safeTaskId,
+          transition.status,
+          transition.completedAt,
+        ],
       );
       if (!Array.isArray(result.rows) || result.rows.length > 1) {
         return invalidPersistenceEvidence();
