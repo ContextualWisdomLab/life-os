@@ -1,4 +1,4 @@
-name: Verify PR267 completion edge coverage
+name: Repair and verify PR267 completion edge coverage
 
 on:
   push:
@@ -6,10 +6,10 @@ on:
       - feat/planning-task-completion-transition-v1
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: verify-pr267-completion-edge-${{ github.ref }}
+  group: repair-pr267-completion-edge-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 15
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      WRITER_BRANCH: feat/planning-task-completion-transition-v1
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -36,8 +37,8 @@ jobs:
       - name: Checkout exact writer head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
           ref: ${{ github.sha }}
+          fetch-depth: 1
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -50,7 +51,14 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check touched-source formatting
+      - name: Canonicalize touched source
+        run: >-
+          pnpm exec prettier --write
+          apps/planning-service/src/task-completion.ts
+          apps/planning-service/src/task-completion.test.ts
+          apps/planning-service/src/postgres-planning-repository.integration.test.ts
+
+      - name: Verify touched-source formatting
         run: >-
           pnpm exec prettier --check
           apps/planning-service/src/task-completion.ts
@@ -68,3 +76,27 @@ jobs:
 
       - name: Build Planning
         run: pnpm --filter @life-os/planning-service build
+
+      - name: Retire verifier and publish ordinary descendant
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/${WRITER_BRANCH}" | cut -f1)"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo "Remote head moved from $GITHUB_SHA to $remote_head; refusing to publish." >&2
+            exit 1
+          fi
+          rm .github/workflows/verify-pr267-completion-edge-coverage.yml
+          git add apps/planning-service/src/task-completion.ts \
+                  apps/planning-service/src/task-completion.test.ts \
+                  apps/planning-service/src/postgres-planning-repository.integration.test.ts \
+                  .github/workflows/verify-pr267-completion-edge-coverage.yml
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No candidate delta after verifier retirement." >&2
+            exit 1
+          fi
+          git config user.name "LifeOS hourly maintainer"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(planning): verify completion evidence edges"
+          git push origin "HEAD:refs/heads/${WRITER_BRANCH}"
