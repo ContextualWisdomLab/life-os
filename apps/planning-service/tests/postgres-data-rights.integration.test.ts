@@ -187,14 +187,12 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
         throw new Error('Expected Planning export response');
       }
       expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);
-      expect(exported.data).toMatchObject({
-        taskCompletionFacts: [
-          {
-            taskId: '77777777-7777-4777-8777-777777777777',
-            completedAt: '2026-08-10T12:00:00.000Z',
-          },
-        ],
-      });
+      expect(exported.data).toHaveProperty('taskCompletionFacts', [
+        {
+          taskId: '77777777-7777-4777-8777-777777777777',
+          completedAt: '2026-08-10T12:00:00.000Z',
+        },
+      ]);
 
       const erased = await runtime.dataRightsContributor.handle({
         contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
