@@ -3,6 +3,8 @@ import type {
   HabitCompletionEvent,
   HabitRecurrence,
   HabitRepository,
+  HabitReviewCompletionEvidence,
+  HabitReviewWeekEvidence,
   IsoWeekday,
 } from './habit-domain';
 
@@ -41,6 +43,12 @@ interface CompletionRow {
   recorded_at: unknown;
 }
 
+interface ReviewProjectionRow extends HabitRow {
+  completion_workspace_id: unknown;
+  completion_habit_id: unknown;
+  completion_scheduled_local_date: unknown;
+}
+
 interface PostgreSqlErrorShape {
   code?: unknown;
   constraint?: unknown;
@@ -52,6 +60,8 @@ const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const IDEMPOTENCY_CONSTRAINT = 'completion_events_idempotency_unique';
+const MILLISECONDS_PER_DAY = 86_400_000;
+const REVIEW_WEEK_DAYS = 7;
 
 /** Safe public failure for malformed rows and database transport errors. */
 export class HabitPersistenceError extends Error {
@@ -412,6 +422,107 @@ export class PostgresHabitRepository implements HabitRepository {
       [safeWorkspaceId],
     );
     return result.rows.map((row) => parseHabit(row, safeWorkspaceId));
+  }
+
+  async readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+  ): Promise<HabitReviewWeekEvidence> {
+    const safeWorkspaceId = requireUuidV4(workspaceId);
+    const safePeriodStartDate = requireLocalDate(periodStartDate);
+    const safePeriodEndDate = requireLocalDate(periodEndDate);
+    const daySpan =
+      (Date.parse(`${safePeriodEndDate}T00:00:00.000Z`) -
+        Date.parse(`${safePeriodStartDate}T00:00:00.000Z`)) /
+      MILLISECONDS_PER_DAY;
+    const safeMaximumHabits = requireInteger(maximumHabits, 1, 100);
+    if (daySpan !== REVIEW_WEEK_DAYS - 1) {
+      return invalidRow();
+    }
+    const queryLimit = safeMaximumHabits + 1;
+    const result = await this.query<ReviewProjectionRow>(
+      `WITH bounded_habits AS (
+         SELECT id, workspace_id, title, timezone_name, recurrence_kind,
+                recurrence_interval, weekday_mask, starts_on, created_at
+         FROM habit.habit_definitions
+         WHERE workspace_id = $1
+         ORDER BY created_at ASC, id ASC
+         LIMIT $4
+       )
+       SELECT h.id, h.workspace_id, h.title, h.timezone_name,
+              h.recurrence_kind, h.recurrence_interval, h.weekday_mask,
+              h.starts_on, h.created_at,
+              completion.workspace_id AS completion_workspace_id,
+              completion.habit_id AS completion_habit_id,
+              completion.scheduled_local_date AS completion_scheduled_local_date
+       FROM bounded_habits AS h
+       LEFT JOIN LATERAL (
+         SELECT DISTINCT ON (scheduled_local_date)
+                workspace_id, habit_id, scheduled_local_date
+         FROM habit.completion_events
+         WHERE workspace_id = h.workspace_id
+           AND habit_id = h.id
+           AND scheduled_local_date BETWEEN $2::date AND $3::date
+         ORDER BY scheduled_local_date ASC, recorded_at ASC, id ASC
+       ) AS completion ON TRUE
+       ORDER BY h.created_at ASC, h.id ASC,
+                completion.scheduled_local_date ASC`,
+      [
+        safeWorkspaceId,
+        safePeriodStartDate,
+        safePeriodEndDate,
+        queryLimit,
+      ],
+    );
+    if (result.rows.length > queryLimit * REVIEW_WEEK_DAYS) {
+      return invalidRow();
+    }
+
+    const habitsById = new Map<string, Habit>();
+    const completions: HabitReviewCompletionEvidence[] = [];
+    for (const row of result.rows) {
+      const habit = parseHabit(row, safeWorkspaceId);
+      const existing = habitsById.get(habit.id);
+      if (existing && JSON.stringify(existing) !== JSON.stringify(habit)) {
+        return invalidRow();
+      }
+      habitsById.set(habit.id, habit);
+
+      const completionFields = [
+        row.completion_workspace_id,
+        row.completion_habit_id,
+        row.completion_scheduled_local_date,
+      ];
+      if (completionFields.every((value) => value === null)) {
+        continue;
+      }
+      if (completionFields.some((value) => value === null)) {
+        return invalidRow();
+      }
+      const completionWorkspaceId = requireUuidV4(
+        row.completion_workspace_id,
+      );
+      const completionHabitId = requireUuidV4(row.completion_habit_id);
+      const scheduledLocalDate = requireLocalDate(
+        row.completion_scheduled_local_date,
+      );
+      requireExpected(completionWorkspaceId, safeWorkspaceId);
+      requireExpected(completionHabitId, habit.id);
+      if (
+        scheduledLocalDate < safePeriodStartDate ||
+        scheduledLocalDate > safePeriodEndDate
+      ) {
+        return invalidRow();
+      }
+      completions.push({
+        workspaceId: completionWorkspaceId,
+        habitId: completionHabitId,
+        scheduledLocalDate,
+      });
+    }
+    return { habits: [...habitsById.values()], completions };
   }
 
   async appendCompletion(
