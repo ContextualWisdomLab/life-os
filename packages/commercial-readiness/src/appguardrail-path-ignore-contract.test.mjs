@@ -34,8 +34,7 @@ function pathsIgnoreBlock(workflow, trigger) {
 
   const nextKey = lines.findIndex(
     (line, index) =>
-      index > start &&
-      /^    [A-Za-z_][A-Za-z0-9_-]*:\s*(?:#.*)?$/.test(line),
+      index > start && /^    [A-Za-z_][A-Za-z0-9_-]*:\s*(?:#.*)?$/.test(line),
   );
 
   return lines
