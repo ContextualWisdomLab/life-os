@@ -46,15 +46,8 @@ jobs:
 
           path = Path('apps/habit-service/src/habit-domain.ts')
           text = path.read_text()
-          old = """    const habitIds = new Set(habits.map((habit) => habit.id));
-          const completionDatesByHabit = new Map<string, Set<string>>();
-          """
-          new = """    const habitIds = new Set(habits.map((habit) => habit.id));
-          if (habitIds.size !== habits.length) {
-            throw new Error('Review projection habit evidence is invalid');
-          }
-          const completionDatesByHabit = new Map<string, Set<string>>();
-          """
+          old = "    const habitIds = new Set(habits.map((habit) => habit.id));\n    const completionDatesByHabit = new Map<string, Set<string>>();\n"
+          new = "    const habitIds = new Set(habits.map((habit) => habit.id));\n    if (habitIds.size !== habits.length) {\n      throw new Error('Review projection habit evidence is invalid');\n    }\n    const completionDatesByHabit = new Map<string, Set<string>>();\n"
           if text.count(old) != 1:
               raise SystemExit('Expected exact Review evidence insertion point once')
           path.write_text(text.replace(old, new, 1))
