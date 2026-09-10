@@ -80,6 +80,7 @@ async function seedWorkspace(pool: Pool): Promise<void> {
   const goalId = '55555555-5555-4555-8555-555555555555';
   const projectId = '66666666-6666-4666-8666-666666666666';
   const taskId = '77777777-7777-4777-8777-777777777777';
+  const completionFactId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const aggregateId = '88888888-8888-4888-8888-888888888888';
   const revisionToken = '99999999-9999-4999-8999-999999999999';
   const todayIdempotencyKey = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -106,9 +107,9 @@ async function seedWorkspace(pool: Pool): Promise<void> {
   );
   await pool.query(
     `INSERT INTO planning.task_completion_facts
-       (workspace_id, task_id, completed_at)
-     VALUES ($1, $2, TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
-    [WORKSPACE_ID, taskId],
+       (completion_fact_id, workspace_id, task_id, completed_at)
+     VALUES ($1, $2, $3, TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
+    [completionFactId, WORKSPACE_ID, taskId],
   );
   await pool.query(
     `INSERT INTO planning.today_aggregates
