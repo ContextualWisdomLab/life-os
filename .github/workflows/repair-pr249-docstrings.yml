@@ -20,16 +20,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout exact writer input
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Enable pinned pnpm
         run: corepack enable && corepack prepare pnpm@10.15.0 --activate
@@ -111,7 +110,7 @@ jobs:
             'render.mjs:sanitizeUntrustedText': 'Redacts credential-shaped data, neutralizes control characters and Markdown syntax, and bounds untrusted text before issue rendering.',
             'render.mjs:issueLink': 'Creates an issue reference only for a positive safe-integer identity so malformed external values cannot become Markdown links.',
             'schema.mjs:failManifest': 'Centralizes stable manifest validation errors without echoing untrusted capability content.',
-            'schema.mjs:failPolicy': 'Centralizes stable policy validation errors without reflecting untrusted merge-policy values.',
+            'schema.mjs:failPolicy': 'Centralizes stable manifest validation errors without reflecting untrusted merge-policy values.',
             'schema.mjs:isPlainObject': 'Restricts schema records to plain objects before exact structural validation, excluding arrays and custom prototypes.',
             'schema.mjs:requiredString': 'Normalizes required bounded text through a caller-selected validation boundary before policy logic consumes it.',
             'schema.mjs:score': 'Accepts only the configured one-to-five integer scale used by deterministic commercial gap prioritization.',
