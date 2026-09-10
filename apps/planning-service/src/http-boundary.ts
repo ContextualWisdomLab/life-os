@@ -26,6 +26,7 @@ const VALIDATION_MESSAGES = new Set([
   'Title is required',
   'Identifier must be an opaque non-numeric string',
   'Planning search request is invalid',
+  'Task completion request is invalid',
 ]);
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -123,6 +124,16 @@ function requirePlanningRequestBinding(
   ) {
     return { method, path };
   }
+  if (
+    segments.length === 5 &&
+    segments[1] === 'v1' &&
+    segments[2] === 'tasks' &&
+    UUID_V4_PATTERN.test(segments[3] ?? '') &&
+    segments[4] === 'completion' &&
+    method === 'PUT'
+  ) {
+    return { method, path };
+  }
   return invalidGatewayContext();
 }
 
@@ -210,17 +221,65 @@ export function requireTitle(body: { title?: unknown } | undefined): string {
   return title.trim();
 }
 
-/** Maps domain and persistence failures to credential-free HTTP exceptions. */
-export function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
-    return error;
+/** Rejects malformed completion commands without reflecting body contents. */
+function invalidTaskCompletionBody(): never {
+  throw problemException(
+    400,
+    'Task completion request is invalid',
+    'invalid_request',
+  );
+}
+
+/** Accepts only the exact boolean completion command owned by Planning. */
+export function requireTaskCompletionState(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) {
+    return invalidTaskCompletionBody();
   }
 
-  if (error instanceof Error && error.message.endsWith('not found')) {
+  let descriptors: PropertyDescriptorMap;
+  try {
+    if (Array.isArray(body)) {
+      return invalidTaskCompletionBody();
+    }
+    descriptors = Object.getOwnPropertyDescriptors(body);
+  } catch {
+    return invalidTaskCompletionBody();
+  }
+
+  const keys = Reflect.ownKeys(descriptors);
+  const completed = descriptors.completed;
+  if (
+    keys.length !== 1 ||
+    keys[0] !== 'completed' ||
+    completed === undefined ||
+    completed.enumerable !== true ||
+    !('value' in completed) ||
+    typeof completed.value !== 'boolean'
+  ) {
+    return invalidTaskCompletionBody();
+  }
+  return completed.value;
+}
+
+/** Maps domain and persistence failures to credential-free HTTP exceptions. */
+export function toHttpException(error: unknown): HttpException {
+  let message: string | undefined;
+  try {
+    if (error instanceof HttpException) {
+      return error;
+    }
+    if (error instanceof Error && typeof error.message === 'string') {
+      message = error.message;
+    }
+  } catch {
+    message = undefined;
+  }
+
+  if (message?.endsWith('not found')) {
     return problemException(404, 'Planning record not found', 'not_found');
   }
 
-  if (error instanceof Error && VALIDATION_MESSAGES.has(error.message)) {
+  if (message !== undefined && VALIDATION_MESSAGES.has(message)) {
     return problemException(
       400,
       'Planning request is invalid',

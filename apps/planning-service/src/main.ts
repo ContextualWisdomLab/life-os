@@ -18,6 +18,7 @@ import {
 import { NestFactory } from '@nestjs/core';
 import { PROMETHEUS_CONTENT_TYPE } from '@life-os/observability';
 import {
+  requireTaskCompletionState,
   requireTitle,
   requireTrustedWorkspaceContext,
   toHttpException,
@@ -36,6 +37,10 @@ import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 import type { PlanningSearchResult } from './search';
 import {
+  type TaskCompletionEvidence,
+  TaskCompletionService,
+} from './task-completion';
+import {
   parseTodayWritePrecondition,
   requireTodayPathDate,
   toTodayHttpException,
@@ -52,6 +57,8 @@ export const PLANNING_RUNTIME = Symbol('PLANNING_RUNTIME');
 export const PLANNING_SERVICE = Symbol('PLANNING_SERVICE');
 /** Dependency-injection token for durable Today synchronization. */
 export const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');
+/** Dependency-injection token for the Planning-owned task completion transition. */
+export const TASK_COMPLETION_SERVICE = Symbol('TASK_COMPLETION_SERVICE');
 
 interface PassthroughResponse {
   statusCode: number;
@@ -59,9 +66,9 @@ interface PassthroughResponse {
 }
 
 /**
- * Provides untrusted HTTP request binding values for data-rights signature verification.
- * `method` and `originalUrl` come from the inbound Nest/Express request and are
- * validated before they can authorize a Planning-owned contributor operation.
+ * Provides untrusted HTTP request-binding values from the inbound Nest/Express request.
+ * Raw method and URL are validated before decoded route parameters can authorize a
+ * Planning operation, preventing alternate wire representations from reusing authority.
  */
 interface RequestBindingSource {
   readonly method?: unknown;
@@ -98,6 +105,8 @@ export class PlanningController {
     private readonly planningService: PlanningService,
     @Inject(TODAY_SYNC_SERVICE)
     private readonly todayService: TodaySyncService,
+    @Inject(TASK_COMPLETION_SERVICE)
+    private readonly taskCompletionService: TaskCompletionService,
   ) {}
 
   /** Returns a credential-free liveness response for the planning service. */
@@ -340,6 +349,32 @@ export class PlanningController {
       throw toHttpException(error);
     }
   }
+
+  /** Replaces one task's completion state through the durable Planning transition. */
+  @Put('tasks/:taskId/completion')
+  async setTaskCompleted(
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Param('taskId') taskId: string,
+    @Body() body: unknown,
+    @Req() httpRequest: RequestBindingSource,
+  ): Promise<TaskCompletionEvidence> {
+    try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: httpRequest.method, path: httpRequest.originalUrl },
+      );
+      return await this.taskCompletionService.setCompleted(
+        trustedWorkspaceId,
+        taskId,
+        requireTaskCompletionState(body),
+      );
+    } catch (error) {
+      throw toHttpException(error);
+    }
+  }
 }
 
 /** Internal service-authenticated transport for Planning-owned data-rights work. */
@@ -395,6 +430,12 @@ export class PlanningDataRightsController {
       useFactory: (runtime: PlanningRuntime): TodaySyncService =>
         runtime.todayService,
     },
+    {
+      provide: TASK_COMPLETION_SERVICE,
+      inject: [PLANNING_RUNTIME],
+      useFactory: (runtime: PlanningRuntime): TaskCompletionService =>
+        runtime.taskCompletionService,
+    },
   ],
 })
 export class AppModule {}
@@ -411,4 +452,6 @@ async function bootstrap(): Promise<void> {
   );
 }
 
-void bootstrap();
+if (require.main === module) {
+  void bootstrap();
+}
