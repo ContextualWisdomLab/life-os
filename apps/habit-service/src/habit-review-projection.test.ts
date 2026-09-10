@@ -113,6 +113,37 @@ describe('Habit weekly Review projection', () => {
     });
   });
 
+  it('publishes stable producer provenance and changes revision with projection evidence', async () => {
+    const service = await createService();
+    const before = await service.projectReviewWeek(
+      WORKSPACE_ID,
+      '2026-09-07',
+    );
+    const unchanged = await service.projectReviewWeek(
+      WORKSPACE_ID,
+      '2026-09-07',
+    );
+
+    expect(before.producer).toBe('habit');
+    expect(before.projectionRevision).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(unchanged.projectionRevision).toBe(before.projectionRevision);
+
+    const [daily] = await service.listHabits(WORKSPACE_ID);
+    if (!daily) throw new Error('Expected seeded habit');
+    await service.completeHabit(WORKSPACE_ID, daily.id, {
+      scheduledLocalDate: '2026-09-08',
+      completedAt: '2026-09-08T08:00:00.000Z',
+      idempotencyKey: '66666666-6666-4666-8666-666666666666',
+    });
+
+    const changed = await service.projectReviewWeek(
+      WORKSPACE_ID,
+      '2026-09-07',
+    );
+    expect(changed.producer).toBe('habit');
+    expect(changed.projectionRevision).not.toBe(before.projectionRevision);
+  });
+
   it('counts a scheduled opportunity at most once despite duplicate completion events', async () => {
     const service = await createService();
     const [daily] = await service.listHabits(WORKSPACE_ID);
