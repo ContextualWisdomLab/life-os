@@ -1,0 +1,194 @@
+name: Repair planning task completion raw binding
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-http-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      EXPECTED_PARENT: 3df6c23c124201955c411f9637ab6f3c9dab2078
+      TARGET_BRANCH: feat/planning-task-completion-http-v1
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact writer head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+          ref: ${{ github.sha }}
+
+      - name: Prove single-writer lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)" = "${GITHUB_SHA}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply raw request-binding repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one anchor in {path}, found {count}")
+              target.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """/**
+ * Provides untrusted HTTP request binding values for data-rights signature verification.
+ * `method` and `originalUrl` come from the inbound Nest/Express request and are
+ * validated before they can authorize a Planning-owned contributor operation.
+ */""",
+              """/**
+ * Provides untrusted HTTP request-binding values from the inbound Nest/Express request.
+ * Raw method and URL are validated before decoded route parameters can authorize a
+ * Planning operation, preventing alternate wire representations from reusing authority.
+ */""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """    @Param('taskId') taskId: string,
+    @Body() body: unknown,
+  ): Promise<TaskCompletionEvidence> {
+    try {
+      const path = `/v1/tasks/${taskId}/completion`;
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: 'PUT', path },
+      );""",
+              """    @Param('taskId') taskId: string,
+    @Body() body: unknown,
+    @Req() httpRequest: RequestBindingSource,
+  ): Promise<TaskCompletionEvidence> {
+    try {
+      const trustedWorkspaceId = requireTrustedWorkspaceContext(
+        { workspaceId, issuedAt, signature },
+        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
+        { method: httpRequest.method, path: httpRequest.originalUrl },
+      );""",
+          )
+
+          test_path = Path('apps/planning-service/src/task-completion-http-boundary.test.ts')
+          text = test_path.read_text()
+          anchor = "const PERCENT_ENCODED_PATH = PATH.replace('/v1/tasks/4', '/v1/tasks/%34');\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('request binding constant anchor mismatch')
+          text = text.replace(
+              anchor,
+              anchor + "const REQUEST = { method: 'PUT', originalUrl: PATH } as const;\n",
+              1,
+          )
+
+          replacements = [
+              (
+                  "        { completed: true },\n      ),",
+                  "        { completed: true },\n        REQUEST,\n      ),",
+                  2,
+              ),
+              (
+                  "        { completed: false },\n      ),",
+                  "        { completed: false },\n        REQUEST,\n      ),",
+                  1,
+              ),
+              (
+                  "          proxy,\n        ),",
+                  "          proxy,\n          REQUEST,\n        ),",
+                  1,
+              ),
+              (
+                  "            body,\n          ),",
+                  "            body,\n            REQUEST,\n          ),",
+                  1,
+              ),
+          ]
+          for old, new, expected in replacements:
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'test call anchor mismatch: expected {expected}, found {count}')
+              text = text.replace(old, new)
+          test_path.write_text(text)
+          PY
+
+      - name: Canonicalize changed sources
+        run: >-
+          pnpm exec prettier --write
+          apps/planning-service/src/task-completion-http-boundary.test.ts
+          apps/planning-service/src/main.ts
+
+      - name: Run raw-binding regression
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          --no-file-parallelism
+          src/task-completion-http-boundary.test.ts
+
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Check changed-source formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/planning-service/src/task-completion-http-boundary.test.ts
+          apps/planning-service/src/main.ts
+
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service test
+
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
+
+      - name: Publish workflow-free repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)" = "${GITHUB_SHA}"
+          git rm .github/workflows/repair-planning-task-completion-raw-binding.yml
+          git rm .github/workflows/verify-planning-task-completion-raw-binding.yml
+          git config user.name "Seongho Bae"
+          git config user.email "me@seonghobae.me"
+          git add \
+            apps/planning-service/src/task-completion-http-boundary.test.ts \
+            apps/planning-service/src/main.ts
+          git diff --cached --check
+          git commit -m "fix(planning): bind completion authority to raw request path"
+          git push origin HEAD:"$TARGET_BRANCH"
