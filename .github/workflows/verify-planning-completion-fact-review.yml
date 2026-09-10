@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: planning-completion-fact-review-${{ github.sha }}
+  group: planning-completion-fact-review-verifier
   cancel-in-progress: true
 
 jobs:
