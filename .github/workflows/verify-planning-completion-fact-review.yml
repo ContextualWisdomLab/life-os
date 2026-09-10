@@ -55,14 +55,6 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
-      - name: Check review-owned formatting
-        run: >-
-          pnpm exec prettier --check
-          apps/planning-service/migrations/0007_task_completion_facts.sql
-          apps/planning-service/src/task-completion-history.integration.test.ts
-          apps/planning-service/src/task-completion.ts
-          apps/planning-service/tests/postgres-data-rights.integration.test.ts
-
       - name: Run completion-history PostgreSQL acceptance
         run: >-
           pnpm --filter @life-os/planning-service exec vitest run
@@ -72,6 +64,13 @@ jobs:
         run: >-
           pnpm --filter @life-os/planning-service exec vitest run
           tests/postgres-data-rights.integration.test.ts --no-file-parallelism
+
+      - name: Check review-owned TypeScript formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/planning-service/src/task-completion-history.integration.test.ts
+          apps/planning-service/src/task-completion.ts
+          apps/planning-service/tests/postgres-data-rights.integration.test.ts
 
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
