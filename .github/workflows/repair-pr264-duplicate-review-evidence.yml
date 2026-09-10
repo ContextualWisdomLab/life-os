@@ -57,17 +57,21 @@ jobs:
             apps/habit-service/src/habit-domain.ts \
             apps/habit-service/src/habit-review-projection.test.ts
 
-      - name: Verify exact Habit repair
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          pnpm --filter @life-os/habit-service typecheck
-          pnpm --filter @life-os/habit-service exec vitest run \
-            src/habit-review-projection.test.ts \
-            src/habit-review-evidence-contract.test.ts \
-            src/habit-review-projection-postgres.test.ts
-          pnpm --filter @life-os/habit-service test
-          pnpm --filter @life-os/habit-service build
+      - name: Typecheck Habit service
+        run: pnpm --filter @life-os/habit-service typecheck
+
+      - name: Run focused Review projection regressions
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
+          src/habit-review-projection.test.ts
+          src/habit-review-evidence-contract.test.ts
+          src/habit-review-projection-postgres.test.ts
+
+      - name: Run full Habit service tests
+        run: pnpm --filter @life-os/habit-service test
+
+      - name: Build Habit service
+        run: pnpm --filter @life-os/habit-service build
 
       - name: Retire writer and publish ordinary descendant
         shell: bash
