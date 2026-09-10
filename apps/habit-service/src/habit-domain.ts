@@ -558,6 +558,9 @@ export class HabitService {
       throw new Error('Review projection exceeds habit limit');
     }
     const habitIds = new Set(habits.map((habit) => habit.id));
+    if (habitIds.size !== habits.length) {
+      throw new Error('Review projection habit evidence is invalid');
+    }
     const completionDatesByHabit = new Map<string, Set<string>>();
     for (const completion of evidence.completions) {
       if (

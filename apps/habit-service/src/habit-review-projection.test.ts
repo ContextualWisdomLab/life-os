@@ -10,10 +10,7 @@ const AS_OF = '2026-09-13T23:59:59.000Z';
  * The production projection remains responsible for recurrence denominators.
  */
 async function createService(): Promise<HabitService> {
-  const service = new HabitService(
-    new InMemoryHabitRepository(),
-    () => AS_OF,
-  );
+  const service = new HabitService(new InMemoryHabitRepository(), () => AS_OF);
   const daily = await service.createHabit(WORKSPACE_ID, {
     title: 'Read deliberately',
     timezone: 'Asia/Seoul',
