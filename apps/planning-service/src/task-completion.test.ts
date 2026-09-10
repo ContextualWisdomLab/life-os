@@ -12,6 +12,7 @@ import {
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TASK_ID = '44444444-4444-4444-8444-444444444444';
+const FIRST_COMPLETED_AT = '2026-09-10T15:59:00.000Z';
 const COMPLETED_AT = '2026-09-10T16:00:00.000Z';
 
 class RecordingCompletionRepository implements TaskCompletionRepository {
@@ -161,9 +162,8 @@ describe('PostgresTaskCompletionRepository', () => {
 
     expect(client.calls).toHaveLength(1);
     expect(client.calls[0]?.text).toContain('UPDATE planning.tasks');
-    expect(client.calls[0]?.text).toContain(
-      'SET status = $3, completed_at = $4',
-    );
+    expect(client.calls[0]?.text).toContain('SET status = $3');
+    expect(client.calls[0]?.text).toContain('completed_at =');
     expect(client.calls[0]?.text).toContain(
       'WHERE workspace_id = $1 AND id = $2',
     );
@@ -176,6 +176,33 @@ describe('PostgresTaskCompletionRepository', () => {
       'done',
       COMPLETED_AT,
     ]);
+  });
+
+  it('preserves the first completion instant when a completed request is retried', async () => {
+    const client = new RecordingSqlClient([
+      {
+        workspace_id: WORKSPACE_ID,
+        id: TASK_ID,
+        status: 'done',
+        completed_at: FIRST_COMPLETED_AT,
+      },
+    ]);
+    const repository = new PostgresTaskCompletionRepository(client);
+
+    await expect(
+      repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    ).resolves.toEqual({
+      workspaceId: WORKSPACE_ID,
+      taskId: TASK_ID,
+      status: 'done',
+      completedAt: FIRST_COMPLETED_AT,
+    });
+    expect(client.calls[0]?.text).toContain(
+      "WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL",
+    );
   });
 
   it('returns undefined when the tenant-scoped update matches no task', async () => {
