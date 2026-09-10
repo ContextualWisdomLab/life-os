@@ -1,0 +1,150 @@
+name: Repair planning task completion command shape
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-http-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      EXPECTED_PARENT: 7aa9c58f804f88f91ec1b4dcca59eac2d75805a3
+      TARGET_BRANCH: feat/planning-task-completion-http-v1
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact writer head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+          ref: ${{ github.sha }}
+      - name: Prove single-writer lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)" = "${GITHUB_SHA}"
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply descriptor-safe command validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('apps/planning-service/src/http-boundary.ts')
+          text = path.read_text()
+          old = """  let keys: string[];
+  let completed: unknown;
+  try {
+    if (Array.isArray(body)) {
+      return invalidTaskCompletionBody();
+    }
+    keys = Object.keys(body);
+    completed = (body as Record<string, unknown>).completed;
+  } catch {
+    return invalidTaskCompletionBody();
+  }
+  if (
+    keys.length !== 1 ||
+    keys[0] !== 'completed' ||
+    typeof completed !== 'boolean'
+  ) {
+    return invalidTaskCompletionBody();
+  }
+  return completed;
+"""
+          new = """  let descriptors: PropertyDescriptorMap;
+  try {
+    if (Array.isArray(body)) {
+      return invalidTaskCompletionBody();
+    }
+    descriptors = Object.getOwnPropertyDescriptors(body);
+  } catch {
+    return invalidTaskCompletionBody();
+  }
+
+  const keys = Reflect.ownKeys(descriptors);
+  const completed = descriptors.completed;
+  if (
+    keys.length !== 1 ||
+    keys[0] !== 'completed' ||
+    completed === undefined ||
+    completed.enumerable !== true ||
+    !('value' in completed) ||
+    typeof completed.value !== 'boolean'
+  ) {
+    return invalidTaskCompletionBody();
+  }
+  return completed.value;
+"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one production validation anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Canonicalize changed sources
+        run: >-
+          pnpm exec prettier --write
+          apps/planning-service/src/http-boundary.ts
+          apps/planning-service/src/task-completion-command-shape-hostile.test.ts
+      - name: Run hostile descriptor regression
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          --no-file-parallelism
+          src/task-completion-command-shape-hostile.test.ts
+      - name: Run completion HTTP regression
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          --no-file-parallelism
+          src/task-completion-http-boundary.test.ts
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+      - name: Check changed-source formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/planning-service/src/http-boundary.ts
+          apps/planning-service/src/task-completion-command-shape-hostile.test.ts
+          apps/planning-service/src/task-completion-http-boundary.test.ts
+          apps/planning-service/src/main.ts
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service test
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
+      - name: Publish workflow-free repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)" = "${GITHUB_SHA}"
+          git rm .github/workflows/repair-planning-task-completion-command-shape.yml
+          git rm .github/workflows/verify-planning-task-completion-command-shape.yml
+          git config user.name "Seongho Bae"
+          git config user.email "me@seonghobae.me"
+          git add apps/planning-service/src/http-boundary.ts apps/planning-service/src/task-completion-command-shape-hostile.test.ts
+          git diff --cached --check
+          git commit -m "fix(planning): validate completion command descriptors"
+          git push origin HEAD:"$TARGET_BRANCH"
