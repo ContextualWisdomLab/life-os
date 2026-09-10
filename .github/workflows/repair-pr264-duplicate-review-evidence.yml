@@ -60,11 +60,19 @@ jobs:
       - name: Typecheck Habit service
         run: pnpm --filter @life-os/habit-service typecheck
 
-      - name: Run focused Review projection regressions
+      - name: Run duplicate-evidence projection regression
         run: >-
           pnpm --filter @life-os/habit-service exec vitest run
           src/habit-review-projection.test.ts
+
+      - name: Run Review evidence contract regressions
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
           src/habit-review-evidence-contract.test.ts
+
+      - name: Run PostgreSQL Review projection regressions
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
           src/habit-review-projection-postgres.test.ts
 
       - name: Run full Habit service tests
