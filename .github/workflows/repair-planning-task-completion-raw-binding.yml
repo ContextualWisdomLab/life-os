@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      EXPECTED_PARENT: 3df6c23c124201955c411f9637ab6f3c9dab2078
+      EXPECTED_PARENT: 071a1ccc9299cfa3416d6b87f4be17406fdecf92
       TARGET_BRANCH: feat/planning-task-completion-http-v1
     services:
       postgres:
@@ -61,8 +61,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 <<'PY'
+          from base64 import b64decode
           from pathlib import Path
-
+          def decoded(value: str) -> str:
+              return b64decode(value).decode('utf-8')
           def replace_once(path: str, old: str, new: str) -> None:
               target = Path(path)
               text = target.read_text()
@@ -70,77 +72,19 @@ jobs:
               if count != 1:
                   raise SystemExit(f"expected exactly one anchor in {path}, found {count}")
               target.write_text(text.replace(old, new, 1))
-
-          replace_once(
-              'apps/planning-service/src/main.ts',
-              """/**
- * Provides untrusted HTTP request binding values for data-rights signature verification.
- * `method` and `originalUrl` come from the inbound Nest/Express request and are
- * validated before they can authorize a Planning-owned contributor operation.
- */""",
-              """/**
- * Provides untrusted HTTP request-binding values from the inbound Nest/Express request.
- * Raw method and URL are validated before decoded route parameters can authorize a
- * Planning operation, preventing alternate wire representations from reusing authority.
- */""",
-          )
-
-          replace_once(
-              'apps/planning-service/src/main.ts',
-              """    @Param('taskId') taskId: string,
-    @Body() body: unknown,
-  ): Promise<TaskCompletionEvidence> {
-    try {
-      const path = `/v1/tasks/${taskId}/completion`;
-      const trustedWorkspaceId = requireTrustedWorkspaceContext(
-        { workspaceId, issuedAt, signature },
-        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
-        { method: 'PUT', path },
-      );""",
-              """    @Param('taskId') taskId: string,
-    @Body() body: unknown,
-    @Req() httpRequest: RequestBindingSource,
-  ): Promise<TaskCompletionEvidence> {
-    try {
-      const trustedWorkspaceId = requireTrustedWorkspaceContext(
-        { workspaceId, issuedAt, signature },
-        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
-        { method: httpRequest.method, path: httpRequest.originalUrl },
-      );""",
-          )
-
+          replace_once('apps/planning-service/src/main.ts', decoded('LyoqCiAqIFByb3ZpZGVzIHVudHJ1c3RlZCBIVFRQIHJlcXVlc3QgYmluZGluZyB2YWx1ZXMgZm9yIGRhdGEtcmlnaHRzIHNpZ25hdHVyZSB2ZXJpZmljYXRpb24uCiAqIGBtZXRob2RgIGFuZCBgb3JpZ2luYWxVcmxgIGNvbWUgZnJvbSB0aGUgaW5ib3VuZCBOZXN0L0V4cHJlc3MgcmVxdWVzdCBhbmQgYXJlCiAqIHZhbGlkYXRlZCBiZWZvcmUgdGhleSBjYW4gYXV0aG9yaXplIGEgUGxhbm5pbmctb3duZWQgY29udHJpYnV0b3Igb3BlcmF0aW9uLgogKi8='), decoded('LyoqCiAqIFByb3ZpZGVzIHVudHJ1c3RlZCBIVFRQIHJlcXVlc3QtYmluZGluZyB2YWx1ZXMgZnJvbSB0aGUgaW5ib3VuZCBOZXN0L0V4cHJlc3MgcmVxdWVzdC4KICogUmF3IG1ldGhvZCBhbmQgVVJMIGFyZSB2YWxpZGF0ZWQgYmVmb3JlIGRlY29kZWQgcm91dGUgcGFyYW1ldGVycyBjYW4gYXV0aG9yaXplIGEKICogUGxhbm5pbmcgb3BlcmF0aW9uLCBwcmV2ZW50aW5nIGFsdGVybmF0ZSB3aXJlIHJlcHJlc2VudGF0aW9ucyBmcm9tIHJldXNpbmcgYXV0aG9yaXR5LgogKi8='))
+          replace_once('apps/planning-service/src/main.ts', decoded('ICAgIEBQYXJhbSgndGFza0lkJykgdGFza0lkOiBzdHJpbmcsCiAgICBAQm9keSgpIGJvZHk6IHVua25vd24sCiAgKTogUHJvbWlzZTxUYXNrQ29tcGxldGlvbkV2aWRlbmNlPiB7CiAgICB0cnkgewogICAgICBjb25zdCBwYXRoID0gYC92MS90YXNrcy8ke3Rhc2tJZH0vY29tcGxldGlvbmA7CiAgICAgIGNvbnN0IHRydXN0ZWRXb3Jrc3BhY2VJZCA9IHJlcXVpcmVUcnVzdGVkV29ya3NwYWNlQ29udGV4dCgKICAgICAgICB7IHdvcmtzcGFjZUlkLCBpc3N1ZWRBdCwgc2lnbmF0dXJlIH0sCiAgICAgICAgcHJvY2Vzcy5lbnYuUExBTk5JTkdfR0FURVdBWV9DT05URVhUX1NFQ1JFVCwKICAgICAgICB7IG1ldGhvZDogJ1BVVCcsIHBhdGggfSwKICAgICAgKTs='), decoded('ICAgIEBQYXJhbSgndGFza0lkJykgdGFza0lkOiBzdHJpbmcsCiAgICBAQm9keSgpIGJvZHk6IHVua25vd24sCiAgICBAUmVxKCkgaHR0cFJlcXVlc3Q6IFJlcXVlc3RCaW5kaW5nU291cmNlLAogICk6IFByb21pc2U8VGFza0NvbXBsZXRpb25FdmlkZW5jZT4gewogICAgdHJ5IHsKICAgICAgY29uc3QgdHJ1c3RlZFdvcmtzcGFjZUlkID0gcmVxdWlyZVRydXN0ZWRXb3Jrc3BhY2VDb250ZXh0KAogICAgICAgIHsgd29ya3NwYWNlSWQsIGlzc3VlZEF0LCBzaWduYXR1cmUgfSwKICAgICAgICBwcm9jZXNzLmVudi5QTEFOTklOR19HQVRFV0FZX0NPTlRFWFRfU0VDUkVULAogICAgICAgIHsgbWV0aG9kOiBodHRwUmVxdWVzdC5tZXRob2QsIHBhdGg6IGh0dHBSZXF1ZXN0Lm9yaWdpbmFsVXJsIH0sCiAgICAgICk7'))
           test_path = Path('apps/planning-service/src/task-completion-http-boundary.test.ts')
           text = test_path.read_text()
           anchor = "const PERCENT_ENCODED_PATH = PATH.replace('/v1/tasks/4', '/v1/tasks/%34');\n"
           if text.count(anchor) != 1:
               raise SystemExit('request binding constant anchor mismatch')
-          text = text.replace(
-              anchor,
-              anchor + "const REQUEST = { method: 'PUT', originalUrl: PATH } as const;\n",
-              1,
-          )
-
+          text = text.replace(anchor, anchor + "const REQUEST = { method: 'PUT', originalUrl: PATH } as const;\n", 1)
           replacements = [
-              (
-                  "        { completed: true },\n      ),",
-                  "        { completed: true },\n        REQUEST,\n      ),",
-                  2,
-              ),
-              (
-                  "        { completed: false },\n      ),",
-                  "        { completed: false },\n        REQUEST,\n      ),",
-                  1,
-              ),
-              (
-                  "          proxy,\n        ),",
-                  "          proxy,\n          REQUEST,\n        ),",
-                  1,
-              ),
-              (
-                  "            body,\n          ),",
-                  "            body,\n            REQUEST,\n          ),",
-                  1,
-              ),
+              ("        { completed: true },\n      ),", "        { completed: true },\n        REQUEST,\n      ),", 2),
+              ("        { completed: false },\n      ),", "        { completed: false },\n        REQUEST,\n      ),", 1),
+              ("          proxy,\n        ),", "          proxy,\n          REQUEST,\n        ),", 1),
+              ("            body,\n          ),", "            body,\n            REQUEST,\n          ),", 1),
           ]
           for old, new, expected in replacements:
               count = text.count(old)
@@ -186,9 +130,7 @@ jobs:
           git rm .github/workflows/verify-planning-task-completion-raw-binding.yml
           git config user.name "Seongho Bae"
           git config user.email "me@seonghobae.me"
-          git add \
-            apps/planning-service/src/task-completion-http-boundary.test.ts \
-            apps/planning-service/src/main.ts
+          git add apps/planning-service/src/task-completion-http-boundary.test.ts apps/planning-service/src/main.ts
           git diff --cached --check
           git commit -m "fix(planning): bind completion authority to raw request path"
           git push origin HEAD:"$TARGET_BRANCH"
