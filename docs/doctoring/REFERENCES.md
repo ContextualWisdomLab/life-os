@@ -5,6 +5,8 @@
 
 ## Standards and security guidance
 
+GitHub. (n.d.). *Reviewing proposed changes in a pull request.* Retrieved September 10, 2026, from https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/reviewing-proposed-changes-in-a-pull-request
+
 International Organization for Standardization, & International Electrotechnical Commission. (2023). *Systems and software engineering—Systems and software Quality Requirements and Evaluation (SQuaRE)—Product quality model (ISO/IEC 25010:2023).* https://www.iso.org/standard/78176.html
 
 International Organization for Standardization, & International Electrotechnical Commission. (2025). *Information technology—Web Content Accessibility Guidelines (WCAG) 2.2 (ISO/IEC 40500:2025).* https://www.iso.org/standard/91029.html
