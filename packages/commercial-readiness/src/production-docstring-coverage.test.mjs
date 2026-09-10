@@ -49,20 +49,24 @@ function adjacentJSDoc(node, sourceFile) {
 }
 
 function jsDocWords(jsDoc) {
-  return jsDoc
-    .replace(/^\/\*\*|\*\/$/gu, ' ')
-    .replace(/^\s*\*\s?/gmu, ' ')
-    .replace(/@\w+[^\n]*/gu, ' ')
-    .toLocaleLowerCase('en-US')
-    .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return (
+    jsDoc
+      .replace(/^\/\*\*|\*\/$/gu, ' ')
+      .replace(/^\s*\*\s?/gmu, ' ')
+      .replace(/@\w+[^\n]*/gu, ' ')
+      .toLocaleLowerCase('en-US')
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  );
 }
 
 function identifierWords(identifier) {
-  return identifier
-    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .toLocaleLowerCase('en-US')
-    .match(/[\p{L}\p{N}]+/gu) ?? [];
+  return (
+    identifier
+      .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .toLocaleLowerCase('en-US')
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  );
 }
 
 function hasExplanatoryJSDoc(node, owner, sourceFile) {
