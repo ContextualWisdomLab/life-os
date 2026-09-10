@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 /** Matches the UUIDv4 form used by Planning-owned durable identifiers. */
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -194,6 +196,7 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
   ): Promise<TaskCompletionEvidence | undefined> {
     const safeWorkspaceId = requireRequestUuid(workspaceId);
     const safeTaskId = requireRequestUuid(taskId);
+    const completionFactId = randomUUID();
     return boundedPersistenceCall(async () => {
       const result = await this.client.query<TaskCompletionRow>(
         `WITH previous AS (
@@ -220,16 +223,17 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
          ),
          completion_fact AS (
            INSERT INTO planning.task_completion_facts (
+             completion_fact_id,
              workspace_id,
              task_id,
              completed_at
            )
-           SELECT workspace_id, id, completed_at
+           SELECT $5::uuid, workspace_id, id, completed_at
            FROM updated
            WHERE previous_status = 'todo'
              AND status = 'done'
              AND completed_at IS NOT NULL
-           RETURNING completion_sequence
+           RETURNING completion_fact_id, completion_sequence
          )
          SELECT workspace_id,
                 id,
@@ -242,6 +246,7 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
           safeTaskId,
           transition.status,
           transition.completedAt,
+          completionFactId,
         ],
       );
       if (!Array.isArray(result.rows) || result.rows.length > 1) {
