@@ -6,13 +6,77 @@ import test from 'node:test';
 import * as ts from 'typescript';
 
 const SOURCE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+const GENERIC_DOCUMENTATION_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'class',
+  'create',
+  'creates',
+  'data',
+  'do',
+  'does',
+  'function',
+  'get',
+  'gets',
+  'handle',
+  'handles',
+  'helper',
+  'information',
+  'logic',
+  'method',
+  'object',
+  'objects',
+  'process',
+  'processes',
+  'return',
+  'returns',
+  'set',
+  'sets',
+  'something',
+  'the',
+  'this',
+  'value',
+  'values',
+]);
 
-function hasJSDoc(node, sourceFile) {
+function adjacentJSDoc(node, sourceFile) {
   const leadingTrivia = sourceFile.text.slice(
     node.getFullStart(),
     node.getStart(sourceFile),
   );
-  return /\/\*\*[\s\S]*?\*\/\s*$/u.test(leadingTrivia);
+  return leadingTrivia.match(/\/\*\*[\s\S]*?\*\/\s*$/u)?.[0] ?? null;
+}
+
+function jsDocWords(jsDoc) {
+  return jsDoc
+    .replace(/^\/\*\*|\*\/$/gu, ' ')
+    .replace(/^\s*\*\s?/gmu, ' ')
+    .replace(/@\w+[^\n]*/gu, ' ')
+    .toLocaleLowerCase('en-US')
+    .match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+function identifierWords(identifier) {
+  return identifier
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .toLocaleLowerCase('en-US')
+    .match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+function hasExplanatoryJSDoc(node, owner, sourceFile) {
+  const jsDoc = adjacentJSDoc(owner, sourceFile);
+  if (jsDoc === null) {
+    return false;
+  }
+
+  const declarationWords = new Set(identifierWords(declarationName(node)));
+  const explanatoryWords = jsDocWords(jsDoc).filter(
+    (word) =>
+      !GENERIC_DOCUMENTATION_WORDS.has(word) && !declarationWords.has(word),
+  );
+  return new Set(explanatoryWords).size >= 2;
 }
 
 function documentationOwner(node) {
@@ -80,6 +144,7 @@ function collectDocumentationEvidence(file, source) {
 
   function visit(node) {
     if (requiresJSDoc(node) && isProductionDeclarationScope(node, sourceFile)) {
+      const owner = documentationOwner(node);
       const position = sourceFile.getLineAndCharacterOfPosition(
         node.getStart(sourceFile),
       );
@@ -87,7 +152,7 @@ function collectDocumentationEvidence(file, source) {
         file,
         line: position.line + 1,
         declaration: declarationName(node),
-        documented: hasJSDoc(documentationOwner(node), sourceFile),
+        documented: hasExplanatoryJSDoc(node, owner, sourceFile),
       });
     }
     ts.forEachChild(node, visit);
