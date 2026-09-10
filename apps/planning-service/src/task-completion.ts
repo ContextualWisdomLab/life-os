@@ -95,7 +95,7 @@ function requirePersistedTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
-/** Parses one returned row and proves it matches the requested transition. */
+/** Parses one returned row and proves it matches the requested durable state. */
 function parseCompletionEvidence(
   row: TaskCompletionRow,
   expectedWorkspaceId: string,
@@ -118,11 +118,12 @@ function parseCompletionEvidence(
   if (row.status !== 'done' || expectedTransition.status !== 'done') {
     return invalidPersistenceEvidence();
   }
-  const completedAt = requirePersistedTimestamp(row.completed_at);
-  if (completedAt !== new Date(expectedTransition.completedAt).toISOString()) {
-    return invalidPersistenceEvidence();
-  }
-  return { workspaceId, taskId, status: 'done', completedAt };
+  return {
+    workspaceId,
+    taskId,
+    status: 'done',
+    completedAt: requirePersistedTimestamp(row.completed_at),
+  };
 }
 
 /** PostgreSQL adapter that keeps task state and completion evidence in one write. */
@@ -142,7 +143,13 @@ export class PostgresTaskCompletionRepository
     const safeTaskId = requireRequestUuid(taskId);
     const result = await this.client.query<TaskCompletionRow>(
       `UPDATE planning.tasks
-       SET status = $3, completed_at = $4
+       SET status = $3,
+           completed_at = CASE
+             WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
+               THEN completed_at
+             WHEN $3 = 'done' THEN $4
+             ELSE NULL
+           END
        WHERE workspace_id = $1 AND id = $2
        RETURNING workspace_id, id, status, completed_at`,
       [
@@ -206,10 +213,19 @@ export class TaskCompletionService {
     if (
       evidence.workspaceId !== safeWorkspaceId ||
       evidence.taskId !== safeTaskId ||
-      evidence.status !== transition.status ||
-      evidence.completedAt !== transition.completedAt
+      evidence.status !== transition.status
     ) {
       throw new TaskCompletionPersistenceError();
+    }
+    if (transition.status === 'todo') {
+      if (evidence.completedAt !== null) {
+        throw new TaskCompletionPersistenceError();
+      }
+    } else {
+      const canonicalCompletedAt = requirePersistedTimestamp(evidence.completedAt);
+      if (canonicalCompletedAt !== evidence.completedAt) {
+        throw new TaskCompletionPersistenceError();
+      }
     }
     return evidence;
   }
