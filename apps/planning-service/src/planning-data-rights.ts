@@ -108,7 +108,6 @@ interface PlanningTaskExportRow extends PlanningGoalExportRow {
   completed_at: unknown;
 }
 interface PlanningTaskCompletionFactExportRow {
-  completion_sequence: unknown;
   task_id: unknown;
   completed_at: unknown;
 }
@@ -489,10 +488,10 @@ export class PlanningDataRightsContributor {
         ),
         collectExportRows<PlanningTaskCompletionFactExportRow>(
           transaction,
-          `SELECT completion_sequence::text, task_id, completed_at
+          `SELECT task_id, completed_at
              FROM planning.task_completion_facts
              WHERE workspace_id = $1
-             ORDER BY completed_at ASC, task_id ASC, completion_sequence ASC
+             ORDER BY completed_at ASC, task_id ASC, completion_fact_id ASC
              LIMIT $2 OFFSET $3`,
           workspaceId,
         ),
@@ -541,10 +540,6 @@ export class PlanningDataRightsContributor {
         taskCompletionFacts: normalizeExportRows(
           taskCompletionFacts,
           (row) => ({
-            completionSequence: requireString(
-              row.completion_sequence,
-              'taskCompletionFact.completion_sequence',
-            ),
             taskId: requireUuidV4(row.task_id, 'taskCompletionFact.task_id'),
             completedAt: requireString(
               requireTimestamp(

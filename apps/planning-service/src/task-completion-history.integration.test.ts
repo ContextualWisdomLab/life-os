@@ -143,7 +143,9 @@ describeWithPostgres('Planning durable task completion facts', () => {
       [WORKSPACE_ID, CASCADE_TASK_ID],
     );
     expect(factsBeforeErase.rows).toHaveLength(1);
-    expect(factsBeforeErase.rows[0]?.completion_fact_id).toMatch(UUID_V4_PATTERN);
+    expect(factsBeforeErase.rows[0]?.completion_fact_id).toMatch(
+      UUID_V4_PATTERN,
+    );
 
     await pool.query(
       `DELETE FROM planning_task_completion_history_test.tasks
@@ -267,6 +269,8 @@ describeWithPostgres('Planning durable task completion facts', () => {
        WHERE workspace_id = $1 AND id = $2`,
       [WORKSPACE_ID, SCOPED_TASK_ID],
     );
-    expect(untouchedTask.rows).toEqual([{ status: 'todo', completed_at: null }]);
+    expect(untouchedTask.rows).toEqual([
+      { status: 'todo', completed_at: null },
+    ]);
   });
 });

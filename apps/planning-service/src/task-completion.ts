@@ -51,6 +51,8 @@ interface TaskCompletionRow {
   id: unknown;
   status: unknown;
   completed_at: unknown;
+  previous_status: unknown;
+  completion_fact_count: unknown;
 }
 
 /** Stable credential-free error for malformed completion evidence from persistence. */
@@ -112,6 +114,22 @@ function requirePersistedTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
+/** Requires the prior durable task state needed to interpret fact creation. */
+function requirePersistedPreviousStatus(value: unknown): 'todo' | 'done' {
+  if (value !== 'todo' && value !== 'done') {
+    return invalidPersistenceEvidence();
+  }
+  return value;
+}
+
+/** Requires the bounded fact cardinality emitted by the atomic completion statement. */
+function requirePersistedCompletionFactCount(value: unknown): 0 | 1 {
+  if (value !== 0 && value !== 1) {
+    return invalidPersistenceEvidence();
+  }
+  return value;
+}
+
 /** Parses one returned row and proves it matches the requested durable state. */
 function parseCompletionEvidence(
   row: TaskCompletionRow,
@@ -122,6 +140,16 @@ function parseCompletionEvidence(
   const workspaceId = requirePersistedUuid(row.workspace_id);
   const taskId = requirePersistedUuid(row.id);
   if (workspaceId !== expectedWorkspaceId || taskId !== expectedTaskId) {
+    return invalidPersistenceEvidence();
+  }
+
+  const previousStatus = requirePersistedPreviousStatus(row.previous_status);
+  const completionFactCount = requirePersistedCompletionFactCount(
+    row.completion_fact_count,
+  );
+  const expectedCompletionFactCount =
+    expectedTransition.status === 'done' && previousStatus === 'todo' ? 1 : 0;
+  if (completionFactCount !== expectedCompletionFactCount) {
     return invalidPersistenceEvidence();
   }
 
@@ -219,7 +247,8 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
            FROM previous
            WHERE planning.tasks.workspace_id = previous.previous_workspace_id
              AND planning.tasks.id = previous.previous_id
-           RETURNING workspace_id, id, status, completed_at, previous.previous_status
+           RETURNING workspace_id, id, status, completed_at,
+                     previous.previous_status AS previous_status
          ),
          completion_fact AS (
            INSERT INTO planning.task_completion_facts (
@@ -239,7 +268,8 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
                 id,
                 status,
                 completed_at,
-                (SELECT count(*) FROM completion_fact) AS completion_fact_count
+                previous_status,
+                (SELECT count(*)::integer FROM completion_fact) AS completion_fact_count
          FROM updated`,
         [
           safeWorkspaceId,
