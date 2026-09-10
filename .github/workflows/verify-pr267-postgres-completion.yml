@@ -1,0 +1,65 @@
+name: Verify PR267 PostgreSQL completion contract
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-transition-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-pr267-postgres-completion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres-completion:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact writer head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check integration test formatting
+        run: pnpm exec prettier --check apps/planning-service/src/postgres-planning-repository.integration.test.ts
+
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Execute Planning PostgreSQL integration
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          src/postgres-planning-repository.integration.test.ts
+
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
