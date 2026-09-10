@@ -117,10 +117,21 @@ describeWithPostgres('Planning durable task completion facts', () => {
     );
   });
 
-  it('uses UUIDv4 fact identity and cascades facts when the owning task is erased', async () => {
+  it('enforces UUIDv4 fact identity and cascades facts when the owning task is erased', async () => {
     await insertTask(CASCADE_TASK_ID);
-    const repository = new PostgresTaskCompletionRepository(createSqlClient());
+    await expect(
+      pool.query(
+        `INSERT INTO planning_task_completion_history_test.task_completion_facts
+           (completion_fact_id, workspace_id, task_id, completed_at)
+         VALUES ('11111111-1111-1111-8111-111111111111', $1, $2, $3::timestamptz)`,
+        [WORKSPACE_ID, CASCADE_TASK_ID, FIRST_COMPLETED_AT],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'task_completion_facts_id_uuid_v4',
+    });
 
+    const repository = new PostgresTaskCompletionRepository(createSqlClient());
     await repository.transitionTaskCompletion(WORKSPACE_ID, CASCADE_TASK_ID, {
       status: 'done',
       completedAt: FIRST_COMPLETED_AT,
@@ -176,7 +187,9 @@ describeWithPostgres('Planning durable task completion facts', () => {
     }>(
       `SELECT workspace_id, task_id, completed_at
        FROM planning_task_completion_history_test.task_completion_facts
+       WHERE workspace_id = $1 AND task_id = $2
        ORDER BY completion_sequence`,
+      [WORKSPACE_ID, TASK_ID],
     );
     expect(
       facts.rows.map((row) => ({
