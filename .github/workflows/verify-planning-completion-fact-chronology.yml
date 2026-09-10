@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: verify-planning-completion-fact-chronology-${{ github.ref }}
-  cancel-in-progress: true
+  group: verify-planning-completion-fact-chronology-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   verify:
