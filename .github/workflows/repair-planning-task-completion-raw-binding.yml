@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      EXPECTED_PARENT: 071a1ccc9299cfa3416d6b87f4be17406fdecf92
+      EXPECTED_PARENT: c334acbaeab1d7914b91564f3402b4adc530a011
       TARGET_BRANCH: feat/planning-task-completion-http-v1
     services:
       postgres:
@@ -81,7 +81,8 @@ jobs:
               raise SystemExit('request binding constant anchor mismatch')
           text = text.replace(anchor, anchor + "const REQUEST = { method: 'PUT', originalUrl: PATH } as const;\n", 1)
           replacements = [
-              ("        { completed: true },\n      ),", "        { completed: true },\n        REQUEST,\n      ),", 2),
+              ("        { completed: true },\n      ),", "        { completed: true },\n        REQUEST,\n      ),", 1),
+              ("          { completed: true },\n        ),", "          { completed: true },\n          REQUEST,\n        ),", 1),
               ("        { completed: false },\n      ),", "        { completed: false },\n        REQUEST,\n      ),", 1),
               ("          proxy,\n        ),", "          proxy,\n          REQUEST,\n        ),", 1),
               ("            body,\n          ),", "            body,\n            REQUEST,\n          ),", 1),
