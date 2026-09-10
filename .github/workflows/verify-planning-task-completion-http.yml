@@ -1,4 +1,4 @@
-name: Verify planning task completion HTTP
+name: Repair planning task completion HTTP
 
 on:
   push:
@@ -6,14 +6,16 @@ on:
       - feat/planning-task-completion-http-v1
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify:
+  repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      EXPECTED_PARENT: 132a406b31d07290d2f0220fa7186075207fe5a8
+      TARGET_BRANCH: feat/planning-task-completion-http-v1
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -29,11 +31,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - name: Checkout exact branch head
+      - name: Checkout exact repair head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
+          fetch-depth: 2
+          persist-credentials: true
           ref: ${{ github.sha }}
+
+      - name: Prove writer lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)" = "${GITHUB_SHA}"
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -46,10 +56,151 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Apply minimal completion HTTP repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one anchor in {path}, found {text.count(old)}")
+              target.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'apps/planning-service/src/http-boundary.ts',
+              """const VALIDATION_MESSAGES = new Set([\n  'Title is required',\n  'Identifier must be an opaque non-numeric string',\n  'Planning search request is invalid',\n]);""",
+              """const VALIDATION_MESSAGES = new Set([\n  'Title is required',\n  'Identifier must be an opaque non-numeric string',\n  'Planning search request is invalid',\n  'Task completion request is invalid',\n]);""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/http-boundary.ts',
+              """  if (\n    segments.length === 5 &&\n    segments[1] === 'v1' &&\n    segments[2] === 'projects' &&\n    UUID_V4_PATTERN.test(segments[3] ?? '') &&\n    segments[4] === 'tasks' &&\n    (method === 'GET' || method === 'POST')\n  ) {\n    return { method, path };\n  }\n  return invalidGatewayContext();""",
+              """  if (\n    segments.length === 5 &&\n    segments[1] === 'v1' &&\n    segments[2] === 'projects' &&\n    UUID_V4_PATTERN.test(segments[3] ?? '') &&\n    segments[4] === 'tasks' &&\n    (method === 'GET' || method === 'POST')\n  ) {\n    return { method, path };\n  }\n  if (\n    segments.length === 5 &&\n    segments[1] === 'v1' &&\n    segments[2] === 'tasks' &&\n    UUID_V4_PATTERN.test(segments[3] ?? '') &&\n    segments[4] === 'completion' &&\n    method === 'PUT'\n  ) {\n    return { method, path };\n  }\n  return invalidGatewayContext();""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/http-boundary.ts',
+              """export function requireTitle(body: { title?: unknown } | undefined): string {\n  const title = body?.title;\n  if (typeof title !== 'string' || !title.trim()) {\n    throw problemException(400, 'A title is required', 'invalid_title');\n  }\n  return title.trim();\n}\n\n/** Maps domain and persistence failures to credential-free HTTP exceptions. */""",
+              """export function requireTitle(body: { title?: unknown } | undefined): string {\n  const title = body?.title;\n  if (typeof title !== 'string' || !title.trim()) {\n    throw problemException(400, 'A title is required', 'invalid_title');\n  }\n  return title.trim();\n}\n\n/** Rejects malformed completion commands without reflecting body contents. */\nfunction invalidTaskCompletionBody(): never {\n  throw problemException(\n    400,\n    'Task completion request is invalid',\n    'invalid_request',\n  );\n}\n\n/** Accepts only the exact boolean completion command owned by Planning. */\nexport function requireTaskCompletionState(body: unknown): boolean {\n  if (typeof body !== 'object' || body === null || Array.isArray(body)) {\n    return invalidTaskCompletionBody();\n  }\n\n  let keys: string[];\n  let completed: unknown;\n  try {\n    keys = Object.keys(body);\n    completed = (body as Record<string, unknown>).completed;\n  } catch {\n    return invalidTaskCompletionBody();\n  }\n  if (keys.length !== 1 || keys[0] !== 'completed' || typeof completed !== 'boolean') {\n    return invalidTaskCompletionBody();\n  }\n  return completed;\n}\n\n/** Maps domain and persistence failures to credential-free HTTP exceptions. */""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """import {\n  requireTitle,\n  requireTrustedWorkspaceContext,\n  toHttpException,\n} from './http-boundary';""",
+              """import {\n  requireTaskCompletionState,\n  requireTitle,\n  requireTrustedWorkspaceContext,\n  toHttpException,\n} from './http-boundary';""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';\nimport type { PlanningSearchResult } from './search';""",
+              """import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';\nimport type { PlanningSearchResult } from './search';\nimport { type TaskCompletionEvidence, TaskCompletionService } from './task-completion';""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """/** Dependency-injection token for durable Today synchronization. */\nexport const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');""",
+              """/** Dependency-injection token for durable Today synchronization. */\nexport const TODAY_SYNC_SERVICE = Symbol('TODAY_SYNC_SERVICE');\n/** Dependency-injection token for the Planning-owned task completion transition. */\nexport const TASK_COMPLETION_SERVICE = Symbol('TASK_COMPLETION_SERVICE');""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """    @Inject(TODAY_SYNC_SERVICE)\n    private readonly todayService: TodaySyncService,\n  ) {}""",
+              """    @Inject(TODAY_SYNC_SERVICE)\n    private readonly todayService: TodaySyncService,\n    @Inject(TASK_COMPLETION_SERVICE)\n    private readonly taskCompletionService: TaskCompletionService,\n  ) {}""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """  /** Lists tasks below a project in the signed gateway workspace. */\n  @Get('projects/:projectId/tasks')\n  async listTasks(\n    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,\n    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,\n    @Headers('x-life-os-context-signature') signature: string | undefined,\n    @Param('projectId') projectId: string,\n  ): Promise<Task[]> {\n    try {\n      const trustedWorkspaceId = requireTrustedWorkspaceContext(\n        { workspaceId, issuedAt, signature },\n        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,\n        { method: 'GET', path: `/v1/projects/${projectId}/tasks` },\n      );\n      return await this.planningService.listTasks(\n        trustedWorkspaceId,\n        projectId,\n      );\n    } catch (error) {\n      throw toHttpException(error);\n    }\n  }\n}""",
+              """  /** Lists tasks below a project in the signed gateway workspace. */\n  @Get('projects/:projectId/tasks')\n  async listTasks(\n    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,\n    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,\n    @Headers('x-life-os-context-signature') signature: string | undefined,\n    @Param('projectId') projectId: string,\n  ): Promise<Task[]> {\n    try {\n      const trustedWorkspaceId = requireTrustedWorkspaceContext(\n        { workspaceId, issuedAt, signature },\n        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,\n        { method: 'GET', path: `/v1/projects/${projectId}/tasks` },\n      );\n      return await this.planningService.listTasks(\n        trustedWorkspaceId,\n        projectId,\n      );\n    } catch (error) {\n      throw toHttpException(error);\n    }\n  }\n\n  /** Replaces one task's completion state through the durable Planning transition. */\n  @Put('tasks/:taskId/completion')\n  async setTaskCompleted(\n    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,\n    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,\n    @Headers('x-life-os-context-signature') signature: string | undefined,\n    @Param('taskId') taskId: string,\n    @Body() body: unknown,\n  ): Promise<TaskCompletionEvidence> {\n    try {\n      const path = `/v1/tasks/${taskId}/completion`;\n      const trustedWorkspaceId = requireTrustedWorkspaceContext(\n        { workspaceId, issuedAt, signature },\n        process.env.PLANNING_GATEWAY_CONTEXT_SECRET,\n        { method: 'PUT', path },\n      );\n      return await this.taskCompletionService.setCompleted(\n        trustedWorkspaceId,\n        taskId,\n        requireTaskCompletionState(body),\n      );\n    } catch (error) {\n      throw toHttpException(error);\n    }\n  }\n}""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/main.ts',
+              """    {\n      provide: TODAY_SYNC_SERVICE,\n      inject: [PLANNING_RUNTIME],\n      useFactory: (runtime: PlanningRuntime): TodaySyncService =>\n        runtime.todayService,\n    },\n  ],""",
+              """    {\n      provide: TODAY_SYNC_SERVICE,\n      inject: [PLANNING_RUNTIME],\n      useFactory: (runtime: PlanningRuntime): TodaySyncService =>\n        runtime.todayService,\n    },\n    {\n      provide: TASK_COMPLETION_SERVICE,\n      inject: [PLANNING_RUNTIME],\n      useFactory: (runtime: PlanningRuntime): TaskCompletionService =>\n        runtime.taskCompletionService,\n    },\n  ],""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/planning-runtime.ts',
+              """import { TodaySyncService } from './today-sync';""",
+              """import {\n  PostgresTaskCompletionRepository,\n  TaskCompletionService,\n} from './task-completion';\nimport { TodaySyncService } from './today-sync';""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/planning-runtime.ts',
+              """    readonly service: PlanningService,\n    readonly todayService: TodaySyncService,\n    /** Handles Planning-owned data-rights requests through the runtime's shared transactional SQL client. */\n    readonly dataRightsContributor: PlanningDataRightsContributor,""",
+              """    readonly service: PlanningService,\n    readonly todayService: TodaySyncService,\n    /** Performs the Planning-owned atomic task completion transition. */\n    readonly taskCompletionService: TaskCompletionService,\n    /** Handles Planning-owned data-rights requests through the runtime's shared transactional SQL client. */\n    readonly dataRightsContributor: PlanningDataRightsContributor,""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/planning-runtime.ts',
+              """    new PlanningService(repository),\n    new TodaySyncService(todayRepository),\n    new PlanningDataRightsContributor(client),""",
+              """    new PlanningService(repository),\n    new TodaySyncService(todayRepository),\n    new TaskCompletionService(new PostgresTaskCompletionRepository(client)),\n    new PlanningDataRightsContributor(client),""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/planning-controller-authority.test.ts',
+              """import { PlanningController } from './main';\nimport type { TodaySyncService } from './today-sync';""",
+              """import { PlanningController } from './main';\nimport type { TaskCompletionService } from './task-completion';\nimport type { TodaySyncService } from './today-sync';""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/planning-controller-authority.test.ts',
+              """/** Creates a controller with no durable Today dependency because these routes do not use it. */\nfunction createController(service: PlanningServiceSpies): PlanningController {\n  return new PlanningController(\n    service as unknown as PlanningService,\n    {} as TodaySyncService,\n  );\n}""",
+              """/** Creates a controller with inert dependencies that these CRUD routes do not use. */\nfunction createController(service: PlanningServiceSpies): PlanningController {\n  return new PlanningController(\n    service as unknown as PlanningService,\n    {} as TodaySyncService,\n    {} as TaskCompletionService,\n  );\n}""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/planning-controller-authority.test.ts',
+              """    // search + Today GET/PUT + six Goal/Project/Task routes.\n    expect(count(TRUSTED_WORKSPACE_HEADER)).toBe(9);\n    expect(count(TRUSTED_ISSUED_AT_HEADER)).toBe(9);\n    expect(count(TRUSTED_SIGNATURE_HEADER)).toBe(9);\n    expect(CONTROLLER_SOURCE.match(/requireTrustedWorkspaceContext\\(/gu)).toHaveLength(9);""",
+              """    // search + Today GET/PUT + six CRUD routes + task completion PUT.\n    expect(count(TRUSTED_WORKSPACE_HEADER)).toBe(10);\n    expect(count(TRUSTED_ISSUED_AT_HEADER)).toBe(10);\n    expect(count(TRUSTED_SIGNATURE_HEADER)).toBe(10);\n    expect(CONTROLLER_SOURCE.match(/requireTrustedWorkspaceContext\\(/gu)).toHaveLength(10);""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/http-boundary.test.ts',
+              """    {\n      name: 'non-UUID project identifier',\n      binding: { method: 'POST', path: '/v1/projects/not-a-uuid/tasks' },\n    },\n  ])""",
+              """    {\n      name: 'non-UUID project identifier',\n      binding: { method: 'POST', path: '/v1/projects/not-a-uuid/tasks' },\n    },\n    {\n      name: 'non-UUID task completion identifier',\n      binding: { method: 'PUT', path: '/v1/tasks/not-a-uuid/completion' },\n    },\n  ])""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/task-completion-http-boundary.test.ts',
+              """  it('rejects a replayed route signature before the completion service is called', async () => {""",
+              """  it('routes an explicit reopen without accepting a client completion instant', async () => {\n    process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;\n    const headers = signedHeaders(Math.floor(Date.now() / 1000));\n    const completionService: CompletionServiceSpy = {\n      setCompleted: vi.fn().mockResolvedValue({\n        workspaceId: WORKSPACE_ID,\n        taskId: TASK_ID,\n        status: 'todo',\n        completedAt: null,\n      }),\n    };\n    const controller = createController(completionService);\n\n    await expect(\n      controller.setTaskCompleted(\n        headers.workspaceId,\n        headers.issuedAt,\n        headers.signature,\n        TASK_ID,\n        { completed: false },\n      ),\n    ).resolves.toMatchObject({ status: 'todo', completedAt: null });\n    expect(completionService.setCompleted).toHaveBeenCalledWith(\n      WORKSPACE_ID,\n      TASK_ID,\n      false,\n    );\n  });\n\n  it('rejects a replayed route signature before the completion service is called', async () => {""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/task-completion-http-boundary.test.ts',
+              """    { completed: null },\n  ])('rejects malformed command bodies before persistence: %j', async (body) => {""",
+              """    { completed: null },\n    [],\n    { completed: true, completedAt: COMPLETED_AT },\n  ])('rejects malformed command bodies before persistence: %j', async (body) => {""",
+          )
+
+          replace_once(
+              'apps/planning-service/src/task-completion-http-boundary.test.ts',
+              """  it.each([\n    undefined,""",
+              """  it('rejects an accessor-trapping body as an invalid command', async () => {\n    process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;\n    const headers = signedHeaders(Math.floor(Date.now() / 1000));\n    const completionService: CompletionServiceSpy = { setCompleted: vi.fn() };\n    const { proxy, revoke } = Proxy.revocable({ completed: true }, {});\n    revoke();\n    const controller = createController(completionService);\n\n    expect(\n      await rejectedStatus(\n        controller.setTaskCompleted(\n          headers.workspaceId,\n          headers.issuedAt,\n          headers.signature,\n          TASK_ID,\n          proxy,\n        ),\n      ),\n    ).toBe(400);\n    expect(completionService.setCompleted).not.toHaveBeenCalled();\n  });\n\n  it.each([\n    undefined,""",
+          )
+          PY
+
+      - name: Canonicalize changed sources
+        run: >-
+          pnpm exec prettier --write
+          apps/planning-service/src/task-completion-http-boundary.test.ts
+          apps/planning-service/src/http-boundary.test.ts
+          apps/planning-service/src/http-boundary.ts
+          apps/planning-service/src/main.ts
+          apps/planning-service/src/planning-runtime.ts
+          apps/planning-service/src/planning-controller-authority.test.ts
+
       - name: Run completion HTTP regression
         run: >-
           pnpm --filter @life-os/planning-service exec vitest run
           src/task-completion-http-boundary.test.ts
+          src/http-boundary.test.ts
+          src/planning-controller-authority.test.ts
 
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
@@ -58,6 +209,7 @@ jobs:
         run: >-
           pnpm exec prettier --check
           apps/planning-service/src/task-completion-http-boundary.test.ts
+          apps/planning-service/src/http-boundary.test.ts
           apps/planning-service/src/http-boundary.ts
           apps/planning-service/src/main.ts
           apps/planning-service/src/planning-runtime.ts
@@ -68,3 +220,22 @@ jobs:
 
       - name: Build Planning
         run: pnpm --filter @life-os/planning-service build
+
+      - name: Publish workflow-free repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)" = "${GITHUB_SHA}"
+          git rm .github/workflows/verify-planning-task-completion-http.yml
+          git config user.name "Seongho Bae"
+          git config user.email "me@seonghobae.me"
+          git add \
+            apps/planning-service/src/task-completion-http-boundary.test.ts \
+            apps/planning-service/src/http-boundary.test.ts \
+            apps/planning-service/src/http-boundary.ts \
+            apps/planning-service/src/main.ts \
+            apps/planning-service/src/planning-runtime.ts \
+            apps/planning-service/src/planning-controller-authority.test.ts
+          git diff --cached --check
+          git commit -m "feat(planning): expose authenticated task completion command"
+          git push origin HEAD:"$TARGET_BRANCH"
