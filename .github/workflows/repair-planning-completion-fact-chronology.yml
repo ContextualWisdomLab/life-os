@@ -53,6 +53,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           python <<'PY'
+          import re
           from pathlib import Path
 
           def replace_once(path: str, old: str, new: str) -> None:
@@ -62,6 +63,14 @@ jobs:
               if count != 1:
                   raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
               target.write_text(text.replace(old, new, 1))
+
+          def regex_replace_once(path: str, pattern: str, replacement: str) -> None:
+              target = Path(path)
+              text = target.read_text()
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one regex replacement target, found {count}')
+              target.write_text(updated)
 
           replace_once(
               'apps/planning-service/src/planning-data-rights.ts',
@@ -81,23 +90,14 @@ jobs:
           """,
           )
 
-          replace_once(
+          regex_replace_once(
               'apps/planning-service/tests/postgres-data-rights.integration.test.ts',
-              """  await pool.query(
-            `INSERT INTO planning.tasks (id, workspace_id, project_id, title)
-             VALUES ($1, $2, $3, 'Task')`,
-            [taskId, WORKSPACE_ID, projectId],
-          );
-          """,
-              """  await pool.query(
-            `INSERT INTO planning.tasks
-               (id, workspace_id, project_id, title, status, created_at, completed_at)
-             VALUES ($1, $2, $3, 'Task', 'done',
-                     TIMESTAMPTZ '2026-08-10T12:00:00.000Z',
-                     TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
-            [taskId, WORKSPACE_ID, projectId],
-          );
-          """,
+              r"`INSERT INTO planning\.tasks \(id, workspace_id, project_id, title\)\s*\n\s*VALUES \(\$1, \$2, \$3, 'Task'\)`",
+              """`INSERT INTO planning.tasks
+                 (id, workspace_id, project_id, title, status, created_at, completed_at)
+               VALUES ($1, $2, $3, 'Task', 'done',
+                       TIMESTAMPTZ '2026-08-10T12:00:00.000Z',
+                       TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`""",
           )
 
           replace_once(
