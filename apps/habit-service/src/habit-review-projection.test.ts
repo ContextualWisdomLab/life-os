@@ -59,12 +59,14 @@ class DuplicateHabitEvidenceRepository extends InMemoryHabitRepository {
     periodStartDate: string,
     periodEndDate: string,
     maximumHabits: number,
+    asOf: string,
   ) {
     const evidence = await super.readReviewWeekEvidence(
       workspaceId,
       periodStartDate,
       periodEndDate,
       maximumHabits,
+      asOf,
     );
     const [habit] = evidence.habits;
     if (!habit) throw new Error('Expected seeded habit');

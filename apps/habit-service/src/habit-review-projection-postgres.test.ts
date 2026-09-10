@@ -9,6 +9,7 @@ const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const HABIT_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_HABIT_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const AS_OF = '2026-09-13T23:59:59.000Z';
 
 interface QueryCall {
   text: string;
@@ -56,6 +57,7 @@ async function readEvidence(rows: readonly Record<string, unknown>[]) {
     '2026-09-07',
     '2026-09-13',
     100,
+    AS_OF,
   );
 }
 
@@ -69,6 +71,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
       '2026-09-07',
       '2026-09-13',
       100,
+      AS_OF,
     );
 
     expect(client.calls).toHaveLength(1);
@@ -76,9 +79,12 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
       WORKSPACE_ID,
       '2026-09-07',
       '2026-09-13',
+      AS_OF,
       101,
     ]);
-    expect(client.calls[0]?.text).toContain('LIMIT $4');
+    expect(client.calls[0]?.text).toContain('LIMIT $5');
+    expect(client.calls[0]?.text).toContain('created_at <= $4::timestamptz');
+    expect(client.calls[0]?.text).toContain('recorded_at <= $4::timestamptz');
     expect(client.calls[0]?.text).toContain(
       'scheduled_local_date BETWEEN $2::date AND $3::date',
     );
@@ -117,6 +123,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
         '2026-09-07',
         '2026-09-14',
         100,
+        AS_OF,
       ),
     ).rejects.toThrowError('Habit persistence operation failed');
   });
@@ -130,6 +137,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
         '2026-09-08',
         '2026-09-14',
         100,
+        AS_OF,
       ),
     ).rejects.toThrowError('Habit persistence operation failed');
   });
@@ -143,6 +151,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
         '2026-09-07',
         '2026-09-13',
         0,
+        AS_OF,
       ),
     ).rejects.toThrowError('Habit persistence operation failed');
   });

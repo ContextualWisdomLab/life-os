@@ -430,10 +430,12 @@ export class PostgresHabitRepository implements HabitRepository {
     periodStartDate: string,
     periodEndDate: string,
     maximumHabits: number,
+    asOf: string,
   ): Promise<HabitReviewWeekEvidence> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safePeriodStartDate = requireLocalDate(periodStartDate);
     const safePeriodEndDate = requireLocalDate(periodEndDate);
+    const safeAsOf = requireTimestamp(asOf);
     const periodStartWeekday = new Date(
       `${safePeriodStartDate}T00:00:00.000Z`,
     ).getUTCDay();
@@ -452,8 +454,9 @@ export class PostgresHabitRepository implements HabitRepository {
                 recurrence_interval, weekday_mask, starts_on, created_at
          FROM habit.habit_definitions
          WHERE workspace_id = $1
+           AND created_at <= $4::timestamptz
          ORDER BY created_at ASC, id ASC
-         LIMIT $4
+         LIMIT $5
        )
        SELECT h.id, h.workspace_id, h.title, h.timezone_name,
               h.recurrence_kind, h.recurrence_interval, h.weekday_mask,
@@ -469,6 +472,7 @@ export class PostgresHabitRepository implements HabitRepository {
          WHERE workspace_id = h.workspace_id
            AND habit_id = h.id
            AND scheduled_local_date BETWEEN $2::date AND $3::date
+           AND recorded_at <= $4::timestamptz
          ORDER BY scheduled_local_date ASC, recorded_at ASC, id ASC
        ) AS completion ON TRUE
        ORDER BY h.created_at ASC, h.id ASC,
@@ -477,6 +481,7 @@ export class PostgresHabitRepository implements HabitRepository {
         safeWorkspaceId,
         safePeriodStartDate,
         safePeriodEndDate,
+        safeAsOf,
         queryLimit,
       ],
     );
@@ -505,9 +510,7 @@ export class PostgresHabitRepository implements HabitRepository {
       if (completionFields.some((value) => value === null)) {
         return invalidRow();
       }
-      const completionWorkspaceId = requireUuidV4(
-        row.completion_workspace_id,
-      );
+      const completionWorkspaceId = requireUuidV4(row.completion_workspace_id);
       const completionHabitId = requireUuidV4(row.completion_habit_id);
       const scheduledLocalDate = requireLocalDate(
         row.completion_scheduled_local_date,

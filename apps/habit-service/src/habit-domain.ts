@@ -104,6 +104,7 @@ export interface HabitRepository {
     periodStartDate: string,
     periodEndDate: string,
     maximumHabits: number,
+    asOf: string,
   ): Promise<HabitReviewWeekEvidence>;
 }
 
@@ -351,7 +352,9 @@ export class InMemoryHabitRepository implements HabitRepository {
     periodStartDate: string,
     periodEndDate: string,
     maximumHabits: number,
+    asOf: string,
   ): Promise<HabitReviewWeekEvidence> {
+    const safeAsOf = requireTimestamp(asOf);
     const periodStart = parseLocalDate(periodStartDate);
     const periodEnd = parseLocalDate(periodEndDate);
     const periodSpan = periodEnd.epochDay - periodStart.epochDay;
@@ -364,10 +367,9 @@ export class InMemoryHabitRepository implements HabitRepository {
     ) {
       throw new Error('Review evidence request is invalid');
     }
-    const habits = (await this.listHabits(workspaceId)).slice(
-      0,
-      maximumHabits + 1,
-    );
+    const habits = (await this.listHabits(workspaceId))
+      .filter((habit) => requireTimestamp(habit.createdAt) <= safeAsOf)
+      .slice(0, maximumHabits + 1);
     if (habits.length > maximumHabits) {
       return { habits, completions: [] };
     }
@@ -377,6 +379,7 @@ export class InMemoryHabitRepository implements HabitRepository {
       if (
         completion.workspaceId !== workspaceId ||
         !habitIds.has(completion.habitId) ||
+        requireTimestamp(completion.recordedAt) > safeAsOf ||
         completion.scheduledLocalDate < periodStart.text ||
         completion.scheduledLocalDate > periodEnd.text
       ) {
@@ -547,11 +550,13 @@ export class HabitService {
     const periodEndDate = localDateFromEpochDay(
       periodStart.epochDay + REVIEW_WEEK_DAYS - 1,
     ).text;
+    const asOf = requireTimestamp(this.projectionClock());
     const evidence = await this.repository.readReviewWeekEvidence(
       safeWorkspaceId,
       periodStart.text,
       periodEndDate,
       MAXIMUM_REVIEW_PROJECTION_HABITS,
+      asOf,
     );
     const habits = [...evidence.habits];
     if (habits.length > MAXIMUM_REVIEW_PROJECTION_HABITS) {
@@ -622,7 +627,7 @@ export class HabitService {
       periodStartDate: periodStart.text,
       periodEndDate,
       periodBasis: 'habit-local-date',
-      asOf: requireTimestamp(this.projectionClock()),
+      asOf,
       scheduledOpportunityCount,
       completedOpportunityCount,
       habits: Object.freeze(

@@ -14,6 +14,7 @@ describe('Habit Review evidence repository contract', () => {
         '2026-09-07',
         '2026-09-13',
         100,
+        AS_OF,
       ),
     ).resolves.toEqual({ habits: [], completions: [] });
   });
@@ -27,6 +28,7 @@ describe('Habit Review evidence repository contract', () => {
         '2026-09-07',
         '2026-09-14',
         100,
+        AS_OF,
       ),
     ).rejects.toThrowError('Review evidence request is invalid');
   });
@@ -40,6 +42,7 @@ describe('Habit Review evidence repository contract', () => {
         '2026-09-08',
         '2026-09-14',
         100,
+        AS_OF,
       ),
     ).rejects.toThrowError('Review evidence request is invalid');
   });
@@ -53,6 +56,7 @@ describe('Habit Review evidence repository contract', () => {
         '2026-09-07',
         '2026-09-13',
         0,
+        AS_OF,
       ),
     ).rejects.toThrowError('Review evidence request is invalid');
   });
@@ -78,10 +82,12 @@ describe('Habit Review evidence repository contract', () => {
       recordedAt: '2026-09-14T00:00:00.000Z',
     });
 
-    const evidence = await Reflect.apply(
-      repository.readReviewWeekEvidence,
-      repository,
-      [WORKSPACE_ID, '2026-09-07', '2026-09-13', 100, AS_OF],
+    const evidence = await repository.readReviewWeekEvidence(
+      WORKSPACE_ID,
+      '2026-09-07',
+      '2026-09-13',
+      100,
+      AS_OF,
     );
 
     expect(evidence.completions).toEqual([]);
