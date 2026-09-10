@@ -12,11 +12,11 @@ const describeWithPostgres = DATABASE_URL ? describe : describe.skip;
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TASK_ID = '44444444-4444-4444-8444-444444444444';
+const CONCURRENT_TASK_ID = '55555555-5555-4555-8555-555555555555';
 const CREATED_AT = '2026-09-10T15:00:00.000Z';
 const FIRST_COMPLETED_AT = '2026-09-10T16:00:00.000Z';
 const RETRIED_AT = '2026-09-10T17:00:00.000Z';
 const RECOMPLETED_AT = '2026-09-10T18:00:00.000Z';
-const TEST_SCHEMA = 'planning_task_completion_history_test';
 const migrationPath = resolve(
   __dirname,
   '../migrations/0007_task_completion_facts.sql',
@@ -26,8 +26,14 @@ let pool: Pool;
 /** Rewrites only canonical Planning table qualifiers into the isolated test schema. */
 function isolatedSql(text: string): string {
   return text
-    .replaceAll('planning.task_completion_facts', `${TEST_SCHEMA}.task_completion_facts`)
-    .replaceAll('planning.tasks', `${TEST_SCHEMA}.tasks`);
+    .replaceAll(
+      'planning.task_completion_facts',
+      'planning_task_completion_history_test.task_completion_facts',
+    )
+    .replaceAll(
+      'planning.tasks',
+      'planning_task_completion_history_test.tasks',
+    );
 }
 
 /** Executes the production repository statement against an isolated PostgreSQL schema. */
@@ -48,12 +54,14 @@ describeWithPostgres('Planning durable task completion facts', () => {
     pool = new Pool({
       connectionString: DATABASE_URL,
       application_name: 'life-os-planning-completion-history-test',
-      max: 2,
+      max: 4,
     });
-    await pool.query(`DROP SCHEMA IF EXISTS ${TEST_SCHEMA} CASCADE`);
-    await pool.query(`CREATE SCHEMA ${TEST_SCHEMA}`);
     await pool.query(
-      `CREATE TABLE ${TEST_SCHEMA}.tasks (
+      'DROP SCHEMA IF EXISTS planning_task_completion_history_test CASCADE',
+    );
+    await pool.query('CREATE SCHEMA planning_task_completion_history_test');
+    await pool.query(
+      `CREATE TABLE planning_task_completion_history_test.tasks (
          id uuid PRIMARY KEY,
          workspace_id uuid NOT NULL,
          status text NOT NULL CHECK (status IN ('todo', 'done')),
@@ -72,11 +80,13 @@ describeWithPostgres('Planning durable task completion facts', () => {
 
   afterAll(async () => {
     if (!pool) return;
-    await pool.query(`DROP SCHEMA IF EXISTS ${TEST_SCHEMA} CASCADE`);
+    await pool.query(
+      'DROP SCHEMA IF EXISTS planning_task_completion_history_test CASCADE',
+    );
     await pool.end();
   });
 
-  it('declares tenant-owned immutable completion facts with a period-read index', async () => {
+  it('declares tenant-owned completion facts with a period-read index', async () => {
     const migration = await readFile(migrationPath, 'utf8');
 
     expect(migration).toContain('CREATE TABLE planning.task_completion_facts');
@@ -91,7 +101,7 @@ describeWithPostgres('Planning durable task completion facts', () => {
 
   it('retains each real todo-to-done fact across retries and later reopen', async () => {
     await pool.query(
-      `INSERT INTO ${TEST_SCHEMA}.tasks
+      `INSERT INTO planning_task_completion_history_test.tasks
          (id, workspace_id, status, created_at, completed_at)
        VALUES ($1, $2, 'todo', $3::timestamptz, NULL)`,
       [TASK_ID, WORKSPACE_ID, CREATED_AT],
@@ -121,7 +131,7 @@ describeWithPostgres('Planning durable task completion facts', () => {
       completed_at: Date;
     }>(
       `SELECT workspace_id, task_id, completed_at
-       FROM ${TEST_SCHEMA}.task_completion_facts
+       FROM planning_task_completion_history_test.task_completion_facts
        ORDER BY completion_sequence`,
     );
     expect(
@@ -144,6 +154,42 @@ describeWithPostgres('Planning durable task completion facts', () => {
     ]);
   });
 
+  it('serializes concurrent completion retries into one first-completion fact', async () => {
+    await pool.query(
+      `INSERT INTO planning_task_completion_history_test.tasks
+         (id, workspace_id, status, created_at, completed_at)
+       VALUES ($1, $2, 'todo', $3::timestamptz, NULL)`,
+      [CONCURRENT_TASK_ID, WORKSPACE_ID, CREATED_AT],
+    );
+    const repository = new PostgresTaskCompletionRepository(createSqlClient());
+
+    const outcomes = await Promise.all([
+      repository.transitionTaskCompletion(WORKSPACE_ID, CONCURRENT_TASK_ID, {
+        status: 'done',
+        completedAt: FIRST_COMPLETED_AT,
+      }),
+      repository.transitionTaskCompletion(WORKSPACE_ID, CONCURRENT_TASK_ID, {
+        status: 'done',
+        completedAt: RETRIED_AT,
+      }),
+    ]);
+    expect(outcomes.every((outcome) => outcome?.status === 'done')).toBe(true);
+
+    const facts = await pool.query<{ completed_at: Date }>(
+      `SELECT completed_at
+       FROM planning_task_completion_history_test.task_completion_facts
+       WHERE workspace_id = $1 AND task_id = $2
+       ORDER BY completion_sequence`,
+      [WORKSPACE_ID, CONCURRENT_TASK_ID],
+    );
+    expect(facts.rows).toHaveLength(1);
+    expect([
+      FIRST_COMPLETED_AT,
+      RETRIED_AT,
+    ]).toContain(facts.rows[0]?.completed_at.toISOString());
+    expect(outcomes[0]?.completedAt).toBe(outcomes[1]?.completedAt);
+  });
+
   it('does not create completion facts for a task outside the workspace scope', async () => {
     const repository = new PostgresTaskCompletionRepository(createSqlClient());
 
@@ -155,7 +201,7 @@ describeWithPostgres('Planning durable task completion facts', () => {
     ).resolves.toBeUndefined();
     const count = await pool.query<{ count: string }>(
       `SELECT count(*)::text AS count
-       FROM ${TEST_SCHEMA}.task_completion_facts
+       FROM planning_task_completion_history_test.task_completion_facts
        WHERE workspace_id = $1`,
       [OTHER_WORKSPACE_ID],
     );
