@@ -183,7 +183,10 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
   /** Creates an adapter over the Planning-owned parameterized SQL connection. */
   constructor(private readonly client: TaskCompletionSqlClient) {}
 
-  /** Performs one tenant-scoped UPDATE and validates the committed RETURNING row. */
+  /**
+   * Performs one tenant-scoped statement that locks prior state, mutates the
+   * task, and appends a completion fact only for a real todo-to-done transition.
+   */
   async transitionTaskCompletion(
     workspaceId: string,
     taskId: string,
@@ -193,16 +196,49 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
     const safeTaskId = requireRequestUuid(taskId);
     return boundedPersistenceCall(async () => {
       const result = await this.client.query<TaskCompletionRow>(
-        `UPDATE planning.tasks
-         SET status = $3,
-             completed_at = CASE
-               WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
-                 THEN completed_at
-               WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
-               ELSE NULL
-             END
-         WHERE workspace_id = $1 AND id = $2
-         RETURNING workspace_id, id, status, completed_at`,
+        `WITH previous AS (
+           SELECT workspace_id, id, status AS previous_status
+           FROM planning.tasks
+           WHERE workspace_id = $1 AND id = $2
+           FOR UPDATE
+         ),
+         updated AS (
+           UPDATE planning.tasks
+           SET status = $3,
+               completed_at = CASE
+                 WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
+                   THEN completed_at
+                 WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
+                 ELSE NULL
+               END
+           FROM previous
+           WHERE planning.tasks.workspace_id = previous.workspace_id
+             AND planning.tasks.id = previous.id
+           RETURNING planning.tasks.workspace_id,
+                     planning.tasks.id,
+                     planning.tasks.status,
+                     planning.tasks.completed_at,
+                     previous.previous_status
+         ),
+         completion_fact AS (
+           INSERT INTO planning.task_completion_facts (
+             workspace_id,
+             task_id,
+             completed_at
+           )
+           SELECT workspace_id, id, completed_at
+           FROM updated
+           WHERE previous_status = 'todo'
+             AND status = 'done'
+             AND completed_at IS NOT NULL
+           RETURNING completion_sequence
+         )
+         SELECT workspace_id,
+                id,
+                status,
+                completed_at,
+                (SELECT count(*) FROM completion_fact) AS completion_fact_count
+         FROM updated`,
         [
           safeWorkspaceId,
           safeTaskId,
