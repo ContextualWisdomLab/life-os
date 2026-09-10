@@ -264,9 +264,7 @@ jobs:
             apps/planning-service/src/task-completion-fact-chronology.integration.test.ts \
             apps/planning-service/tests/postgres-data-rights.integration.test.ts \
             apps/planning-service/migrations/README.md \
-            CHANGELOG.md \
-            .github/workflows/repair-planning-completion-fact-chronology.yml \
-            .github/workflows/verify-planning-completion-fact-chronology.yml
+            CHANGELOG.md
           git diff --cached --check
           git commit -m 'fix(planning): harden completion fact evidence'
           git push origin "HEAD:${TARGET_BRANCH}"
