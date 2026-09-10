@@ -74,7 +74,9 @@ function invalidPersistenceEvidence(): never {
 }
 
 /** Converts arbitrary persistence failures into the credential-free boundary error. */
-async function boundedPersistenceCall<T>(operation: () => Promise<T>): Promise<T> {
+async function boundedPersistenceCall<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
   try {
     return await operation();
   } catch (error) {
