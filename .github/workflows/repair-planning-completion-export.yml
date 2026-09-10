@@ -89,7 +89,11 @@ jobs:
               raise SystemExit(f'expected one README anchor, found {count}')
           readme.write_text(docs.replace(old, new))
           PY
-          pnpm exec prettier --write apps/planning-service/src/planning-data-rights.ts apps/planning-service/tests/postgres-data-rights.integration.test.ts
+          pnpm exec prettier --write \
+            apps/planning-service/src/task-completion-history.integration.test.ts \
+            apps/planning-service/src/task-completion.ts \
+            apps/planning-service/src/planning-data-rights.ts \
+            apps/planning-service/tests/postgres-data-rights.integration.test.ts
 
       - name: Run completion-history PostgreSQL acceptance
         run: >-
@@ -118,19 +122,37 @@ jobs:
       - name: Build Planning
         run: pnpm --filter @life-os/planning-service build
 
-      - name: Retire temporary workflows and verify diff
+      - name: Retire temporary workflows and verify bounded diff
         run: |
           rm .github/workflows/repair-planning-completion-export.yml
           rm .github/workflows/verify-planning-completion-fact-review.yml
           git diff --check
-          changed="$(git status --short | awk '{print $2}' | sort)"
-          expected="$(printf '%s\n' \
-            .github/workflows/repair-planning-completion-export.yml \
-            .github/workflows/verify-planning-completion-fact-review.yml \
-            apps/planning-service/migrations/README.md \
-            apps/planning-service/src/planning-data-rights.ts \
-            apps/planning-service/tests/postgres-data-rights.integration.test.ts | sort)"
-          test "$changed" = "$expected"
+          git diff --quiet -- apps/planning-service/src/planning-data-rights.ts && {
+            echo 'expected Planning export source repair is absent' >&2
+            exit 1
+          }
+          git diff --quiet -- apps/planning-service/migrations/README.md && {
+            echo 'expected migration documentation repair is absent' >&2
+            exit 1
+          }
+          while IFS= read -r changed_path; do
+            case "$changed_path" in
+              .github/workflows/repair-planning-completion-export.yml|\
+              .github/workflows/verify-planning-completion-fact-review.yml|\
+              apps/planning-service/migrations/README.md|\
+              apps/planning-service/src/planning-data-rights.ts|\
+              apps/planning-service/src/task-completion-history.integration.test.ts|\
+              apps/planning-service/src/task-completion.ts|\
+              apps/planning-service/tests/postgres-data-rights.integration.test.ts)
+                ;;
+              *)
+                echo "unexpected repair path: ${changed_path}" >&2
+                exit 1
+                ;;
+            esac
+          done < <(git status --short | sed -E 's/^.. //')
+          test ! -e .github/workflows/repair-planning-completion-export.yml
+          test ! -e .github/workflows/verify-planning-completion-fact-review.yml
 
       - name: Publish ordinary workflow-free descendant
         run: |
