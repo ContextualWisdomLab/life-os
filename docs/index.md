@@ -20,6 +20,8 @@ LifeOS owns the personal-workflow domain that connects longer-term direction to 
 
 - [README](https://github.com/ContextualWisdomLab/life-os#readme) — product overview, architecture, local development, security and deployment boundaries.
 - [Product and technical gap baseline](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/product-technical-gap-baseline.md) — current protected implementation, buyer-visible gaps, and release evidence when integrated.
+- [Commercial Readiness test strategy](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/quality/commercial-readiness-test-strategy.md) — production quality denominator, hostile cases, and promotion boundary.
+- [Commercial Readiness quality traceability](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/quality/commercial-readiness-traceability.md) — exact-head quality evidence and unresolved canonical-owner gates.
 - [Product and architecture design](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/superpowers/specs/2026-08-02-life-os-design.md) — intended product and bounded-context design.
 - [Operations](https://github.com/ContextualWisdomLab/life-os/tree/main/docs/operations) — service objectives, backup/recovery, and deployment guidance.
 - [Privacy notice](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/legal/privacy.md) and [project terms](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/legal/terms.md) — upstream project legal boundary.
