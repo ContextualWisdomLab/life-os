@@ -4,13 +4,13 @@ on:
   pull_request:
     branches: [main]
     paths-ignore:
-      - "docs/**"
-      - "*.md"
+      - docs/**
+      - '*.md'
   push:
     branches: [main]
     paths-ignore:
-      - "docs/**"
-      - "*.md"
+      - docs/**
+      - '*.md'
   workflow_dispatch:
 
 permissions:
