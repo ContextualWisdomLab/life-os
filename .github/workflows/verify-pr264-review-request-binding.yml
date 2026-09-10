@@ -34,8 +34,27 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check bounded Habit formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/habit-service/src/habit-request-bound-context.ts
+          apps/habit-service/src/habit-review-projection-http.test.ts
+          apps/habit-service/src/main.ts
+
+      - name: Typecheck Habit service
+        run: pnpm --filter @life-os/habit-service typecheck
+
       - name: Run server-observed Review request binding regression
         run: >-
           pnpm --filter @life-os/habit-service exec vitest run
           src/habit-review-projection-http.test.ts
           --no-file-parallelism
+
+      - name: Run full Habit test suite
+        run: pnpm --filter @life-os/habit-service test
+
+      - name: Build Habit service
+        run: pnpm --filter @life-os/habit-service build
+
+      - name: Verify diff hygiene
+        run: git diff --check HEAD~1 HEAD
