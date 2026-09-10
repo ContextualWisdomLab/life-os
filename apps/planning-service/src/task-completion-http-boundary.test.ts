@@ -203,6 +203,30 @@ describe.sequential('Planning task completion HTTP boundary', () => {
     expect(completionService.setCompleted).not.toHaveBeenCalled();
   });
 
+  it('bounds a revoked dependency rejection to the credential-free persistence response', async () => {
+    process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+    const headers = signedHeaders(Math.floor(Date.now() / 1000));
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+    const completionService: CompletionServiceSpy = {
+      setCompleted: vi.fn().mockRejectedValue(proxy),
+    };
+    const controller = createController(completionService);
+
+    expect(
+      await rejectedStatus(
+        controller.setTaskCompleted(
+          headers.workspaceId,
+          headers.issuedAt,
+          headers.signature,
+          TASK_ID,
+          { completed: true },
+          REQUEST,
+        ),
+      ),
+    ).toBe(503);
+  });
+
   it.each([
     undefined,
     null,
