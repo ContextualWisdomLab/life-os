@@ -66,9 +66,9 @@ interface PassthroughResponse {
 }
 
 /**
- * Provides untrusted HTTP request binding values for data-rights signature verification.
- * `method` and `originalUrl` come from the inbound Nest/Express request and are
- * validated before they can authorize a Planning-owned contributor operation.
+ * Provides untrusted HTTP request-binding values from the inbound Nest/Express request.
+ * Raw method and URL are validated before decoded route parameters can authorize a
+ * Planning operation, preventing alternate wire representations from reusing authority.
  */
 interface RequestBindingSource {
   readonly method?: unknown;
@@ -358,13 +358,13 @@ export class PlanningController {
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('taskId') taskId: string,
     @Body() body: unknown,
+    @Req() httpRequest: RequestBindingSource,
   ): Promise<TaskCompletionEvidence> {
     try {
-      const path = `/v1/tasks/${taskId}/completion`;
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
         process.env.PLANNING_GATEWAY_CONTEXT_SECRET,
-        { method: 'PUT', path },
+        { method: httpRequest.method, path: httpRequest.originalUrl },
       );
       return await this.taskCompletionService.setCompleted(
         trustedWorkspaceId,

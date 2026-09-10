@@ -12,6 +12,7 @@ const COMPLETED_AT = '2026-09-10T16:00:00.000Z';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
 const PATH = `/v1/tasks/${TASK_ID}/completion`;
 const PERCENT_ENCODED_PATH = PATH.replace('/v1/tasks/4', '/v1/tasks/%34');
+const REQUEST = { method: 'PUT', originalUrl: PATH } as const;
 
 interface CompletionServiceSpy {
   readonly setCompleted: ReturnType<typeof vi.fn>;
@@ -81,6 +82,7 @@ describe.sequential('Planning task completion HTTP boundary', () => {
         headers.signature,
         TASK_ID,
         { completed: true },
+        REQUEST,
       ),
     ).resolves.toEqual({
       workspaceId: WORKSPACE_ID,
@@ -115,6 +117,7 @@ describe.sequential('Planning task completion HTTP boundary', () => {
         headers.signature,
         TASK_ID,
         { completed: false },
+        REQUEST,
       ),
     ).resolves.toMatchObject({ status: 'todo', completedAt: null });
     expect(completionService.setCompleted).toHaveBeenCalledWith(
@@ -144,6 +147,7 @@ describe.sequential('Planning task completion HTTP boundary', () => {
           wrongPathSignature,
           TASK_ID,
           { completed: true },
+          REQUEST,
         ),
       ),
     ).toBe(401);
@@ -192,6 +196,7 @@ describe.sequential('Planning task completion HTTP boundary', () => {
           headers.signature,
           TASK_ID,
           proxy,
+          REQUEST,
         ),
       ),
     ).toBe(400);
@@ -223,6 +228,7 @@ describe.sequential('Planning task completion HTTP boundary', () => {
             headers.signature,
             TASK_ID,
             body,
+            REQUEST,
           ),
         ),
       ).toBe(400);
