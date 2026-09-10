@@ -60,24 +60,28 @@ jobs:
 
           path = Path('apps/planning-service/src/postgres-planning-repository.integration.test.ts')
           text = path.read_text()
-          old_migrations = """    '0005_task_completion_chronology.sql',
-              '0006_validate_task_completion_chronology.sql',
-            ]) {"""
-          new_migrations = """    '0005_task_completion_chronology.sql',
-              '0006_validate_task_completion_chronology.sql',
-              '0007_task_completion_facts.sql',
-            ]) {"""
-          old_truncate = """planning.today_idempotency_records,
-                 planning.today_aggregates,"""
-          new_truncate = """planning.task_completion_facts,
-                 planning.today_idempotency_records,
-                 planning.today_aggregates,"""
-          if text.count(old_migrations) != 1:
-              raise SystemExit('migration-list anchor count is not exactly one')
-          if text.count(old_truncate) != 1:
-              raise SystemExit('truncate anchor count is not exactly one')
-          text = text.replace(old_migrations, new_migrations)
-          text = text.replace(old_truncate, new_truncate)
+          migration = "'0007_task_completion_facts.sql'"
+          predecessor = "'0006_validate_task_completion_chronology.sql'"
+          truncate_anchor = "planning.today_idempotency_records,"
+          truncate_entry = "planning.task_completion_facts,"
+
+          if text.count(predecessor) != 1:
+              raise SystemExit('0006 migration predecessor count is not exactly one')
+          if text.count(migration) != 0:
+              raise SystemExit('0007 migration unexpectedly already present')
+          if text.count(truncate_anchor) != 1:
+              raise SystemExit('Today truncate anchor count is not exactly one')
+          if text.count(truncate_entry) != 0:
+              raise SystemExit('completion-facts truncate entry unexpectedly already present')
+
+          text = text.replace(
+              predecessor,
+              predecessor + ",\n    " + migration,
+          )
+          text = text.replace(
+              truncate_anchor,
+              truncate_entry + "\n         " + truncate_anchor,
+          )
           path.write_text(text)
           PY
 
