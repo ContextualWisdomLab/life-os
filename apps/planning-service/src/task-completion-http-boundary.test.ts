@@ -11,6 +11,7 @@ const TASK_ID = '44444444-4444-4444-8444-444444444444';
 const COMPLETED_AT = '2026-09-10T16:00:00.000Z';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
 const PATH = `/v1/tasks/${TASK_ID}/completion`;
+const PERCENT_ENCODED_PATH = PATH.replace('/v1/tasks/4', '/v1/tasks/%34');
 
 interface CompletionServiceSpy {
   readonly setCompleted: ReturnType<typeof vi.fn>;
@@ -146,6 +147,32 @@ describe.sequential('Planning task completion HTTP boundary', () => {
         ),
       ),
     ).toBe(401);
+    expect(completionService.setCompleted).not.toHaveBeenCalled();
+  });
+
+  it('rejects a percent-encoded raw path alias before completion authority is consumed', async () => {
+    process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+    const headers = signedHeaders(Math.floor(Date.now() / 1000));
+    const completionService: CompletionServiceSpy = {
+      setCompleted: vi.fn().mockResolvedValue({
+        workspaceId: WORKSPACE_ID,
+        taskId: TASK_ID,
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    };
+    const controller = createController(completionService);
+
+    const operation = Reflect.apply(controller.setTaskCompleted, controller, [
+      headers.workspaceId,
+      headers.issuedAt,
+      headers.signature,
+      TASK_ID,
+      { completed: true },
+      { method: 'PUT', originalUrl: PERCENT_ENCODED_PATH },
+    ]) as Promise<unknown>;
+
+    expect(await rejectedStatus(operation)).toBe(401);
     expect(completionService.setCompleted).not.toHaveBeenCalled();
   });
 
