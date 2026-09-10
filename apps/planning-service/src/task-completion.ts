@@ -1,5 +1,7 @@
+/** Matches the UUIDv4 form used by Planning-owned durable identifiers. */
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** Accepts RFC 3339 instants returned by the service-owned timestamptz column. */
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -13,12 +15,13 @@ export interface TaskCompletionEvidence {
   workspaceId: string;
   taskId: string;
   status: 'todo' | 'done';
+  /** Canonical UTC `Date.prototype.toISOString()` form, or null after reopening. */
   completedAt: string | null;
 }
 
 /** Persistence boundary that must mutate status and completion time atomically. */
 export interface TaskCompletionRepository {
-  /** Returns committed evidence, or undefined when the scoped task does not exist. */
+  /** Returns committed canonical evidence, or undefined when the scoped task does not exist. */
   transitionTaskCompletion(
     workspaceId: string,
     taskId: string,
@@ -40,6 +43,7 @@ export interface TaskCompletionSqlClient {
   ): Promise<TaskCompletionSqlQueryResult<Row>>;
 }
 
+/** Untrusted PostgreSQL RETURNING row before producer evidence validation. */
 interface TaskCompletionRow {
   workspace_id: unknown;
   id: unknown;
@@ -147,7 +151,7 @@ export class PostgresTaskCompletionRepository
            completed_at = CASE
              WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
                THEN completed_at
-             WHEN $3 = 'done' THEN $4
+             WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
              ELSE NULL
            END
        WHERE workspace_id = $1 AND id = $2
