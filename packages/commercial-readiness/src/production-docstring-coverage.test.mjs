@@ -125,6 +125,22 @@ test('docstring ownership requires an adjacent JSDoc block', () => {
   );
 });
 
+test('docstring ownership rejects empty and generic filler blocks', () => {
+  const source = `/** */\nfunction emptyDoc() {}\n/** Does something. */\nconst genericDoc = () => true;\n/** Rejects path traversal before filesystem access occurs. */\nfunction substantiveDoc() {}\n`;
+  const evidence = collectDocumentationEvidence('fixture.mjs', source);
+  assert.deepEqual(
+    evidence.map(({ declaration, documented }) => ({
+      declaration,
+      documented,
+    })),
+    [
+      { declaration: 'emptyDoc', documented: false },
+      { declaration: 'genericDoc', documented: false },
+      { declaration: 'substantiveDoc', documented: true },
+    ],
+  );
+});
+
 test('every Commercial Readiness production declaration has explanatory JSDoc', async () => {
   const sourceFiles = await discoverProductionSources(SOURCE_DIRECTORY);
   assert.ok(
