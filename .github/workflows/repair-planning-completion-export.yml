@@ -1,4 +1,4 @@
-name: Repair Planning completion export boundary
+name: Repair Planning completion durable acceptance
 
 on:
   push:
@@ -52,13 +52,151 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
-      - name: Apply purpose-bound export repair
+      - name: Stage durable-acceptance regression and stale fixture repair
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('apps/planning-service/src/planning-data-rights.ts')
+          path = Path('apps/planning-service/src/task-completion.test.ts')
           text = path.read_text()
+          replacements = [
+              (
+                  "    this.calls.push({ text, values });\n    return { rows: this.rows as Row[] };",
+                  "    this.calls.push({ text, values });\n    return {\n      rows: this.rows.map((row) => {\n        if (row === null || typeof row !== 'object' || Array.isArray(row)) {\n          return row as Row;\n        }\n        return {\n          previous_status: 'todo',\n          completion_fact_count: 1,\n          ...(row as Record<string, unknown>),\n        } as Row;\n      }),\n    };",
+              ),
+              (
+                  "        status: 'done',\n        completed_at: FIRST_COMPLETED_AT,\n      },",
+                  "        status: 'done',\n        completed_at: FIRST_COMPLETED_AT,\n        previous_status: 'done',\n        completion_fact_count: 0,\n      },",
+              ),
+              (
+                  "    expect(client.calls[0]?.values).toEqual([\n      WORKSPACE_ID,\n      TASK_ID,\n      'done',\n      COMPLETED_AT,\n    ]);",
+                  "    const boundValues = client.calls[0]?.values;\n    expect(boundValues?.slice(0, 4)).toEqual([\n      WORKSPACE_ID,\n      TASK_ID,\n      'done',\n      COMPLETED_AT,\n    ]);\n    expect(boundValues).toHaveLength(5);\n    expect(boundValues?.[4]).toEqual(\n      expect.stringMatching(\n        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,\n      ),\n    );",
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one test anchor, found {count}: {old[:80]!r}')
+              text = text.replace(old, new)
+
+          anchor = "  it('canonicalizes a valid Date returned by the PostgreSQL driver', async () => {"
+          regression = """  it('fails closed when persistence reports no fact for a new completion', async () => {
+    const repository = new PostgresTaskCompletionRepository(
+      new RecordingSqlClient([
+        {
+          workspace_id: WORKSPACE_ID,
+          id: TASK_ID,
+          status: 'done',
+          completed_at: COMPLETED_AT,
+          previous_status: 'todo',
+          completion_fact_count: 0,
+        },
+      ]),
+    );
+
+    await expect(
+      repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    ).rejects.toBeInstanceOf(TaskCompletionPersistenceError);
+  });
+
+  it.each([
+    ['a completed retry that appends a fact', 'done', FIRST_COMPLETED_AT, 'done', 1],
+    ['a reopen that appends a fact', 'todo', null, 'done', 1],
+    ['an unknown prior state', 'done', COMPLETED_AT, 'archived', 1],
+    ['an invalid completion fact count', 'done', COMPLETED_AT, 'todo', 2],
+  ] as const)(
+    'fails closed on %s',
+    async (_name, status, completedAt, previousStatus, completionFactCount) => {
+      const repository = new PostgresTaskCompletionRepository(
+        new RecordingSqlClient([
+          {
+            workspace_id: WORKSPACE_ID,
+            id: TASK_ID,
+            status,
+            completed_at: completedAt,
+            previous_status: previousStatus,
+            completion_fact_count: completionFactCount,
+          },
+        ]),
+      );
+      const transition: TaskCompletionTransition =
+        status === 'done'
+          ? { status: 'done', completedAt: COMPLETED_AT }
+          : { status: 'todo', completedAt: null };
+
+      await expect(
+        repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, transition),
+      ).rejects.toBeInstanceOf(TaskCompletionPersistenceError);
+    },
+  );
+
+"""
+          count = text.count(anchor)
+          if count != 1:
+              raise SystemExit(f'expected one regression anchor, found {count}')
+          path.write_text(text.replace(anchor, regression + anchor))
+          PY
+          pnpm exec prettier --write apps/planning-service/src/task-completion.test.ts
+
+      - name: Prove durable-acceptance reality RED
+        run: |
+          pnpm --filter @life-os/planning-service exec vitest run \
+            src/task-completion.test.ts \
+            -t "updates status and completed_at atomically inside one tenant-scoped statement" \
+            --no-file-parallelism
+          set +e
+          pnpm --filter @life-os/planning-service exec vitest run \
+            src/task-completion.test.ts \
+            -t "fails closed when persistence reports no fact for a new completion" \
+            --no-file-parallelism
+          red_status="$?"
+          set -e
+          if [ "$red_status" -eq 0 ]; then
+            echo 'expected completion-fact durable acceptance RED did not reproduce' >&2
+            exit 1
+          fi
+
+      - name: Apply minimal durable-acceptance and export repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          completion = Path('apps/planning-service/src/task-completion.ts')
+          text = completion.read_text()
+          replacements = [
+              (
+                  "interface TaskCompletionRow {\n  workspace_id: unknown;\n  id: unknown;\n  status: unknown;\n  completed_at: unknown;\n}",
+                  "interface TaskCompletionRow {\n  workspace_id: unknown;\n  id: unknown;\n  status: unknown;\n  completed_at: unknown;\n  previous_status: unknown;\n  completion_fact_count: unknown;\n}",
+              ),
+              (
+                  "  return parsed.toISOString();\n}\n\n/** Parses one returned row and proves it matches the requested durable state. */",
+                  "  return parsed.toISOString();\n}\n\n/** Requires the prior durable task state needed to interpret fact creation. */\nfunction requirePersistedPreviousStatus(value: unknown): 'todo' | 'done' {\n  if (value !== 'todo' && value !== 'done') {\n    return invalidPersistenceEvidence();\n  }\n  return value;\n}\n\n/** Requires the bounded fact cardinality emitted by the atomic completion statement. */\nfunction requirePersistedCompletionFactCount(value: unknown): 0 | 1 {\n  if (value !== 0 && value !== 1) {\n    return invalidPersistenceEvidence();\n  }\n  return value;\n}\n\n/** Parses one returned row and proves it matches the requested durable state. */",
+              ),
+              (
+                  "  if (workspaceId !== expectedWorkspaceId || taskId !== expectedTaskId) {\n    return invalidPersistenceEvidence();\n  }\n\n  if (row.status === 'todo') {",
+                  "  if (workspaceId !== expectedWorkspaceId || taskId !== expectedTaskId) {\n    return invalidPersistenceEvidence();\n  }\n\n  const previousStatus = requirePersistedPreviousStatus(row.previous_status);\n  const completionFactCount = requirePersistedCompletionFactCount(\n    row.completion_fact_count,\n  );\n  const expectedCompletionFactCount =\n    expectedTransition.status === 'done' && previousStatus === 'todo' ? 1 : 0;\n  if (completionFactCount !== expectedCompletionFactCount) {\n    return invalidPersistenceEvidence();\n  }\n\n  if (row.status === 'todo') {",
+              ),
+              (
+                  "           RETURNING workspace_id, id, status, completed_at, previous.previous_status\n         ),",
+                  "           RETURNING workspace_id, id, status, completed_at,\n                     previous.previous_status AS previous_status\n         ),",
+              ),
+              (
+                  "         SELECT workspace_id,\n                id,\n                status,\n                completed_at,\n                (SELECT count(*) FROM completion_fact) AS completion_fact_count\n         FROM updated`",
+                  "         SELECT workspace_id,\n                id,\n                status,\n                completed_at,\n                previous_status,\n                (SELECT count(*)::integer FROM completion_fact) AS completion_fact_count\n         FROM updated`",
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one completion source anchor, found {count}: {old[:80]!r}')
+              text = text.replace(old, new)
+          completion.write_text(text)
+
+          rights = Path('apps/planning-service/src/planning-data-rights.ts')
+          text = rights.read_text()
           replacements = [
               (
                   "interface PlanningTaskCompletionFactExportRow {\n  completion_sequence: unknown;\n  task_id: unknown;\n  completed_at: unknown;\n}",
@@ -76,9 +214,9 @@ jobs:
           for old, new in replacements:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'expected one source anchor, found {count}: {old[:80]!r}')
+                  raise SystemExit(f'expected one export source anchor, found {count}: {old[:80]!r}')
               text = text.replace(old, new)
-          path.write_text(text)
+          rights.write_text(text)
 
           readme = Path('apps/planning-service/migrations/README.md')
           docs = readme.read_text()
@@ -91,9 +229,15 @@ jobs:
           PY
           pnpm exec prettier --write \
             apps/planning-service/src/task-completion-history.integration.test.ts \
+            apps/planning-service/src/task-completion.test.ts \
             apps/planning-service/src/task-completion.ts \
             apps/planning-service/src/planning-data-rights.ts \
             apps/planning-service/tests/postgres-data-rights.integration.test.ts
+
+      - name: Run completion durable-acceptance unit GREEN
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          src/task-completion.test.ts --no-file-parallelism
 
       - name: Run completion-history PostgreSQL acceptance
         run: >-
@@ -109,6 +253,7 @@ jobs:
         run: >-
           pnpm exec prettier --check
           apps/planning-service/src/task-completion-history.integration.test.ts
+          apps/planning-service/src/task-completion.test.ts
           apps/planning-service/src/task-completion.ts
           apps/planning-service/src/planning-data-rights.ts
           apps/planning-service/tests/postgres-data-rights.integration.test.ts
@@ -127,6 +272,14 @@ jobs:
           rm .github/workflows/repair-planning-completion-export.yml
           rm .github/workflows/verify-planning-completion-fact-review.yml
           git diff --check
+          git diff --quiet -- apps/planning-service/src/task-completion.ts && {
+            echo 'expected durable-acceptance source repair is absent' >&2
+            exit 1
+          }
+          git diff --quiet -- apps/planning-service/src/task-completion.test.ts && {
+            echo 'expected durable-acceptance regression is absent' >&2
+            exit 1
+          }
           git diff --quiet -- apps/planning-service/src/planning-data-rights.ts && {
             echo 'expected Planning export source repair is absent' >&2
             exit 1
@@ -142,6 +295,7 @@ jobs:
               apps/planning-service/migrations/README.md|\
               apps/planning-service/src/planning-data-rights.ts|\
               apps/planning-service/src/task-completion-history.integration.test.ts|\
+              apps/planning-service/src/task-completion.test.ts|\
               apps/planning-service/src/task-completion.ts|\
               apps/planning-service/tests/postgres-data-rights.integration.test.ts)
                 ;;
@@ -161,7 +315,7 @@ jobs:
           git config user.name "LifeOS Hourly Maintainer"
           git config user.email "actions@users.noreply.github.com"
           git add -A
-          git commit -m "fix(planning): keep completion ordering private"
+          git commit -m "fix(planning): verify durable completion fact acceptance"
           test ! -e .github/workflows/repair-planning-completion-export.yml
           test ! -e .github/workflows/verify-planning-completion-fact-review.yml
           git push origin "HEAD:${TARGET_BRANCH}"
