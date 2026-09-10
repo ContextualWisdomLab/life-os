@@ -56,6 +56,28 @@ async function createService(): Promise<HabitService> {
   return service;
 }
 
+class DuplicateHabitEvidenceRepository extends InMemoryHabitRepository {
+  async readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+  ) {
+    const evidence = await super.readReviewWeekEvidence(
+      workspaceId,
+      periodStartDate,
+      periodEndDate,
+      maximumHabits,
+    );
+    const [habit] = evidence.habits;
+    if (!habit) throw new Error('Expected seeded habit');
+    return {
+      habits: [...evidence.habits, habit],
+      completions: evidence.completions,
+    };
+  }
+}
+
 describe('Habit weekly Review projection', () => {
   it('preserves the scheduled-opportunity denominator and tenant boundary', async () => {
     const service = await createService();
@@ -109,6 +131,21 @@ describe('Habit weekly Review projection', () => {
     );
     expect(projection.completedOpportunityCount).toBe(3);
     expect(projection.habits[0]?.completedOpportunityCount).toBe(2);
+  });
+
+  it('rejects duplicate habit identities from persistence evidence', async () => {
+    const repository = new DuplicateHabitEvidenceRepository();
+    const service = new HabitService(repository, () => AS_OF);
+    await service.createHabit(WORKSPACE_ID, {
+      title: 'Read deliberately',
+      timezone: 'Asia/Seoul',
+      startsOn: '2026-09-07',
+      recurrence: { kind: 'daily', interval: 1 },
+    });
+
+    await expect(
+      service.projectReviewWeek(WORKSPACE_ID, '2026-09-07'),
+    ).rejects.toThrowError('Review projection habit evidence is invalid');
   });
 
   it('requires a real Monday review period and rejects unbounded habit collections', async () => {
