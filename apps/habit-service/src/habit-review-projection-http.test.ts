@@ -52,6 +52,9 @@ function legacySignature(issuedAt: string): string {
 function projection(): HabitReviewWeekProjection {
   return {
     schemaVersion: 'life-os.habit-review-projection.v1',
+    producer: 'habit',
+    projectionRevision:
+      'sha256:0000000000000000000000000000000000000000000000000000000000000000',
     periodStartDate: PERIOD_START_DATE,
     periodEndDate: '2026-09-13',
     periodBasis: 'habit-local-date',
