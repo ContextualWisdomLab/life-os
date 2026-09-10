@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -15,6 +16,7 @@ import { HabitController } from './main';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const PERIOD_START_DATE = '2026-09-07';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
+const CONTROLLER_SOURCE = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 
 interface ReviewHttpRequest {
   readonly method?: string;
@@ -150,6 +152,18 @@ describe('Habit Weekly Review HTTP authority', () => {
     for (const invalid of [undefined, '', '2026-02-30', '2026-09-08']) {
       expect(() => requireReviewPeriodStartDate(invalid)).toThrow(HttpException);
     }
+  });
+
+  it('receives the Nest request object before verifying Review authority', () => {
+    expect(CONTROLLER_SOURCE).toContain(
+      '@Req() request: HabitReviewProjectionHttpRequest',
+    );
+    expect(CONTROLLER_SOURCE).toContain(
+      'requireExactReviewProjectionHttpBinding(request)',
+    );
+    expect(CONTROLLER_SOURCE).not.toContain(
+      "{ method: 'GET', path: HABIT_REVIEW_PROJECTION_PATH }",
+    );
   });
 
   it('delegates only when the observed request is the canonical Review GET route', async () => {
