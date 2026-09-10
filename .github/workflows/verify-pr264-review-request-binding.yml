@@ -1,4 +1,4 @@
-name: Verify PR264 Review request binding
+name: Repair PR264 Review request binding
 
 on:
   push:
@@ -6,21 +6,20 @@ on:
       - feat/habit-review-period-projection-v1
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: verify-pr264-review-request-binding-${{ github.ref }}
-  cancel-in-progress: true
+  group: repair-pr264-review-request-binding-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  verify:
+  repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          persist-credentials: false
           ref: ${{ github.sha }}
 
       - name: Set up Node.js
@@ -34,32 +33,19 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check request-bound context formatting
-        run: pnpm exec prettier --check apps/habit-service/src/habit-request-bound-context.ts
-        continue-on-error: true
-        id: context_format
+      - name: Canonicalize bounded Habit source and regression
+        run: >-
+          pnpm exec prettier --write
+          apps/habit-service/src/habit-request-bound-context.ts
+          apps/habit-service/src/habit-review-projection-http.test.ts
+          apps/habit-service/src/main.ts
 
-      - name: Check Review HTTP regression formatting
-        run: pnpm exec prettier --check apps/habit-service/src/habit-review-projection-http.test.ts
-        continue-on-error: true
-        id: test_format
-
-      - name: Check Habit controller formatting
-        run: pnpm exec prettier --check apps/habit-service/src/main.ts
-        continue-on-error: true
-        id: controller_format
-
-      - name: Enforce bounded Habit formatting
-        env:
-          CONTEXT_FORMAT: ${{ steps.context_format.outcome }}
-          TEST_FORMAT: ${{ steps.test_format.outcome }}
-          CONTROLLER_FORMAT: ${{ steps.controller_format.outcome }}
-        run: |
-          set -euo pipefail
-          printf 'context=%s test=%s controller=%s\n' "$CONTEXT_FORMAT" "$TEST_FORMAT" "$CONTROLLER_FORMAT"
-          test "$CONTEXT_FORMAT" = success
-          test "$TEST_FORMAT" = success
-          test "$CONTROLLER_FORMAT" = success
+      - name: Verify bounded Habit formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/habit-service/src/habit-request-bound-context.ts
+          apps/habit-service/src/habit-review-projection-http.test.ts
+          apps/habit-service/src/main.ts
 
       - name: Typecheck Habit service
         run: pnpm --filter @life-os/habit-service typecheck
@@ -76,5 +62,39 @@ jobs:
       - name: Build Habit service
         run: pnpm --filter @life-os/habit-service build
 
-      - name: Verify diff hygiene
-        run: git diff --check HEAD~1 HEAD
+      - name: Retire purpose workflow and verify bounded candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/verify-pr264-review-request-binding.yml
+          git diff --check
+          mapfile -t changed < <(git diff --name-only)
+          allowed='^(apps/habit-service/src/habit-request-bound-context\.ts|apps/habit-service/src/habit-review-projection-http\.test\.ts|apps/habit-service/src/main\.ts|\.github/workflows/verify-pr264-review-request-binding\.yml)$'
+          for path in "${changed[@]}"; do
+            if [[ ! "$path" =~ $allowed ]]; then
+              echo "::error::Unexpected candidate path: $path"
+              exit 1
+            fi
+          done
+          test ! -e .github/workflows/verify-pr264-review-request-binding.yml
+
+      - name: Publish verified ordinary descendant
+        env:
+          TARGET_BRANCH: feat/habit-review-period-projection-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          remote_head="$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")"
+          if [ "$remote_head" != "$GITHUB_SHA" ]; then
+            echo "::error::Remote head moved from input $GITHUB_SHA to $remote_head; refusing to publish."
+            exit 1
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/habit-service/src/habit-request-bound-context.ts \
+            apps/habit-service/src/habit-review-projection-http.test.ts \
+            apps/habit-service/src/main.ts \
+            .github/workflows/verify-pr264-review-request-binding.yml
+          git commit -m "fix(habit): verify observed Review request authority"
+          git push origin "HEAD:${TARGET_BRANCH}"
