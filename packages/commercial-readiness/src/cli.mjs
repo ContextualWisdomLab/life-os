@@ -71,10 +71,12 @@ const FLAG_TO_KEY = Object.freeze({
   '--merge': 'merge',
 });
 
+/** Uses one stable credential-free error for commands outside the fixed Commercial Readiness CLI surface. */
 function invalidCommand() {
   throw new Error('Invalid commercial readiness command');
 }
 
+/** Parses only command-specific flags and bounded values so CLI input cannot smuggle an undeclared execution mode. */
 export function parseArguments(argv) {
   if (!Array.isArray(argv) || argv.length === 0) invalidCommand();
   const command = argv[0];
@@ -107,12 +109,14 @@ export function parseArguments(argv) {
   return { command, options };
 }
 
+/** Fails closed when an execution path is missing a required bounded option rather than relying on downstream defaults. */
 function requireOptions(options, names) {
   for (const name of names) {
     if (typeof options[name] !== 'string' || !options[name]) invalidCommand();
   }
 }
 
+/** Reads only bounded regular JSON files so symlinks and oversized local evidence cannot enter readiness evaluation. */
 export async function readJsonFile(path, maxBytes = 1024 * 1024) {
   const metadata = await lstat(path);
   if (metadata.isSymbolicLink() || !metadata.isFile()) {
@@ -128,6 +132,7 @@ export async function readJsonFile(path, maxBytes = 1024 * 1024) {
   }
 }
 
+/** Reads only bounded regular text files before generated report content is published to GitHub. */
 async function readTextFile(path, maxBytes = 64 * 1024) {
   const metadata = await lstat(path);
   if (metadata.isSymbolicLink() || !metadata.isFile()) {
@@ -138,6 +143,7 @@ async function readTextFile(path, maxBytes = 64 * 1024) {
   return await readFile(path, 'utf8');
 }
 
+/** Publishes local evidence through a mode-0600 temporary file and rename so interrupted writes cannot create partial authority. */
 async function writeAtomic(path, content) {
   const target = resolve(path);
   await mkdir(dirname(target), { recursive: true });
@@ -146,20 +152,24 @@ async function writeAtomic(path, content) {
   await rename(temporary, target);
 }
 
+/** Serializes evidence deterministically with a terminal newline through the atomic writer. */
 async function writeJson(path, value) {
   await writeAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+/** Acquires GitHub authority only from the runtime token boundary rather than from user-controlled CLI arguments. */
 function githubClientFromEnvironment() {
   const token = process.env.GITHUB_TOKEN;
   if (!token) throw new Error('GitHub token is required');
   return new GitHubApiClient({ token });
 }
 
+/** Validates repository policy before any command can use it to interpret checks, evidence, or merge authority. */
 async function loadPolicy(path) {
   return validateCommercialReadinessPolicy(await readJsonFile(path));
 }
 
+/** Collects and validates one read-only repository snapshot bound to the caller-supplied exact commit. */
 async function commandSnapshot(options) {
   requireOptions(options, ['repository', 'policy', 'output', 'commit']);
   const policy = await loadPolicy(options.policy);
@@ -211,6 +221,7 @@ export async function commandWorkflowRegistry(
   }
 }
 
+/** Evaluates capability evidence only after manifest, snapshot, and policy inputs have crossed their validation boundaries. */
 async function commandAudit(options) {
   requireOptions(options, [
     'manifest',
@@ -245,6 +256,7 @@ async function commandAudit(options) {
   );
 }
 
+/** Publishes only a bounded generated readiness body through the canonical issue synchronization path. */
 async function commandPublish(options) {
   requireOptions(options, ['repository', 'policy', 'report']);
   const policy = await loadPolicy(options.policy);
@@ -261,6 +273,7 @@ async function commandPublish(options) {
   console.log(`readiness issue: #${issue.number}`);
 }
 
+/** Restricts merge-capable execution to scheduled or explicit manual runs on the protected default branch. */
 function assertMergeExecutionContext(policy) {
   const event = process.env.GITHUB_EVENT_NAME;
   const ref = process.env.GITHUB_REF;
@@ -274,6 +287,7 @@ function assertMergeExecutionContext(policy) {
   }
 }
 
+/** Re-collects pull-request evidence around each merge decision so an exact head cannot gain authority from stale eligibility. */
 async function commandDrain(options) {
   requireOptions(options, ['repository', 'policy', 'output']);
   const policy = await loadPolicy(options.policy);
@@ -321,6 +335,7 @@ async function commandDrain(options) {
   );
 }
 
+/** Dispatches only the declared Commercial Readiness commands and leaves every unknown command fail closed. */
 async function main(argv = process.argv.slice(2)) {
   const { command, options } = parseArguments(argv);
   if (command === 'snapshot') return await commandSnapshot(options);

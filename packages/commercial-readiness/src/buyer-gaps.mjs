@@ -8,6 +8,7 @@ const MAX_CAPABILITIES_PER_GAP = 25;
 const MAX_LABELS = 50;
 const MAX_LABEL_LENGTH = 100;
 
+/** Restricts policy objects to ordinary record shapes before exact-key validation, excluding arrays and custom prototypes. */
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -16,25 +17,36 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
+/** Rejects unexpected policy fields so remote or stale data cannot silently extend the trusted schema. */
 function exactKeys(value, allowed) {
-  return isPlainObject(value) && Object.keys(value).every((key) => allowed.has(key));
+  return (
+    isPlainObject(value) && Object.keys(value).every((key) => allowed.has(key))
+  );
 }
 
+/** Centralizes stable registry validation errors without echoing untrusted policy values. */
 function failRegistry(detail = '') {
   throw new Error(`Invalid buyer gap registry${detail ? `: ${detail}` : ''}`);
 }
 
+/** Centralizes stable live-snapshot validation errors without leaking raw GitHub response detail. */
 function failSnapshot(detail = '') {
   throw new Error(`Invalid buyer gap snapshot${detail ? `: ${detail}` : ''}`);
 }
 
+/** Normalizes only bounded canonical gap identifiers before they can own issue-state evidence. */
 function normalizeGapId(value) {
-  if (typeof value !== 'string' || !GAP_ID_PATTERN.test(value) || value.length > 100) {
+  if (
+    typeof value !== 'string' ||
+    !GAP_ID_PATTERN.test(value) ||
+    value.length > 100
+  ) {
     failRegistry('invalid gap id');
   }
   return value;
 }
 
+/** Accepts only positive safe-integer issue identities before linking live GitHub state to policy. */
 function normalizeIssueNumber(value, fail = failRegistry) {
   if (!Number.isSafeInteger(value) || value <= 0) {
     fail('invalid issue number');
@@ -42,6 +54,7 @@ function normalizeIssueNumber(value, fail = failRegistry) {
   return value;
 }
 
+/** Builds the allowed capability identity set from a structurally valid manifest before registry links are accepted. */
 function manifestCapabilityIds(manifest) {
   if (!isPlainObject(manifest) || !Array.isArray(manifest.capabilities)) {
     failRegistry('invalid capability manifest');
@@ -76,13 +89,16 @@ export function validateBuyerGapRegistry(value, manifest) {
   const gapIds = new Set();
   const issueNumbers = new Set();
   const gaps = value.gaps.map((entry) => {
-    if (!exactKeys(entry, new Set(['gap_id', 'issue_number', 'capability_ids']))) {
+    if (
+      !exactKeys(entry, new Set(['gap_id', 'issue_number', 'capability_ids']))
+    ) {
       failRegistry('invalid gap entry');
     }
     const gapId = normalizeGapId(entry.gap_id);
     const issueNumber = normalizeIssueNumber(entry.issue_number);
     if (gapIds.has(gapId)) failRegistry('duplicate gap id');
-    if (issueNumbers.has(issueNumber)) failRegistry('duplicate canonical issue');
+    if (issueNumbers.has(issueNumber))
+      failRegistry('duplicate canonical issue');
     gapIds.add(gapId);
     issueNumbers.add(issueNumber);
 
@@ -120,6 +136,7 @@ export function validateBuyerGapRegistry(value, manifest) {
   });
 }
 
+/** Normalizes bounded issue labels and rejects control characters before labels influence resolution policy. */
 function normalizeLabel(value) {
   const label =
     typeof value === 'string'
@@ -138,12 +155,10 @@ function normalizeLabel(value) {
   return label.trim();
 }
 
+/** Projects one issue into the exact bounded state shape used by canonical buyer-gap reconciliation. */
 function normalizeIssueEvidence(value) {
   if (
-    !exactKeys(
-      value,
-      new Set(['number', 'state', 'state_reason', 'labels']),
-    )
+    !exactKeys(value, new Set(['number', 'state', 'state_reason', 'labels']))
   ) {
     failSnapshot('invalid issue evidence');
   }
@@ -205,6 +220,7 @@ export function validateBuyerGapSnapshot(value) {
   });
 }
 
+/** Keeps only bounded well-formed live labels so malformed remote label data cannot create resolution authority. */
 function projectedLabels(rawLabels) {
   if (!Array.isArray(rawLabels) || rawLabels.length > MAX_LABELS) return [];
   const labels = [];
@@ -271,7 +287,10 @@ export async function collectBuyerGapSnapshot(
       }
       issues.push({
         number: gap.issue_number,
-        state: issue?.state === 'open' || issue?.state === 'closed' ? issue.state : 'unknown',
+        state:
+          issue?.state === 'open' || issue?.state === 'closed'
+            ? issue.state
+            : 'unknown',
         state_reason:
           issue?.state_reason === 'completed' ||
           issue?.state_reason === 'not_planned' ||
@@ -298,6 +317,7 @@ export async function collectBuyerGapSnapshot(
   });
 }
 
+/** Recognizes only explicit completed, not-planned, or duplicate evidence as a canonical gap resolution. */
 function resolutionFor(issue) {
   const labels = new Set(issue.labels.map((label) => label.toLowerCase()));
   if (labels.has('duplicate')) return 'duplicate';
@@ -306,6 +326,7 @@ function resolutionFor(issue) {
   return null;
 }
 
+/** Builds the credential-free canonical gap projection shared by unresolved, resolved, and unknown collections. */
 function gapEvidence(gap, state, resolution = null) {
   return {
     gap_id: gap.gap_id,
@@ -352,7 +373,8 @@ export function evaluateBuyerGaps(registry, snapshot) {
   }
 
   const byIssue = (left, right) =>
-    left.issue_number - right.issue_number || left.gap_id.localeCompare(right.gap_id);
+    left.issue_number - right.issue_number ||
+    left.gap_id.localeCompare(right.gap_id);
   unresolved.sort(byIssue);
   resolved.sort(byIssue);
   unknown.sort(byIssue);
@@ -374,7 +396,13 @@ function normalizeAttachedGapEvidence(value, expectedState) {
   if (
     !exactKeys(
       value,
-      new Set(['gap_id', 'issue_number', 'capability_ids', 'state', 'resolution']),
+      new Set([
+        'gap_id',
+        'issue_number',
+        'capability_ids',
+        'state',
+        'resolution',
+      ]),
     ) ||
     typeof value.gap_id !== 'string' ||
     !GAP_ID_PATTERN.test(value.gap_id) ||
@@ -436,7 +464,8 @@ function normalizeBuyerGapEvidence(value) {
     value.unresolved.length > MAX_GAPS ||
     value.resolved.length > MAX_GAPS ||
     value.unknown.length > MAX_GAPS ||
-    value.unresolved.length + value.resolved.length + value.unknown.length > MAX_GAPS
+    value.unresolved.length + value.resolved.length + value.unknown.length >
+      MAX_GAPS
   ) {
     failBuyerGapEvidence();
   }
@@ -483,6 +512,8 @@ export function attachBuyerGapEvidence(report, evidence) {
     },
     buyer_gaps: normalizedEvidence.unresolved.map((item) => ({ ...item })),
     buyer_gap_unknown: normalizedEvidence.unknown.map((item) => ({ ...item })),
-    buyer_gap_resolved: normalizedEvidence.resolved.map((item) => ({ ...item })),
+    buyer_gap_resolved: normalizedEvidence.resolved.map((item) => ({
+      ...item,
+    })),
   };
 }

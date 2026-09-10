@@ -8,6 +8,7 @@ const MAX_API_PAGES = 10;
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
+/** Restricts repository identifiers to owner/name syntax before they are interpolated into GitHub API paths. */
 function assertRepository(repository) {
   if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
     throw new Error('Repository identifier is invalid');
@@ -15,6 +16,7 @@ function assertRepository(repository) {
   return repository;
 }
 
+/** Streams GitHub responses through a hard byte ceiling and cancels overflow before untrusted payloads are fully buffered. */
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
@@ -43,7 +45,9 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(merged);
 }
 
+/** Owns the bounded GitHub transport: fixed HTTPS origin, explicit timeout, response-size ceiling, and credential-bearing headers. */
 export class GitHubApiClient {
+  /** Validates credential, transport, timeout, and byte-limit configuration before any network authority is retained. */
   constructor({
     token,
     fetchImpl = globalThis.fetch,
@@ -75,6 +79,7 @@ export class GitHubApiClient {
     this.maxResponseBytes = maxResponseBytes;
   }
 
+  /** Allows only relative GitHub API paths, disables redirects, bounds response bytes and time, and rejects non-JSON evidence fail closed. */
   async requestJson(path, { method = 'GET', body, headers = {} } = {}) {
     if (
       typeof path !== 'string' ||
@@ -127,6 +132,7 @@ export class GitHubApiClient {
   }
 }
 
+/** Selects only open non-PR issues carrying the exact readiness marker so unrelated issue text cannot become canonical state. */
 export function findReadinessIssues(issues, marker) {
   return (Array.isArray(issues) ? issues : [])
     .filter(
@@ -140,6 +146,7 @@ export function findReadinessIssues(issues, marker) {
     .sort((left, right) => left.number - right.number);
 }
 
+/** Maintains one marker-owned readiness issue and retires only duplicate automation issues after the canonical update succeeds. */
 export async function syncReadinessIssue(
   client,
   repository,
@@ -194,6 +201,7 @@ export async function syncReadinessIssue(
   return canonical;
 }
 
+/** Projects remote reviews to the minimal actor, state, and timestamp evidence used by merge policy. */
 function normalizeReview(review) {
   return {
     actor: String(review?.user?.login ?? ''),
@@ -202,6 +210,7 @@ function normalizeReview(review) {
   };
 }
 
+/** Collects bounded REST array pages completely and fails when shape or page count exceeds the evidence contract. */
 async function collectPaginatedArray(client, path, errorMessage) {
   const values = [];
   const separator = path.includes('?') ? '&' : '?';
@@ -218,6 +227,7 @@ async function collectPaginatedArray(client, path, errorMessage) {
   throw new Error(`${errorMessage} exceeded the page limit`);
 }
 
+/** Collects bounded pull-request workflow history while honoring GitHub total-count evidence instead of assuming one page is complete. */
 async function collectWorkflowRuns(client, repository, headSha) {
   const values = [];
   let expectedTotal = null;
@@ -248,6 +258,7 @@ async function collectWorkflowRuns(client, repository, headSha) {
   throw new Error('GitHub workflow run response exceeded the page limit');
 }
 
+/** Counts unresolved review threads through bounded GraphQL pagination so omitted pages cannot manufacture merge eligibility. */
 async function unresolvedThreadCount(client, repository, number) {
   const [owner, name] = repository.split('/');
   const query = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}`;
@@ -276,6 +287,7 @@ async function unresolvedThreadCount(client, repository, number) {
   return count;
 }
 
+/** Chooses workflow evidence deterministically by run identity, attempt, and update time when duplicate names exist. */
 function runIsNewer(candidate, current) {
   if (candidate.id !== current.id) return candidate.id > current.id;
   if (candidate.run_attempt !== current.run_attempt) {
@@ -286,6 +298,7 @@ function runIsNewer(candidate, current) {
   return candidateTime > currentTime;
 }
 
+/** Reduces workflow history to one newest record per workflow without promoting a stale head to current evidence. */
 function latestWorkflowRuns(runs) {
   const latest = new Map();
   for (const run of Array.isArray(runs) ? runs : []) {
@@ -309,6 +322,7 @@ function latestWorkflowRuns(runs) {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+/** Orders duplicate commit-status evidence by immutable status identity and creation time. */
 function statusIsNewer(candidate, current) {
   if (candidate.id !== current.id) return candidate.id > current.id;
   const candidateTime = Date.parse(candidate.created_at ?? '') || 0;
@@ -316,6 +330,7 @@ function statusIsNewer(candidate, current) {
   return candidateTime > currentTime;
 }
 
+/** Keeps only newest statuses bound to the exact pull-request head before merge policy is evaluated. */
 function latestStatuses(statuses, headSha) {
   const latest = new Map();
   for (const status of Array.isArray(statuses) ? statuses : []) {
@@ -337,6 +352,7 @@ function latestStatuses(statuses, headSha) {
     .sort((left, right) => left.context.localeCompare(right.context));
 }
 
+/** Builds merge evidence from fresh PR detail, reviews, workflows, statuses, threads, and a file-free base/head comparison. */
 async function collectOnePullRequest(client, repository, summary, policy) {
   const number = summary.number;
   const detail = await client.requestJson(
@@ -362,7 +378,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
       client.requestJson(
         `/repos/${repository}/compare/${encodeURIComponent(
           detail.base.sha,
-        )}...${encodeURIComponent(headSha)}`,
+        )}...${encodeURIComponent(headSha)}?per_page=1&page=2`,
       ),
       unresolvedThreadCount(client, repository, number),
     ]);
@@ -390,6 +406,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
   return { ...pull, ...evaluatePullRequestForMerge(pull, policy) };
 }
 
+/** Collects a read-only exact-commit view of open pull requests and issues using bounded GitHub evidence paths. */
 export async function collectRepositorySnapshot(
   client,
   repositoryValue,
@@ -441,6 +458,7 @@ export async function collectRepositorySnapshot(
   };
 }
 
+/** Re-collects candidate state and exact head immediately before each merge so earlier eligibility cannot survive branch movement. */
 export async function mergeEligiblePullRequests({
   repository,
   policy,
@@ -509,6 +527,7 @@ export async function mergeEligiblePullRequests({
   return results;
 }
 
+/** Submits only an exact-head squash merge, binding GitHub execution to the SHA already admitted by policy. */
 export async function mergePullRequestThroughApi(
   client,
   repositoryValue,

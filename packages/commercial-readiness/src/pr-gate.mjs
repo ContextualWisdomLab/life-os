@@ -2,6 +2,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 const SUCCESS = 'success';
 const DECISIVE_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED']);
 
+/** Retains only each actor's latest decisive review so stale approvals cannot override newer requested changes. */
 function latestReviewsByActor(reviews) {
   const latest = new Map();
   for (const review of Array.isArray(reviews) ? reviews : []) {
@@ -21,6 +22,7 @@ function latestReviewsByActor(reviews) {
   return latest;
 }
 
+/** Requires a successful named workflow on the exact current head; missing, stale, or nonterminal evidence remains a blocker. */
 function workflowEvidence(pr, requiredName) {
   const named = (Array.isArray(pr.workflows) ? pr.workflows : []).filter(
     (item) => item?.name === requiredName,
@@ -37,6 +39,7 @@ function workflowEvidence(pr, requiredName) {
     : { blocker: `workflow-not-successful:${requiredName}` };
 }
 
+/** Requires a successful named commit status on the exact current head and rejects stale status authority. */
 function statusEvidence(pr, requiredContext) {
   const named = (Array.isArray(pr.statuses) ? pr.statuses : []).filter(
     (item) => item?.context === requiredContext,
@@ -50,6 +53,7 @@ function statusEvidence(pr, requiredContext) {
     : { blocker: `status-not-successful:${requiredContext}` };
 }
 
+/** Computes fail-closed merge eligibility from repository provenance, base freshness, review threads, reviews, workflows, and statuses. */
 export function evaluatePullRequestForMerge(pr, policy) {
   const blockers = [];
   if (!pr || typeof pr !== 'object') {
