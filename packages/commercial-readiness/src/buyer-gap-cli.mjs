@@ -29,6 +29,7 @@ const FLAG_TO_KEY = Object.freeze({
 });
 const REQUIRED_KEYS = Object.freeze(Object.values(FLAG_TO_KEY));
 
+/** Uses one stable credential-free failure for malformed CLI input instead of reflecting attacker-controlled arguments. */
 function invalidCommand() {
   throw new Error('Invalid buyer gap audit command');
 }
@@ -53,10 +54,12 @@ export function parseBuyerGapArguments(argv) {
     options[key] = value;
     index += 1;
   }
-  if (REQUIRED_KEYS.some((key) => !Object.hasOwn(options, key))) invalidCommand();
+  if (REQUIRED_KEYS.some((key) => !Object.hasOwn(options, key)))
+    invalidCommand();
   return options;
 }
 
+/** Reads only bounded regular JSON files so symlinks and oversized evidence cannot enter the buyer-gap audit boundary. */
 async function readJson(path, maxBytes = 1024 * 1024) {
   const metadata = await lstat(path);
   if (metadata.isSymbolicLink() || !metadata.isFile()) {
@@ -68,11 +71,13 @@ async function readJson(path, maxBytes = 1024 * 1024) {
   try {
     return JSON.parse(await readFile(path, 'utf8'));
   } catch (error) {
-    if (error instanceof SyntaxError) throw new Error('Buyer gap audit JSON was invalid');
+    if (error instanceof SyntaxError)
+      throw new Error('Buyer gap audit JSON was invalid');
     throw error;
   }
 }
 
+/** Publishes generated evidence through a mode-0600 temporary file and rename so readers never observe a partial report. */
 async function writeAtomic(path, content) {
   const target = resolve(path);
   await mkdir(dirname(target), { recursive: true });
@@ -83,12 +88,13 @@ async function writeAtomic(path, content) {
 
 /** Runs the capability audit and canonical buyer-gap reconciliation together. */
 export async function runBuyerGapAudit(options, environment = process.env) {
-  const [manifestValue, registryValue, snapshotValue, policyValue] = await Promise.all([
-    readJson(options.manifest),
-    readJson(options.buyerGaps),
-    readJson(options.snapshot),
-    readJson(options.policy),
-  ]);
+  const [manifestValue, registryValue, snapshotValue, policyValue] =
+    await Promise.all([
+      readJson(options.manifest),
+      readJson(options.buyerGaps),
+      readJson(options.snapshot),
+      readJson(options.policy),
+    ]);
   const manifest = validateCapabilityManifest(manifestValue);
   const registry = validateBuyerGapRegistry(registryValue, manifest);
   const snapshot = validateGitHubSnapshot(snapshotValue);
@@ -122,6 +128,7 @@ export async function runBuyerGapAudit(options, environment = process.env) {
   return report;
 }
 
+/** Binds the fixed CLI surface to one audit execution and emits only aggregate readiness counts. */
 async function main(argv = process.argv.slice(2)) {
   const options = parseBuyerGapArguments(argv);
   const report = await runBuyerGapAudit(options);

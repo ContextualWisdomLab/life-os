@@ -10,6 +10,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- Commercial Readiness now has an AST-backed 100% production-docstring contract covering top-level callable/class declarations and class members, with adjacent substantive JSDoc required across every production `.mjs` module.
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.
 - An authenticated calendar-connection disconnect application and optional hosted HTTP composition boundary that derives workspace and requesting-user authority only from the signed `life-os.calendar-user.v1` context and returns credential-free local revocation evidence.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.

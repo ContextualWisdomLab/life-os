@@ -6,21 +6,29 @@ const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
 const PAGE_SIZE = 100;
 const MAXIMUM_PAGES = 10;
 
+/** Uses stable registry errors so malformed Actions evidence cannot leak raw remote payload detail. */
 function invalid(message) {
   throw new Error(message);
 }
 
+/** Restricts workflow-registry repository identity before it is interpolated into GitHub API paths. */
 function requireRepository(value) {
   if (typeof value !== 'string' || !REPOSITORY_PATTERN.test(value)) {
     return invalid('Workflow registry repository is invalid');
   }
   const [owner, repository] = value.split('/');
-  if (owner === '.' || owner === '..' || repository === '.' || repository === '..') {
+  if (
+    owner === '.' ||
+    owner === '..' ||
+    repository === '.' ||
+    repository === '..'
+  ) {
     return invalid('Workflow registry repository is invalid');
   }
   return value;
 }
 
+/** Requires a full hexadecimal commit identity before workflow evidence can claim exact-head provenance. */
 function requireSha(value) {
   if (typeof value !== 'string' || !SHA_PATTERN.test(value)) {
     return invalid('Workflow registry commit SHA is invalid');
@@ -28,6 +36,7 @@ function requireSha(value) {
   return value.toLowerCase();
 }
 
+/** Requires a canonical ISO timestamp so retained workflow evidence has unambiguous temporal provenance. */
 function requireGeneratedAt(value) {
   if (typeof value !== 'string') {
     return invalid('Workflow registry timestamp is invalid');
@@ -39,6 +48,7 @@ function requireGeneratedAt(value) {
   return value;
 }
 
+/** Rejects traversal, escapes, controls, and malformed repository workflow paths before path identity becomes authority. */
 function requireWorkflowPath(value) {
   if (
     typeof value !== 'string' ||
@@ -49,12 +59,16 @@ function requireWorkflowPath(value) {
   ) {
     return invalid('Workflow registry path is invalid');
   }
-  if (value.startsWith('.github/') && !REPOSITORY_WORKFLOW_PATH_PATTERN.test(value)) {
+  if (
+    value.startsWith('.github/') &&
+    !REPOSITORY_WORKFLOW_PATH_PATTERN.test(value)
+  ) {
     return invalid('Workflow registry path is invalid');
   }
   return value;
 }
 
+/** Normalizes only bounded Actions workflow identity records before classifying repository ownership. */
 function requireWorkflowRecord(value) {
   if (
     !value ||
@@ -78,6 +92,7 @@ function requireWorkflowRecord(value) {
   });
 }
 
+/** Orders workflow identity evidence deterministically so snapshot output remains reproducible. */
 function sortById(values) {
   return values.sort((left, right) => left.id - right.id);
 }
@@ -97,7 +112,8 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
 
   const presentPaths = new Set();
   for (const value of treePaths) {
-    if (typeof value !== 'string') return invalid('Workflow registry path is invalid');
+    if (typeof value !== 'string')
+      return invalid('Workflow registry path is invalid');
     if (!value.startsWith('.github/workflows/')) continue;
     const path = requireWorkflowPath(value);
     if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(path)) presentPaths.add(path);
@@ -139,6 +155,7 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
   });
 }
 
+/** Collects the complete bounded Actions workflow registry and fails if total-count evidence changes or pagination truncates. */
 async function collectWorkflowRegistry(client, repository) {
   const workflows = [];
   let expectedTotal = null;
@@ -193,11 +210,13 @@ function workflowPathsFromTree(payload) {
   }
   const paths = [];
   for (const entry of payload.tree) {
-    if (!entry || entry.type !== 'blob' || typeof entry.path !== 'string') continue;
+    if (!entry || entry.type !== 'blob' || typeof entry.path !== 'string')
+      continue;
     if (entry.path.startsWith('.github/workflows/')) {
       requireWorkflowPath(entry.path);
     }
-    if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path)) paths.push(entry.path);
+    if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path))
+      paths.push(entry.path);
   }
   return paths;
 }
@@ -263,7 +282,11 @@ export async function collectWorkflowRegistrySnapshot(
     return invalid('GitHub default branch is invalid');
   }
 
-  const initialHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const initialHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (initialHead !== expected) {
     return invalid('Protected default branch moved before workflow inventory');
   }
@@ -275,7 +298,11 @@ export async function collectWorkflowRegistrySnapshot(
   const treePaths = workflowPathsFromTree(treePayload);
   const registry = await collectWorkflowRegistry(client, repository);
 
-  const finalHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const finalHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (finalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
   }

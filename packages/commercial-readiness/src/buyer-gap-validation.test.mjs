@@ -167,7 +167,9 @@ describe('attachBuyerGapEvidence', () => {
         attachBuyerGapEvidence(readinessReport(), {
           unresolved: [],
           resolved: [],
-          unknown: [{ ...validItem, state: 'unknown', resolution: 'completed' }],
+          unknown: [
+            { ...validItem, state: 'unknown', resolution: 'completed' },
+          ],
         }),
       /Buyer gap evidence is invalid/,
     );
