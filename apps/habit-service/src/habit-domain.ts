@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -50,6 +50,42 @@ export interface HabitTodayStatus {
   completionId?: string;
 }
 
+/** Per-habit numerator and denominator retained for Weekly Review evidence. */
+export interface HabitReviewProjectionEntry {
+  habitId: string;
+  title: string;
+  timezone: string;
+  scheduledOpportunityCount: number;
+  completedOpportunityCount: number;
+}
+
+/** Versioned Habit-owned projection for one Monday-to-Sunday Review period. */
+export interface HabitReviewWeekProjection {
+  schemaVersion: 'life-os.habit-review-projection.v1';
+  producer: 'habit';
+  projectionRevision: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  periodBasis: 'habit-local-date';
+  asOf: string;
+  scheduledOpportunityCount: number;
+  completedOpportunityCount: number;
+  habits: readonly HabitReviewProjectionEntry[];
+}
+
+/** Minimal durable completion identity needed to calculate a Review numerator. */
+export interface HabitReviewCompletionEvidence {
+  workspaceId: string;
+  habitId: string;
+  scheduledLocalDate: string;
+}
+
+/** Bounded Habit-owned persistence evidence for exactly one Review week. */
+export interface HabitReviewWeekEvidence {
+  habits: readonly Habit[];
+  completions: readonly HabitReviewCompletionEvidence[];
+}
+
 export interface HabitRepository {
   saveHabit(habit: Habit): Promise<void>;
   findHabit(workspaceId: string, habitId: string): Promise<Habit | undefined>;
@@ -61,6 +97,17 @@ export interface HabitRepository {
     workspaceId: string,
     habitId: string,
   ): Promise<HabitCompletionEvent[]>;
+  /**
+   * Reads exactly one Monday-through-Sunday period with a 1..100 habit ceiling,
+   * returning at most one overflow habit so callers can fail closed on cardinality.
+   */
+  readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+    asOf: string,
+  ): Promise<HabitReviewWeekEvidence>;
 }
 
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -69,6 +116,8 @@ const RFC_3339_TIMESTAMP_PATTERN =
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAXIMUM_OCCURRENCE_RANGE_DAYS = 366;
+const MAXIMUM_REVIEW_PROJECTION_HABITS = 100;
+const REVIEW_WEEK_DAYS = 7;
 const MILLISECONDS_PER_DAY = 86_400_000;
 
 interface ParsedLocalDate {
@@ -213,6 +262,11 @@ function cloneCompletion(
   return { ...completion };
 }
 
+/** Orders projection text by code units so content fingerprints never depend on host locale or ICU data. */
+function compareCanonicalText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function entityLookupKey(workspaceId: string, entityId: string): string {
   return JSON.stringify([workspaceId, entityId]);
 }
@@ -299,6 +353,67 @@ export class InMemoryHabitRepository implements HabitRepository {
       .map(cloneHabit);
   }
 
+  /** Mirrors the bounded weekly evidence contract without exposing completion history. */
+  async readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+    asOf: string,
+  ): Promise<HabitReviewWeekEvidence> {
+    const safeAsOf = requireTimestamp(asOf);
+    const periodStart = parseLocalDate(periodStartDate);
+    const periodEnd = parseLocalDate(periodEndDate);
+    const periodSpan = periodEnd.epochDay - periodStart.epochDay;
+    if (
+      periodStart.isoWeekday !== 1 ||
+      periodSpan !== REVIEW_WEEK_DAYS - 1 ||
+      !Number.isSafeInteger(maximumHabits) ||
+      maximumHabits < 1 ||
+      maximumHabits > MAXIMUM_REVIEW_PROJECTION_HABITS
+    ) {
+      throw new Error('Review evidence request is invalid');
+    }
+    const habits = (await this.listHabits(workspaceId))
+      .filter((habit) => requireTimestamp(habit.createdAt) <= safeAsOf)
+      .slice(0, maximumHabits + 1);
+    if (habits.length > maximumHabits) {
+      return { habits, completions: [] };
+    }
+    const habitIds = new Set(habits.map((habit) => habit.id));
+    const completions = new Map<string, HabitReviewCompletionEvidence>();
+    for (const completion of this.completions.values()) {
+      if (
+        completion.workspaceId !== workspaceId ||
+        !habitIds.has(completion.habitId) ||
+        requireTimestamp(completion.recordedAt) > safeAsOf ||
+        completion.scheduledLocalDate < periodStart.text ||
+        completion.scheduledLocalDate > periodEnd.text
+      ) {
+        continue;
+      }
+      const key = entityLookupKey(
+        completion.habitId,
+        completion.scheduledLocalDate,
+      );
+      if (!completions.has(key)) {
+        completions.set(key, {
+          workspaceId,
+          habitId: completion.habitId,
+          scheduledLocalDate: completion.scheduledLocalDate,
+        });
+      }
+    }
+    return {
+      habits,
+      completions: [...completions.values()].sort(
+        (left, right) =>
+          left.habitId.localeCompare(right.habitId) ||
+          left.scheduledLocalDate.localeCompare(right.scheduledLocalDate),
+      ),
+    };
+  }
+
   async appendCompletion(
     completion: HabitCompletionEvent,
   ): Promise<HabitCompletionEvent> {
@@ -350,7 +465,11 @@ export class InMemoryHabitRepository implements HabitRepository {
 }
 
 export class HabitService {
-  constructor(private readonly repository: HabitRepository) {}
+  constructor(
+    private readonly repository: HabitRepository,
+    private readonly projectionClock: () => string = () =>
+      new Date().toISOString(),
+  ) {}
 
   async createHabit(
     workspaceId: string,
@@ -420,6 +539,120 @@ export class HabitService {
       );
     }
     return today;
+  }
+
+  /**
+   * Projects one bounded Monday-to-Sunday Review period from Habit-owned recurrence
+   * and completion truth without converting completion counts into a universal score.
+   */
+  async projectReviewWeek(
+    workspaceId: string,
+    periodStartDate: string,
+  ): Promise<HabitReviewWeekProjection> {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const periodStart = parseLocalDate(periodStartDate);
+    if (periodStart.isoWeekday !== 1) {
+      throw new Error('Review period must start on Monday');
+    }
+    const periodEndDate = localDateFromEpochDay(
+      periodStart.epochDay + REVIEW_WEEK_DAYS - 1,
+    ).text;
+    const asOf = requireTimestamp(this.projectionClock());
+    const evidence = await this.repository.readReviewWeekEvidence(
+      safeWorkspaceId,
+      periodStart.text,
+      periodEndDate,
+      MAXIMUM_REVIEW_PROJECTION_HABITS,
+      asOf,
+    );
+    const habits = [...evidence.habits];
+    if (habits.length > MAXIMUM_REVIEW_PROJECTION_HABITS) {
+      throw new Error('Review projection exceeds habit limit');
+    }
+    const habitIds = new Set(habits.map((habit) => habit.id));
+    if (habitIds.size !== habits.length) {
+      throw new Error('Review projection habit evidence is invalid');
+    }
+    const completionDatesByHabit = new Map<string, Set<string>>();
+    for (const completion of evidence.completions) {
+      if (
+        completion.workspaceId !== safeWorkspaceId ||
+        !habitIds.has(completion.habitId) ||
+        completion.scheduledLocalDate < periodStart.text ||
+        completion.scheduledLocalDate > periodEndDate
+      ) {
+        throw new Error('Review projection completion evidence is invalid');
+      }
+      const completedDates =
+        completionDatesByHabit.get(completion.habitId) ?? new Set<string>();
+      completedDates.add(completion.scheduledLocalDate);
+      completionDatesByHabit.set(completion.habitId, completedDates);
+    }
+
+    const entries: HabitReviewProjectionEntry[] = [];
+    for (const habit of habits) {
+      if (habit.workspaceId !== safeWorkspaceId) {
+        throw new Error('Review projection ownership is invalid');
+      }
+      const scheduledDates = new Set(
+        generateHabitOccurrences(habit, periodStart.text, periodEndDate).map(
+          (occurrence) => occurrence.scheduledLocalDate,
+        ),
+      );
+      const completedDates =
+        completionDatesByHabit.get(habit.id) ?? new Set<string>();
+      for (const completedDate of completedDates) {
+        if (!scheduledDates.has(completedDate)) {
+          throw new Error('Review projection completion evidence is invalid');
+        }
+      }
+      entries.push({
+        habitId: habit.id,
+        title: habit.title,
+        timezone: habit.timezone,
+        scheduledOpportunityCount: scheduledDates.size,
+        completedOpportunityCount: completedDates.size,
+      });
+    }
+    entries.sort(
+      (left, right) =>
+        compareCanonicalText(left.title, right.title) ||
+        compareCanonicalText(left.habitId, right.habitId),
+    );
+
+    const scheduledOpportunityCount = entries.reduce(
+      (sum, entry) => sum + entry.scheduledOpportunityCount,
+      0,
+    );
+    const completedOpportunityCount = entries.reduce(
+      (sum, entry) => sum + entry.completedOpportunityCount,
+      0,
+    );
+    const producer = 'habit' as const;
+    const periodBasis = 'habit-local-date' as const;
+    const normalizedProjection = {
+      schemaVersion: 'life-os.habit-review-projection.v1' as const,
+      producer,
+      periodStartDate: periodStart.text,
+      periodEndDate,
+      periodBasis,
+      scheduledOpportunityCount,
+      completedOpportunityCount,
+      habits: entries,
+    };
+    // `asOf` is freshness metadata; excluding it keeps the revision stable when semantic evidence is unchanged.
+    const projectionRevision = `sha256:${createHash('sha256')
+      .update(JSON.stringify(normalizedProjection), 'utf8')
+      .digest('hex')}`;
+
+    return Object.freeze({
+      ...normalizedProjection,
+      projectionRevision,
+      asOf,
+      habits: Object.freeze(
+        entries.map((entry) => Object.freeze({ ...entry })),
+      ),
+    });
   }
 
   async listOccurrences(
