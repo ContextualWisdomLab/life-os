@@ -1,0 +1,579 @@
+name: Repair PR264 bounded Habit Review read
+
+on:
+  push:
+    branches:
+      - feat/habit-review-period-projection-v1
+    paths:
+      - .github/workflows/repair-pr264-bounded-review-read.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr264-bounded-review-read
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact repair input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Enable repository pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.0 --activate
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Add bounded persistence regression
+        run: |
+          cat > apps/habit-service/src/habit-review-projection-postgres.test.ts <<'EOF'
+          import { describe, expect, it } from 'vitest';
+          import type {
+            HabitSqlClient,
+            HabitSqlQueryResult,
+          } from './postgres-habit-repository';
+          import { PostgresHabitRepository } from './postgres-habit-repository';
+
+          const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
+          const HABIT_ID = '22222222-2222-4222-8222-222222222222';
+
+          interface QueryCall {
+            text: string;
+            values: readonly unknown[];
+          }
+
+          class RecordingSqlClient implements HabitSqlClient {
+            readonly calls: QueryCall[] = [];
+
+            constructor(private readonly rows: readonly Record<string, unknown>[]) {}
+
+            async query<Row>(
+              text: string,
+              values: readonly unknown[],
+            ): Promise<HabitSqlQueryResult<Row>> {
+              this.calls.push({ text, values });
+              return { rows: [...this.rows] as Row[] };
+            }
+          }
+
+          describe('Habit Weekly Review PostgreSQL read model', () => {
+            it('reads a seven-day projection in one bounded tenant-scoped statement', async () => {
+              const client = new RecordingSqlClient([
+                {
+                  id: HABIT_ID,
+                  workspace_id: WORKSPACE_ID,
+                  title: 'Read deliberately',
+                  timezone_name: 'Asia/Seoul',
+                  recurrence_kind: 'daily',
+                  recurrence_interval: 1,
+                  weekday_mask: 0,
+                  starts_on: '2026-09-07',
+                  created_at: new Date('2026-09-01T00:00:00.000Z'),
+                  completion_workspace_id: WORKSPACE_ID,
+                  completion_habit_id: HABIT_ID,
+                  completion_scheduled_local_date: '2026-09-07',
+                },
+              ]);
+              const repository = new PostgresHabitRepository(client);
+
+              const evidence = await repository.readReviewWeekEvidence(
+                WORKSPACE_ID,
+                '2026-09-07',
+                '2026-09-13',
+                100,
+              );
+
+              expect(client.calls).toHaveLength(1);
+              expect(client.calls[0]?.values).toEqual([
+                WORKSPACE_ID,
+                '2026-09-07',
+                '2026-09-13',
+                101,
+              ]);
+              expect(client.calls[0]?.text).toContain('LIMIT $4');
+              expect(client.calls[0]?.text).toContain(
+                'scheduled_local_date BETWEEN $2::date AND $3::date',
+              );
+              expect(client.calls[0]?.text).toContain(
+                'DISTINCT ON (scheduled_local_date)',
+              );
+              expect(evidence.habits).toHaveLength(1);
+              expect(evidence.completions).toEqual([
+                {
+                  workspaceId: WORKSPACE_ID,
+                  habitId: HABIT_ID,
+                  scheduledLocalDate: '2026-09-07',
+                },
+              ]);
+            });
+
+            it('fails closed when the repository is asked for anything except one review week', async () => {
+              const repository = new PostgresHabitRepository(
+                new RecordingSqlClient([]),
+              );
+
+              await expect(
+                repository.readReviewWeekEvidence(
+                  WORKSPACE_ID,
+                  '2026-09-07',
+                  '2026-09-14',
+                  100,
+                ),
+              ).rejects.toThrowError('Habit persistence operation failed');
+            });
+          });
+          EOF
+          pnpm exec prettier --single-quote --write apps/habit-service/src/habit-review-projection-postgres.test.ts
+          git config user.name 'LifeOS hourly maintainer'
+          git config user.email 'lifeos-hourly-maintainer@users.noreply.github.com'
+          git add apps/habit-service/src/habit-review-projection-postgres.test.ts
+          git commit -m 'test(habit): require bounded Review persistence read'
+
+      - name: Prove current persistence path RED
+        run: |
+          set +e
+          pnpm --filter @life-os/habit-service test -- habit-review-projection-postgres.test.ts > /tmp/pr264-red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/pr264-red.log
+          if [ "$status" -eq 0 ]; then
+            echo '::error::Expected bounded Review persistence regression to fail before production repair.'
+            exit 1
+          fi
+          grep -q 'readReviewWeekEvidence' /tmp/pr264-red.log
+
+      - name: Apply Habit-owned bounded read-model repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          domain_path = Path('apps/habit-service/src/habit-domain.ts')
+          domain = domain_path.read_text()
+
+          old = """export interface HabitReviewWeekProjection {
+            schemaVersion: 'life-os.habit-review-projection.v1';
+            periodStartDate: string;
+            periodEndDate: string;
+            periodBasis: 'habit-local-date';
+            asOf: string;
+            scheduledOpportunityCount: number;
+            completedOpportunityCount: number;
+            habits: readonly HabitReviewProjectionEntry[];
+          }
+
+          export interface HabitRepository {
+          """
+          new = """export interface HabitReviewWeekProjection {
+            schemaVersion: 'life-os.habit-review-projection.v1';
+            periodStartDate: string;
+            periodEndDate: string;
+            periodBasis: 'habit-local-date';
+            asOf: string;
+            scheduledOpportunityCount: number;
+            completedOpportunityCount: number;
+            habits: readonly HabitReviewProjectionEntry[];
+          }
+
+          /** Minimal durable completion identity needed to calculate a Review numerator. */
+          export interface HabitReviewCompletionEvidence {
+            workspaceId: string;
+            habitId: string;
+            scheduledLocalDate: string;
+          }
+
+          /** Bounded Habit-owned persistence evidence for exactly one Review week. */
+          export interface HabitReviewWeekEvidence {
+            habits: readonly Habit[];
+            completions: readonly HabitReviewCompletionEvidence[];
+          }
+
+          export interface HabitRepository {
+          """
+          if old not in domain:
+              raise SystemExit('domain interface anchor changed')
+          domain = domain.replace(old, new, 1)
+
+          old = """  listCompletions(
+            workspaceId: string,
+            habitId: string,
+          ): Promise<HabitCompletionEvent[]>;
+          }
+          """
+          new = """  listCompletions(
+            workspaceId: string,
+            habitId: string,
+          ): Promise<HabitCompletionEvent[]>;
+            readReviewWeekEvidence(
+              workspaceId: string,
+              periodStartDate: string,
+              periodEndDate: string,
+              maximumHabits: number,
+            ): Promise<HabitReviewWeekEvidence>;
+          }
+          """
+          if old not in domain:
+              raise SystemExit('repository interface anchor changed')
+          domain = domain.replace(old, new, 1)
+
+          old = """  async appendCompletion(
+            completion: HabitCompletionEvent,
+          ): Promise<HabitCompletionEvent> {
+          """
+          new = """  async readReviewWeekEvidence(
+            workspaceId: string,
+            periodStartDate: string,
+            periodEndDate: string,
+            maximumHabits: number,
+          ): Promise<HabitReviewWeekEvidence> {
+            const habits = (await this.listHabits(workspaceId)).slice(
+              0,
+              maximumHabits + 1,
+            );
+            if (habits.length > maximumHabits) {
+              return { habits, completions: [] };
+            }
+            const habitIds = new Set(habits.map((habit) => habit.id));
+            const completions = new Map<string, HabitReviewCompletionEvidence>();
+            for (const completion of this.completions.values()) {
+              if (
+                completion.workspaceId !== workspaceId ||
+                !habitIds.has(completion.habitId) ||
+                completion.scheduledLocalDate < periodStartDate ||
+                completion.scheduledLocalDate > periodEndDate
+              ) {
+                continue;
+              }
+              const key = entityLookupKey(
+                completion.habitId,
+                completion.scheduledLocalDate,
+              );
+              if (!completions.has(key)) {
+                completions.set(key, {
+                  workspaceId,
+                  habitId: completion.habitId,
+                  scheduledLocalDate: completion.scheduledLocalDate,
+                });
+              }
+            }
+            return {
+              habits,
+              completions: [...completions.values()].sort(
+                (left, right) =>
+                  left.habitId.localeCompare(right.habitId) ||
+                  left.scheduledLocalDate.localeCompare(right.scheduledLocalDate),
+              ),
+            };
+          }
+
+          async appendCompletion(
+            completion: HabitCompletionEvent,
+          ): Promise<HabitCompletionEvent> {
+          """
+          if old not in domain:
+              raise SystemExit('in-memory repository anchor changed')
+          domain = domain.replace(old, new, 1)
+
+          old = """    const habits = await this.repository.listHabits(safeWorkspaceId);
+            if (habits.length > MAXIMUM_REVIEW_PROJECTION_HABITS) {
+              throw new Error('Review projection exceeds habit limit');
+            }
+
+            const entries: HabitReviewProjectionEntry[] = [];
+            for (const habit of habits) {
+              if (habit.workspaceId !== safeWorkspaceId) {
+                throw new Error('Review projection ownership is invalid');
+              }
+              const scheduledDates = new Set(
+                generateHabitOccurrences(habit, periodStart.text, periodEndDate).map(
+                  (occurrence) => occurrence.scheduledLocalDate,
+                ),
+              );
+              const completedDates = new Set<string>();
+              const completions = await this.repository.listCompletions(
+                safeWorkspaceId,
+                habit.id,
+              );
+              for (const completion of completions) {
+                if (
+                  completion.workspaceId !== safeWorkspaceId ||
+                  completion.habitId !== habit.id
+                ) {
+                  throw new Error('Review projection ownership is invalid');
+                }
+                if (scheduledDates.has(completion.scheduledLocalDate)) {
+                  completedDates.add(completion.scheduledLocalDate);
+                }
+              }
+              entries.push({
+          """
+          new = """    const evidence = await this.repository.readReviewWeekEvidence(
+              safeWorkspaceId,
+              periodStart.text,
+              periodEndDate,
+              MAXIMUM_REVIEW_PROJECTION_HABITS,
+            );
+            const habits = [...evidence.habits];
+            if (habits.length > MAXIMUM_REVIEW_PROJECTION_HABITS) {
+              throw new Error('Review projection exceeds habit limit');
+            }
+            const habitIds = new Set(habits.map((habit) => habit.id));
+            const completionDatesByHabit = new Map<string, Set<string>>();
+            for (const completion of evidence.completions) {
+              if (
+                completion.workspaceId !== safeWorkspaceId ||
+                !habitIds.has(completion.habitId) ||
+                completion.scheduledLocalDate < periodStart.text ||
+                completion.scheduledLocalDate > periodEndDate
+              ) {
+                throw new Error('Review projection completion evidence is invalid');
+              }
+              const completedDates =
+                completionDatesByHabit.get(completion.habitId) ?? new Set<string>();
+              completedDates.add(completion.scheduledLocalDate);
+              completionDatesByHabit.set(completion.habitId, completedDates);
+            }
+
+            const entries: HabitReviewProjectionEntry[] = [];
+            for (const habit of habits) {
+              if (habit.workspaceId !== safeWorkspaceId) {
+                throw new Error('Review projection ownership is invalid');
+              }
+              const scheduledDates = new Set(
+                generateHabitOccurrences(habit, periodStart.text, periodEndDate).map(
+                  (occurrence) => occurrence.scheduledLocalDate,
+                ),
+              );
+              const completedDates = completionDatesByHabit.get(habit.id) ?? new Set();
+              for (const completedDate of completedDates) {
+                if (!scheduledDates.has(completedDate)) {
+                  throw new Error('Review projection completion evidence is invalid');
+                }
+              }
+              entries.push({
+          """
+          if old not in domain:
+              raise SystemExit('projectReviewWeek anchor changed')
+          domain = domain.replace(old, new, 1)
+          domain_path.write_text(domain)
+
+          postgres_path = Path('apps/habit-service/src/postgres-habit-repository.ts')
+          postgres = postgres_path.read_text()
+          old = """  HabitCompletionEvent,
+            HabitRecurrence,
+            HabitRepository,
+            IsoWeekday,
+          """
+          new = """  HabitCompletionEvent,
+            HabitRecurrence,
+            HabitRepository,
+            HabitReviewCompletionEvidence,
+            HabitReviewWeekEvidence,
+            IsoWeekday,
+          """
+          if old not in postgres:
+              raise SystemExit('postgres import anchor changed')
+          postgres = postgres.replace(old, new, 1)
+
+          old = """interface CompletionRow {
+            id: unknown;
+            workspace_id: unknown;
+            habit_id: unknown;
+            scheduled_local_date: unknown;
+            completed_at: unknown;
+            idempotency_key: unknown;
+            recorded_at: unknown;
+          }
+
+          interface PostgreSqlErrorShape {
+          """
+          new = """interface CompletionRow {
+            id: unknown;
+            workspace_id: unknown;
+            habit_id: unknown;
+            scheduled_local_date: unknown;
+            completed_at: unknown;
+            idempotency_key: unknown;
+            recorded_at: unknown;
+          }
+
+          interface ReviewProjectionRow extends HabitRow {
+            completion_workspace_id: unknown;
+            completion_habit_id: unknown;
+            completion_scheduled_local_date: unknown;
+          }
+
+          interface PostgreSqlErrorShape {
+          """
+          if old not in postgres:
+              raise SystemExit('postgres row anchor changed')
+          postgres = postgres.replace(old, new, 1)
+
+          old = """  async appendCompletion(
+            completion: HabitCompletionEvent,
+          ): Promise<HabitCompletionEvent> {
+          """
+          new = """  async readReviewWeekEvidence(
+            workspaceId: string,
+            periodStartDate: string,
+            periodEndDate: string,
+            maximumHabits: number,
+          ): Promise<HabitReviewWeekEvidence> {
+            const safeWorkspaceId = requireUuidV4(workspaceId);
+            const safePeriodStartDate = requireLocalDate(periodStartDate);
+            const safePeriodEndDate = requireLocalDate(periodEndDate);
+            const daySpan =
+              (Date.parse(`${safePeriodEndDate}T00:00:00.000Z`) -
+                Date.parse(`${safePeriodStartDate}T00:00:00.000Z`)) /
+              86_400_000;
+            const safeMaximumHabits = requireInteger(maximumHabits, 1, 100);
+            if (daySpan !== 6) {
+              return invalidRow();
+            }
+            const queryLimit = safeMaximumHabits + 1;
+            const result = await this.query<ReviewProjectionRow>(
+              `WITH bounded_habits AS (
+                 SELECT id, workspace_id, title, timezone_name, recurrence_kind,
+                        recurrence_interval, weekday_mask, starts_on, created_at
+                 FROM habit.habit_definitions
+                 WHERE workspace_id = $1
+                 ORDER BY created_at ASC, id ASC
+                 LIMIT $4
+               )
+               SELECT h.id, h.workspace_id, h.title, h.timezone_name,
+                      h.recurrence_kind, h.recurrence_interval, h.weekday_mask,
+                      h.starts_on, h.created_at,
+                      completion.workspace_id AS completion_workspace_id,
+                      completion.habit_id AS completion_habit_id,
+                      completion.scheduled_local_date AS completion_scheduled_local_date
+               FROM bounded_habits AS h
+               LEFT JOIN LATERAL (
+                 SELECT DISTINCT ON (scheduled_local_date)
+                        workspace_id, habit_id, scheduled_local_date
+                 FROM habit.completion_events
+                 WHERE workspace_id = h.workspace_id
+                   AND habit_id = h.id
+                   AND scheduled_local_date BETWEEN $2::date AND $3::date
+                 ORDER BY scheduled_local_date ASC, recorded_at ASC, id ASC
+               ) AS completion ON TRUE
+               ORDER BY h.created_at ASC, h.id ASC,
+                        completion.scheduled_local_date ASC`,
+              [
+                safeWorkspaceId,
+                safePeriodStartDate,
+                safePeriodEndDate,
+                queryLimit,
+              ],
+            );
+            if (result.rows.length > queryLimit * 7) {
+              return invalidRow();
+            }
+
+            const habitsById = new Map<string, Habit>();
+            const completions: HabitReviewCompletionEvidence[] = [];
+            for (const row of result.rows) {
+              const habit = parseHabit(row, safeWorkspaceId);
+              const existing = habitsById.get(habit.id);
+              if (existing && JSON.stringify(existing) !== JSON.stringify(habit)) {
+                return invalidRow();
+              }
+              habitsById.set(habit.id, habit);
+
+              const completionFields = [
+                row.completion_workspace_id,
+                row.completion_habit_id,
+                row.completion_scheduled_local_date,
+              ];
+              if (completionFields.every((value) => value === null)) {
+                continue;
+              }
+              if (completionFields.some((value) => value === null)) {
+                return invalidRow();
+              }
+              const completionWorkspaceId = requireUuidV4(
+                row.completion_workspace_id,
+              );
+              const completionHabitId = requireUuidV4(row.completion_habit_id);
+              const scheduledLocalDate = requireLocalDate(
+                row.completion_scheduled_local_date,
+              );
+              requireExpected(completionWorkspaceId, safeWorkspaceId);
+              requireExpected(completionHabitId, habit.id);
+              if (
+                scheduledLocalDate < safePeriodStartDate ||
+                scheduledLocalDate > safePeriodEndDate
+              ) {
+                return invalidRow();
+              }
+              completions.push({
+                workspaceId: completionWorkspaceId,
+                habitId: completionHabitId,
+                scheduledLocalDate,
+              });
+            }
+            return { habits: [...habitsById.values()], completions };
+          }
+
+          async appendCompletion(
+            completion: HabitCompletionEvent,
+          ): Promise<HabitCompletionEvent> {
+          """
+          if old not in postgres:
+              raise SystemExit('postgres method anchor changed')
+          postgres = postgres.replace(old, new, 1)
+          postgres_path.write_text(postgres)
+          PY
+          pnpm exec prettier --single-quote --write \
+            apps/habit-service/src/habit-domain.ts \
+            apps/habit-service/src/postgres-habit-repository.ts \
+            apps/habit-service/src/habit-review-projection-postgres.test.ts
+
+      - name: Verify exact repaired Habit slice
+        run: |
+          pnpm --filter @life-os/habit-service test -- habit-review-projection-postgres.test.ts habit-review-projection.test.ts
+          pnpm --filter @life-os/habit-service typecheck
+          pnpm --filter @life-os/habit-service test
+          pnpm --filter @life-os/habit-service build
+          pnpm exec prettier --single-quote --check \
+            apps/habit-service/src/habit-domain.ts \
+            apps/habit-service/src/postgres-habit-repository.ts \
+            apps/habit-service/src/habit-review-projection.test.ts \
+            apps/habit-service/src/habit-review-projection-postgres.test.ts
+          git diff --check
+
+      - name: Commit causal production repair
+        run: |
+          git add \
+            apps/habit-service/src/habit-domain.ts \
+            apps/habit-service/src/postgres-habit-repository.ts \
+            apps/habit-service/src/habit-review-projection-postgres.test.ts
+          git commit -m 'fix(habit): bound weekly Review persistence read'
+
+      - name: Retire writer and publish ordinary descendants
+        env:
+          INPUT_SHA: ${{ github.sha }}
+          BRANCH: feat/habit-review-period-projection-v1
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
+          if [ "$remote_head" != "$INPUT_SHA" ]; then
+            echo "::error::Branch head moved; refusing to publish stale repair."
+            exit 1
+          fi
+          rm .github/workflows/repair-pr264-bounded-review-read.yml
+          git add .github/workflows/repair-pr264-bounded-review-read.yml
+          git commit -m 'ci(habit): retire bounded Review repair writer'
+          git diff --check HEAD~3..HEAD
+          git push origin "HEAD:refs/heads/$BRANCH"
