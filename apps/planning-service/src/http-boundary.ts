@@ -263,15 +263,23 @@ export function requireTaskCompletionState(body: unknown): boolean {
 
 /** Maps domain and persistence failures to credential-free HTTP exceptions. */
 export function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
-    return error;
+  let message: string | undefined;
+  try {
+    if (error instanceof HttpException) {
+      return error;
+    }
+    if (error instanceof Error && typeof error.message === 'string') {
+      message = error.message;
+    }
+  } catch {
+    message = undefined;
   }
 
-  if (error instanceof Error && error.message.endsWith('not found')) {
+  if (message?.endsWith('not found')) {
     return problemException(404, 'Planning record not found', 'not_found');
   }
 
-  if (error instanceof Error && VALIDATION_MESSAGES.has(error.message)) {
+  if (message !== undefined && VALIDATION_MESSAGES.has(message)) {
     return problemException(
       400,
       'Planning request is invalid',
