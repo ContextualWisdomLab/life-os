@@ -85,6 +85,12 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Canonicalize repaired fixtures
+        run: >-
+          pnpm exec prettier --write
+          apps/planning-service/src/task-completion-history.integration.test.ts
+          apps/planning-service/src/postgres-planning-repository.integration.test.ts
+
       - name: Run completion-history integration
         run: >-
           pnpm --filter @life-os/planning-service exec vitest run
@@ -119,7 +125,8 @@ jobs:
           test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
             '.github/workflows/repair-planning-task-completion-history.yml' \
             '.github/workflows/verify-planning-task-completion-history.yml' \
-            'apps/planning-service/src/postgres-planning-repository.integration.test.ts' | sort)"
+            'apps/planning-service/src/postgres-planning-repository.integration.test.ts' \
+            'apps/planning-service/src/task-completion-history.integration.test.ts' | sort)"
 
       - name: Verify writer still owns exact remote head
         run: |
@@ -131,5 +138,5 @@ jobs:
           git config user.name 'Seongho Bae'
           git config user.email 'me@seonghobae.me'
           git add -A
-          git commit -m 'test(planning): apply completion facts in integration harness'
+          git commit -m 'test(planning): finalize completion history harness'
           git push origin "HEAD:${TARGET_BRANCH}"
