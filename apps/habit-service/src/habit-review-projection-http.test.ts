@@ -2,18 +2,21 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HabitReviewWeekProjection, HabitService } from './habit-domain';
-import { requireTrustedReviewProjectionContext } from './http-boundary';
+import {
+  HABIT_REVIEW_PROJECTION_PATH,
+  requireReviewPeriodStartDate,
+  requireTrustedReviewProjectionContext,
+} from './habit-request-bound-context';
 import { HabitController } from './main';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const PERIOD_START_DATE = '2026-09-07';
-const REVIEW_PATH = '/v1/habits/review-projection';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
 
 function signature(
   issuedAt: string,
   method = 'GET',
-  path = REVIEW_PATH,
+  path = HABIT_REVIEW_PROJECTION_PATH,
 ): string {
   return createHmac('sha256', CONTEXT_SECRET)
     .update(
@@ -68,7 +71,7 @@ describe('Habit Weekly Review HTTP authority', () => {
           signature: signature(issuedAt),
         },
         CONTEXT_SECRET,
-        { method: 'GET', path: REVIEW_PATH },
+        { method: 'GET', path: HABIT_REVIEW_PROJECTION_PATH },
         nowSeconds,
       ),
     ).toBe(WORKSPACE_ID);
@@ -77,9 +80,13 @@ describe('Habit Weekly Review HTTP authority', () => {
       {
         signature: legacySignature(issuedAt),
         method: 'GET',
-        path: REVIEW_PATH,
+        path: HABIT_REVIEW_PROJECTION_PATH,
       },
-      { signature: signature(issuedAt), method: 'POST', path: REVIEW_PATH },
+      {
+        signature: signature(issuedAt),
+        method: 'POST',
+        path: HABIT_REVIEW_PROJECTION_PATH,
+      },
       {
         signature: signature(issuedAt),
         method: 'GET',
@@ -98,6 +105,15 @@ describe('Habit Weekly Review HTTP authority', () => {
           nowSeconds,
         ),
       ).toThrow(HttpException);
+    }
+  });
+
+  it('requires an exact Monday review period before domain access', () => {
+    expect(requireReviewPeriodStartDate(PERIOD_START_DATE)).toBe(
+      PERIOD_START_DATE,
+    );
+    for (const invalid of [undefined, '', '2026-02-30', '2026-09-08']) {
+      expect(() => requireReviewPeriodStartDate(invalid)).toThrow(HttpException);
     }
   });
 
