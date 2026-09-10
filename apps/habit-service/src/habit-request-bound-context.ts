@@ -8,6 +8,13 @@ export interface HabitTrustedRequestBinding {
   path: unknown;
 }
 
+/** Raw server-observed request identity used before Nest route normalization. */
+export interface HabitReviewProjectionHttpRequest {
+  readonly method?: unknown;
+  readonly originalUrl?: unknown;
+  readonly url?: unknown;
+}
+
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
@@ -59,6 +66,23 @@ function requireReviewProjectionBinding(
     return invalidGatewayContext();
   }
   return { method: 'GET', path: HABIT_REVIEW_PROJECTION_PATH };
+}
+
+/**
+ * Converts the server-observed request target into the exact HMAC binding.
+ * Query parameters remain typed controller input and never authorize a route alias.
+ */
+export function requireExactReviewProjectionHttpBinding(
+  request: HabitReviewProjectionHttpRequest,
+): { method: 'GET'; path: typeof HABIT_REVIEW_PROJECTION_PATH } {
+  const rawUrl =
+    typeof request.originalUrl === 'string' ? request.originalUrl : request.url;
+  if (request.method !== 'GET' || typeof rawUrl !== 'string') {
+    return invalidGatewayContext();
+  }
+  const queryIndex = rawUrl.indexOf('?');
+  const rawPath = queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex);
+  return requireReviewProjectionBinding({ method: request.method, path: rawPath });
 }
 
 /** Computes the request-bound Habit v2 HMAC shared with trusted server callers. */
