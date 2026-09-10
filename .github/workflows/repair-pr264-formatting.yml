@@ -1,0 +1,80 @@
+name: Repair PR264 Habit formatting
+
+on:
+  push:
+    branches:
+      - feat/habit-review-period-projection-v1
+    paths:
+      - .github/workflows/repair-pr264-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr264-habit-formatting
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact repair input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+
+      - name: Enable repository pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.0 --activate
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Canonicalize Habit projection source only
+        run: |
+          pnpm exec prettier --single-quote --write apps/habit-service/src/habit-domain.ts
+          pnpm exec prettier --single-quote --check apps/habit-service/src/habit-domain.ts
+          changed="$(git diff --name-only)"
+          if [ "$changed" != "apps/habit-service/src/habit-domain.ts" ]; then
+            echo "::error::Formatting repair touched an unexpected path: $changed"
+            exit 1
+          fi
+
+      - name: Verify Habit slice
+        run: |
+          pnpm --filter @life-os/habit-service typecheck
+          pnpm --filter @life-os/habit-service test
+          pnpm --filter @life-os/habit-service build
+          git diff --check
+
+      - name: Retire repair workflow and publish ordinary descendant
+        env:
+          INPUT_SHA: ${{ github.sha }}
+          BRANCH: feat/habit-review-period-projection-v1
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
+          if [ "$remote_head" != "$INPUT_SHA" ]; then
+            echo "::error::Branch head moved; refusing to publish stale repair."
+            exit 1
+          fi
+          rm .github/workflows/repair-pr264-formatting.yml
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' '.github/workflows/repair-pr264-formatting.yml' 'apps/habit-service/src/habit-domain.ts' | sort)"
+          if [ "$changed" != "$expected" ]; then
+            echo "::error::Repair candidate contains unexpected paths."
+            printf 'changed:\n%s\n' "$changed"
+            exit 1
+          fi
+          git config user.name 'LifeOS hourly maintainer'
+          git config user.email 'lifeos-hourly-maintainer@users.noreply.github.com'
+          git add apps/habit-service/src/habit-domain.ts .github/workflows/repair-pr264-formatting.yml
+          git commit -m 'fix(habit): apply repository formatting'
+          git push origin "HEAD:refs/heads/$BRANCH"
