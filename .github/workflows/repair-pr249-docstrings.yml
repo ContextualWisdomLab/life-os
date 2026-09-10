@@ -110,7 +110,7 @@ jobs:
             'render.mjs:sanitizeUntrustedText': 'Redacts credential-shaped data, neutralizes control characters and Markdown syntax, and bounds untrusted text before issue rendering.',
             'render.mjs:issueLink': 'Creates an issue reference only for a positive safe-integer identity so malformed external values cannot become Markdown links.',
             'schema.mjs:failManifest': 'Centralizes stable manifest validation errors without echoing untrusted capability content.',
-            'schema.mjs:failPolicy': 'Centralizes stable manifest validation errors without reflecting untrusted merge-policy values.',
+            'schema.mjs:failPolicy': 'Centralizes stable policy validation errors without reflecting untrusted merge-policy values.',
             'schema.mjs:isPlainObject': 'Restricts schema records to plain objects before exact structural validation, excluding arrays and custom prototypes.',
             'schema.mjs:requiredString': 'Normalizes required bounded text through a caller-selected validation boundary before policy logic consumes it.',
             'schema.mjs:score': 'Accepts only the configured one-to-five integer scale used by deterministic commercial gap prioritization.',
