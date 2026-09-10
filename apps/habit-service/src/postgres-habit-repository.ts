@@ -424,6 +424,7 @@ export class PostgresHabitRepository implements HabitRepository {
     return result.rows.map((row) => parseHabit(row, safeWorkspaceId));
   }
 
+  /** Reads one tenant week in a single bounded statement to avoid N+1 history scans. */
   async readReviewWeekEvidence(
     workspaceId: string,
     periodStartDate: string,
