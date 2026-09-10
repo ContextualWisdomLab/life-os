@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      EXPECTED_PARENT: 132a406b31d07290d2f0220fa7186075207fe5a8
+      EXPECTED_PARENT: f787d7f3258077f1ffb5d1bb268c7ca43dc9f6e0
       TARGET_BRANCH: feat/planning-task-completion-http-v1
     services:
       postgres:
@@ -85,7 +85,7 @@ jobs:
           replace_once(
               'apps/planning-service/src/http-boundary.ts',
               """export function requireTitle(body: { title?: unknown } | undefined): string {\n  const title = body?.title;\n  if (typeof title !== 'string' || !title.trim()) {\n    throw problemException(400, 'A title is required', 'invalid_title');\n  }\n  return title.trim();\n}\n\n/** Maps domain and persistence failures to credential-free HTTP exceptions. */""",
-              """export function requireTitle(body: { title?: unknown } | undefined): string {\n  const title = body?.title;\n  if (typeof title !== 'string' || !title.trim()) {\n    throw problemException(400, 'A title is required', 'invalid_title');\n  }\n  return title.trim();\n}\n\n/** Rejects malformed completion commands without reflecting body contents. */\nfunction invalidTaskCompletionBody(): never {\n  throw problemException(\n    400,\n    'Task completion request is invalid',\n    'invalid_request',\n  );\n}\n\n/** Accepts only the exact boolean completion command owned by Planning. */\nexport function requireTaskCompletionState(body: unknown): boolean {\n  if (typeof body !== 'object' || body === null || Array.isArray(body)) {\n    return invalidTaskCompletionBody();\n  }\n\n  let keys: string[];\n  let completed: unknown;\n  try {\n    keys = Object.keys(body);\n    completed = (body as Record<string, unknown>).completed;\n  } catch {\n    return invalidTaskCompletionBody();\n  }\n  if (keys.length !== 1 || keys[0] !== 'completed' || typeof completed !== 'boolean') {\n    return invalidTaskCompletionBody();\n  }\n  return completed;\n}\n\n/** Maps domain and persistence failures to credential-free HTTP exceptions. */""",
+              """export function requireTitle(body: { title?: unknown } | undefined): string {\n  const title = body?.title;\n  if (typeof title !== 'string' || !title.trim()) {\n    throw problemException(400, 'A title is required', 'invalid_title');\n  }\n  return title.trim();\n}\n\n/** Rejects malformed completion commands without reflecting body contents. */\nfunction invalidTaskCompletionBody(): never {\n  throw problemException(\n    400,\n    'Task completion request is invalid',\n    'invalid_request',\n  );\n}\n\n/** Accepts only the exact boolean completion command owned by Planning. */\nexport function requireTaskCompletionState(body: unknown): boolean {\n  if (typeof body !== 'object' || body === null) {\n    return invalidTaskCompletionBody();\n  }\n\n  let keys: string[];\n  let completed: unknown;\n  try {\n    if (Array.isArray(body)) {\n      return invalidTaskCompletionBody();\n    }\n    keys = Object.keys(body);\n    completed = (body as Record<string, unknown>).completed;\n  } catch {\n    return invalidTaskCompletionBody();\n  }\n  if (keys.length !== 1 || keys[0] !== 'completed' || typeof completed !== 'boolean') {\n    return invalidTaskCompletionBody();\n  }\n  return completed;\n}\n\n/** Maps domain and persistence failures to credential-free HTTP exceptions. */""",
           )
 
           replace_once(
@@ -198,6 +198,7 @@ jobs:
       - name: Run completion HTTP regression
         run: >-
           pnpm --filter @life-os/planning-service exec vitest run
+          --no-file-parallelism
           src/task-completion-http-boundary.test.ts
           src/http-boundary.test.ts
           src/planning-controller-authority.test.ts
