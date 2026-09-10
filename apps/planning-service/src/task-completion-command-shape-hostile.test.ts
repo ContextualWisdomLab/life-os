@@ -42,11 +42,10 @@ describe('Planning task completion command shape', () => {
   });
 
   it('rejects a non-enumerable extra property beside completed', () => {
-    const body = Object.defineProperty(
-      { completed: true },
-      'completedAt',
-      { value: '2026-09-10T16:00:00.000Z', enumerable: false },
-    );
+    const body = Object.defineProperty({ completed: true }, 'completedAt', {
+      value: '2026-09-10T16:00:00.000Z',
+      enumerable: false,
+    });
 
     expectInvalid(body);
   });

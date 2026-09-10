@@ -236,25 +236,29 @@ export function requireTaskCompletionState(body: unknown): boolean {
     return invalidTaskCompletionBody();
   }
 
-  let keys: string[];
-  let completed: unknown;
+  let descriptors: PropertyDescriptorMap;
   try {
     if (Array.isArray(body)) {
       return invalidTaskCompletionBody();
     }
-    keys = Object.keys(body);
-    completed = (body as Record<string, unknown>).completed;
+    descriptors = Object.getOwnPropertyDescriptors(body);
   } catch {
     return invalidTaskCompletionBody();
   }
+
+  const keys = Reflect.ownKeys(descriptors);
+  const completed = descriptors.completed;
   if (
     keys.length !== 1 ||
     keys[0] !== 'completed' ||
-    typeof completed !== 'boolean'
+    completed === undefined ||
+    completed.enumerable !== true ||
+    !('value' in completed) ||
+    typeof completed.value !== 'boolean'
   ) {
     return invalidTaskCompletionBody();
   }
-  return completed;
+  return completed.value;
 }
 
 /** Maps domain and persistence failures to credential-free HTTP exceptions. */
