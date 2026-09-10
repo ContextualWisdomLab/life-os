@@ -94,8 +94,11 @@ jobs:
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
 
-      - name: Run complete Planning suite
-        run: pnpm --filter @life-os/planning-service test -- --no-file-parallelism
+      - name: Run complete Planning suite serially
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          --passWithNoTests
+          --no-file-parallelism
 
       - name: Check changed-source formatting
         run: >-
