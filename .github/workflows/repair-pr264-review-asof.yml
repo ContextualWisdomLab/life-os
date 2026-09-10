@@ -168,9 +168,16 @@ jobs:
           if text.count(anchor) != 1:
               raise SystemExit('postgres test: expected constant anchor once')
           text = text.replace(anchor, anchor + "const AS_OF = '2026-09-13T23:59:59.000Z';\n", 1)
-          if text.count("    100,\n  );") != 2:
-              raise SystemExit('postgres test: expected two direct 100-bound anchors')
-          text = text.replace("    100,\n  );", "    100,\n    AS_OF,\n  );")
+          helper_old = """  return await repository.readReviewWeekEvidence(\n    WORKSPACE_ID,\n    '2026-09-07',\n    '2026-09-13',\n    100,\n  );\n"""
+          helper_new = """  return await repository.readReviewWeekEvidence(\n    WORKSPACE_ID,\n    '2026-09-07',\n    '2026-09-13',\n    100,\n    AS_OF,\n  );\n"""
+          if text.count(helper_old) != 1:
+              raise SystemExit('postgres test: expected readEvidence helper anchor once')
+          text = text.replace(helper_old, helper_new, 1)
+          direct_old = """    const evidence = await repository.readReviewWeekEvidence(\n      WORKSPACE_ID,\n      '2026-09-07',\n      '2026-09-13',\n      100,\n    );\n"""
+          direct_new = """    const evidence = await repository.readReviewWeekEvidence(\n      WORKSPACE_ID,\n      '2026-09-07',\n      '2026-09-13',\n      100,\n      AS_OF,\n    );\n"""
+          if text.count(direct_old) != 1:
+              raise SystemExit('postgres test: expected primary read anchor once')
+          text = text.replace(direct_old, direct_new, 1)
           if text.count("        100,\n      ),") != 2:
               raise SystemExit('postgres test: expected two nested 100-bound anchors')
           text = text.replace("        100,\n      ),", "        100,\n        AS_OF,\n      ),")
