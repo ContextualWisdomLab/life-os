@@ -131,9 +131,7 @@ function parseCompletionEvidence(
 }
 
 /** PostgreSQL adapter that keeps task state and completion evidence in one write. */
-export class PostgresTaskCompletionRepository
-  implements TaskCompletionRepository
-{
+export class PostgresTaskCompletionRepository implements TaskCompletionRepository {
   /** Creates an adapter over the Planning-owned parameterized SQL connection. */
   constructor(private readonly client: TaskCompletionSqlClient) {}
 
@@ -156,24 +154,14 @@ export class PostgresTaskCompletionRepository
            END
        WHERE workspace_id = $1 AND id = $2
        RETURNING workspace_id, id, status, completed_at`,
-      [
-        safeWorkspaceId,
-        safeTaskId,
-        transition.status,
-        transition.completedAt,
-      ],
+      [safeWorkspaceId, safeTaskId, transition.status, transition.completedAt],
     );
     if (result.rows.length > 1) {
       return invalidPersistenceEvidence();
     }
     const row = result.rows[0];
     return row
-      ? parseCompletionEvidence(
-          row,
-          safeWorkspaceId,
-          safeTaskId,
-          transition,
-        )
+      ? parseCompletionEvidence(row, safeWorkspaceId, safeTaskId, transition)
       : undefined;
   }
 }
@@ -226,7 +214,9 @@ export class TaskCompletionService {
         throw new TaskCompletionPersistenceError();
       }
     } else {
-      const canonicalCompletedAt = requirePersistedTimestamp(evidence.completedAt);
+      const canonicalCompletedAt = requirePersistedTimestamp(
+        evidence.completedAt,
+      );
       if (canonicalCompletedAt !== evidence.completedAt) {
         throw new TaskCompletionPersistenceError();
       }
