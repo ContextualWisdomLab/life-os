@@ -284,14 +284,19 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
         return { rows: result.rows as Row[] };
       },
     });
-    const firstCompletedAt = '2026-09-10T16:00:00.000Z';
-    const retriedAt = '2026-09-10T16:05:00.000Z';
-    const resumedCompletedAt = '2026-09-10T16:10:00.000Z';
+    const taskCreatedAt = new Date(task.createdAt);
+    const skewedFirstRequestAt = new Date(
+      taskCreatedAt.getTime() - 60_000,
+    ).toISOString();
+    const retriedAt = new Date(taskCreatedAt.getTime() + 60_000).toISOString();
+    const resumedCompletedAt = new Date(
+      taskCreatedAt.getTime() + 120_000,
+    ).toISOString();
 
     const first = await repository.transitionTaskCompletion(
       workspaceId,
       task.id,
-      { status: 'done', completedAt: firstCompletedAt },
+      { status: 'done', completedAt: skewedFirstRequestAt },
     );
     const retry = await repository.transitionTaskCompletion(
       workspaceId,
@@ -309,8 +314,8 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
       { status: 'done', completedAt: resumedCompletedAt },
     );
 
-    expect(first?.completedAt).toBe(firstCompletedAt);
-    expect(retry?.completedAt).toBe(firstCompletedAt);
+    expect(first?.completedAt).toBe(task.createdAt);
+    expect(retry?.completedAt).toBe(task.createdAt);
     expect(reopened).toMatchObject({ status: 'todo', completedAt: null });
     expect(recompleted?.completedAt).toBe(resumedCompletedAt);
 
