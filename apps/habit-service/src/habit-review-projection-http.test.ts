@@ -74,7 +74,11 @@ describe('Habit Weekly Review HTTP authority', () => {
     ).toBe(WORKSPACE_ID);
 
     for (const candidate of [
-      { signature: legacySignature(issuedAt), method: 'GET', path: REVIEW_PATH },
+      {
+        signature: legacySignature(issuedAt),
+        method: 'GET',
+        path: REVIEW_PATH,
+      },
       { signature: signature(issuedAt), method: 'POST', path: REVIEW_PATH },
       {
         signature: signature(issuedAt),
@@ -84,7 +88,11 @@ describe('Habit Weekly Review HTTP authority', () => {
     ]) {
       expect(() =>
         requireTrustedReviewProjectionContext(
-          { workspaceId: WORKSPACE_ID, issuedAt, signature: candidate.signature },
+          {
+            workspaceId: WORKSPACE_ID,
+            issuedAt,
+            signature: candidate.signature,
+          },
           CONTEXT_SECRET,
           { method: candidate.method, path: candidate.path },
           nowSeconds,
