@@ -67,11 +67,11 @@ jobs:
               '0006_validate_task_completion_chronology.sql',
               '0007_task_completion_facts.sql',
             ]) {"""
-          old_truncate = """      `TRUNCATE
-                 planning.today_idempotency_records,"""
-          new_truncate = """      `TRUNCATE
-                 planning.task_completion_facts,
-                 planning.today_idempotency_records,"""
+          old_truncate = """planning.today_idempotency_records,
+                 planning.today_aggregates,"""
+          new_truncate = """planning.task_completion_facts,
+                 planning.today_idempotency_records,
+                 planning.today_aggregates,"""
           if text.count(old_migrations) != 1:
               raise SystemExit('migration-list anchor count is not exactly one')
           if text.count(old_truncate) != 1:
