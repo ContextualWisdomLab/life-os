@@ -71,6 +71,19 @@ export interface HabitReviewWeekProjection {
   habits: readonly HabitReviewProjectionEntry[];
 }
 
+/** Minimal durable completion identity needed to calculate a Review numerator. */
+export interface HabitReviewCompletionEvidence {
+  workspaceId: string;
+  habitId: string;
+  scheduledLocalDate: string;
+}
+
+/** Bounded Habit-owned persistence evidence for exactly one Review week. */
+export interface HabitReviewWeekEvidence {
+  habits: readonly Habit[];
+  completions: readonly HabitReviewCompletionEvidence[];
+}
+
 export interface HabitRepository {
   saveHabit(habit: Habit): Promise<void>;
   findHabit(workspaceId: string, habitId: string): Promise<Habit | undefined>;
@@ -82,6 +95,12 @@ export interface HabitRepository {
     workspaceId: string,
     habitId: string,
   ): Promise<HabitCompletionEvent[]>;
+  readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+  ): Promise<HabitReviewWeekEvidence>;
 }
 
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -322,6 +341,52 @@ export class InMemoryHabitRepository implements HabitRepository {
       .map(cloneHabit);
   }
 
+  async readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+  ): Promise<HabitReviewWeekEvidence> {
+    const habits = (await this.listHabits(workspaceId)).slice(
+      0,
+      maximumHabits + 1,
+    );
+    if (habits.length > maximumHabits) {
+      return { habits, completions: [] };
+    }
+    const habitIds = new Set(habits.map((habit) => habit.id));
+    const completions = new Map<string, HabitReviewCompletionEvidence>();
+    for (const completion of this.completions.values()) {
+      if (
+        completion.workspaceId !== workspaceId ||
+        !habitIds.has(completion.habitId) ||
+        completion.scheduledLocalDate < periodStartDate ||
+        completion.scheduledLocalDate > periodEndDate
+      ) {
+        continue;
+      }
+      const key = entityLookupKey(
+        completion.habitId,
+        completion.scheduledLocalDate,
+      );
+      if (!completions.has(key)) {
+        completions.set(key, {
+          workspaceId,
+          habitId: completion.habitId,
+          scheduledLocalDate: completion.scheduledLocalDate,
+        });
+      }
+    }
+    return {
+      habits,
+      completions: [...completions.values()].sort(
+        (left, right) =>
+          left.habitId.localeCompare(right.habitId) ||
+          left.scheduledLocalDate.localeCompare(right.scheduledLocalDate),
+      ),
+    };
+  }
+
   async appendCompletion(
     completion: HabitCompletionEvent,
   ): Promise<HabitCompletionEvent> {
@@ -465,9 +530,31 @@ export class HabitService {
     const periodEndDate = localDateFromEpochDay(
       periodStart.epochDay + REVIEW_WEEK_DAYS - 1,
     ).text;
-    const habits = await this.repository.listHabits(safeWorkspaceId);
+    const evidence = await this.repository.readReviewWeekEvidence(
+      safeWorkspaceId,
+      periodStart.text,
+      periodEndDate,
+      MAXIMUM_REVIEW_PROJECTION_HABITS,
+    );
+    const habits = [...evidence.habits];
     if (habits.length > MAXIMUM_REVIEW_PROJECTION_HABITS) {
       throw new Error('Review projection exceeds habit limit');
+    }
+    const habitIds = new Set(habits.map((habit) => habit.id));
+    const completionDatesByHabit = new Map<string, Set<string>>();
+    for (const completion of evidence.completions) {
+      if (
+        completion.workspaceId !== safeWorkspaceId ||
+        !habitIds.has(completion.habitId) ||
+        completion.scheduledLocalDate < periodStart.text ||
+        completion.scheduledLocalDate > periodEndDate
+      ) {
+        throw new Error('Review projection completion evidence is invalid');
+      }
+      const completedDates =
+        completionDatesByHabit.get(completion.habitId) ?? new Set<string>();
+      completedDates.add(completion.scheduledLocalDate);
+      completionDatesByHabit.set(completion.habitId, completedDates);
     }
 
     const entries: HabitReviewProjectionEntry[] = [];
@@ -480,20 +567,10 @@ export class HabitService {
           (occurrence) => occurrence.scheduledLocalDate,
         ),
       );
-      const completedDates = new Set<string>();
-      const completions = await this.repository.listCompletions(
-        safeWorkspaceId,
-        habit.id,
-      );
-      for (const completion of completions) {
-        if (
-          completion.workspaceId !== safeWorkspaceId ||
-          completion.habitId !== habit.id
-        ) {
-          throw new Error('Review projection ownership is invalid');
-        }
-        if (scheduledDates.has(completion.scheduledLocalDate)) {
-          completedDates.add(completion.scheduledLocalDate);
+      const completedDates = completionDatesByHabit.get(habit.id) ?? new Set();
+      for (const completedDate of completedDates) {
+        if (!scheduledDates.has(completedDate)) {
+          throw new Error('Review projection completion evidence is invalid');
         }
       }
       entries.push({
