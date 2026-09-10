@@ -52,8 +52,8 @@ jobs:
             echo 'Expected the asOf hostile regression to fail before repair.' >&2
             exit 1
           fi
-          grep -F 'does not attribute completion evidence recorded after the advertised asOf instant' \
-            /tmp/review-asof-red.log >/dev/null
+          grep -F 'expected [ { …(3) } ] to deeply equal []' /tmp/review-asof-red.log >/dev/null || \
+            grep -F 'does not attribute completion evidence recorded after the advertised asOf instant' /tmp/review-asof-red.log >/dev/null
 
       - name: Apply the bounded Habit-owned asOf evidence fence
         shell: bash
@@ -62,46 +62,54 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path_text: str, old: str, new: str) -> None:
+          def replace_once(path_text: str, label: str, old: str, new: str) -> None:
               path = Path(path_text)
               text = path.read_text()
-              if text.count(old) != 1:
-                  raise SystemExit(f'{path_text}: expected exact replacement anchor once')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path_text}: {label}: expected 1 anchor, found {count}')
               path.write_text(text.replace(old, new, 1))
 
           domain = 'apps/habit-service/src/habit-domain.ts'
           replace_once(
               domain,
+              'repository interface asOf parameter',
               """  readReviewWeekEvidence(\n    workspaceId: string,\n    periodStartDate: string,\n    periodEndDate: string,\n    maximumHabits: number,\n  ): Promise<HabitReviewWeekEvidence>;\n""",
               """  readReviewWeekEvidence(\n    workspaceId: string,\n    periodStartDate: string,\n    periodEndDate: string,\n    maximumHabits: number,\n    asOf: string,\n  ): Promise<HabitReviewWeekEvidence>;\n""",
           )
           replace_once(
               domain,
+              'in-memory signature and timestamp validation',
               """  async readReviewWeekEvidence(\n    workspaceId: string,\n    periodStartDate: string,\n    periodEndDate: string,\n    maximumHabits: number,\n  ): Promise<HabitReviewWeekEvidence> {\n    const periodStart = parseLocalDate(periodStartDate);\n""",
               """  async readReviewWeekEvidence(\n    workspaceId: string,\n    periodStartDate: string,\n    periodEndDate: string,\n    maximumHabits: number,\n    asOf: string,\n  ): Promise<HabitReviewWeekEvidence> {\n    const safeAsOf = requireTimestamp(asOf);\n    const periodStart = parseLocalDate(periodStartDate);\n""",
           )
           replace_once(
               domain,
+              'in-memory habit creation fence',
               """    const habits = (await this.listHabits(workspaceId)).slice(\n      0,\n      maximumHabits + 1,\n    );\n""",
               """    const habits = (await this.listHabits(workspaceId))\n      .filter((habit) => requireTimestamp(habit.createdAt) <= safeAsOf)\n      .slice(0, maximumHabits + 1);\n""",
           )
           replace_once(
               domain,
-              """        !habitIds.has(completion.habitId) ||\n        completion.scheduledLocalDate < periodStart.text ||\n""",
-              """        !habitIds.has(completion.habitId) ||\n        requireTimestamp(completion.recordedAt) > safeAsOf ||\n        completion.scheduledLocalDate < periodStart.text ||\n""",
+              'in-memory completion recording fence',
+              """        completion.workspaceId !== workspaceId ||\n        !habitIds.has(completion.habitId) ||\n        completion.scheduledLocalDate < periodStart.text ||\n""",
+              """        completion.workspaceId !== workspaceId ||\n        !habitIds.has(completion.habitId) ||\n        requireTimestamp(completion.recordedAt) > safeAsOf ||\n        completion.scheduledLocalDate < periodStart.text ||\n""",
           )
           replace_once(
               domain,
+              'service captures asOf before persistence read',
               """    const periodEndDate = localDateFromEpochDay(\n      periodStart.epochDay + REVIEW_WEEK_DAYS - 1,\n    ).text;\n    const evidence = await this.repository.readReviewWeekEvidence(\n""",
               """    const periodEndDate = localDateFromEpochDay(\n      periodStart.epochDay + REVIEW_WEEK_DAYS - 1,\n    ).text;\n    const asOf = requireTimestamp(this.projectionClock());\n    const evidence = await this.repository.readReviewWeekEvidence(\n""",
           )
           replace_once(
               domain,
+              'service passes same asOf to persistence',
               """      periodEndDate,\n      MAXIMUM_REVIEW_PROJECTION_HABITS,\n    );\n""",
               """      periodEndDate,\n      MAXIMUM_REVIEW_PROJECTION_HABITS,\n      asOf,\n    );\n""",
           )
           replace_once(
               domain,
+              'projection returns captured asOf',
               """      asOf: requireTimestamp(this.projectionClock()),\n""",
               """      asOf,\n""",
           )
@@ -109,21 +117,25 @@ jobs:
           postgres = 'apps/habit-service/src/postgres-habit-repository.ts'
           replace_once(
               postgres,
+              'postgres signature and timestamp validation',
               """  async readReviewWeekEvidence(\n    workspaceId: string,\n    periodStartDate: string,\n    periodEndDate: string,\n    maximumHabits: number,\n  ): Promise<HabitReviewWeekEvidence> {\n    const safeWorkspaceId = requireUuidV4(workspaceId);\n    const safePeriodStartDate = requireLocalDate(periodStartDate);\n    const safePeriodEndDate = requireLocalDate(periodEndDate);\n""",
               """  async readReviewWeekEvidence(\n    workspaceId: string,\n    periodStartDate: string,\n    periodEndDate: string,\n    maximumHabits: number,\n    asOf: string,\n  ): Promise<HabitReviewWeekEvidence> {\n    const safeWorkspaceId = requireUuidV4(workspaceId);\n    const safePeriodStartDate = requireLocalDate(periodStartDate);\n    const safePeriodEndDate = requireLocalDate(periodEndDate);\n    const safeAsOf = requireTimestamp(asOf);\n""",
           )
           replace_once(
               postgres,
+              'postgres habit creation fence',
               """         WHERE workspace_id = $1\n         ORDER BY created_at ASC, id ASC\n         LIMIT $4\n""",
               """         WHERE workspace_id = $1\n           AND created_at <= $4::timestamptz\n         ORDER BY created_at ASC, id ASC\n         LIMIT $5\n""",
           )
           replace_once(
               postgres,
+              'postgres completion recording fence',
               """           AND scheduled_local_date BETWEEN $2::date AND $3::date\n         ORDER BY scheduled_local_date ASC, recorded_at ASC, id ASC\n""",
               """           AND scheduled_local_date BETWEEN $2::date AND $3::date\n           AND recorded_at <= $4::timestamptz\n         ORDER BY scheduled_local_date ASC, recorded_at ASC, id ASC\n""",
           )
           replace_once(
               postgres,
+              'postgres query values',
               """        safePeriodEndDate,\n        queryLimit,\n""",
               """        safePeriodEndDate,\n        safeAsOf,\n        queryLimit,\n""",
           )
@@ -145,6 +157,7 @@ jobs:
           projection = 'apps/habit-service/src/habit-review-projection.test.ts'
           replace_once(
               projection,
+              'duplicate-evidence repository signature',
               """    periodEndDate: string,\n    maximumHabits: number,\n  ) {\n    const evidence = await super.readReviewWeekEvidence(\n      workspaceId,\n      periodStartDate,\n      periodEndDate,\n      maximumHabits,\n    );\n""",
               """    periodEndDate: string,\n    maximumHabits: number,\n    asOf: string,\n  ) {\n    const evidence = await super.readReviewWeekEvidence(\n      workspaceId,\n      periodStartDate,\n      periodEndDate,\n      maximumHabits,\n      asOf,\n    );\n""",
           )
@@ -191,19 +204,13 @@ jobs:
         run: pnpm --filter @life-os/habit-service typecheck
 
       - name: Run Review evidence contract regressions
-        run: >-
-          pnpm --filter @life-os/habit-service exec vitest run
-          src/habit-review-evidence-contract.test.ts
+        run: pnpm --filter @life-os/habit-service exec vitest run src/habit-review-evidence-contract.test.ts
 
       - name: Run Review projection regressions
-        run: >-
-          pnpm --filter @life-os/habit-service exec vitest run
-          src/habit-review-projection.test.ts
+        run: pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection.test.ts
 
       - name: Run PostgreSQL Review projection regressions
-        run: >-
-          pnpm --filter @life-os/habit-service exec vitest run
-          src/habit-review-projection-postgres.test.ts
+        run: pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-postgres.test.ts
 
       - name: Run full Habit service tests
         run: pnpm --filter @life-os/habit-service test
