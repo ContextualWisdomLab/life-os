@@ -56,9 +56,10 @@ function unavailableGatewayContext(): never {
 }
 
 /** Accepts only the exact read path used for the Habit Weekly Review projection. */
-function requireReviewProjectionBinding(
-  binding: HabitTrustedRequestBinding,
-): { method: 'GET'; path: typeof HABIT_REVIEW_PROJECTION_PATH } {
+function requireReviewProjectionBinding(binding: HabitTrustedRequestBinding): {
+  method: 'GET';
+  path: typeof HABIT_REVIEW_PROJECTION_PATH;
+} {
   if (
     binding.method !== 'GET' ||
     binding.path !== HABIT_REVIEW_PROJECTION_PATH
@@ -82,7 +83,10 @@ export function requireExactReviewProjectionHttpBinding(
   }
   const queryIndex = rawUrl.indexOf('?');
   const rawPath = queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex);
-  return requireReviewProjectionBinding({ method: request.method, path: rawPath });
+  return requireReviewProjectionBinding({
+    method: request.method,
+    path: rawPath,
+  });
 }
 
 /** Computes the request-bound Habit v2 HMAC shared with trusted server callers. */
@@ -160,13 +164,23 @@ export function requireTrustedReviewProjectionContext(
 }
 
 /** Requires a real Monday local date before invoking the Habit projection. */
-export function requireReviewPeriodStartDate(value: string | undefined): string {
+export function requireReviewPeriodStartDate(
+  value: string | undefined,
+): string {
   if (typeof value !== 'string') {
-    throw problemException(400, 'Review period is invalid', 'invalid_review_period');
+    throw problemException(
+      400,
+      'Review period is invalid',
+      'invalid_review_period',
+    );
   }
   const match = LOCAL_DATE_PATTERN.exec(value);
   if (!match) {
-    throw problemException(400, 'Review period is invalid', 'invalid_review_period');
+    throw problemException(
+      400,
+      'Review period is invalid',
+      'invalid_review_period',
+    );
   }
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -178,7 +192,11 @@ export function requireReviewPeriodStartDate(value: string | undefined): string 
     date.getUTCDate() !== day ||
     date.getUTCDay() !== 1
   ) {
-    throw problemException(400, 'Review period is invalid', 'invalid_review_period');
+    throw problemException(
+      400,
+      'Review period is invalid',
+      'invalid_review_period',
+    );
   }
   return value;
 }

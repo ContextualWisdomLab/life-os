@@ -3,10 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  HabitReviewWeekProjection,
-  HabitService,
-} from './habit-domain';
+import type { HabitReviewWeekProjection, HabitService } from './habit-domain';
 import {
   HABIT_REVIEW_PROJECTION_PATH,
   requireReviewPeriodStartDate,
@@ -151,7 +148,9 @@ describe('Habit Weekly Review HTTP authority', () => {
       PERIOD_START_DATE,
     );
     for (const invalid of [undefined, '', '2026-02-30', '2026-09-08']) {
-      expect(() => requireReviewPeriodStartDate(invalid)).toThrow(HttpException);
+      expect(() => requireReviewPeriodStartDate(invalid)).toThrow(
+        HttpException,
+      );
     }
   });
 
