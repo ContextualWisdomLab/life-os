@@ -117,10 +117,7 @@ describe('Habit weekly Review projection', () => {
 
   it('publishes stable producer provenance and changes revision with projection evidence', async () => {
     const service = await createService();
-    const before = await service.projectReviewWeek(
-      WORKSPACE_ID,
-      '2026-09-07',
-    );
+    const before = await service.projectReviewWeek(WORKSPACE_ID, '2026-09-07');
     const unchanged = await service.projectReviewWeek(
       WORKSPACE_ID,
       '2026-09-07',
@@ -138,12 +135,31 @@ describe('Habit weekly Review projection', () => {
       idempotencyKey: '66666666-6666-4666-8666-666666666666',
     });
 
-    const changed = await service.projectReviewWeek(
+    const changed = await service.projectReviewWeek(WORKSPACE_ID, '2026-09-07');
+    expect(changed.producer).toBe('habit');
+    expect(changed.projectionRevision).not.toBe(before.projectionRevision);
+  });
+
+  it('orders projection provenance independently of ambient locale collation', async () => {
+    const service = new HabitService(
+      new InMemoryHabitRepository(),
+      () => AS_OF,
+    );
+    for (const title of ['z', 'ä']) {
+      await service.createHabit(WORKSPACE_ID, {
+        title,
+        timezone: 'UTC',
+        startsOn: '2026-09-07',
+        recurrence: { kind: 'daily', interval: 1 },
+      });
+    }
+
+    const projection = await service.projectReviewWeek(
       WORKSPACE_ID,
       '2026-09-07',
     );
-    expect(changed.producer).toBe('habit');
-    expect(changed.projectionRevision).not.toBe(before.projectionRevision);
+
+    expect(projection.habits.map((habit) => habit.title)).toEqual(['z', 'ä']);
   });
 
   it('counts a scheduled opportunity at most once despite duplicate completion events', async () => {

@@ -262,6 +262,11 @@ function cloneCompletion(
   return { ...completion };
 }
 
+/** Orders projection text by code units so content fingerprints never depend on host locale or ICU data. */
+function compareCanonicalText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function entityLookupKey(workspaceId: string, entityId: string): string {
   return JSON.stringify([workspaceId, entityId]);
 }
@@ -611,8 +616,8 @@ export class HabitService {
     }
     entries.sort(
       (left, right) =>
-        left.title.localeCompare(right.title) ||
-        left.habitId.localeCompare(right.habitId),
+        compareCanonicalText(left.title, right.title) ||
+        compareCanonicalText(left.habitId, right.habitId),
     );
 
     const scheduledOpportunityCount = entries.reduce(
