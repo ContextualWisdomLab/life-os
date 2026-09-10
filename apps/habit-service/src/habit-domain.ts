@@ -95,7 +95,10 @@ export interface HabitRepository {
     workspaceId: string,
     habitId: string,
   ): Promise<HabitCompletionEvent[]>;
-  /** Returns one bounded week plus at most one overflow habit to prove the ceiling. */
+  /**
+   * Reads exactly one Monday-through-Sunday period with a 1..100 habit ceiling,
+   * returning at most one overflow habit so callers can fail closed on cardinality.
+   */
   readReviewWeekEvidence(
     workspaceId: string,
     periodStartDate: string,
@@ -349,6 +352,18 @@ export class InMemoryHabitRepository implements HabitRepository {
     periodEndDate: string,
     maximumHabits: number,
   ): Promise<HabitReviewWeekEvidence> {
+    const periodStart = parseLocalDate(periodStartDate);
+    const periodEnd = parseLocalDate(periodEndDate);
+    const periodSpan = periodEnd.epochDay - periodStart.epochDay;
+    if (
+      periodStart.isoWeekday !== 1 ||
+      periodSpan !== REVIEW_WEEK_DAYS - 1 ||
+      !Number.isSafeInteger(maximumHabits) ||
+      maximumHabits < 1 ||
+      maximumHabits > MAXIMUM_REVIEW_PROJECTION_HABITS
+    ) {
+      throw new Error('Review evidence request is invalid');
+    }
     const habits = (await this.listHabits(workspaceId)).slice(
       0,
       maximumHabits + 1,
@@ -362,8 +377,8 @@ export class InMemoryHabitRepository implements HabitRepository {
       if (
         completion.workspaceId !== workspaceId ||
         !habitIds.has(completion.habitId) ||
-        completion.scheduledLocalDate < periodStartDate ||
-        completion.scheduledLocalDate > periodEndDate
+        completion.scheduledLocalDate < periodStart.text ||
+        completion.scheduledLocalDate > periodEnd.text
       ) {
         continue;
       }
