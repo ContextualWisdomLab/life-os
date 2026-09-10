@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Changed
 
+- Product and technical gap baseline currentness now reflects the real Integration Vault/PostgreSQL acceptance lineage, current package-graph repair evidence, the unreleased egress-owner boundary, and the remaining LifeOS-owned durable delivery recovery slice without promoting active PR evidence to protected-main truth.
 - Production contextual-orchestrator proposal requests now explicitly use adaptive `auto` mode and avoid provider-native structured-output passthrough, allowing the orchestration plane to meet the quality requirement and then minimize known cost while LifeOS retains strict fail-closed proposal validation.
 
 ### Added
