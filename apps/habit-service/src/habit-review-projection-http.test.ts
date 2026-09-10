@@ -1,7 +1,10 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { HabitReviewWeekProjection, HabitService } from './habit-domain';
+import type {
+  HabitReviewWeekProjection,
+  HabitService,
+} from './habit-domain';
 import {
   HABIT_REVIEW_PROJECTION_PATH,
   requireReviewPeriodStartDate,
@@ -12,6 +15,20 @@ import { HabitController } from './main';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const PERIOD_START_DATE = '2026-09-07';
 const CONTEXT_SECRET = randomBytes(32).toString('base64url');
+
+interface ReviewHttpRequest {
+  readonly method?: string;
+  readonly originalUrl?: string;
+  readonly url?: string;
+}
+
+type RequestBoundProjectionRoute = (
+  request: ReviewHttpRequest,
+  workspaceId: string | undefined,
+  issuedAt: string | undefined,
+  signature: string | undefined,
+  periodStartDate: string | undefined,
+) => Promise<HabitReviewWeekProjection>;
 
 function signature(
   issuedAt: string,
@@ -51,6 +68,24 @@ function projection(): HabitReviewWeekProjection {
       },
     ],
   };
+}
+
+function invokeRequestBoundProjection(
+  controller: HabitController,
+  request: ReviewHttpRequest,
+  issuedAt: string,
+  requestSignature: string,
+): Promise<HabitReviewWeekProjection> {
+  const route = controller.projectReviewWeek.bind(
+    controller,
+  ) as unknown as RequestBoundProjectionRoute;
+  return route(
+    request,
+    WORKSPACE_ID,
+    issuedAt,
+    requestSignature,
+    PERIOD_START_DATE,
+  );
 }
 
 afterEach(() => {
@@ -117,7 +152,7 @@ describe('Habit Weekly Review HTTP authority', () => {
     }
   });
 
-  it('delegates the fixed Review route only after request-bound workspace verification', async () => {
+  it('delegates only when the observed request is the canonical Review GET route', async () => {
     process.env.HABIT_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
     const issuedAt = String(Math.floor(Date.now() / 1000));
     const projectReviewWeek = vi.fn().mockResolvedValue(projection());
@@ -126,11 +161,14 @@ describe('Habit Weekly Review HTTP authority', () => {
     } as unknown as HabitService);
 
     await expect(
-      controller.projectReviewWeek(
-        WORKSPACE_ID,
+      invokeRequestBoundProjection(
+        controller,
+        {
+          method: 'GET',
+          originalUrl: `${HABIT_REVIEW_PROJECTION_PATH}?periodStartDate=${PERIOD_START_DATE}`,
+        },
         issuedAt,
         signature(issuedAt),
-        PERIOD_START_DATE,
       ),
     ).resolves.toEqual(projection());
     expect(projectReviewWeek).toHaveBeenCalledTimes(1);
@@ -138,6 +176,45 @@ describe('Habit Weekly Review HTTP authority', () => {
       WORKSPACE_ID,
       PERIOD_START_DATE,
     );
+  });
+
+  it('rejects transport aliases and wrong methods before the projection domain call', async () => {
+    process.env.HABIT_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+    const issuedAt = String(Math.floor(Date.now() / 1000));
+
+    for (const request of [
+      {
+        method: 'GET',
+        originalUrl: `${HABIT_REVIEW_PROJECTION_PATH}/?periodStartDate=${PERIOD_START_DATE}`,
+      },
+      {
+        method: 'GET',
+        originalUrl: `/v1//habits/review-projection?periodStartDate=${PERIOD_START_DATE}`,
+      },
+      {
+        method: 'GET',
+        originalUrl: `/v1/habits/review-projection%2F?periodStartDate=${PERIOD_START_DATE}`,
+      },
+      {
+        method: 'POST',
+        originalUrl: `${HABIT_REVIEW_PROJECTION_PATH}?periodStartDate=${PERIOD_START_DATE}`,
+      },
+    ]) {
+      const projectReviewWeek = vi.fn();
+      const controller = new HabitController({
+        projectReviewWeek,
+      } as unknown as HabitService);
+
+      await expect(
+        invokeRequestBoundProjection(
+          controller,
+          request,
+          issuedAt,
+          signature(issuedAt),
+        ),
+      ).rejects.toBeInstanceOf(HttpException);
+      expect(projectReviewWeek).not.toHaveBeenCalled();
+    }
   });
 
   it('rejects a legacy workspace-only signature before the projection domain call', async () => {
@@ -149,11 +226,14 @@ describe('Habit Weekly Review HTTP authority', () => {
     } as unknown as HabitService);
 
     await expect(
-      controller.projectReviewWeek(
-        WORKSPACE_ID,
+      invokeRequestBoundProjection(
+        controller,
+        {
+          method: 'GET',
+          originalUrl: `${HABIT_REVIEW_PROJECTION_PATH}?periodStartDate=${PERIOD_START_DATE}`,
+        },
         issuedAt,
         legacySignature(issuedAt),
-        PERIOD_START_DATE,
       ),
     ).rejects.toBeInstanceOf(HttpException);
     expect(projectReviewWeek).not.toHaveBeenCalled();
