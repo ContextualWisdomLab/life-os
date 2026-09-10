@@ -1,0 +1,244 @@
+name: Restack Planning completion history and repair data rights
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-history-v1
+    paths:
+      - .github/workflows/restack-repair-planning-completion-data-rights.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: planning-task-completion-history-writer
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      TARGET_BRANCH: feat/planning-task-completion-history-v1
+      BASE_BRANCH: feat/planning-task-completion-http-v1
+      EXPECTED_BASE_SHA: 44305a6572c463cd5e633412793f656b795aafb1
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Adopt exact owner-base descendant by ordinary merge
+        run: |
+          git config user.name 'Seongho Bae'
+          git config user.email 'me@seonghobae.me'
+          base_head="$(git ls-remote origin "refs/heads/${BASE_BRANCH}" | cut -f1)"
+          test "$base_head" = "$EXPECTED_BASE_SHA"
+          git fetch origin "${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}"
+          git merge --no-ff --no-edit "origin/${BASE_BRANCH}"
+
+      - name: Add data-rights regression before production repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/planning-service/tests/postgres-data-rights.integration.test.ts')
+          text = path.read_text()
+
+          migrations_old = """    '0004_data_rights_erasure_receipts.sql',\n"""
+          migrations_new = """    '0004_data_rights_erasure_receipts.sql',\n    '0005_task_completion_chronology.sql',\n    '0006_validate_task_completion_chronology.sql',\n    '0007_task_completion_facts.sql',\n"""
+          if text.count(migrations_old) != 1 or '0007_task_completion_facts.sql' in text:
+              raise SystemExit('data-rights migration fixture anchor is not exact')
+          text = text.replace(migrations_old, migrations_new)
+
+          seed_anchor = """  await pool.query(\n    `INSERT INTO planning.today_aggregates\n"""
+          seed_fact = """  await pool.query(\n    `INSERT INTO planning.task_completion_facts\n       (workspace_id, task_id, completed_at)\n     VALUES ($1, $2, TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,\n    [WORKSPACE_ID, taskId],\n  );\n  await pool.query(\n    `INSERT INTO planning.today_aggregates\n"""
+          if text.count(seed_anchor) != 1 or 'INSERT INTO planning.task_completion_facts' in text:
+              raise SystemExit('completion-fact seed anchor is not exact')
+          text = text.replace(seed_anchor, seed_fact)
+
+          if text.count("schemaVersion: 'planning.data-rights.v1'") != 1:
+              raise SystemExit('data-rights schema expectation anchor is not exact')
+          text = text.replace("schemaVersion: 'planning.data-rights.v1'", "schemaVersion: 'planning.data-rights.v2'")
+
+          if text.count('recordCount: 5,') != 1:
+              raise SystemExit('export record-count anchor is not exact')
+          text = text.replace('recordCount: 5,', 'recordCount: 6,')
+
+          digest_anchor = """      expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);\n\n"""
+          digest_new = """      expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);\n      expect(exported.data).toMatchObject({\n        taskCompletionFacts: [\n          {\n            taskId: '77777777-7777-4777-8777-777777777777',\n            completedAt: '2026-08-10T12:00:00.000Z',\n          },\n        ],\n      });\n\n"""
+          if text.count(digest_anchor) != 1 or 'taskCompletionFacts:' in text:
+              raise SystemExit('export completion-facts assertion anchor is not exact')
+          text = text.replace(digest_anchor, digest_new)
+
+          if text.count('erasedRecords: 5,') != 1:
+              raise SystemExit('erasure record-count anchor is not exact')
+          text = text.replace('erasedRecords: 5,', 'erasedRecords: 6,')
+
+          remaining_anchor = """             (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +\n             (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +\n"""
+          remaining_new = """             (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +\n             (SELECT count(*) FROM planning.task_completion_facts WHERE workspace_id = $1) +\n             (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +\n"""
+          if text.count(remaining_anchor) != 1:
+              raise SystemExit('remaining-record count anchor is not exact')
+          text = text.replace(remaining_anchor, remaining_new)
+          path.write_text(text)
+          PY
+          pnpm exec prettier --write apps/planning-service/tests/postgres-data-rights.integration.test.ts
+
+      - name: Prove completion facts are absent from data-rights export
+        run: |
+          set +e
+          pnpm --filter @life-os/planning-service exec vitest run tests/postgres-data-rights.integration.test.ts --no-file-parallelism > /tmp/data-rights-red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/data-rights-red.log
+          test "$status" -ne 0
+          grep -q "planning.data-rights.v2" /tmp/data-rights-red.log
+
+      - name: Apply service-owned data-rights repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/planning-service/src/planning-data-rights.ts')
+          text = path.read_text()
+
+          old_version = "const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v1' as const;"
+          new_version = "const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v2' as const;"
+          if text.count(old_version) != 1:
+              raise SystemExit('export schema version anchor is not exact')
+          text = text.replace(old_version, new_version)
+
+          interface_anchor = """interface PlanningTaskExportRow extends PlanningGoalExportRow {\n  project_id: unknown;\n  status: unknown;\n  completed_at: unknown;\n}\ninterface TodayAggregateExportRow {\n"""
+          interface_new = """interface PlanningTaskExportRow extends PlanningGoalExportRow {\n  project_id: unknown;\n  status: unknown;\n  completed_at: unknown;\n}\ninterface PlanningTaskCompletionFactExportRow {\n  completion_sequence: unknown;\n  task_id: unknown;\n  completed_at: unknown;\n}\ninterface TodayAggregateExportRow {\n"""
+          if text.count(interface_anchor) != 1:
+              raise SystemExit('completion-fact export interface anchor is not exact')
+          text = text.replace(interface_anchor, interface_new)
+
+          erasure_anchor = """  'planning.today_aggregates',\n  'planning.tasks',\n"""
+          erasure_new = """  'planning.today_aggregates',\n  'planning.task_completion_facts',\n  'planning.tasks',\n"""
+          if text.count(erasure_anchor) != 1:
+              raise SystemExit('erasure table anchor is not exact')
+          text = text.replace(erasure_anchor, erasure_new)
+
+          delete_anchor = """  'planning.tasks': `WITH deleted AS (\n     DELETE FROM planning.tasks\n"""
+          delete_new = """  'planning.task_completion_facts': `WITH deleted AS (\n     DELETE FROM planning.task_completion_facts\n     WHERE workspace_id = $1\n     RETURNING 1\n   )\n   SELECT count(*)::integer AS record_count FROM deleted`,\n  'planning.tasks': `WITH deleted AS (\n     DELETE FROM planning.tasks\n"""
+          if text.count(delete_anchor) != 1:
+              raise SystemExit('erasure SQL anchor is not exact')
+          text = text.replace(delete_anchor, delete_new)
+
+          destructure_old = """      const [goals, projects, tasks, todayAggregates, todayIdempotency] =\n        await Promise.all([\n"""
+          destructure_new = """      const [\n        goals,\n        projects,\n        tasks,\n        taskCompletionFacts,\n        todayAggregates,\n        todayIdempotency,\n      ] = await Promise.all([\n"""
+          if text.count(destructure_old) != 1:
+              raise SystemExit('export Promise destructuring anchor is not exact')
+          text = text.replace(destructure_old, destructure_new)
+
+          query_anchor = """          collectExportRows<TodayAggregateExportRow>(\n"""
+          query_new = """          collectExportRows<PlanningTaskCompletionFactExportRow>(\n            transaction,\n            `SELECT completion_sequence::text, task_id, completed_at\n             FROM planning.task_completion_facts\n             WHERE workspace_id = $1\n             ORDER BY completed_at ASC, task_id ASC, completion_sequence ASC\n             LIMIT $2 OFFSET $3`,\n            workspaceId,\n          ),\n          collectExportRows<TodayAggregateExportRow>(\n"""
+          if text.count(query_anchor) != 1:
+              raise SystemExit('export query insertion anchor is not exact')
+          text = text.replace(query_anchor, query_new)
+
+          data_anchor = """        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({\n"""
+          data_new = """        taskCompletionFacts: normalizeExportRows(taskCompletionFacts, (row) => ({\n          completionSequence: requireString(\n            row.completion_sequence,\n            'taskCompletionFact.completion_sequence',\n          ),\n          taskId: requireUuidV4(row.task_id, 'taskCompletionFact.task_id'),\n          completedAt: requireString(\n            requireTimestamp(\n              row.completed_at,\n              'taskCompletionFact.completed_at',\n            ),\n            'taskCompletionFact.completed_at',\n          ),\n        })),\n        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({\n"""
+          if text.count(data_anchor) != 1:
+              raise SystemExit('export data insertion anchor is not exact')
+          text = text.replace(data_anchor, data_new)
+
+          record_anchor = """        tasks.length +\n        todayAggregates.length +\n"""
+          record_new = """        tasks.length +\n        taskCompletionFacts.length +\n        todayAggregates.length +\n"""
+          if text.count(record_anchor) != 1:
+              raise SystemExit('export record-count anchor is not exact')
+          text = text.replace(record_anchor, record_new)
+
+          verify_anchor = """         (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +\n         (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +\n"""
+          verify_new = """         (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +\n         (SELECT count(*) FROM planning.task_completion_facts WHERE workspace_id = $1) +\n         (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +\n"""
+          if text.count(verify_anchor) != 1:
+              raise SystemExit('verify-erased count anchor is not exact')
+          text = text.replace(verify_anchor, verify_new)
+
+          path.write_text(text)
+          PY
+          pnpm exec prettier --write apps/planning-service/src/planning-data-rights.ts
+
+      - name: Run data-rights GREEN
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          tests/postgres-data-rights.integration.test.ts
+          --no-file-parallelism
+
+      - name: Run completion-history GREEN
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          src/task-completion-history.integration.test.ts
+          --no-file-parallelism
+
+      - name: Run complete Planning suite with normal file parallelism
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          --passWithNoTests
+
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Check changed-source formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/planning-service/src/planning-data-rights.ts
+          apps/planning-service/tests/postgres-data-rights.integration.test.ts
+          apps/planning-service/src/task-completion.ts
+          apps/planning-service/src/task-completion-history.integration.test.ts
+          apps/planning-service/src/postgres-planning-repository.integration.test.ts
+          apps/planning-service/migrations/README.md
+          apps/planning-service/src/main.ts
+
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
+
+      - name: Retire bounded writer and verify diff
+        run: |
+          rm .github/workflows/restack-repair-planning-completion-data-rights.yml
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
+            '.github/workflows/restack-repair-planning-completion-data-rights.yml' \
+            'apps/planning-service/src/planning-data-rights.ts' \
+            'apps/planning-service/tests/postgres-data-rights.integration.test.ts' | sort)"
+
+      - name: Verify exact remote ownership and base
+        run: |
+          remote_head="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          base_head="$(git ls-remote origin "refs/heads/${BASE_BRANCH}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          test "$base_head" = "$EXPECTED_BASE_SHA"
+
+      - name: Publish ordinary descendants
+        run: |
+          git add -A
+          git commit -m 'fix(planning): include completion facts in data rights'
+          git push origin "HEAD:${TARGET_BRANCH}"
