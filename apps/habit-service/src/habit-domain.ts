@@ -212,7 +212,7 @@ function normalizeRecurrence(recurrence: HabitRecurrence): HabitRecurrence {
   }
   if (recurrence.kind === 'weekly') {
     return {
-      kind,
+      kind: 'weekly',
       interval,
       weekdays: normalizeWeekdays(recurrence.weekdays),
     };
