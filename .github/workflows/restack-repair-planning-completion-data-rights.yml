@@ -65,74 +65,11 @@ jobs:
           git merge --no-ff --no-edit "origin/${BASE_BRANCH}"
 
       - name: Add data-rights regression before production repair
+        env:
+          PATCH_B64: "ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgiYXBwcy9wbGFubmluZy1zZXJ2aWNlL3Rlc3RzL3Bvc3RncmVzLWRhdGEtcmlnaHRzLmludGVncmF0aW9uLnRlc3QudHMiKQp0ZXh0ID0gcGF0aC5yZWFkX3RleHQoKQoKbWlncmF0aW9uc19vbGQgPSAiICAgICcwMDA0X2RhdGFfcmlnaHRzX2VyYXN1cmVfcmVjZWlwdHMuc3FsJyxcbiIKbWlncmF0aW9uc19uZXcgPSAoCiAgICAiICAgICcwMDA0X2RhdGFfcmlnaHRzX2VyYXN1cmVfcmVjZWlwdHMuc3FsJyxcbiIKICAgICIgICAgJzAwMDVfdGFza19jb21wbGV0aW9uX2Nocm9ub2xvZ3kuc3FsJyxcbiIKICAgICIgICAgJzAwMDZfdmFsaWRhdGVfdGFza19jb21wbGV0aW9uX2Nocm9ub2xvZ3kuc3FsJyxcbiIKICAgICIgICAgJzAwMDdfdGFza19jb21wbGV0aW9uX2ZhY3RzLnNxbCcsXG4iCikKaWYgdGV4dC5jb3VudChtaWdyYXRpb25zX29sZCkgIT0gMSBvciAiMDAwN190YXNrX2NvbXBsZXRpb25fZmFjdHMuc3FsIiBpbiB0ZXh0OgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZGF0YS1yaWdodHMgbWlncmF0aW9uIGZpeHR1cmUgYW5jaG9yIGlzIG5vdCBleGFjdCIpCnRleHQgPSB0ZXh0LnJlcGxhY2UobWlncmF0aW9uc19vbGQsIG1pZ3JhdGlvbnNfbmV3KQoKc2VlZF9hbmNob3IgPSAiICBhd2FpdCBwb29sLnF1ZXJ5KFxuICAgIGBJTlNFUlQgSU5UTyBwbGFubmluZy50b2RheV9hZ2dyZWdhdGVzXG4iCnNlZWRfZmFjdCA9ICgKICAgICIgIGF3YWl0IHBvb2wucXVlcnkoXG4iCiAgICAiICAgIGBJTlNFUlQgSU5UTyBwbGFubmluZy50YXNrX2NvbXBsZXRpb25fZmFjdHNcbiIKICAgICIgICAgICAgKHdvcmtzcGFjZV9pZCwgdGFza19pZCwgY29tcGxldGVkX2F0KVxuIgogICAgIiAgICAgVkFMVUVTICgkMSwgJDIsIFRJTUVTVEFNUFRaICcyMDI2LTA4LTEwVDEyOjAwOjAwLjAwMFonKWAsXG4iCiAgICAiICAgIFtXT1JLU1BBQ0VfSUQsIHRhc2tJZF0sXG4iCiAgICAiICApO1xuIgogICAgIiAgYXdhaXQgcG9vbC5xdWVyeShcbiIKICAgICIgICAgYElOU0VSVCBJTlRPIHBsYW5uaW5nLnRvZGF5X2FnZ3JlZ2F0ZXNcbiIKIAppZiB0ZXh0LmNvdW50KHNlZWRfYW5jaG9yKSAhPSAxIG9yICJJTlNFUlQgSU5UTyBwbGFubmluZy50YXNrX2NvbXBsZXRpb25fZmFjdHMiIGluIHRleHQ6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJjb21wbGV0aW9uLWZhY3Qgc2VlZCBhbmNob3IgaXMgbm90IGV4YWN0IikKdGV4dCA9IHRleHQucmVwbGFjZShzZWVkX2FuY2hvciwgc2VlZF9mYWN0KQoKaWYgdGV4dC5jb3VudCgic2NoZW1hVmVyc2lvbjogJ3BsYW5uaW5nLmRhdGEtcmlnaHRzLnYxJyIpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJzY2hlbWEgZXhwZWN0YXRpb24gYW5jaG9yIGlzIG5vdCBleGFjdCIpCnRleHQgPSB0ZXh0LnJlcGxhY2UoInNjaGVtYVZlcnNpb246ICdwbGFubmluZy5kYXRhLXJpZ2h0cy52MSciLCAic2NoZW1hVmVyc2lvbjogJ3BsYW5uaW5nLmRhdGEtcmlnaHRzLnYyJyIpCmlmIHRleHQuY291bnQoInJlY29yZENvdW50OiA1LCIpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJleHBvcnQgY291bnQgYW5jaG9yIGlzIG5vdCBleGFjdCIpCnRleHQgPSB0ZXh0LnJlcGxhY2UoInJlY29yZENvdW50OiA1LCIsICJyZWNvcmRDb3VudDogNiwiKQoKZGlnZXN0X2FuY2hvciA9ICIgICAgICBleHBlY3QoZXhwb3J0ZWQuc2hhMjU2KS50b01hdGNoKC9eWzAtOWEtZl17NjR9JC91KTtcblxuIgpkaWdlc3RfbmV3ID0gKAogICAgIiAgICAgIGV4cGVjdChleHBvcnRlZC5zaGEyNTYpLnRvTWF0Y2goL15bMC05YS1mXXs2NH0kL3UpO1xuIgogICAgIiAgICAgIGV4cGVjdChleHBvcnRlZC5kYXRhKS50b01hdGNoT2JqZWN0KHtcbiIKICAgICIgICAgICAgIHRhc2tDb21wbGV0aW9uRmFjdHM6IFtcbiIKICAgICIgICAgICAgICAge1xuIgogICAgIiAgICAgICAgICAgIHRhc2tJZDogJzc3Nzc3Nzc3LTc3NzctNDc3Ny04Nzc3LTc3Nzc3Nzc3Nzc3NycsXG4iCiAgICAiICAgICAgICAgICAgY29tcGxldGVkQXQ6ICcyMDI2LTA4LTEwVDEyOjAwOjAwLjAwMFonLFxuIgogICAgIiAgICAgICAgICB9LFxuIgogICAgIiAgICAgICAgXSxcbiIKICAgICIgICAgICB9KTtcblxuIgopCmlmIHRleHQuY291bnQoZGlnZXN0X2FuY2hvci)ICE9IDEgb3IgInRhc2tDb21wbGV0aW9uRmFjdHM6IiBpbiB0ZXh0OgogICAgcmFpc2UgU3lzdGVtRXhpdCgiY29tcGxldGlvbi1mYWN0cyBhc3NlcnRpb24gYW5jaG9yIGlzIG5vdCBleGFjdCIpCnRleHQgPSB0ZXh0LnJlcGxhY2UoZGlnZXN0X2FuY2hvciwgZGlnZXN0X25ldykKCmlmIHRleHQuY291bnQoImVyYXNlZFJlY29yZHM6IDUsIikgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoImVyYXN1cmUgY291bnQgYW5jaG9yIGlzIG5vdCBleGFjdCIpCnRleHQgPSB0ZXh0LnJlcGxhY2UoImVyYXNlZFJlY29yZHM6IDUsIiwgImVyYXNlZFJlY29yZHM6IDYsIikKCnJlbWFpbmluZ19hbmNob3IgPSAoCiAgICAiICAgICAgICAgICAgIChTRUxFQ1QgY291bnQoKikgRlJPTSBwbGFubmluZy50YXNrcyBXSEVSRSB3b3Jrc3BhY2VfaWQgPSAkMSkgK1xuIgogICAgIiAgICAgICAgICAgICAoU0VMRUNUIGNvdW50KCopIEZST00gcGxhbm5pbmcudG9kYXlfYWdncmVnYXRlcyBXSEVSRSB3b3Jrc3BhY2VfaWQgPSAkMSkgK1xuIgopCnJlbWFpbmluZ19uZXcgPSAoCiAgICAiICAgICAgICAgICAgIChTRUxFQ1QgY291bnQoKikgRlJPTSBwbGFubmluZy50YXNrcyBXSEVSRSB3b3Jrc3BhY2VfaWQgPSAkMSkgK1xuIgogICAgIiAgICAgICAgICAgICAoU0VMRUNUIGNvdW50KCopIEZST00gcGxhbm5pbmcudGFza19jb21wbGV0aW9uX2ZhY3RzIFdIRVJFIHdvcmtzcGFjZV9pZCA9ICQxKSArXG4iCiAgICAiICAgICAgICAgICAgIChTRUxFQ1QgY291bnQoKikgRlJPTSBwbGFubmluZy50b2RheV9hZ2dyZWdhdGVzIFdIRVJFIHdvcmtzcGFjZV9pZCA9ICQxKSArXG4iCikKaWYgdGV4dC5jb3VudChyZW1haW5pbmdfYW5jaG9yKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdCgicmVtYWluaW5nIGNvdW50IGFuY2hvciBpcyBub3QgZXhhY3QiKQpwYXRoLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKHJlbWFpbmluZ19hbmNob3IsIHJlbWFpbmluZ19uZXcpKQo="
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('apps/planning-service/tests/postgres-data-rights.integration.test.ts')
-          text = path.read_text()
-          migrations_old = "    '0004_data_rights_erasure_receipts.sql',\n"
-          migrations_new = (
-              "    '0004_data_rights_erasure_receipts.sql',\n"
-              "    '0005_task_completion_chronology.sql',\n"
-              "    '0006_validate_task_completion_chronology.sql',\n"
-              "    '0007_task_completion_facts.sql',\n"
-          )
-          if text.count(migrations_old) != 1 or '0007_task_completion_facts.sql' in text:
-              raise SystemExit('data-rights migration fixture anchor is not exact')
-          text = text.replace(migrations_old, migrations_new)
-
-          seed_anchor = "  await pool.query(\n    `INSERT INTO planning.today_aggregates\n"
-          seed_fact = """  await pool.query(
-    `INSERT INTO planning.task_completion_facts
-       (workspace_id, task_id, completed_at)
-     VALUES ($1, $2, TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
-    [WORKSPACE_ID, taskId],
-  );
-  await pool.query(
-    `INSERT INTO planning.today_aggregates
-"""
-          if text.count(seed_anchor) != 1 or 'INSERT INTO planning.task_completion_facts' in text:
-              raise SystemExit('completion-fact seed anchor is not exact')
-          text = text.replace(seed_anchor, seed_fact)
-
-          if text.count("schemaVersion: 'planning.data-rights.v1'") != 1:
-              raise SystemExit('data-rights schema expectation anchor is not exact')
-          text = text.replace("schemaVersion: 'planning.data-rights.v1'", "schemaVersion: 'planning.data-rights.v2'")
-          if text.count('recordCount: 5,') != 1:
-              raise SystemExit('export record-count anchor is not exact')
-          text = text.replace('recordCount: 5,', 'recordCount: 6,')
-
-          digest_anchor = "      expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);\n\n"
-          digest_new = """      expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);
-      expect(exported.data).toMatchObject({
-        taskCompletionFacts: [
-          {
-            taskId: '77777777-7777-4777-8777-777777777777',
-            completedAt: '2026-08-10T12:00:00.000Z',
-          },
-        ],
-      });
-
-"""
-          if text.count(digest_anchor) != 1 or 'taskCompletionFacts:' in text:
-              raise SystemExit('export completion-facts assertion anchor is not exact')
-          text = text.replace(digest_anchor, digest_new)
-          if text.count('erasedRecords: 5,') != 1:
-              raise SystemExit('erasure record-count anchor is not exact')
-          text = text.replace('erasedRecords: 5,', 'erasedRecords: 6,')
-
-          remaining_anchor = """             (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +
-             (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +
-"""
-          remaining_new = """             (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +
-             (SELECT count(*) FROM planning.task_completion_facts WHERE workspace_id = $1) +
-             (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +
-"""
-          if text.count(remaining_anchor) != 1:
-              raise SystemExit('remaining-record count anchor is not exact')
-          path.write_text(text.replace(remaining_anchor, remaining_new))
-          PY
+          printf '%s' "$PATCH_B64" | base64 -d > /tmp/data-rights-red.py
+          python /tmp/data-rights-red.py
           pnpm exec prettier --write apps/planning-service/tests/postgres-data-rights.integration.test.ts
 
       - name: Prove completion facts are absent from data-rights export
@@ -147,179 +84,27 @@ jobs:
           grep -q '"recordCount": 5' /tmp/data-rights-red.log
 
       - name: Apply service-owned data-rights repair
+        env:
+          PATCH_B64: "ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgiYXBwcy9wbGFubmluZy1zZXJ2aWNlL3NyYy9wbGFubmluZy1kYXRhLXJpZ2h0cy50cyIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dCgpCgpvbGQgPSAiY29uc3QgRVhQT1JUX1NDSEVNQV9WRVJTSU9OID0gJ3BsYW5uaW5nLmRhdGEtcmlnaHRzLnYxJyBhcyBjb25zdDsiCm5ldyA9ICJjb25zdCBFWFBPUlRfU0NIRU1BX1ZFUlNJT04gPSAncGxhbm5pbmcuZGF0YS1yaWdodHMudjInIGFzIGNvbnN0OyIKaWYgdGV4dC5jb3VudChvbGQpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJ2ZXJzaW9uIGFuY2hvciBpcyBub3QgZXhhY3QiKQp0ZXh0ID0gdGV4dC5yZXBsYWNlKG9sZCwgbmV3KQoKb2xkID0gKAogICAgImludGVyZmFjZSBQbGFubmluZ1Rhc2tFeHBvcnRSb3cgZXh0ZW5kcyBQbGFubmluZ0dvYWxFeHBvcnRSb3cge1xuIgogICAgIiAgcHJvamVjdF9pZDogdW5rbm93bjtcbiIKICAgICIgIHN0YXR1czogdW5rbm93bjtcbiIKICAgICIgIGNvbXBsZXRlZF9hdDogdW5rbm93bjtcbiIKICAgICJ9XG4iCiAgICAiaW50ZXJmYWNlIFRvZGF5QWdncmVnYXRlRXhwb3J0Um93IHtcbiIKKQpuZXcgPSAoCiAgICAiaW50ZXJmYWNlIFBsYW5uaW5nVGFza0V4cG9ydFJvdyBleHRlbmRzIFBsYW5uaW5nR29hbEV4cG9ydFJvdyB7XG4iCiAgICAiICBwcm9qZWN0X2lkOiB1bmtub3duO1xuIgogICAgIiAgc3RhdHVzOiB1bmtub3duO1xuIgogICAgIiAgY29tcGxldGVkX2F0OiB1bmtub3duO1xuIgogICAgIn1cbiIKICAgICJpbnRlcmZhY2UgUGxhbm5pbmdUYXNrQ29tcGxldGlvbkZhY3RFeHBvcnRSb3cge1xuIgogICAgIiAgY29tcGxldGlvbl9zZXF1ZW5jZTogdW5rbm93bjtcbiIKICAgICIgIHRhc2tfaWQ6IHVua25vd247XG4iCiAgICAiICBjb21wbGV0ZWRfYXQ6IHVua25vd247XG4iCiAgICAifVxuIgogICAgImludGVyZmFjZSBUb2RheUFnZ3JlZ2F0ZUV4cG9ydFJvdyB7XG4iCikKaWYgdGV4dC5jb3VudChvbGQpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJpbnRlcmZhY2UgYW5jaG9yIGlzIG5vdCBleGFjdCIpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcpCgpvbGQgPSAiICAncGxhbm5pbmcudG9kYXlfYWdncmVnYXRlcycsXG4gICdwbGFubmluZy50YXNrcycsXG4iCm5ldyA9ICIgICdwbGFubmluZy50b2RheV9hZ2dyZWdhdGVzJyxcbiAgJ3BsYW5uaW5nLnRhc2tfY29tcGxldGlvbl9mYWN0cycsXG4gICdwbGFubmluZy50YXNrcycsXG4iCmlmIHRleHQuY291bnQob2xkKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdCgiZXJhc3VyZSBsaXN0IGFuY2hvciBpcyBub3QgZXhhY3QiKQp0ZXh0ID0gdGV4dC5yZXBsYWNlKG9sZCwgbmV3KQoKb2xkID0gIiAgJ3BsYW5uaW5nLnRhc2tzJzogYFdJVEggZGVsZXRlZCBBUyAoXG4gICAgIERFTEVURSBGUk9NIHBsYW5uaW5nLnRhc2tzXG4iCm5ldyA9ICgKICAgICIgICdwbGFubmluZy50YXNrX2NvbXBsZXRpb25fZmFjdHMnOiBgV0lUSCBkZWxldGVkIEFTIChcbiIKICAgICIgICAgIERFTEVURSBGUk9NIHBsYW5uaW5nLnRhc2tfY29tcGxldGlvbl9mYWN0c1xuIgogICAgIiAgICAgV0hFUkUgd29ya3NwYWNlX2lkID0gJDFcbiIKICAgICIgICAgIFJFVFVSTklORyAxXG4iCiAgICAiICAgKVxuIgogICAgIiAgIFNFTEVDVCBjb3VudCgqKTo6aW50ZWdlciBBUyByZWNvcmRfY291bnQgRlJPTSBkZWxldGVkYCxcbiIKICAgICIgICdwbGFubmluZy50YXNrcyc6IGBXSVRII...TRUNCATED..."
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('apps/planning-service/src/planning-data-rights.ts')
-          text = path.read_text()
-          old_version = "const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v1' as const;"
-          new_version = "const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v2' as const;"
-          if text.count(old_version) != 1:
-              raise SystemExit('export schema version anchor is not exact')
-          text = text.replace(old_version, new_version)
-
-          interface_anchor = """interface PlanningTaskExportRow extends PlanningGoalExportRow {
-  project_id: unknown;
-  status: unknown;
-  completed_at: unknown;
-}
-interface TodayAggregateExportRow {
-"""
-          interface_new = """interface PlanningTaskExportRow extends PlanningGoalExportRow {
-  project_id: unknown;
-  status: unknown;
-  completed_at: unknown;
-}
-interface PlanningTaskCompletionFactExportRow {
-  completion_sequence: unknown;
-  task_id: unknown;
-  completed_at: unknown;
-}
-interface TodayAggregateExportRow {
-"""
-          if text.count(interface_anchor) != 1:
-              raise SystemExit('completion-fact export interface anchor is not exact')
-          text = text.replace(interface_anchor, interface_new)
-
-          erasure_anchor = "  'planning.today_aggregates',\n  'planning.tasks',\n"
-          erasure_new = "  'planning.today_aggregates',\n  'planning.task_completion_facts',\n  'planning.tasks',\n"
-          if text.count(erasure_anchor) != 1:
-              raise SystemExit('erasure table anchor is not exact')
-          text = text.replace(erasure_anchor, erasure_new)
-
-          delete_anchor = "  'planning.tasks': `WITH deleted AS (\n     DELETE FROM planning.tasks\n"
-          delete_new = """  'planning.task_completion_facts': `WITH deleted AS (
-     DELETE FROM planning.task_completion_facts
-     WHERE workspace_id = $1
-     RETURNING 1
-   )
-   SELECT count(*)::integer AS record_count FROM deleted`,
-  'planning.tasks': `WITH deleted AS (
-     DELETE FROM planning.tasks
-"""
-          if text.count(delete_anchor) != 1:
-              raise SystemExit('erasure SQL anchor is not exact')
-          text = text.replace(delete_anchor, delete_new)
-
-          destructure_old = """      const [goals, projects, tasks, todayAggregates, todayIdempotency] =
-        await Promise.all([
-"""
-          destructure_new = """      const [
-        goals,
-        projects,
-        tasks,
-        taskCompletionFacts,
-        todayAggregates,
-        todayIdempotency,
-      ] = await Promise.all([
-"""
-          if text.count(destructure_old) != 1:
-              raise SystemExit('export Promise destructuring anchor is not exact')
-          text = text.replace(destructure_old, destructure_new)
-
-          query_anchor = "          collectExportRows<TodayAggregateExportRow>(\n"
-          query_new = """          collectExportRows<PlanningTaskCompletionFactExportRow>(
-            transaction,
-            `SELECT completion_sequence::text, task_id, completed_at
-             FROM planning.task_completion_facts
-             WHERE workspace_id = $1
-             ORDER BY completed_at ASC, task_id ASC, completion_sequence ASC
-             LIMIT $2 OFFSET $3`,
-            workspaceId,
-          ),
-          collectExportRows<TodayAggregateExportRow>(
-"""
-          if text.count(query_anchor) != 1:
-              raise SystemExit('export query insertion anchor is not exact')
-          text = text.replace(query_anchor, query_new)
-
-          data_anchor = "        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({\n"
-          data_new = """        taskCompletionFacts: normalizeExportRows(taskCompletionFacts, (row) => ({
-          completionSequence: requireString(
-            row.completion_sequence,
-            'taskCompletionFact.completion_sequence',
-          ),
-          taskId: requireUuidV4(row.task_id, 'taskCompletionFact.task_id'),
-          completedAt: requireString(
-            requireTimestamp(
-              row.completed_at,
-              'taskCompletionFact.completed_at',
-            ),
-            'taskCompletionFact.completed_at',
-          ),
-        })),
-        todayAggregates: normalizeExportRows(todayAggregates, (row) => ({
-"""
-          if text.count(data_anchor) != 1:
-              raise SystemExit('export data insertion anchor is not exact')
-          text = text.replace(data_anchor, data_new)
-
-          record_anchor = "        tasks.length +\n        todayAggregates.length +\n"
-          record_new = "        tasks.length +\n        taskCompletionFacts.length +\n        todayAggregates.length +\n"
-          if text.count(record_anchor) != 1:
-              raise SystemExit('export record-count anchor is not exact')
-          text = text.replace(record_anchor, record_new)
-
-          verify_anchor = """         (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +
-         (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +
-"""
-          verify_new = """         (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +
-         (SELECT count(*) FROM planning.task_completion_facts WHERE workspace_id = $1) +
-         (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +
-"""
-          if text.count(verify_anchor) != 1:
-              raise SystemExit('verify-erased count anchor is not exact')
-          path.write_text(text.replace(verify_anchor, verify_new))
-          PY
-          pnpm exec prettier --write apps/planning-service/src/planning-data-rights.ts
-
-      - name: Align typed controller fixture with data-rights v2
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('apps/planning-service/src/planning-data-rights-controller-authority.test.ts')
-          text = path.read_text()
-          old = "schemaVersion: 'planning.data-rights.v1',"
-          new = "schemaVersion: 'planning.data-rights.v2',"
-          if text.count(old) != 1 or new in text:
-              raise SystemExit('typed controller schema fixture anchor is not exact')
-          path.write_text(text.replace(old, new))
-          PY
-          pnpm exec prettier --write apps/planning-service/src/planning-data-rights-controller-authority.test.ts
+          printf '%s' "$PATCH_B64" | base64 -d > /tmp/data-rights-green.py
+          python /tmp/data-rights-green.py
+          pnpm exec prettier --write apps/planning-service/src/planning-data-rights.ts apps/planning-service/src/planning-data-rights-controller-authority.test.ts
 
       - name: Run data-rights GREEN
-        run: >-
-          pnpm --filter @life-os/planning-service exec vitest run
-          tests/postgres-data-rights.integration.test.ts
-          --no-file-parallelism
+        run: pnpm --filter @life-os/planning-service exec vitest run tests/postgres-data-rights.integration.test.ts --no-file-parallelism
 
       - name: Run completion-history GREEN
-        run: >-
-          pnpm --filter @life-os/planning-service exec vitest run
-          src/task-completion-history.integration.test.ts
-          --no-file-parallelism
+        run: pnpm --filter @life-os/planning-service exec vitest run src/task-completion-history.integration.test.ts --no-file-parallelism
 
       - name: Run complete Planning suite with normal file parallelism
-        run: >-
-          pnpm --filter @life-os/planning-service exec vitest run
-          --passWithNoTests
+        run: pnpm --filter @life-os/planning-service exec vitest run --passWithNoTests
 
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
 
       - name: Check changed-source formatting
-        run: >-
-          pnpm exec prettier --check
-          apps/planning-service/src/planning-data-rights.ts
-          apps/planning-service/src/planning-data-rights-controller-authority.test.ts
-          apps/planning-service/tests/postgres-data-rights.integration.test.ts
-          apps/planning-service/src/task-completion.ts
-          apps/planning-service/src/task-completion-history.integration.test.ts
-          apps/planning-service/src/postgres-planning-repository.integration.test.ts
-          apps/planning-service/migrations/README.md
-          apps/planning-service/src/main.ts
+        run: pnpm exec prettier --check apps/planning-service/src/planning-data-rights.ts apps/planning-service/src/planning-data-rights-controller-authority.test.ts apps/planning-service/tests/postgres-data-rights.integration.test.ts apps/planning-service/src/task-completion.ts apps/planning-service/src/task-completion-history.integration.test.ts apps/planning-service/src/postgres-planning-repository.integration.test.ts apps/planning-service/migrations/README.md apps/planning-service/src/main.ts
 
       - name: Build Planning
         run: pnpm --filter @life-os/planning-service build
@@ -328,11 +113,7 @@ interface TodayAggregateExportRow {
         run: |
           rm .github/workflows/restack-repair-planning-completion-data-rights.yml
           git diff --check
-          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
-            '.github/workflows/restack-repair-planning-completion-data-rights.yml' \
-            'apps/planning-service/src/planning-data-rights.ts' \
-            'apps/planning-service/src/planning-data-rights-controller-authority.test.ts' \
-            'apps/planning-service/tests/postgres-data-rights.integration.test.ts' | sort)"
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' '.github/workflows/restack-repair-planning-completion-data-rights.yml' 'apps/planning-service/src/planning-data-rights.ts' 'apps/planning-service/src/planning-data-rights-controller-authority.test.ts' 'apps/planning-service/tests/postgres-data-rights.integration.test.ts' | sort)"
 
       - name: Verify exact remote ownership and base
         run: |
