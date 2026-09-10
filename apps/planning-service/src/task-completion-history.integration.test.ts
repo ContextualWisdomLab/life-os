@@ -49,7 +49,9 @@ function createSqlClient(): TaskCompletionSqlClient {
 describeWithPostgres('Planning durable task completion facts', () => {
   beforeAll(async () => {
     if (!DATABASE_URL) {
-      throw new Error('PLANNING_DATABASE_URL is required for integration tests');
+      throw new Error(
+        'PLANNING_DATABASE_URL is required for integration tests',
+      );
     }
     pool = new Pool({
       connectionString: DATABASE_URL,
@@ -183,10 +185,9 @@ describeWithPostgres('Planning durable task completion facts', () => {
       [WORKSPACE_ID, CONCURRENT_TASK_ID],
     );
     expect(facts.rows).toHaveLength(1);
-    expect([
-      FIRST_COMPLETED_AT,
-      RETRIED_AT,
-    ]).toContain(facts.rows[0]?.completed_at.toISOString());
+    expect([FIRST_COMPLETED_AT, RETRIED_AT]).toContain(
+      facts.rows[0]?.completed_at.toISOString(),
+    );
     expect(outcomes[0]?.completedAt).toBe(outcomes[1]?.completedAt);
   });
 
