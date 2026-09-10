@@ -50,6 +50,27 @@ export interface HabitTodayStatus {
   completionId?: string;
 }
 
+/** Per-habit numerator and denominator retained for Weekly Review evidence. */
+export interface HabitReviewProjectionEntry {
+  habitId: string;
+  title: string;
+  timezone: string;
+  scheduledOpportunityCount: number;
+  completedOpportunityCount: number;
+}
+
+/** Versioned Habit-owned projection for one Monday-to-Sunday Review period. */
+export interface HabitReviewWeekProjection {
+  schemaVersion: 'life-os.habit-review-projection.v1';
+  periodStartDate: string;
+  periodEndDate: string;
+  periodBasis: 'habit-local-date';
+  asOf: string;
+  scheduledOpportunityCount: number;
+  completedOpportunityCount: number;
+  habits: readonly HabitReviewProjectionEntry[];
+}
+
 export interface HabitRepository {
   saveHabit(habit: Habit): Promise<void>;
   findHabit(workspaceId: string, habitId: string): Promise<Habit | undefined>;
@@ -69,6 +90,8 @@ const RFC_3339_TIMESTAMP_PATTERN =
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAXIMUM_OCCURRENCE_RANGE_DAYS = 366;
+const MAXIMUM_REVIEW_PROJECTION_HABITS = 100;
+const REVIEW_WEEK_DAYS = 7;
 const MILLISECONDS_PER_DAY = 86_400_000;
 
 interface ParsedLocalDate {
@@ -189,7 +212,7 @@ function normalizeRecurrence(recurrence: HabitRecurrence): HabitRecurrence {
   }
   if (recurrence.kind === 'weekly') {
     return {
-      kind: 'weekly',
+      kind,
       interval,
       weekdays: normalizeWeekdays(recurrence.weekdays),
     };
@@ -350,7 +373,10 @@ export class InMemoryHabitRepository implements HabitRepository {
 }
 
 export class HabitService {
-  constructor(private readonly repository: HabitRepository) {}
+  constructor(
+    private readonly repository: HabitRepository,
+    private readonly projectionClock: () => string = () => new Date().toISOString(),
+  ) {}
 
   async createHabit(
     workspaceId: string,
@@ -420,6 +446,88 @@ export class HabitService {
       );
     }
     return today;
+  }
+
+  /**
+   * Projects one bounded Monday-to-Sunday Review period from Habit-owned recurrence
+   * and completion truth without converting completion counts into a universal score.
+   */
+  async projectReviewWeek(
+    workspaceId: string,
+    periodStartDate: string,
+  ): Promise<HabitReviewWeekProjection> {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const periodStart = parseLocalDate(periodStartDate);
+    if (periodStart.isoWeekday !== 1) {
+      throw new Error('Review period must start on Monday');
+    }
+    const periodEndDate = localDateFromEpochDay(
+      periodStart.epochDay + REVIEW_WEEK_DAYS - 1,
+    ).text;
+    const habits = await this.repository.listHabits(safeWorkspaceId);
+    if (habits.length > MAXIMUM_REVIEW_PROJECTION_HABITS) {
+      throw new Error('Review projection exceeds habit limit');
+    }
+
+    const entries: HabitReviewProjectionEntry[] = [];
+    for (const habit of habits) {
+      if (habit.workspaceId !== safeWorkspaceId) {
+        throw new Error('Review projection ownership is invalid');
+      }
+      const scheduledDates = new Set(
+        generateHabitOccurrences(habit, periodStart.text, periodEndDate).map(
+          (occurrence) => occurrence.scheduledLocalDate,
+        ),
+      );
+      const completedDates = new Set<string>();
+      const completions = await this.repository.listCompletions(
+        safeWorkspaceId,
+        habit.id,
+      );
+      for (const completion of completions) {
+        if (
+          completion.workspaceId !== safeWorkspaceId ||
+          completion.habitId !== habit.id
+        ) {
+          throw new Error('Review projection ownership is invalid');
+        }
+        if (scheduledDates.has(completion.scheduledLocalDate)) {
+          completedDates.add(completion.scheduledLocalDate);
+        }
+      }
+      entries.push({
+        habitId: habit.id,
+        title: habit.title,
+        timezone: habit.timezone,
+        scheduledOpportunityCount: scheduledDates.size,
+        completedOpportunityCount: completedDates.size,
+      });
+    }
+    entries.sort(
+      (left, right) =>
+        left.title.localeCompare(right.title) ||
+        left.habitId.localeCompare(right.habitId),
+    );
+
+    const scheduledOpportunityCount = entries.reduce(
+      (sum, entry) => sum + entry.scheduledOpportunityCount,
+      0,
+    );
+    const completedOpportunityCount = entries.reduce(
+      (sum, entry) => sum + entry.completedOpportunityCount,
+      0,
+    );
+
+    return Object.freeze({
+      schemaVersion: 'life-os.habit-review-projection.v1',
+      periodStartDate: periodStart.text,
+      periodEndDate,
+      periodBasis: 'habit-local-date',
+      asOf: requireTimestamp(this.projectionClock()),
+      scheduledOpportunityCount,
+      completedOpportunityCount,
+      habits: Object.freeze(entries.map((entry) => Object.freeze({ ...entry }))),
+    });
   }
 
   async listOccurrences(
