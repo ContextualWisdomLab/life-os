@@ -121,6 +121,19 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
     ).rejects.toThrowError('Habit persistence operation failed');
   });
 
+  it('fails closed when a seven-day Review persistence period does not start Monday', async () => {
+    const repository = new PostgresHabitRepository(new RecordingSqlClient([]));
+
+    await expect(
+      repository.readReviewWeekEvidence(
+        WORKSPACE_ID,
+        '2026-09-08',
+        '2026-09-14',
+        100,
+      ),
+    ).rejects.toThrowError('Habit persistence operation failed');
+  });
+
   it('fails closed when the requested habit ceiling is outside the supported bound', async () => {
     const repository = new PostgresHabitRepository(new RecordingSqlClient([]));
 
