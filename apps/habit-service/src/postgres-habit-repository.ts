@@ -434,12 +434,15 @@ export class PostgresHabitRepository implements HabitRepository {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safePeriodStartDate = requireLocalDate(periodStartDate);
     const safePeriodEndDate = requireLocalDate(periodEndDate);
+    const periodStartWeekday = new Date(
+      `${safePeriodStartDate}T00:00:00.000Z`,
+    ).getUTCDay();
     const daySpan =
       (Date.parse(`${safePeriodEndDate}T00:00:00.000Z`) -
         Date.parse(`${safePeriodStartDate}T00:00:00.000Z`)) /
       MILLISECONDS_PER_DAY;
     const safeMaximumHabits = requireInteger(maximumHabits, 1, 100);
-    if (daySpan !== REVIEW_WEEK_DAYS - 1) {
+    if (periodStartWeekday !== 1 || daySpan !== REVIEW_WEEK_DAYS - 1) {
       return invalidRow();
     }
     const queryLimit = safeMaximumHabits + 1;
