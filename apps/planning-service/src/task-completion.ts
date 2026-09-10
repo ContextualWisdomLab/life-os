@@ -79,10 +79,7 @@ async function boundedPersistenceCall<T>(
 ): Promise<T> {
   try {
     return await operation();
-  } catch (error) {
-    if (error instanceof TaskCompletionPersistenceError) {
-      throw error;
-    }
+  } catch {
     return invalidPersistenceEvidence();
   }
 }
@@ -176,10 +173,7 @@ function parseRepositoryEvidence(
       return invalidPersistenceEvidence();
     }
     return { workspaceId, taskId, status: 'done', completedAt };
-  } catch (error) {
-    if (error instanceof TaskCompletionPersistenceError) {
-      throw error;
-    }
+  } catch {
     return invalidPersistenceEvidence();
   }
 }
