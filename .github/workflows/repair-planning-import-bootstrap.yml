@@ -1,0 +1,105 @@
+name: Repair Planning import-time bootstrap boundary
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-http-v1
+    paths:
+      - .github/workflows/repair-planning-import-bootstrap.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: planning-task-completion-http-writer
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      TARGET_BRANCH: feat/planning-task-completion-http-v1
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply direct-entry bootstrap guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/planning-service/src/main.ts')
+          text = path.read_text()
+          old = '\nvoid bootstrap();\n'
+          new = '\nif (require.main === module) {\n  void bootstrap();\n}\n'
+          if text.count(old) != 1:
+              raise SystemExit('unconditional bootstrap anchor count is not exactly one')
+          if 'if (require.main === module)' in text:
+              raise SystemExit('direct-entry guard unexpectedly already present')
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Run complete Planning suite with normal file parallelism
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          --passWithNoTests
+
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Check source formatting
+        run: pnpm exec prettier --check apps/planning-service/src/main.ts
+
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
+
+      - name: Retire bounded writer and verify diff
+        run: |
+          rm .github/workflows/repair-planning-import-bootstrap.yml
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
+            '.github/workflows/repair-planning-import-bootstrap.yml' \
+            'apps/planning-service/src/main.ts' | sort)"
+
+      - name: Verify writer still owns exact remote head
+        run: |
+          remote_head="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Publish ordinary descendant
+        run: |
+          git config user.name 'Seongho Bae'
+          git config user.email 'me@seonghobae.me'
+          git add -A
+          git commit -m 'fix(planning): avoid service bootstrap on module import'
+          git push origin "HEAD:${TARGET_BRANCH}"
