@@ -95,6 +95,7 @@ export interface HabitRepository {
     workspaceId: string,
     habitId: string,
   ): Promise<HabitCompletionEvent[]>;
+  /** Returns one bounded week plus at most one overflow habit to prove the ceiling. */
   readReviewWeekEvidence(
     workspaceId: string,
     periodStartDate: string,
@@ -341,6 +342,7 @@ export class InMemoryHabitRepository implements HabitRepository {
       .map(cloneHabit);
   }
 
+  /** Mirrors the bounded weekly evidence contract without exposing completion history. */
   async readReviewWeekEvidence(
     workspaceId: string,
     periodStartDate: string,
@@ -567,7 +569,8 @@ export class HabitService {
           (occurrence) => occurrence.scheduledLocalDate,
         ),
       );
-      const completedDates = completionDatesByHabit.get(habit.id) ?? new Set();
+      const completedDates =
+        completionDatesByHabit.get(habit.id) ?? new Set<string>();
       for (const completedDate of completedDates) {
         if (!scheduledDates.has(completedDate)) {
           throw new Error('Review projection completion evidence is invalid');
