@@ -47,6 +47,25 @@ describe('task completion hostile persistence evidence', () => {
     );
   });
 
+  it('collapses a revoked repository rejection value', async () => {
+    const rejection = revokedProxy({
+      sentinel: 'password=must-not-escape-revoked-repository-rejection',
+    });
+    const repository: TaskCompletionRepository = {
+      async transitionTaskCompletion() {
+        throw rejection;
+      },
+    };
+    const service = new TaskCompletionService(
+      repository,
+      () => new Date(COMPLETED_AT),
+    );
+
+    await expectCredentialFreePersistenceFailure(
+      service.setCompleted(WORKSPACE_ID, TASK_ID, true),
+    );
+  });
+
   it('collapses revoked producer evidence before reading authority fields', async () => {
     const repository: TaskCompletionRepository = {
       async transitionTaskCompletion() {
@@ -73,6 +92,25 @@ describe('task completion hostile persistence evidence', () => {
     const client: TaskCompletionSqlClient = {
       async query<Row>(): Promise<TaskCompletionSqlQueryResult<Row>> {
         throw new Error(sentinel);
+      },
+    };
+    const repository = new PostgresTaskCompletionRepository(client);
+
+    await expectCredentialFreePersistenceFailure(
+      repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    );
+  });
+
+  it('collapses a revoked SQL rejection value', async () => {
+    const rejection = revokedProxy({
+      sentinel: 'postgres=must-not-escape-revoked-sql-rejection',
+    });
+    const client: TaskCompletionSqlClient = {
+      async query<Row>(): Promise<TaskCompletionSqlQueryResult<Row>> {
+        throw rejection;
       },
     };
     const repository = new PostgresTaskCompletionRepository(client);
