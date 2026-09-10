@@ -452,4 +452,6 @@ async function bootstrap(): Promise<void> {
   );
 }
 
-void bootstrap();
+if (require.main === module) {
+  void bootstrap();
+}
