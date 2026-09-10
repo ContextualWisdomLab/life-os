@@ -1,0 +1,139 @@
+name: Refresh product gap baseline currentness
+
+on:
+  push:
+    branches:
+      - docs/product-gap-baseline-2026-08-20
+    paths:
+      - .github/workflows/refresh-product-gap-baseline.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Refresh canonical package quality evidence
+        env:
+          START_SHA: ${{ github.sha }}
+        shell: python3 {0}
+        run: |
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          start_sha = os.environ['START_SHA']
+          actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if actual != start_sha:
+              raise SystemExit(f'exact input mismatch: expected {start_sha}, got {actual}')
+
+          baseline = Path('docs/product-technical-gap-baseline.md')
+          text = baseline.read_text(encoding='utf-8')
+          start = '> **Currentness override — 2026-09-10 package/control-plane authority.**'
+          end = '> **Currentness override — 2026-09-09 Integration delivery authority.**'
+          if text.count(start) != 1 or text.count(end) != 1:
+              raise SystemExit('canonical currentness markers are missing or ambiguous')
+
+          replacement = '''> **Currentness override — 2026-09-10 package/control-plane authority.** Root package owner #249 is current exact `09d1430ec0f3266740266519af36e78907482ca1`, open Draft/mergeable on protected `main@193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`. The package-manager-owned repair enforces `qs@6.16.0`, `multer@2.3.0`, a Next.js 15.5 minimum of `15.5.24` with current lock resolution `15.5.25`, and `sharp@0.35.4` under repository-declared `pnpm@10.15.0`; GitHub Compare freshness evidence is bounded to `?per_page=1&page=2`; AppGuardrail contract tests reject cross-trigger and sibling-list `paths-ignore` evidence borrowing. Issue #262's Commercial Readiness production-docstring writer completed run `34439856410`, job `102754008005` SUCCESS, inserted 95 missing production JSDoc blocks and reported **116/116 (100.00%)** before self-retiring. The permanent AST-backed gate was then strengthened with hostile empty/generic-JSDoc fixtures and deterministic anti-filler explanatory-token checks; formatter writer run `34448538730`, job `102778651638` completed SUCCESS and self-retired before publishing the workflow-free repair, and ordinary CHANGELOG descendant `09d1430...` re-entered normal contributor CI. Exact `09d1430...` now has CI `34448871673`, Commercial Readiness `34448871653`, SAST `34448871714`, and AppGuardrail `34448871643` **SUCCESS**. Security `34448871689` remains fail-closed only at dependency-review job `102780888062`: exact checkout succeeds, `Check dependency review support` fails, and the pinned action is skipped while Trivy FS, OSV and Scorecard are GREEN. CodeQL `34448871609` detects languages and successfully dispatches the current-head scan in job `102784476918`, while Python, Actions, and JavaScript/TypeScript compatibility jobs fail at `Release runner or enforce current-head CodeQL verdict`; those central evidence-path incidents remain owned by `ContextualWisdomLab/.github#810` and `#1929` and are not locally suppressed. Current submitted reviews remain COMMENTED only, so there is no independent current-head approval and this evidence remains active-PR/unshipped authority.\n\n'''
+
+          pattern = re.escape(start) + r'.*?(?=' + re.escape(end) + r')'
+          updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f'expected one currentness replacement, got {count}')
+          prefix = updated.split(end, 1)[0]
+          required = (
+              '09d1430ec0f3266740266519af36e78907482ca1',
+              '34448871673',
+              '34448871689',
+              '102780888062',
+              '34448871609',
+              '102784476918',
+              '116/116 (100.00%)',
+          )
+          for token in required:
+              if token not in prefix:
+                  raise SystemExit(f'missing currentness token: {token}')
+          for obsolete in (
+              '2e773d8a65725a5c8bc34135087461ccebcb018f`, open Draft/mergeable',
+              'Current `2e773d8a...` hosted checks/review must be reacquired',
+          ):
+              if obsolete in prefix:
+                  raise SystemExit(f'obsolete package currentness remained: {obsolete}')
+          baseline.write_text(updated, encoding='utf-8')
+
+          quality_dir = Path('docs/quality')
+          quality_dir.mkdir(parents=True, exist_ok=True)
+          test_strategy = quality_dir / 'commercial-readiness-test-strategy.md'
+          traceability = quality_dir / 'commercial-readiness-traceability.md'
+          if test_strategy.exists() or traceability.exists():
+              raise SystemExit('quality evidence documents already exist; refusing ambiguous overwrite')
+
+          test_strategy.write_text('''# Commercial Readiness test strategy\n\nThis document defines the active quality contract for `packages/commercial-readiness`. It records test authority; it does not promote an open branch into protected-main or release truth.\n\n## Production documentation contract\n\nEvery production declaration discovered by the package's AST-backed docstring gate must have explanatory JSDoc. The denominator is the complete supported production `.mjs` declaration surface, not only touched lines. The gate is 100%; exclusions, threshold relaxation, empty blocks, declaration-name restatements, and generic filler such as “does something” are not acceptable ways to satisfy it. Hostile fixtures must prove that absent, detached, empty, and generic documentation fails closed. Comments should explain non-obvious contract, failure semantics, security boundary, bounded I/O, provenance, atomic publication, or another reason that is not already obvious from the code.\n\n## Required verification\n\nRepository `pnpm@10.15.0` frozen installation precedes package checks. The Commercial Readiness package must pass formatting, lint, typecheck where applicable, tests, build, and the permanent documentation gate. Changed control-plane contracts also require their focused hostile fixtures and the normal contributor-triggered repository CI. Predecessor GREEN is not transferred to a descendant SHA. A temporary write-capable repair workflow must delete itself before its candidate commit and may publish only while the remote source head is unchanged.\n\nThe current active-PR evidence is `ContextualWisdomLab/life-os#249@09d1430ec0f3266740266519af36e78907482ca1`: CI `34448871673`, Commercial Readiness `34448871653`, SAST `34448871714`, and AppGuardrail `34448871643` are SUCCESS. Security and CodeQL are not reclassified as local package failures when their exact jobs show central evidence-path failures; they remain fail closed and are repaired at the canonical `.github` owner.\n\n## Promotion boundary\n\nA Draft or mergeable PR, a successful package test, or a successful predecessor run is not shipped evidence. Promotion still requires exact current-head applicable checks, independent review authority, normal protected-branch integration, and release evidence.\n''', encoding='utf-8')
+
+          traceability.write_text('''# Commercial Readiness quality traceability\n\n| Requirement | Owned evidence | Exact active evidence | Status |\n| --- | --- | --- | --- |\n| 100% production declaration documentation | `packages/commercial-readiness/src/production-docstring-coverage.test.mjs` | Writer run `34439856410` / job `102754008005`: 95 missing JSDoc blocks inserted; 116/116 documented | Active-PR GREEN evidence; unshipped |\n| Reject empty/generic documentation | hostile fixtures and deterministic anti-filler checks in the permanent docstring gate | Formatter writer run `34448538730` / job `102778651638` SUCCESS; workflow self-retired; current descendant `09d1430ec0f3266740266519af36e78907482ca1` | Active-PR GREEN evidence; unshipped |\n| Repository/package quality on current SHA | normal contributor workflows | CI `34448871673`, Commercial Readiness `34448871653`, SAST `34448871714`, AppGuardrail `34448871643` SUCCESS | Current-head GREEN for these lanes |\n| Dependency vulnerability evidence | Security Scan with independent Trivy FS, OSV, Scorecard, Dependency Review | Security `34448871689`: Trivy FS, OSV, Scorecard GREEN; dependency-review job `102780888062` fails support probe before pinned action | Fail closed; canonical owner `.github#810` |\n| CodeQL current-head terminal authority | central dispatch/receipt contract | CodeQL `34448871609`: language detection and dispatch job `102784476918` SUCCESS; three compatibility jobs fail terminal-verdict enforcement | Fail closed; canonical owner `.github#1929` |\n| Independent current-head approval | protected review authority | submitted reviews are COMMENTED only | Open gate |\n| Shipped/released authority | protected `main` plus immutable release | protected `main@193a87ef54c3fe6dcda4755bce4d6bc81e3a0297` does not contain #249 | Not shipped |\n\nThe table is intentionally exact-head scoped. A later descendant must reacquire applicable evidence instead of inheriting these statuses.\n''', encoding='utf-8')
+
+          index = Path('docs/index.md')
+          index_text = index.read_text(encoding='utf-8')
+          anchor = '- [Product and technical gap baseline](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/product-technical-gap-baseline.md) — current protected implementation, buyer-visible gaps, and release evidence when integrated.\n'
+          insertion = anchor + '- [Commercial Readiness test strategy](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/quality/commercial-readiness-test-strategy.md) — production quality denominator, hostile cases, and promotion boundary.\n- [Commercial Readiness quality traceability](https://github.com/ContextualWisdomLab/life-os/blob/main/docs/quality/commercial-readiness-traceability.md) — exact-head quality evidence and unresolved canonical-owner gates.\n'
+          if index_text.count(anchor) != 1:
+              raise SystemExit('documentation index anchor is missing or ambiguous')
+          if 'commercial-readiness-test-strategy.md' in index_text or 'commercial-readiness-traceability.md' in index_text:
+              raise SystemExit('quality evidence links already exist; refusing duplicate insertion')
+          index.write_text(index_text.replace(anchor, insertion, 1), encoding='utf-8')
+
+      - name: Retire writer and validate docs
+        shell: python3 {0}
+        run: |
+          from pathlib import Path
+          import subprocess
+
+          workflow = Path('.github/workflows/refresh-product-gap-baseline.yml')
+          workflow.unlink()
+          subprocess.run(['git', 'diff', '--check'], check=True)
+
+          baseline = Path('docs/product-technical-gap-baseline.md').read_text(encoding='utf-8')
+          test_strategy = Path('docs/quality/commercial-readiness-test-strategy.md').read_text(encoding='utf-8')
+          traceability = Path('docs/quality/commercial-readiness-traceability.md').read_text(encoding='utf-8')
+          index = Path('docs/index.md').read_text(encoding='utf-8')
+          required = (
+              (baseline, '09d1430ec0f3266740266519af36e78907482ca1'),
+              (baseline, '116/116 (100.00%)'),
+              (test_strategy, 'The gate is 100%'),
+              (traceability, '102780888062'),
+              (traceability, '102784476918'),
+              (index, 'commercial-readiness-test-strategy.md'),
+              (index, 'commercial-readiness-traceability.md'),
+          )
+          for text, token in required:
+              if token not in text:
+                  raise SystemExit(f'missing required documentation token: {token}')
+          if workflow.exists():
+              raise SystemExit('temporary writer was not retired')
+
+      - name: Publish only on unchanged writer branch
+        env:
+          START_SHA: ${{ github.sha }}
+          BRANCH: docs/product-gap-baseline-2026-08-20
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/${BRANCH}" | awk '{print $1}')"
+          if [ "$remote_sha" != "$START_SHA" ]; then
+            echo "::error::writer branch moved: expected ${START_SHA}, found ${remote_sha}"
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/product-technical-gap-baseline.md docs/index.md docs/quality/commercial-readiness-test-strategy.md docs/quality/commercial-readiness-traceability.md .github/workflows/refresh-product-gap-baseline.yml
+          git commit -m 'docs(quality): refresh Commercial Readiness evidence'
+          git push origin "HEAD:refs/heads/${BRANCH}"
