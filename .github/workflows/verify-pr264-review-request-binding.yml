@@ -34,12 +34,32 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check bounded Habit formatting
-        run: >-
-          pnpm exec prettier --check
-          apps/habit-service/src/habit-request-bound-context.ts
-          apps/habit-service/src/habit-review-projection-http.test.ts
-          apps/habit-service/src/main.ts
+      - name: Check request-bound context formatting
+        run: pnpm exec prettier --check apps/habit-service/src/habit-request-bound-context.ts
+        continue-on-error: true
+        id: context_format
+
+      - name: Check Review HTTP regression formatting
+        run: pnpm exec prettier --check apps/habit-service/src/habit-review-projection-http.test.ts
+        continue-on-error: true
+        id: test_format
+
+      - name: Check Habit controller formatting
+        run: pnpm exec prettier --check apps/habit-service/src/main.ts
+        continue-on-error: true
+        id: controller_format
+
+      - name: Enforce bounded Habit formatting
+        env:
+          CONTEXT_FORMAT: ${{ steps.context_format.outcome }}
+          TEST_FORMAT: ${{ steps.test_format.outcome }}
+          CONTROLLER_FORMAT: ${{ steps.controller_format.outcome }}
+        run: |
+          set -euo pipefail
+          printf 'context=%s test=%s controller=%s\n' "$CONTEXT_FORMAT" "$TEST_FORMAT" "$CONTROLLER_FORMAT"
+          test "$CONTEXT_FORMAT" = success
+          test "$TEST_FORMAT" = success
+          test "$CONTROLLER_FORMAT" = success
 
       - name: Typecheck Habit service
         run: pnpm --filter @life-os/habit-service typecheck
