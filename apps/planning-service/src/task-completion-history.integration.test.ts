@@ -13,10 +13,14 @@ const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TASK_ID = '44444444-4444-4444-8444-444444444444';
 const CONCURRENT_TASK_ID = '55555555-5555-4555-8555-555555555555';
+const CASCADE_TASK_ID = '66666666-6666-4666-8666-666666666666';
+const SCOPED_TASK_ID = '77777777-7777-4777-8777-777777777777';
 const CREATED_AT = '2026-09-10T15:00:00.000Z';
 const FIRST_COMPLETED_AT = '2026-09-10T16:00:00.000Z';
 const RETRIED_AT = '2026-09-10T17:00:00.000Z';
 const RECOMPLETED_AT = '2026-09-10T18:00:00.000Z';
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const migrationPath = resolve(
   __dirname,
   '../migrations/0007_task_completion_facts.sql',
@@ -44,6 +48,16 @@ function createSqlClient(): TaskCompletionSqlClient {
       return { rows: result.rows as Row[] };
     },
   };
+}
+
+/** Inserts one valid task into the isolated Planning-owned persistence boundary. */
+async function insertTask(taskId: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO planning_task_completion_history_test.tasks
+       (id, workspace_id, status, created_at, completed_at)
+     VALUES ($1, $2, 'todo', $3::timestamptz, NULL)`,
+    [taskId, WORKSPACE_ID, CREATED_AT],
+  );
 }
 
 describeWithPostgres('Planning durable task completion facts', () => {
@@ -88,10 +102,12 @@ describeWithPostgres('Planning durable task completion facts', () => {
     await pool.end();
   });
 
-  it('declares tenant-owned completion facts with a period-read index', async () => {
+  it('declares tenant-owned completion facts with opaque identities and a period-read index', async () => {
     const migration = await readFile(migrationPath, 'utf8');
 
     expect(migration).toContain('CREATE TABLE planning.task_completion_facts');
+    expect(migration).toContain('completion_fact_id uuid PRIMARY KEY');
+    expect(migration).toContain('task_completion_facts_id_uuid_v4');
     expect(migration).toContain('workspace_id uuid NOT NULL');
     expect(migration).toContain('task_id uuid NOT NULL');
     expect(migration).toContain('completed_at timestamptz NOT NULL');
@@ -101,13 +117,39 @@ describeWithPostgres('Planning durable task completion facts', () => {
     );
   });
 
-  it('retains each real todo-to-done fact across retries and later reopen', async () => {
-    await pool.query(
-      `INSERT INTO planning_task_completion_history_test.tasks
-         (id, workspace_id, status, created_at, completed_at)
-       VALUES ($1, $2, 'todo', $3::timestamptz, NULL)`,
-      [TASK_ID, WORKSPACE_ID, CREATED_AT],
+  it('uses UUIDv4 fact identity and cascades facts when the owning task is erased', async () => {
+    await insertTask(CASCADE_TASK_ID);
+    const repository = new PostgresTaskCompletionRepository(createSqlClient());
+
+    await repository.transitionTaskCompletion(WORKSPACE_ID, CASCADE_TASK_ID, {
+      status: 'done',
+      completedAt: FIRST_COMPLETED_AT,
+    });
+    const factsBeforeErase = await pool.query<{ completion_fact_id: string }>(
+      `SELECT completion_fact_id::text AS completion_fact_id
+       FROM planning_task_completion_history_test.task_completion_facts
+       WHERE workspace_id = $1 AND task_id = $2`,
+      [WORKSPACE_ID, CASCADE_TASK_ID],
     );
+    expect(factsBeforeErase.rows).toHaveLength(1);
+    expect(factsBeforeErase.rows[0]?.completion_fact_id).toMatch(UUID_V4_PATTERN);
+
+    await pool.query(
+      `DELETE FROM planning_task_completion_history_test.tasks
+       WHERE workspace_id = $1 AND id = $2`,
+      [WORKSPACE_ID, CASCADE_TASK_ID],
+    );
+    const factsAfterErase = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM planning_task_completion_history_test.task_completion_facts
+       WHERE workspace_id = $1 AND task_id = $2`,
+      [WORKSPACE_ID, CASCADE_TASK_ID],
+    );
+    expect(factsAfterErase.rows).toEqual([{ count: '0' }]);
+  });
+
+  it('retains each real todo-to-done fact across retries and later reopen', async () => {
+    await insertTask(TASK_ID);
     const repository = new PostgresTaskCompletionRepository(createSqlClient());
 
     await repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
@@ -157,12 +199,7 @@ describeWithPostgres('Planning durable task completion facts', () => {
   });
 
   it('serializes concurrent completion retries into one first-completion fact', async () => {
-    await pool.query(
-      `INSERT INTO planning_task_completion_history_test.tasks
-         (id, workspace_id, status, created_at, completed_at)
-       VALUES ($1, $2, 'todo', $3::timestamptz, NULL)`,
-      [CONCURRENT_TASK_ID, WORKSPACE_ID, CREATED_AT],
-    );
+    await insertTask(CONCURRENT_TASK_ID);
     const repository = new PostgresTaskCompletionRepository(createSqlClient());
 
     const outcomes = await Promise.all([
@@ -192,10 +229,11 @@ describeWithPostgres('Planning durable task completion facts', () => {
   });
 
   it('does not create completion facts for a task outside the workspace scope', async () => {
+    await insertTask(SCOPED_TASK_ID);
     const repository = new PostgresTaskCompletionRepository(createSqlClient());
 
     await expect(
-      repository.transitionTaskCompletion(OTHER_WORKSPACE_ID, TASK_ID, {
+      repository.transitionTaskCompletion(OTHER_WORKSPACE_ID, SCOPED_TASK_ID, {
         status: 'done',
         completedAt: RECOMPLETED_AT,
       }),
@@ -207,5 +245,15 @@ describeWithPostgres('Planning durable task completion facts', () => {
       [OTHER_WORKSPACE_ID],
     );
     expect(count.rows).toEqual([{ count: '0' }]);
+    const untouchedTask = await pool.query<{
+      status: string;
+      completed_at: Date | null;
+    }>(
+      `SELECT status, completed_at
+       FROM planning_task_completion_history_test.tasks
+       WHERE workspace_id = $1 AND id = $2`,
+      [WORKSPACE_ID, SCOPED_TASK_ID],
+    );
+    expect(untouchedTask.rows).toEqual([{ status: 'todo', completed_at: null }]);
   });
 });
