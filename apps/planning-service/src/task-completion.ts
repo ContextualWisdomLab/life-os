@@ -36,7 +36,7 @@ export interface TaskCompletionSqlQueryResult<Row> {
 
 /** Narrow SQL client boundary required by the completion transition. */
 export interface TaskCompletionSqlClient {
-  /** Executes one parameterized statement without exposing credentials to the domain. */
+  /** Executes one statement with separately bound values. */
   query<Row>(
     text: string,
     values: readonly unknown[],
@@ -71,6 +71,18 @@ function requireRequestUuid(value: string): string {
 /** Rejects malformed persistence evidence without reflecting its contents. */
 function invalidPersistenceEvidence(): never {
   throw new TaskCompletionPersistenceError();
+}
+
+/** Converts arbitrary persistence failures into the credential-free boundary error. */
+async function boundedPersistenceCall<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof TaskCompletionPersistenceError) {
+      throw error;
+    }
+    return invalidPersistenceEvidence();
+  }
 }
 
 /** Requires a UUIDv4 value returned from the service-owned database. */
@@ -130,6 +142,46 @@ function parseCompletionEvidence(
   };
 }
 
+/** Snapshots repository evidence into a validated plain producer result. */
+function parseRepositoryEvidence(
+  evidence: TaskCompletionEvidence,
+  expectedWorkspaceId: string,
+  expectedTaskId: string,
+  expectedTransition: TaskCompletionTransition,
+): TaskCompletionEvidence {
+  try {
+    const workspaceId = evidence.workspaceId;
+    const taskId = evidence.taskId;
+    const status = evidence.status;
+    const completedAt = evidence.completedAt;
+
+    if (
+      workspaceId !== expectedWorkspaceId ||
+      taskId !== expectedTaskId ||
+      status !== expectedTransition.status
+    ) {
+      return invalidPersistenceEvidence();
+    }
+    if (expectedTransition.status === 'todo') {
+      if (completedAt !== null) {
+        return invalidPersistenceEvidence();
+      }
+      return { workspaceId, taskId, status: 'todo', completedAt: null };
+    }
+
+    const canonicalCompletedAt = requirePersistedTimestamp(completedAt);
+    if (canonicalCompletedAt !== completedAt) {
+      return invalidPersistenceEvidence();
+    }
+    return { workspaceId, taskId, status: 'done', completedAt };
+  } catch (error) {
+    if (error instanceof TaskCompletionPersistenceError) {
+      throw error;
+    }
+    return invalidPersistenceEvidence();
+  }
+}
+
 /** PostgreSQL adapter that keeps task state and completion evidence in one write. */
 export class PostgresTaskCompletionRepository implements TaskCompletionRepository {
   /** Creates an adapter over the Planning-owned parameterized SQL connection. */
@@ -143,26 +195,28 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
   ): Promise<TaskCompletionEvidence | undefined> {
     const safeWorkspaceId = requireRequestUuid(workspaceId);
     const safeTaskId = requireRequestUuid(taskId);
-    const result = await this.client.query<TaskCompletionRow>(
-      `UPDATE planning.tasks
-       SET status = $3,
-           completed_at = CASE
-             WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
-               THEN completed_at
-             WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
-             ELSE NULL
-           END
-       WHERE workspace_id = $1 AND id = $2
-       RETURNING workspace_id, id, status, completed_at`,
-      [safeWorkspaceId, safeTaskId, transition.status, transition.completedAt],
-    );
-    if (result.rows.length > 1) {
-      return invalidPersistenceEvidence();
-    }
-    const row = result.rows[0];
-    return row
-      ? parseCompletionEvidence(row, safeWorkspaceId, safeTaskId, transition)
-      : undefined;
+    return boundedPersistenceCall(async () => {
+      const result = await this.client.query<TaskCompletionRow>(
+        `UPDATE planning.tasks
+         SET status = $3,
+             completed_at = CASE
+               WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
+                 THEN completed_at
+               WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
+               ELSE NULL
+             END
+         WHERE workspace_id = $1 AND id = $2
+         RETURNING workspace_id, id, status, completed_at`,
+        [safeWorkspaceId, safeTaskId, transition.status, transition.completedAt],
+      );
+      if (!Array.isArray(result.rows) || result.rows.length > 1) {
+        return invalidPersistenceEvidence();
+      }
+      const row = result.rows[0];
+      return row
+        ? parseCompletionEvidence(row, safeWorkspaceId, safeTaskId, transition)
+        : undefined;
+    });
   }
 }
 
@@ -194,33 +248,21 @@ export class TaskCompletionService {
       transition = { status: 'done', completedAt: now.toISOString() };
     }
 
-    const evidence = await this.repository.transitionTaskCompletion(
+    const evidence = await boundedPersistenceCall(() =>
+      this.repository.transitionTaskCompletion(
+        safeWorkspaceId,
+        safeTaskId,
+        transition,
+      ),
+    );
+    if (evidence === undefined) {
+      throw new Error('Task not found');
+    }
+    return parseRepositoryEvidence(
+      evidence,
       safeWorkspaceId,
       safeTaskId,
       transition,
     );
-    if (!evidence) {
-      throw new Error('Task not found');
-    }
-    if (
-      evidence.workspaceId !== safeWorkspaceId ||
-      evidence.taskId !== safeTaskId ||
-      evidence.status !== transition.status
-    ) {
-      throw new TaskCompletionPersistenceError();
-    }
-    if (transition.status === 'todo') {
-      if (evidence.completedAt !== null) {
-        throw new TaskCompletionPersistenceError();
-      }
-    } else {
-      const canonicalCompletedAt = requirePersistedTimestamp(
-        evidence.completedAt,
-      );
-      if (canonicalCompletedAt !== evidence.completedAt) {
-        throw new TaskCompletionPersistenceError();
-      }
-    }
-    return evidence;
   }
 }
