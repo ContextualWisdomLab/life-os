@@ -118,6 +118,10 @@ describe('planning HTTP boundary', () => {
       name: 'non-UUID project identifier',
       binding: { method: 'POST', path: '/v1/projects/not-a-uuid/tasks' },
     },
+    {
+      name: 'non-UUID task completion identifier',
+      binding: { method: 'PUT', path: '/v1/tasks/not-a-uuid/completion' },
+    },
   ])('rejects an invalid request binding: $name', ({ binding }) => {
     const issuedAt = String(NOW_SECONDS);
     expectProblem(

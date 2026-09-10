@@ -26,6 +26,7 @@ const VALIDATION_MESSAGES = new Set([
   'Title is required',
   'Identifier must be an opaque non-numeric string',
   'Planning search request is invalid',
+  'Task completion request is invalid',
 ]);
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -123,6 +124,16 @@ function requirePlanningRequestBinding(
   ) {
     return { method, path };
   }
+  if (
+    segments.length === 5 &&
+    segments[1] === 'v1' &&
+    segments[2] === 'tasks' &&
+    UUID_V4_PATTERN.test(segments[3] ?? '') &&
+    segments[4] === 'completion' &&
+    method === 'PUT'
+  ) {
+    return { method, path };
+  }
   return invalidGatewayContext();
 }
 
@@ -208,6 +219,42 @@ export function requireTitle(body: { title?: unknown } | undefined): string {
     throw problemException(400, 'A title is required', 'invalid_title');
   }
   return title.trim();
+}
+
+/** Rejects malformed completion commands without reflecting body contents. */
+function invalidTaskCompletionBody(): never {
+  throw problemException(
+    400,
+    'Task completion request is invalid',
+    'invalid_request',
+  );
+}
+
+/** Accepts only the exact boolean completion command owned by Planning. */
+export function requireTaskCompletionState(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) {
+    return invalidTaskCompletionBody();
+  }
+
+  let keys: string[];
+  let completed: unknown;
+  try {
+    if (Array.isArray(body)) {
+      return invalidTaskCompletionBody();
+    }
+    keys = Object.keys(body);
+    completed = (body as Record<string, unknown>).completed;
+  } catch {
+    return invalidTaskCompletionBody();
+  }
+  if (
+    keys.length !== 1 ||
+    keys[0] !== 'completed' ||
+    typeof completed !== 'boolean'
+  ) {
+    return invalidTaskCompletionBody();
+  }
+  return completed;
 }
 
 /** Maps domain and persistence failures to credential-free HTTP exceptions. */

@@ -33,7 +33,9 @@ function signedHeaders(issuedAtSeconds: number): {
 }
 
 /** Builds only the completion dependency used by this route contract. */
-function createController(completionService: CompletionServiceSpy): PlanningController {
+function createController(
+  completionService: CompletionServiceSpy,
+): PlanningController {
   return new PlanningController(
     {} as PlanningService,
     {} as TodaySyncService,
@@ -92,6 +94,35 @@ describe.sequential('Planning task completion HTTP boundary', () => {
     );
   });
 
+  it('routes an explicit reopen without accepting a client completion instant', async () => {
+    process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+    const headers = signedHeaders(Math.floor(Date.now() / 1000));
+    const completionService: CompletionServiceSpy = {
+      setCompleted: vi.fn().mockResolvedValue({
+        workspaceId: WORKSPACE_ID,
+        taskId: TASK_ID,
+        status: 'todo',
+        completedAt: null,
+      }),
+    };
+    const controller = createController(completionService);
+
+    await expect(
+      controller.setTaskCompleted(
+        headers.workspaceId,
+        headers.issuedAt,
+        headers.signature,
+        TASK_ID,
+        { completed: false },
+      ),
+    ).resolves.toMatchObject({ status: 'todo', completedAt: null });
+    expect(completionService.setCompleted).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      TASK_ID,
+      false,
+    );
+  });
+
   it('rejects a replayed route signature before the completion service is called', async () => {
     process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
     const headers = signedHeaders(Math.floor(Date.now() / 1000));
@@ -118,17 +149,12 @@ describe.sequential('Planning task completion HTTP boundary', () => {
     expect(completionService.setCompleted).not.toHaveBeenCalled();
   });
 
-  it.each([
-    undefined,
-    null,
-    {},
-    { completed: 'true' },
-    { completed: 1 },
-    { completed: null },
-  ])('rejects malformed command bodies before persistence: %j', async (body) => {
+  it('rejects an accessor-trapping body as an invalid command', async () => {
     process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
     const headers = signedHeaders(Math.floor(Date.now() / 1000));
     const completionService: CompletionServiceSpy = { setCompleted: vi.fn() };
+    const { proxy, revoke } = Proxy.revocable({ completed: true }, {});
+    revoke();
     const controller = createController(completionService);
 
     expect(
@@ -138,10 +164,42 @@ describe.sequential('Planning task completion HTTP boundary', () => {
           headers.issuedAt,
           headers.signature,
           TASK_ID,
-          body,
+          proxy,
         ),
       ),
     ).toBe(400);
     expect(completionService.setCompleted).not.toHaveBeenCalled();
   });
+
+  it.each([
+    undefined,
+    null,
+    {},
+    { completed: 'true' },
+    { completed: 1 },
+    { completed: null },
+    [],
+    { completed: true, completedAt: COMPLETED_AT },
+  ])(
+    'rejects malformed command bodies before persistence: %j',
+    async (body) => {
+      process.env.PLANNING_GATEWAY_CONTEXT_SECRET = CONTEXT_SECRET;
+      const headers = signedHeaders(Math.floor(Date.now() / 1000));
+      const completionService: CompletionServiceSpy = { setCompleted: vi.fn() };
+      const controller = createController(completionService);
+
+      expect(
+        await rejectedStatus(
+          controller.setTaskCompleted(
+            headers.workspaceId,
+            headers.issuedAt,
+            headers.signature,
+            TASK_ID,
+            body,
+          ),
+        ),
+      ).toBe(400);
+      expect(completionService.setCompleted).not.toHaveBeenCalled();
+    },
+  );
 });
