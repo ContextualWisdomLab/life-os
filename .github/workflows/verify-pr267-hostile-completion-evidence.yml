@@ -34,12 +34,22 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify focused formatting
-        run: >-
-          pnpm exec prettier --check
-          apps/planning-service/src/task-completion.ts
-          apps/planning-service/src/task-completion.test.ts
-          apps/planning-service/src/task-completion-hostile-evidence.test.ts
+      - name: Diagnose focused formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write \
+            apps/planning-service/src/task-completion.ts \
+            apps/planning-service/src/task-completion.test.ts \
+            apps/planning-service/src/task-completion-hostile-evidence.test.ts
+          git diff -- \
+            apps/planning-service/src/task-completion.ts \
+            apps/planning-service/src/task-completion.test.ts \
+            apps/planning-service/src/task-completion-hostile-evidence.test.ts
+          git diff --exit-code -- \
+            apps/planning-service/src/task-completion.ts \
+            apps/planning-service/src/task-completion.test.ts \
+            apps/planning-service/src/task-completion-hostile-evidence.test.ts
 
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
