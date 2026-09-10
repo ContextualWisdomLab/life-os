@@ -183,10 +183,8 @@ jobs:
 
           replace_once(
               'apps/planning-service/migrations/README.md',
-              """Migrations are forward-only in automated environments. Rolling back `0007` destroys historical completion facts, so drop `planning.task_completion_facts` only after an operator-approved export/retention decision and only when loss of Review provenance is acceptable.
-          """,
-              """Migrations are forward-only in automated environments. Rolling back `0007` destroys historical completion facts, so drop `planning.task_completion_facts` only after an operator-approved export/retention decision and only when loss of Review provenance is acceptable; after the table and its trigger are removed, also drop `planning.enforce_task_completion_fact_chronology()` so no orphan migration function remains.
-          """,
+              "Migrations are forward-only in automated environments. Rolling back `0007` destroys historical completion facts, so drop `planning.task_completion_facts` only after an operator-approved export/retention decision and only when loss of Review provenance is acceptable.",
+              "Migrations are forward-only in automated environments. Rolling back `0007` destroys historical completion facts, so drop `planning.task_completion_facts` only after an operator-approved export/retention decision and only when loss of Review provenance is acceptable; after the table and its trigger are removed, also drop `planning.enforce_task_completion_fact_chronology()` so no orphan migration function remains.",
           )
 
           replace_once(
@@ -198,8 +196,11 @@ jobs:
           )
           PY
 
-      - name: Remove purpose-complete repair workflow
-        run: git rm .github/workflows/repair-planning-completion-fact-chronology.yml
+      - name: Remove purpose-complete repair workflows
+        run: >-
+          git rm
+          .github/workflows/repair-planning-completion-fact-chronology.yml
+          .github/workflows/verify-planning-completion-fact-chronology.yml
 
       - name: Canonicalize changed sources
         run: >-
@@ -253,7 +254,8 @@ jobs:
             apps/planning-service/tests/postgres-data-rights.integration.test.ts \
             apps/planning-service/migrations/README.md \
             CHANGELOG.md \
-            .github/workflows/repair-planning-completion-fact-chronology.yml
+            .github/workflows/repair-planning-completion-fact-chronology.yml \
+            .github/workflows/verify-planning-completion-fact-chronology.yml
           git diff --cached --check
           git commit -m 'fix(planning): harden completion fact evidence'
           git push origin "HEAD:${TARGET_BRANCH}"
