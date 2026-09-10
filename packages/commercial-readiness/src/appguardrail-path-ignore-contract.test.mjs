@@ -18,10 +18,13 @@ function triggerBlock(workflow, trigger) {
   assert.notEqual(start, -1, `missing ${trigger} trigger`);
 
   const nextTrigger = lines.findIndex(
-    (line, index) => index > start && /^  [A-Za-z_][A-Za-z0-9_-]*:\s*$/.test(line),
+    (line, index) =>
+      index > start && /^  [A-Za-z_][A-Za-z0-9_-]*:\s*$/.test(line),
   );
 
-  return lines.slice(start + 1, nextTrigger === -1 ? undefined : nextTrigger).join('\n');
+  return lines
+    .slice(start + 1, nextTrigger === -1 ? undefined : nextTrigger)
+    .join('\n');
 }
 
 function pathsIgnoreBlock(workflow, trigger) {
@@ -30,10 +33,14 @@ function pathsIgnoreBlock(workflow, trigger) {
   assert.notEqual(start, -1, `missing ${trigger}.paths-ignore`);
 
   const nextKey = lines.findIndex(
-    (line, index) => index > start && /^    [A-Za-z_][A-Za-z0-9_-]*:\s*(?:#.*)?$/.test(line),
+    (line, index) =>
+      index > start &&
+      /^    [A-Za-z_][A-Za-z0-9_-]*:\s*(?:#.*)?$/.test(line),
   );
 
-  return lines.slice(start + 1, nextKey === -1 ? undefined : nextKey).join('\n');
+  return lines
+    .slice(start + 1, nextKey === -1 ? undefined : nextKey)
+    .join('\n');
 }
 
 function assertTriggerPathIgnoreContract(workflow, trigger) {
