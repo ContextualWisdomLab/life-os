@@ -9,6 +9,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { HabitDataRightsResponse } from './habit-data-rights';
@@ -25,7 +26,8 @@ import type {
 } from './habit-domain';
 import { HabitService } from './habit-domain';
 import {
-  HABIT_REVIEW_PROJECTION_PATH,
+  type HabitReviewProjectionHttpRequest,
+  requireExactReviewProjectionHttpBinding,
   requireReviewPeriodStartDate,
   requireTrustedReviewProjectionContext,
 } from './habit-request-bound-context';
@@ -116,6 +118,7 @@ export class HabitController {
   /** Returns bounded Habit-owned Weekly Review evidence to trusted server callers. */
   @Get('habits/review-projection')
   async projectReviewWeek(
+    @Req() request: HabitReviewProjectionHttpRequest,
     @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
@@ -126,7 +129,7 @@ export class HabitController {
         requireTrustedReviewProjectionContext(
           { workspaceId, issuedAt, signature },
           process.env.HABIT_GATEWAY_CONTEXT_SECRET,
-          { method: 'GET', path: HABIT_REVIEW_PROJECTION_PATH },
+          requireExactReviewProjectionHttpBinding(request),
         ),
         requireReviewPeriodStartDate(periodStartDate),
       );
