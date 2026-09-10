@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE planning.tasks
   ADD CONSTRAINT tasks_completion_state_check
   CHECK (
@@ -9,6 +7,4 @@ ALTER TABLE planning.tasks
       AND completed_at IS NOT NULL
       AND completed_at >= created_at
     )
-  );
-
-COMMIT;
+  ) NOT VALID;
