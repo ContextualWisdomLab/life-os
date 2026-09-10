@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
     env:
       PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
-      EXPECTED_PARENT: 7aa9c58f804f88f91ec1b4dcca59eac2d75805a3
+      EXPECTED_PARENT: 3475599857c625707f50d625c8bc48e86e67045c
       TARGET_BRANCH: feat/planning-task-completion-http-v1
     services:
       postgres:
@@ -56,53 +56,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 <<'PY'
+          from base64 import b64decode
           from pathlib import Path
           path = Path('apps/planning-service/src/http-boundary.ts')
           text = path.read_text()
-          old = """  let keys: string[];
-  let completed: unknown;
-  try {
-    if (Array.isArray(body)) {
-      return invalidTaskCompletionBody();
-    }
-    keys = Object.keys(body);
-    completed = (body as Record<string, unknown>).completed;
-  } catch {
-    return invalidTaskCompletionBody();
-  }
-  if (
-    keys.length !== 1 ||
-    keys[0] !== 'completed' ||
-    typeof completed !== 'boolean'
-  ) {
-    return invalidTaskCompletionBody();
-  }
-  return completed;
-"""
-          new = """  let descriptors: PropertyDescriptorMap;
-  try {
-    if (Array.isArray(body)) {
-      return invalidTaskCompletionBody();
-    }
-    descriptors = Object.getOwnPropertyDescriptors(body);
-  } catch {
-    return invalidTaskCompletionBody();
-  }
-
-  const keys = Reflect.ownKeys(descriptors);
-  const completed = descriptors.completed;
-  if (
-    keys.length !== 1 ||
-    keys[0] !== 'completed' ||
-    completed === undefined ||
-    completed.enumerable !== true ||
-    !('value' in completed) ||
-    typeof completed.value !== 'boolean'
-  ) {
-    return invalidTaskCompletionBody();
-  }
-  return completed.value;
-"""
+          old = b64decode('ICBsZXQga2V5czogc3RyaW5nW107CiAgbGV0IGNvbXBsZXRlZDogdW5rbm93bjsKICB0cnkgewogICAgaWYgKEFycmF5LmlzQXJyYXkoYm9keSkpIHsKICAgICAgcmV0dXJuIGludmFsaWRUYXNrQ29tcGxldGlvbkJvZHkoKTsKICAgIH0KICAgIGtleXMgPSBPYmplY3Qua2V5cyhib2R5KTsKICAgIGNvbXBsZXRlZCA9IChib2R5IGFzIFJlY29yZDxzdHJpbmcsIHVua25vd24+KS5jb21wbGV0ZWQ7CiAgfSBjYXRjaCB7CiAgICByZXR1cm4gaW52YWxpZFRhc2tDb21wbGV0aW9uQm9keSgpOwogIH0KICBpZiAoCiAgICBrZXlzLmxlbmd0aCAhPT0gMSB8fAogICAga2V5c1swXSAhPT0gJ2NvbXBsZXRlZCcgfHwKICAgIHR5cGVvZiBjb21wbGV0ZWQgIT09ICdib29sZWFuJwogICkgewogICAgcmV0dXJuIGludmFsaWRUYXNrQ29tcGxldGlvbkJvZHkoKTsKICB9CiAgcmV0dXJuIGNvbXBsZXRlZDsK').decode('utf-8')
+          new = b64decode('ICBsZXQgZGVzY3JpcHRvcnM6IFByb3BlcnR5RGVzY3JpcHRvck1hcDsKICB0cnkgewogICAgaWYgKEFycmF5LmlzQXJyYXkoYm9keSkpIHsKICAgICAgcmV0dXJuIGludmFsaWRUYXNrQ29tcGxldGlvbkJvZHkoKTsKICAgIH0KICAgIGRlc2NyaXB0b3JzID0gT2JqZWN0LmdldE93blByb3BlcnR5RGVzY3JpcHRvcnMoYm9keSk7CiAgfSBjYXRjaCB7CiAgICByZXR1cm4gaW52YWxpZFRhc2tDb21wbGV0aW9uQm9keSgpOwogIH0KCiAgY29uc3Qga2V5cyA9IFJlZmxlY3Qub3duS2V5cyhkZXNjcmlwdG9ycyk7CiAgY29uc3QgY29tcGxldGVkID0gZGVzY3JpcHRvcnMuY29tcGxldGVkOwogIGlmICgKICAgIGtleXMubGVuZ3RoICE9PSAxIHx8CiAgICBrZXlzWzBdICE9PSAnY29tcGxldGVkJyB8fAogICAgY29tcGxldGVkID09PSB1bmRlZmluZWQgfHwKICAgIGNvbXBsZXRlZC5lbnVtZXJhYmxlICE9PSB0cnVlIHx8CiAgICAhKCd2YWx1ZScgaW4gY29tcGxldGVkKSB8fAogICAgdHlwZW9mIGNvbXBsZXRlZC52YWx1ZSAhPT0gJ2Jvb2xlYW4nCiAgKSB7CiAgICByZXR1cm4gaW52YWxpZFRhc2tDb21wbGV0aW9uQm9keSgpOwogIH0KICByZXR1cm4gY29tcGxldGVkLnZhbHVlOwo=').decode('utf-8')
           if text.count(old) != 1:
               raise SystemExit(f'expected one production validation anchor, found {text.count(old)}')
           path.write_text(text.replace(old, new, 1))
