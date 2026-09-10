@@ -375,7 +375,8 @@ export class InMemoryHabitRepository implements HabitRepository {
 export class HabitService {
   constructor(
     private readonly repository: HabitRepository,
-    private readonly projectionClock: () => string = () => new Date().toISOString(),
+    private readonly projectionClock: () => string = () =>
+      new Date().toISOString(),
   ) {}
 
   async createHabit(
@@ -526,7 +527,9 @@ export class HabitService {
       asOf: requireTimestamp(this.projectionClock()),
       scheduledOpportunityCount,
       completedOpportunityCount,
-      habits: Object.freeze(entries.map((entry) => Object.freeze({ ...entry }))),
+      habits: Object.freeze(
+        entries.map((entry) => Object.freeze({ ...entry })),
+      ),
     });
   }
 
