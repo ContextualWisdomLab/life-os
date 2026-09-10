@@ -15,6 +15,7 @@ import {
   createPlanningRuntime,
   type PlanningRuntime,
 } from './planning-runtime';
+import { PostgresTaskCompletionRepository } from './task-completion';
 import {
   TodayIdempotencyConflictError,
   TodayRevisionConflictError,
@@ -37,6 +38,9 @@ async function applyMigrations(pool: Pool): Promise<void> {
     '0001_initial_planning.sql',
     '0002_durable_repository_contract.sql',
     '0003_durable_today_sync.sql',
+    '0004_data_rights_erasure_receipts.sql',
+    '0005_task_completion_chronology.sql',
+    '0006_validate_task_completion_chronology.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migration),
@@ -92,6 +96,7 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
       `TRUNCATE
          planning.today_idempotency_records,
          planning.today_aggregates,
+         planning.data_rights_erasure_receipts,
          planning.tasks,
          planning.projects,
          planning.goals`,
@@ -257,6 +262,66 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
     await expect(
       runtime.service.search(otherWorkspaceId, 'evidence'),
     ).resolves.toEqual([]);
+  });
+
+  it('executes retry-stable task completion chronology in PostgreSQL', async () => {
+    const workspaceId = randomUUID();
+    const runtime = createRuntime();
+    const goal = await runtime.service.createGoal(workspaceId, {
+      title: 'Completion chronology goal',
+    });
+    const project = await runtime.service.createProject(workspaceId, {
+      goalId: goal.id,
+      title: 'Completion chronology project',
+    });
+    const task = await runtime.service.createTask(workspaceId, {
+      projectId: project.id,
+      title: 'Completion chronology task',
+    });
+    const repository = new PostgresTaskCompletionRepository({
+      async query<Row>(text: string, values: readonly unknown[]) {
+        const result = await administrativePool.query(text, [...values]);
+        return { rows: result.rows as Row[] };
+      },
+    });
+    const firstCompletedAt = '2026-09-10T16:00:00.000Z';
+    const retriedAt = '2026-09-10T16:05:00.000Z';
+    const resumedCompletedAt = '2026-09-10T16:10:00.000Z';
+
+    const first = await repository.transitionTaskCompletion(
+      workspaceId,
+      task.id,
+      { status: 'done', completedAt: firstCompletedAt },
+    );
+    const retry = await repository.transitionTaskCompletion(
+      workspaceId,
+      task.id,
+      { status: 'done', completedAt: retriedAt },
+    );
+    const reopened = await repository.transitionTaskCompletion(
+      workspaceId,
+      task.id,
+      { status: 'todo', completedAt: null },
+    );
+    const recompleted = await repository.transitionTaskCompletion(
+      workspaceId,
+      task.id,
+      { status: 'done', completedAt: resumedCompletedAt },
+    );
+
+    expect(first?.completedAt).toBe(firstCompletedAt);
+    expect(retry?.completedAt).toBe(firstCompletedAt);
+    expect(reopened).toMatchObject({ status: 'todo', completedAt: null });
+    expect(recompleted?.completedAt).toBe(resumedCompletedAt);
+
+    await expect(
+      administrativePool.query(
+        `UPDATE planning.tasks
+         SET status = 'todo', completed_at = $2::timestamptz
+         WHERE id = $1`,
+        [task.id, resumedCompletedAt],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
   });
 
   it('persists Today across restarts while isolating workspaces', async () => {
