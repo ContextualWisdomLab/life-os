@@ -88,6 +88,8 @@ describe('Habit weekly Review projection', () => {
 
     expect(projection).toEqual({
       schemaVersion: 'life-os.habit-review-projection.v1',
+      producer: 'habit',
+      projectionRevision: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
       periodStartDate: '2026-09-07',
       periodEndDate: '2026-09-13',
       periodBasis: 'habit-local-date',
