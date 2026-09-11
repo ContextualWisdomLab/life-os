@@ -28,6 +28,8 @@ function sameHeadWorkflowFixture() {
           mergeable_state: 'clean',
           base: { ref: 'main', sha: BASE_SHA },
           head: { sha: HEAD_SHA, repo: { full_name: 'o/r' } },
+          user: { login: 'pr-author' },
+          author_association: 'OWNER',
         };
       }
       if (path.startsWith('/repos/o/r/pulls/7/reviews?')) {
@@ -68,7 +70,17 @@ function sameHeadWorkflowFixture() {
         };
       }
       if (path.startsWith(`/repos/o/r/commits/${HEAD_SHA}/statuses?`)) return [];
-      if (path.startsWith('/repos/o/r/compare/')) return { behind_by: 0 };
+      if (
+        path ===
+        `/repos/o/r/compare/${BASE_SHA}...${HEAD_SHA}?per_page=1&page=2`
+      ) {
+        return {
+          url: `https://api.github.com/repos/o/r/compare/${BASE_SHA}...${HEAD_SHA}`,
+          behind_by: 0,
+          base_commit: { sha: BASE_SHA },
+          merge_base_commit: { sha: BASE_SHA },
+        };
+      }
       if (path === '/graphql') {
         return {
           data: {
@@ -108,8 +120,7 @@ describe('repository workflow evidence provenance', () => {
     const pullRequest = snapshot.pull_requests[0];
     assert.equal(pullRequest.workflows.length, 1);
     assert.equal(pullRequest.workflows[0].conclusion, 'failure');
-    assert.ok(!pullRequest.blockers.includes('missing-approval'));
     assert.equal(pullRequest.eligible, false);
-    assert.ok(pullRequest.blockers.includes('workflow-not-successful:CI'));
+    assert.deepEqual(pullRequest.blockers, ['workflow-not-successful:CI']);
   });
 });
