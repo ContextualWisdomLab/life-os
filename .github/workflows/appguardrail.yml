@@ -167,6 +167,8 @@ jobs:
         id: stage_evidence
         if: always()
         continue-on-error: true
+        env:
+          REDACTION_OUTCOME: ${{ steps.redact_evidence.outcome }}
         run: |
           set -euo pipefail
           evidence_dir="${RUNNER_TEMP}/appguardrail-evidence"
@@ -185,8 +187,6 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          REDACTION_OUTCOME: ${{ steps.redact_evidence.outcome }}
 
       - name: Upload AppGuardrail evidence
         if: >-
