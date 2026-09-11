@@ -22,18 +22,7 @@ function yamlJobBlock(source, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-it('keeps readiness publishing ordered but non-authoritative for merge drain execution', async () => {
-  const workflow = await readFile(
-    resolve(repositoryRoot, '.github/workflows/commercial-readiness.yml'),
-    'utf8',
-  );
-  const drain = yamlJobBlock(workflow, 'drain');
-
-  assert.match(
-    drain,
-    /^\s+needs:\s*\[audit, publish\]\s*$/mu,
-    'drain must wait for both audit evidence and readiness publication to settle',
-  );
+function assertDrainCondition(drain) {
   assert.match(
     drain,
     /^\s+always\(\)\s*$/mu,
@@ -49,4 +38,36 @@ it('keeps readiness publishing ordered but non-authoritative for merge drain exe
     /needs\.publish\.result\s*==\s*'success'/u,
     'living-issue publication is reporting evidence and must not become merge authority',
   );
+}
+
+it('rejects nested step text that imitates the drain job condition', () => {
+  const hostileWorkflow = `jobs:
+  drain:
+    needs: [audit, publish]
+    steps:
+      - name: Misleading condition text
+        run: |
+          always()
+          && needs.audit.result == 'success'
+`;
+
+  assert.throws(
+    () => assertDrainCondition(yamlJobBlock(hostileWorkflow, 'drain')),
+    /job-level drain condition/u,
+  );
+});
+
+it('keeps readiness publishing ordered but non-authoritative for merge drain execution', async () => {
+  const workflow = await readFile(
+    resolve(repositoryRoot, '.github/workflows/commercial-readiness.yml'),
+    'utf8',
+  );
+  const drain = yamlJobBlock(workflow, 'drain');
+
+  assert.match(
+    drain,
+    /^\s+needs:\s*\[audit, publish\]\s*$/mu,
+    'drain must wait for both audit evidence and readiness publication to settle',
+  );
+  assertDrainCondition(drain);
 });
