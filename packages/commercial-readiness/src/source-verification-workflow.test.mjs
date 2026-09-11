@@ -53,6 +53,28 @@ function stepBlock(job, stepName) {
   return lines.slice(start, end).join('\n');
 }
 
+test('step extraction does not borrow evidence from unnamed sibling steps', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      - name: Materialize AppGuardrail SARIF PR merge provenance',
+    '        run: echo target-step',
+    '      - run: echo sibling-sentinel',
+    '      - uses: actions/upload-artifact@example',
+  ].join('\n');
+
+  const block = stepBlock(
+    job,
+    'Materialize AppGuardrail SARIF PR merge provenance',
+  );
+  assert.ok(block.includes('target-step'));
+  assert.equal(
+    block.includes('sibling-sentinel'),
+    false,
+    'a named step must not satisfy its contract from a later unnamed sibling step',
+  );
+});
+
 test('required source-verification jobs explicitly checkout the contributor head', () => {
   const ci = readWorkflow('ci.yml');
   for (const jobName of [
