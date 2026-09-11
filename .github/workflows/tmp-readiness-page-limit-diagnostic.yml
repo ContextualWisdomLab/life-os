@@ -1,0 +1,72 @@
+name: Temporary Readiness Page Limit Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/actions-draft-queue-pressure-v1
+    paths:
+      - .github/workflows/tmp-readiness-page-limit-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply candidate source repair in workspace
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = 'packages/commercial-readiness/src/github-client.mjs';
+          const before = '    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);';
+          const after = '    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize) + 1;';
+          const source = fs.readFileSync(path, 'utf8');
+          const occurrences = source.split(before).length - 1;
+          if (occurrences !== 1) throw new Error(`Expected one repair target, found ${occurrences}`);
+          fs.writeFileSync(path, source.replace(before, after));
+          NODE
+
+      - name: Capture focused TAP evidence
+        id: focused
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          node --test packages/commercial-readiness/src/github-client-page-size.test.mjs > page-limit.tap 2>&1
+          exit_code=$?
+          set -e
+          cat page-limit.tap
+          printf 'exit_code=%s\n' "$exit_code" >> "$GITHUB_OUTPUT"
+          exit "$exit_code"
+
+      - name: Upload focused TAP evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: readiness-page-limit-tap-${{ github.run_id }}
+          path: page-limit.tap
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Preserve focused verdict
+        if: steps.focused.outputs.exit_code != '0'
+        run: exit 1
