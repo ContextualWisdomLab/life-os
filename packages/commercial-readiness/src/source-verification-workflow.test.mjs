@@ -36,13 +36,20 @@ function jobBlock(workflow, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-/** Extracts one named workflow step from an already bounded job block. */
-function stepBlock(job, stepName) {
+/** Finds one named workflow step by its exact YAML sequence entry. */
+function stepStartIndex(job, stepName) {
   const lines = job.split('\n');
   const start = lines.findIndex(
     (line) => line.trim() === `- name: ${stepName}`,
   );
   assert.notEqual(start, -1, `missing step ${stepName}`);
+  return start;
+}
+
+/** Extracts one named workflow step from an already bounded job block. */
+function stepBlock(job, stepName) {
+  const lines = job.split('\n');
+  const start = stepStartIndex(job, stepName);
   const startMatch = /^(\s*)-\s/u.exec(lines[start]);
   assert.ok(startMatch, `invalid step indentation for ${stepName}`);
   const stepIndent = startMatch[1];
@@ -55,6 +62,14 @@ function stepBlock(job, stepName) {
     }
   }
   return lines.slice(start, end).join('\n');
+}
+
+/** Requires one exact named workflow step to occur before another. */
+function assertStepPrecedes(job, earlierStepName, laterStepName) {
+  assert.ok(
+    stepStartIndex(job, earlierStepName) < stepStartIndex(job, laterStepName),
+    `${earlierStepName} must precede ${laterStepName}`,
+  );
 }
 
 test('step extraction does not borrow evidence from unnamed sibling steps', () => {
@@ -76,6 +91,28 @@ test('step extraction does not borrow evidence from unnamed sibling steps', () =
     block.includes('sibling-sentinel'),
     false,
     'a named step must not satisfy its contract from a later unnamed sibling step',
+  );
+});
+
+test('step ordering ignores comments that only mention a step name', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      # stale note: - name: Materialize AppGuardrail SARIF PR merge provenance',
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        run: echo upload',
+    '      - name: Materialize AppGuardrail SARIF PR merge provenance',
+    '        run: echo provenance',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertStepPrecedes(
+        job,
+        'Materialize AppGuardrail SARIF PR merge provenance',
+        'Upload AppGuardrail SARIF to code scanning',
+      ),
+    /must precede/u,
   );
 });
 
@@ -160,11 +197,10 @@ test('required source-verification jobs explicitly checkout the contributor head
     appguardrail,
     'Upload AppGuardrail SARIF to code scanning',
   );
-  assert.ok(
-    appguardrail.indexOf(
-      '- name: Materialize AppGuardrail SARIF PR merge provenance',
-    ) < appguardrail.indexOf('- name: Upload AppGuardrail SARIF to code scanning'),
-    'AppGuardrail SARIF provenance must precede SARIF upload',
+  assertStepPrecedes(
+    appguardrail,
+    'Materialize AppGuardrail SARIF PR merge provenance',
+    'Upload AppGuardrail SARIF to code scanning',
   );
   assert.ok(
     sarifUpload.includes(SARIF_SOURCE_REF),
