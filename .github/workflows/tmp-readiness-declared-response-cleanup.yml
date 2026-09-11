@@ -32,18 +32,8 @@ jobs:
           const fs = require('node:fs');
           const path = 'packages/commercial-readiness/src/github-client.mjs';
           const source = fs.readFileSync(path, 'utf8');
-          const before = `  if (Number.isFinite(declared) && declared > maxBytes) {
-            throw RESPONSE_SIZE_ERROR;
-          }`;
-          const after = `  if (Number.isFinite(declared) && declared > maxBytes) {
-            // Cleanup cannot replace the already-established response-size classification.
-            try {
-              if (response.body) void response.body.cancel().catch(() => {});
-            } catch {
-              // A synchronous cancellation failure is also non-authoritative cleanup detail.
-            }
-            throw RESPONSE_SIZE_ERROR;
-          }`;
+          const before = '  if (Number.isFinite(declared) && declared > maxBytes) {\n    throw RESPONSE_SIZE_ERROR;\n  }';
+          const after = '  if (Number.isFinite(declared) && declared > maxBytes) {\n    // Cleanup cannot replace the already-established response-size classification.\n    try {\n      if (response.body) void response.body.cancel().catch(() => {});\n    } catch {\n      // A synchronous cancellation failure is also non-authoritative cleanup detail.\n    }\n    throw RESPONSE_SIZE_ERROR;\n  }';
           if (!source.includes(before)) {
             throw new Error('declared-size boundary no longer matches repair input');
           }
