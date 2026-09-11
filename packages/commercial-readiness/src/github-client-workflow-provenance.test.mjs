@@ -108,6 +108,7 @@ describe('repository workflow evidence provenance', () => {
     const pullRequest = snapshot.pull_requests[0];
     assert.equal(pullRequest.workflows.length, 1);
     assert.equal(pullRequest.workflows[0].conclusion, 'failure');
+    assert.ok(!pullRequest.blockers.includes('missing-approval'));
     assert.equal(pullRequest.eligible, false);
     assert.ok(pullRequest.blockers.includes('workflow-not-successful:CI'));
   });
