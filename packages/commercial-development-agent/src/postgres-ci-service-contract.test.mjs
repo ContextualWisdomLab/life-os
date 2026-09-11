@@ -35,6 +35,14 @@ function postgresServiceBlocks(source) {
   return blocks;
 }
 
+/** Assert the current PostgreSQL service policy against one extracted service block. */
+function expectSecurePostgresServiceBlock(block) {
+  expect(block).toContain(`image: ${POSTGRES_CI_IMAGE}`);
+  expect(block).toContain('POSTGRES_HOST_AUTH_METHOD: scram-sha-256');
+  expect(block).toContain(`POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}`);
+  expect(block).not.toMatch(/image:\s+postgres:[^\n]*-alpine@/u);
+}
+
 describe('PostgreSQL CI service contract', () => {
   it('uses a locale-capable immutable image and explicit SCRAM init authentication', () => {
     const blocks = workflowPaths.flatMap((path) =>
@@ -43,10 +51,21 @@ describe('PostgreSQL CI service contract', () => {
 
     expect(blocks).toHaveLength(5);
     for (const block of blocks) {
-      expect(block).toContain(`image: ${POSTGRES_CI_IMAGE}`);
-      expect(block).toContain('POSTGRES_HOST_AUTH_METHOD: scram-sha-256');
-      expect(block).toContain(`POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}`);
-      expect(block).not.toMatch(/image:\s+postgres:[^\n]*-alpine@/u);
+      expectSecurePostgresServiceBlock(block);
     }
+  });
+
+  it('rejects authentication settings placed outside the service env mapping', () => {
+    const malformedBlock = [
+      '      postgres:',
+      `        image: ${POSTGRES_CI_IMAGE}`,
+      '        env:',
+      '          POSTGRES_DB: life_os_test',
+      '        labels:',
+      '          POSTGRES_HOST_AUTH_METHOD: scram-sha-256',
+      `          POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}`,
+    ].join('\n');
+
+    expect(() => expectSecurePostgresServiceBlock(malformedBlock)).toThrow();
   });
 });
