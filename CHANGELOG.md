@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Changed
 
+- Persistent GitHub workflows now use immutable Node-24-backed checkout and setup-node releases directly, removing the temporary runtime-forcing compatibility switch while preserving exact checkout and credential boundaries.
 - Production contextual-orchestrator proposal requests now explicitly use adaptive `auto` mode and avoid provider-native structured-output passthrough, allowing the orchestration plane to meet the quality requirement and then minimize known cost while LifeOS retains strict fail-closed proposal validation.
 
 ### Added

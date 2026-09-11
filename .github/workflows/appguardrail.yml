@@ -30,10 +30,13 @@ jobs:
       security-events: write
     env:
       APPGUARDRAIL_COMMIT: 4e4f6c34e4e9640ba769020e9ab4a6ebee07bab1
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout LifeOS exact contributor head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -45,6 +48,10 @@ jobs:
 
       - name: Checkout pinned AppGuardrail
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           repository: ContextualWisdomLab/appguardrail
           ref: 4e4f6c34e4e9640ba769020e9ab4a6ebee07bab1
