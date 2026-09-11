@@ -1,0 +1,60 @@
+name: Repair Planning completion truncate regression formatting
+
+on:
+  push:
+    branches: [feat/planning-task-completion-history-v1]
+    paths:
+      - .github/workflows/repair-planning-completion-truncate-format.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-planning-completion-truncate-format-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Canonicalize only the regression fixture
+        run: |
+          pnpm exec prettier --write apps/planning-service/src/task-completion-facts-truncate.integration.test.ts
+          pnpm exec prettier --check apps/planning-service/src/task-completion-facts-truncate.integration.test.ts
+          git diff --check
+
+      - name: Retire this purpose-complete writer and publish only formatting
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          rm .github/workflows/repair-planning-completion-truncate-format.yml
+          changed="$(git status --short)"
+          printf '%s\n' "$changed"
+          unexpected="$(printf '%s\n' "$changed" | sed -E 's/^.. //' | grep -Ev '^(apps/planning-service/src/task-completion-facts-truncate\.integration\.test\.ts|\.github/workflows/repair-planning-completion-truncate-format\.yml)$' || true)"
+          test -z "$unexpected"
+          remote_head="$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)"
+          test "$remote_head" = "$EXPECTED_HEAD"
+          git config user.name 'lifeos-hourly-maintainer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add apps/planning-service/src/task-completion-facts-truncate.integration.test.ts .github/workflows/repair-planning-completion-truncate-format.yml
+          git commit -m 'test(planning): canonicalize truncate regression fixture'
+          git push origin "HEAD:${BRANCH}"
