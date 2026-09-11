@@ -1,0 +1,26 @@
+name: Temporary Commercial Response Halving Verification
+
+on:
+  push:
+    branches:
+      - fix/actions-draft-queue-pressure-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Run focused response-boundary regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test packages/commercial-readiness/src/github-client-page-size.test.mjs
