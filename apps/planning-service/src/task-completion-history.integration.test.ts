@@ -27,17 +27,9 @@ const migrationPath = resolve(
 );
 let pool: Pool;
 
-/** Rewrites only canonical Planning table qualifiers into the isolated test schema. */
+/** Rewrites all Planning-owned qualifiers into the isolated PostgreSQL test schema. */
 function isolatedSql(text: string): string {
-  return text
-    .replaceAll(
-      'planning.task_completion_facts',
-      'planning_task_completion_history_test.task_completion_facts',
-    )
-    .replaceAll(
-      'planning.tasks',
-      'planning_task_completion_history_test.tasks',
-    );
+  return text.replaceAll('planning.', 'planning_task_completion_history_test.');
 }
 
 /** Executes the production repository statement against an isolated PostgreSQL schema. */

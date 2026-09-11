@@ -107,6 +107,10 @@ interface PlanningTaskExportRow extends PlanningGoalExportRow {
   status: unknown;
   completed_at: unknown;
 }
+/**
+ * Data-rights projection of user-owned completion evidence.
+ * Internal fact identity and ordering sequence stay private to Planning persistence.
+ */
 interface PlanningTaskCompletionFactExportRow {
   task_id: unknown;
   completed_at: unknown;
