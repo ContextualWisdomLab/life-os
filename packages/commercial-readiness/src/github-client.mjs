@@ -4,9 +4,44 @@ const API_ORIGIN = 'https://api.github.com';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const API_PAGE_SIZE = 100;
+const MIN_API_PAGE_SIZE = 1;
+
+/**
+ * Build a finite descending page-size sequence for response-bound retries.
+ *
+ * Oversized list responses are retried with progressively smaller GitHub page sizes without
+ * increasing the response-byte ceiling or reducing the repository item ceiling. Halving stops
+ * at one item, so even unusually large individual records fail closed after a finite traversal.
+ *
+ * @returns {number[]} Page sizes from the normal GitHub maximum down to one item.
+ */
+function buildResponseBoundedPageSizes() {
+  const pageSizes = [];
+  let pageSize = API_PAGE_SIZE;
+  while (true) {
+    pageSizes.push(pageSize);
+    if (pageSize === MIN_API_PAGE_SIZE) return pageSizes;
+    pageSize = Math.max(MIN_API_PAGE_SIZE, Math.floor(pageSize / 2));
+  }
+}
+
+const RESPONSE_BOUNDED_PAGE_SIZES = buildResponseBoundedPageSizes();
 const MAX_API_PAGES = 10;
+const MAX_API_ITEMS = API_PAGE_SIZE * MAX_API_PAGES;
+const RESPONSE_SIZE_ERROR = new Error(
+  'GitHub API response exceeded the size limit',
+);
+/** Maximum number of attempts for one idempotent GitHub GET, including the first request. */
+const MAX_READ_ATTEMPTS = 3;
+/** Backoff delays after the first and second retryable GET failures, in milliseconds. */
+const READ_RETRY_DELAYS_MS = [100, 250];
+/** Transient server statuses that may be retried only when the request method is GET. */
+const READ_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
+/** Canonical UTC timestamp shape emitted by GitHub REST commit-status responses. */
+const GITHUB_STATUS_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 function assertRepository(repository) {
   if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
@@ -15,10 +50,40 @@ function assertRepository(repository) {
   return repository;
 }
 
+/**
+ * Parse one GitHub commit-status timestamp only when syntax and calendar value are canonical.
+ *
+ * JavaScript accepts broader date syntax and normalizes some impossible ISO-looking dates.
+ * Merge-authoritative status ordering therefore accepts only GitHub's UTC second-precision
+ * shape and requires an unchanged UTC round-trip before a status may participate in reduction.
+ *
+ * @param {unknown} value Untrusted `created_at` status evidence.
+ * @returns {number|null} Epoch milliseconds for canonical GitHub evidence, otherwise null.
+ */
+function parseCanonicalGitHubStatusTimestamp(value) {
+  if (
+    typeof value !== 'string' ||
+    !GITHUB_STATUS_TIMESTAMP_PATTERN.test(value)
+  ) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return new Date(timestamp).toISOString() === `${value.slice(0, -1)}.000Z`
+    ? timestamp
+    : null;
+}
+
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
-    throw new Error('GitHub API response exceeded the size limit');
+    // Cleanup cannot replace the already-established response-size classification.
+    try {
+      if (response.body) void response.body.cancel().catch(() => {});
+    } catch {
+      // A synchronous cancellation failure is also non-authoritative cleanup detail.
+    }
+    throw RESPONSE_SIZE_ERROR;
   }
   if (!response.body) return '';
   const reader = response.body.getReader();
@@ -29,8 +94,13 @@ async function readBoundedText(response, maxBytes) {
     if (done) break;
     bytes += value.byteLength;
     if (bytes > maxBytes) {
-      await reader.cancel();
-      throw new Error('GitHub API response exceeded the size limit');
+      // Cleanup cannot replace the already-established response-size classification.
+      try {
+        void reader.cancel().catch(() => {});
+      } catch {
+        // A synchronous cancellation failure is also non-authoritative cleanup detail.
+      }
+      throw RESPONSE_SIZE_ERROR;
     }
     chunks.push(value);
   }
@@ -41,6 +111,17 @@ async function readBoundedText(response, maxBytes) {
     offset += chunk.byteLength;
   }
   return new TextDecoder().decode(merged);
+}
+
+/**
+ * Wait for the bounded backoff associated with a completed retryable GET attempt.
+ *
+ * @param {number} attempt One-based completed attempt; valid retry waits are attempts 1 and 2.
+ * @returns {Promise<void>} Resolves after the corresponding 100 ms or 250 ms delay.
+ */
+function waitForReadRetry(attempt) {
+  const delay = READ_RETRY_DELAYS_MS[attempt - 1];
+  return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
 export class GitHubApiClient {
@@ -75,6 +156,17 @@ export class GitHubApiClient {
     this.maxResponseBytes = maxResponseBytes;
   }
 
+  /**
+   * Request bounded JSON from the GitHub API while preserving mutation exactly-once semantics.
+   *
+   * GET requests retry only HTTP 500, 502, 503, or 504 responses, for at most three total
+   * attempts with 100 ms then 250 ms backoff and a fresh configured timeout per attempt.
+   * Every non-GET request is attempted exactly once and is never replayed automatically.
+   *
+   * @param {string} path Absolute GitHub API path constrained to the configured API origin.
+   * @param {{method?: string, body?: unknown, headers?: Record<string, string>}} [options] Request options.
+   * @returns {Promise<unknown>} Parsed bounded JSON response, or null for an empty successful body.
+   */
   async requestJson(path, { method = 'GET', body, headers = {} } = {}) {
     if (
       typeof path !== 'string' ||
@@ -85,45 +177,57 @@ export class GitHubApiClient {
     ) {
       throw new Error('Invalid GitHub API path');
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      const response = await this.fetchImpl(`${API_ORIGIN}${path}`, {
-        method,
-        redirect: 'error',
-        signal: controller.signal,
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${this.token}`,
-          'user-agent': 'life-os-commercial-readiness',
-          'x-github-api-version': '2022-11-28',
-          ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-          ...headers,
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.toLowerCase().includes('json')) {
-        throw new Error('GitHub API response was invalid');
-      }
-      const text = await readBoundedText(response, this.maxResponseBytes);
-      if (!response.ok) {
-        throw new Error(
-          `GitHub API request failed with status ${response.status}`,
-        );
-      }
+    const maximumAttempts = method === 'GET' ? MAX_READ_ATTEMPTS : 1;
+    for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      let shouldRetry = false;
       try {
-        return text ? JSON.parse(text) : null;
-      } catch {
-        throw new Error('GitHub API response was invalid');
+        const response = await this.fetchImpl(`${API_ORIGIN}${path}`, {
+          method,
+          redirect: 'error',
+          signal: controller.signal,
+          headers: {
+            accept: 'application/vnd.github+json',
+            authorization: `Bearer ${this.token}`,
+            'user-agent': 'life-os-commercial-readiness',
+            'x-github-api-version': '2022-11-28',
+            ...(body === undefined
+              ? {}
+              : { 'content-type': 'application/json' }),
+            ...headers,
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        const text = await readBoundedText(response, this.maxResponseBytes);
+        shouldRetry =
+          attempt < maximumAttempts &&
+          READ_RETRYABLE_STATUSES.has(response.status);
+        if (shouldRetry) continue;
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.toLowerCase().includes('json')) {
+          throw new Error('GitHub API response was invalid');
+        }
+        if (!response.ok) {
+          throw new Error(
+            `GitHub API request failed with status ${response.status}`,
+          );
+        }
+        try {
+          return text ? JSON.parse(text) : null;
+        } catch {
+          throw new Error('GitHub API response was invalid');
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError')
+          throw new Error('GitHub API request timed out');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        if (shouldRetry) await waitForReadRetry(attempt);
       }
-    } catch (error) {
-      if (error?.name === 'AbortError')
-        throw new Error('GitHub API request timed out');
-      throw error;
-    } finally {
-      clearTimeout(timer);
     }
+    throw new Error('GitHub API request retry invariant failed');
   }
 }
 
@@ -194,60 +298,311 @@ export async function syncReadinessIssue(
   return canonical;
 }
 
-function normalizeReview(review) {
+/**
+ * Normalize one untrusted GitHub review without coercing malformed identity scalars into authority.
+ *
+ * The evaluator separately validates actor, state, timestamp, and whether an approval's
+ * `commit_id` equals the exact pull-request head. GitHub does not allow a pull-request author to
+ * approve their own pull request, so decisive review authority requires both reviewer and author
+ * logins to be non-empty canonical strings with no trimming normalization. An author-matching
+ * decisive review is retained as invalid evidence instead of becoming synthetic independent
+ * approval authority. JSON arrays, objects, or padded strings must not become a valid reviewer,
+ * author, review state, or commit binding through JavaScript normalization. Malformed decisive
+ * identity is represented by a bounded unknown state so evaluation fails closed while ordinary
+ * non-decisive review evidence remains ignorable.
+ *
+ * @param {unknown} review Raw GitHub REST pull-request review payload.
+ * @param {unknown} pullRequestAuthor Raw GitHub REST pull-request author login.
+ * @returns {{actor: string, state: string, submitted_at: unknown, commit_id: string}} Bounded review evidence.
+ */
+function normalizeReview(review, pullRequestAuthor) {
+  const actor = review?.user?.login;
+  const state = review?.state;
+  const commitId = review?.commit_id;
+  const decisive = state === 'APPROVED' || state === 'CHANGES_REQUESTED';
+  const actorCanonical =
+    typeof actor === 'string' && actor.length > 0 && actor.trim() === actor;
+  const authorCanonical =
+    typeof pullRequestAuthor === 'string' &&
+    pullRequestAuthor.length > 0 &&
+    pullRequestAuthor.trim() === pullRequestAuthor;
+  const selfReview =
+    decisive &&
+    actorCanonical &&
+    authorCanonical &&
+    actor.toLowerCase() === pullRequestAuthor.toLowerCase();
+  const decisiveActorInvalid =
+    decisive && (!actorCanonical || !authorCanonical || selfReview);
+  const approvalCommitInvalid =
+    state === 'APPROVED' && typeof commitId !== 'string';
+  const stateInvalid = typeof state !== 'string';
   return {
-    actor: String(review?.user?.login ?? ''),
-    state: String(review?.state ?? ''),
+    actor: typeof actor === 'string' ? actor : '__invalid__',
+    state:
+      stateInvalid || decisiveActorInvalid || approvalCommitInvalid
+        ? '__invalid__'
+        : state,
     submitted_at: review?.submitted_at ?? null,
+    commit_id: typeof commitId === 'string' ? commitId : '',
   };
 }
 
-async function collectPaginatedArray(client, path, errorMessage) {
-  const values = [];
+/**
+ * Collect a bounded GitHub REST array and optionally verify that a multi-page offset traversal
+ * retained the same first-page authority from start to finish.
+ *
+ * The stability check is opt-in because not every collection participates in a merge decision.
+ * Merge-authoritative pull-request reviews and commit statuses opt in: concurrent insertions,
+ * dismissals, or state changes can otherwise shift or mutate page-one authority while later
+ * pages are being read. Re-reading page 1 after any multi-page traversal makes that drift
+ * explicit instead of allowing stale approval or success evidence to remain authoritative.
+ *
+ * @param {object} client Bounded GitHub API client.
+ * @param {string} path REST path before pagination parameters are appended.
+ * @param {string} errorMessage Error used for malformed page evidence.
+ * @param {string|null} [stabilityErrorMessage=null] Fail-closed error used when first-page authority moves.
+ * @returns {Promise<unknown[]>} Complete bounded array from one stable traversal.
+ */
+async function collectPaginatedArray(
+  client,
+  path,
+  errorMessage,
+  stabilityErrorMessage = null,
+) {
   const separator = path.includes('?') ? '&' : '?';
-  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
-    const payload = await client.requestJson(
-      `${path}${separator}per_page=${API_PAGE_SIZE}&page=${page}`,
-    );
-    if (!Array.isArray(payload) || payload.length > API_PAGE_SIZE) {
-      throw new Error(errorMessage);
+  for (const pageSize of RESPONSE_BOUNDED_PAGE_SIZES) {
+    const values = [];
+    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize) + 1;
+    let firstPage = null;
+    let pagesRead = 0;
+    try {
+      for (let page = 1; page <= pageLimit; page += 1) {
+        const payload = await client.requestJson(
+          `${path}${separator}per_page=${pageSize}&page=${page}`,
+        );
+        if (!Array.isArray(payload) || payload.length > pageSize) {
+          throw new Error(errorMessage);
+        }
+        if (page === 1) firstPage = payload;
+        values.push(...payload);
+        if (values.length > MAX_API_ITEMS) {
+          throw new Error(`${errorMessage} exceeded the item limit`);
+        }
+        pagesRead = page;
+        if (payload.length < pageSize) {
+          if (stabilityErrorMessage && pagesRead > 1) {
+            const confirmation = await client.requestJson(
+              `${path}${separator}per_page=${pageSize}&page=1`,
+            );
+            if (
+              !Array.isArray(confirmation) ||
+              confirmation.length > pageSize ||
+              JSON.stringify(confirmation) !== JSON.stringify(firstPage)
+            ) {
+              throw new Error(stabilityErrorMessage);
+            }
+          }
+          return values;
+        }
+      }
+      throw new Error(`${errorMessage} exceeded the page limit`);
+    } catch (error) {
+      if (error !== RESPONSE_SIZE_ERROR || pageSize === MIN_API_PAGE_SIZE) {
+        throw error;
+      }
     }
-    values.push(...payload);
-    if (payload.length < API_PAGE_SIZE) return values;
   }
-  throw new Error(`${errorMessage} exceeded the page limit`);
+  throw new Error('GitHub pagination fallback invariant failed');
 }
 
-async function collectWorkflowRuns(client, repository, headSha) {
-  const values = [];
-  let expectedTotal = null;
-  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
-    const payload = await client.requestJson(
-      `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
-        headSha,
-      )}&event=pull_request&per_page=${API_PAGE_SIZE}&page=${page}`,
-    );
-    const pageValues = payload?.workflow_runs;
-    if (!Array.isArray(pageValues) || pageValues.length > API_PAGE_SIZE) {
-      throw new Error('GitHub workflow run response was invalid');
-    }
-    if (
-      Number.isSafeInteger(payload?.total_count) &&
-      payload.total_count >= 0
-    ) {
-      expectedTotal = payload.total_count;
-    }
-    values.push(...pageValues);
-    if (
-      pageValues.length < API_PAGE_SIZE ||
-      (expectedTotal !== null && values.length >= expectedTotal)
-    ) {
-      return values;
-    }
+/**
+ * Check whether one pull-request-triggered workflow run belongs to the evaluated PR.
+ *
+ * GitHub can return multiple pull-request runs for the same head SHA when one commit is
+ * proposed against different bases. Missing or malformed association evidence fails closed.
+ *
+ * @param {unknown} run Untrusted workflow-run payload from the GitHub Actions API.
+ * @param {number} pullRequestNumber Repository-local pull request number being evaluated.
+ * @returns {boolean} True only when GitHub explicitly associates the run with that PR.
+ */
+function workflowRunBelongsToPullRequest(run, pullRequestNumber) {
+  if (!Number.isSafeInteger(pullRequestNumber) || pullRequestNumber <= 0) {
+    return false;
   }
-  throw new Error('GitHub workflow run response exceeded the page limit');
+  return (Array.isArray(run?.pull_requests) ? run.pull_requests : []).some(
+    (pullRequest) => pullRequest?.number === pullRequestNumber,
+  );
 }
 
+/**
+ * Collect bounded workflow-run evidence for one exact head and one exact pull request.
+ *
+ * The Actions endpoint is queried by head SHA for pagination efficiency, then every result
+ * is constrained by GitHub's immutable pull-request association before it can reach merge
+ * evaluation. Because the endpoint uses offset pagination over a live newest-first list,
+ * the traversal requires a stable `total_count`, unique positive run IDs, exact cardinality,
+ * and—after any multi-page traversal—an unchanged first-page evidence anchor. Concurrent
+ * insertion/deletion or same-run state changes therefore fail closed instead of allowing a
+ * stale successful run to hide newer or mutated evidence.
+ *
+ * @param {object} client Bounded GitHub API client.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {string} headSha Exact current pull-request head SHA.
+ * @param {number} pullRequestNumber Repository-local pull request number.
+ * @returns {Promise<unknown[]>} Workflow runs explicitly associated with the evaluated PR.
+ */
+async function collectWorkflowRuns(
+  client,
+  repository,
+  headSha,
+  pullRequestNumber,
+) {
+  for (const pageSize of RESPONSE_BOUNDED_PAGE_SIZES) {
+    const values = [];
+    const seenRunIds = new Set();
+    let expectedTotal = null;
+    let firstPageAnchor = null;
+    let collectionComplete = false;
+    let pagesRead = 0;
+    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
+    try {
+      for (let page = 1; page <= pageLimit; page += 1) {
+        const payload = await client.requestJson(
+          `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+            headSha,
+          )}&event=pull_request&per_page=${pageSize}&page=${page}`,
+        );
+        const pageValues = payload?.workflow_runs;
+        if (
+          !Array.isArray(pageValues) ||
+          pageValues.length > pageSize ||
+          !Number.isSafeInteger(payload?.total_count) ||
+          payload.total_count < 0
+        ) {
+          throw new Error('GitHub workflow run response was invalid');
+        }
+        if (expectedTotal === null) {
+          expectedTotal = payload.total_count;
+        } else if (payload.total_count !== expectedTotal) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+        for (const run of pageValues) {
+          if (!Number.isSafeInteger(run?.id) || run.id <= 0) {
+            throw new Error('GitHub workflow run response was invalid');
+          }
+          if (seenRunIds.has(run.id)) {
+            throw new Error(
+              'GitHub workflow run response changed during pagination',
+            );
+          }
+          seenRunIds.add(run.id);
+        }
+        if (page === 1) {
+          firstPageAnchor = pageValues.map((run) => ({
+            id: run.id,
+            name: run?.name ?? null,
+            status: run?.status ?? null,
+            conclusion: run?.conclusion ?? null,
+            head_sha: run?.head_sha ?? null,
+            run_attempt: run?.run_attempt ?? null,
+            updated_at: run?.updated_at ?? null,
+            pull_requests: (Array.isArray(run?.pull_requests)
+              ? run.pull_requests
+              : []
+            ).map((pullRequest) => pullRequest?.number ?? null),
+          }));
+        }
+        values.push(...pageValues);
+        pagesRead = page;
+        if (values.length > MAX_API_ITEMS) {
+          throw new Error(
+            'GitHub workflow run response exceeded the item limit',
+          );
+        }
+        if (values.length > expectedTotal) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+        if (values.length === expectedTotal) {
+          collectionComplete = true;
+          break;
+        }
+        if (pageValues.length < pageSize) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+      }
+      if (!collectionComplete) {
+        throw new Error('GitHub workflow run response exceeded the page limit');
+      }
+      if (pagesRead > 1) {
+        const confirmation = await client.requestJson(
+          `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+            headSha,
+          )}&event=pull_request&per_page=${pageSize}&page=1`,
+        );
+        const confirmationValues = confirmation?.workflow_runs;
+        if (
+          !Array.isArray(confirmationValues) ||
+          confirmationValues.length > pageSize ||
+          confirmation?.total_count !== expectedTotal ||
+          confirmationValues.some(
+            (run) => !Number.isSafeInteger(run?.id) || run.id <= 0,
+          )
+        ) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+        const confirmationAnchor = confirmationValues.map((run) => ({
+          id: run.id,
+          name: run?.name ?? null,
+          status: run?.status ?? null,
+          conclusion: run?.conclusion ?? null,
+          head_sha: run?.head_sha ?? null,
+          run_attempt: run?.run_attempt ?? null,
+          updated_at: run?.updated_at ?? null,
+          pull_requests: (Array.isArray(run?.pull_requests)
+            ? run.pull_requests
+            : []
+          ).map((pullRequest) => pullRequest?.number ?? null),
+        }));
+        if (
+          JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)
+        ) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+      }
+      return values.filter((run) =>
+        workflowRunBelongsToPullRequest(run, pullRequestNumber),
+      );
+    } catch (error) {
+      if (error !== RESPONSE_SIZE_ERROR || pageSize === MIN_API_PAGE_SIZE) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('GitHub workflow pagination fallback invariant failed');
+}
+
+/**
+ * Count unresolved GitHub review threads without treating ambiguous GraphQL evidence as resolved.
+ *
+ * Every returned thread must expose an explicit boolean `isResolved`. Pagination must expose
+ * a boolean `hasNextPage`, and any claimed next page must provide a non-empty string cursor.
+ * Malformed thread or pagination evidence throws before it can reduce the merge blocker count.
+ *
+ * @param {object} client Bounded GitHub API client used for GraphQL requests.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {number} number Repository-local pull request number.
+ * @returns {Promise<number>} Exact unresolved-thread count from a complete bounded traversal.
+ */
 async function unresolvedThreadCount(client, repository, number) {
   const [owner, name] = repository.split('/');
   const query = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}`;
@@ -266,8 +621,22 @@ async function unresolvedThreadCount(client, repository, number) {
     if (!threads || !Array.isArray(threads.nodes)) {
       throw new Error('GitHub review thread response was invalid');
     }
-    count += threads.nodes.filter((node) => node?.isResolved === false).length;
-    cursor = threads.pageInfo?.hasNextPage ? threads.pageInfo.endCursor : null;
+    if (threads.nodes.some((node) => typeof node?.isResolved !== 'boolean')) {
+      throw new Error('GitHub review thread response was invalid');
+    }
+    count += threads.nodes.filter((node) => node.isResolved === false).length;
+    const pageInfo = threads.pageInfo;
+    if (!pageInfo || typeof pageInfo.hasNextPage !== 'boolean') {
+      throw new Error('GitHub review thread response pagination was invalid');
+    }
+    if (pageInfo.hasNextPage) {
+      if (typeof pageInfo.endCursor !== 'string' || !pageInfo.endCursor) {
+        throw new Error('GitHub review thread response pagination was invalid');
+      }
+      cursor = pageInfo.endCursor;
+    } else {
+      cursor = null;
+    }
     pages += 1;
     if (pages > MAX_API_PAGES) {
       throw new Error('GitHub review thread response exceeded the page limit');
@@ -286,23 +655,68 @@ function runIsNewer(candidate, current) {
   return candidateTime > currentTime;
 }
 
-function latestWorkflowRuns(runs) {
+/**
+ * Reduce pull-request workflow runs without allowing contradictory head provenance to disappear.
+ *
+ * A run may create workflow authority only when its own scalar `name`, `status`, `head_sha`, and
+ * positive integer `run_attempt` preserve GitHub's JSON types and `head_sha` equals the exact
+ * pull-request head. Arrays, objects, or numeric-looking strings must not become valid workflow
+ * identity or ordering evidence through JavaScript coercion. A mismatched or malformed head or
+ * attempt cannot create authority; when the same valid workflow name also has exact-head evidence,
+ * contradictory provenance taints that workflow so success cannot remain merge-authoritative.
+ *
+ * @param {unknown} runs Untrusted workflow-run records already associated with the pull request.
+ * @param {string} headSha Exact current pull-request head SHA.
+ * @returns {Array<{name: string, status: string, conclusion: unknown, head_sha: string, run_attempt: number, updated_at: unknown}>} Latest exact-head workflow evidence or invalid sentinel by name.
+ */
+function latestWorkflowRuns(runs, headSha) {
   const latest = new Map();
+  const taintedNames = new Set();
   for (const run of Array.isArray(runs) ? runs : []) {
+    const nameValue = run?.name;
+    if (typeof nameValue !== 'string' || !nameValue) continue;
+    const name = nameValue;
+    const runHeadShaValue = run?.head_sha;
+    if (typeof runHeadShaValue !== 'string') {
+      taintedNames.add(name);
+      continue;
+    }
+    const runHeadSha = runHeadShaValue;
+    if (runHeadSha !== headSha) {
+      taintedNames.add(name);
+      continue;
+    }
+    const runAttempt = run?.run_attempt;
+    if (!Number.isSafeInteger(runAttempt) || runAttempt <= 0) {
+      taintedNames.add(name);
+      continue;
+    }
+    const statusValue = run?.status;
     const normalized = {
       id: Number.isSafeInteger(run?.id) ? run.id : 0,
-      name: String(run?.name ?? ''),
-      status: String(run?.status ?? ''),
+      name,
+      status: typeof statusValue === 'string' ? statusValue : 'invalid',
       conclusion: run?.conclusion ?? null,
-      head_sha: String(run?.head_sha ?? ''),
-      run_attempt: Number(run?.run_attempt ?? 0),
+      head_sha: runHeadSha,
+      run_attempt: runAttempt,
       updated_at: run?.updated_at ?? null,
     };
-    if (!normalized.name) continue;
     const current = latest.get(normalized.name);
     if (!current || runIsNewer(normalized, current)) {
       latest.set(normalized.name, normalized);
     }
+  }
+  for (const name of taintedNames) {
+    if (!latest.has(name)) continue;
+    latest.set(name, {
+      id: 0,
+      name,
+      status: 'invalid',
+      conclusion: null,
+      head_sha: headSha,
+      run_attempt: 0,
+      updated_at: null,
+    });
   }
   return [...latest.values()]
     .map(({ id: _id, ...run }) => run)
@@ -311,30 +725,158 @@ function latestWorkflowRuns(runs) {
 
 function statusIsNewer(candidate, current) {
   if (candidate.id !== current.id) return candidate.id > current.id;
-  const candidateTime = Date.parse(candidate.created_at ?? '') || 0;
-  const currentTime = Date.parse(current.created_at ?? '') || 0;
+  const candidateTime = Date.parse(candidate.created_at);
+  const currentTime = Date.parse(current.created_at);
   return candidateTime > currentTime;
 }
 
+/**
+ * Reduce exact-head commit statuses without allowing malformed provenance, duplicate identity, or ordering evidence to disappear.
+ *
+ * A status may participate in latest-per-context reduction only when its scalar context, state,
+ * and SHA preserve GitHub's JSON types, its SHA binds the exact pull-request head, its context is
+ * non-empty, its GitHub status identifier is a unique positive safe integer, and `created_at` is a
+ * canonical UTC second-precision GitHub timestamp. Arrays or objects must not become a valid
+ * status context, success state, or exact-head binding through JavaScript coercion. Reusing one
+ * positive status id anywhere in the bounded response taints every context carrying that identity,
+ * including records whose SHA or other provenance is malformed or mismatched. Contradictory or
+ * malformed evidence for a known context likewise remains fail-closed.
+ *
+ * @param {unknown} statuses Untrusted commit-status records from the GitHub API.
+ * @param {string} headSha Exact current pull-request head SHA.
+ * @returns {Array<{context: string, state: string, sha: string}>} Latest exact-head status or invalid sentinel by context.
+ */
 function latestStatuses(statuses, headSha) {
   const latest = new Map();
+  const invalidContexts = new Set();
+  const mismatchedContexts = new Set();
+  const statusIdContexts = new Map();
   for (const status of Array.isArray(statuses) ? statuses : []) {
-    const normalized = {
-      id: Number.isSafeInteger(status?.id) ? status.id : 0,
-      context: String(status?.context ?? ''),
-      state: String(status?.state ?? ''),
-      sha: String(status?.sha ?? headSha),
-      created_at: status?.created_at ?? null,
-    };
-    if (!normalized.context || normalized.sha !== headSha) continue;
-    const current = latest.get(normalized.context);
-    if (!current || statusIsNewer(normalized, current)) {
-      latest.set(normalized.context, normalized);
+    const contextValue = status?.context;
+    if (typeof contextValue !== 'string' || !contextValue) continue;
+    const context = contextValue;
+    const id = status?.id;
+    const idCanonical = Number.isSafeInteger(id) && id > 0;
+    if (idCanonical) {
+      const priorContext = statusIdContexts.get(id);
+      if (priorContext !== undefined) {
+        invalidContexts.add(priorContext);
+        invalidContexts.add(context);
+      } else {
+        statusIdContexts.set(id, context);
+      }
     }
+    const shaValue = status?.sha;
+    if (typeof shaValue !== 'string') {
+      invalidContexts.add(context);
+      continue;
+    }
+    const sha = shaValue;
+    if (sha !== headSha) {
+      mismatchedContexts.add(context);
+      continue;
+    }
+    const stateValue = status?.state;
+    const createdAt = status?.created_at ?? null;
+    if (
+      !idCanonical ||
+      typeof stateValue !== 'string' ||
+      parseCanonicalGitHubStatusTimestamp(createdAt) === null
+    ) {
+      invalidContexts.add(context);
+      continue;
+    }
+    const normalized = {
+      id,
+      context,
+      state: stateValue,
+      sha,
+      created_at: createdAt,
+    };
+    const current = latest.get(context);
+    if (!current || statusIsNewer(normalized, current)) {
+      latest.set(context, normalized);
+    }
+  }
+  for (const context of mismatchedContexts) {
+    if (latest.has(context)) invalidContexts.add(context);
+  }
+  for (const context of invalidContexts) {
+    latest.set(context, {
+      id: 0,
+      context,
+      state: 'invalid',
+      sha: headSha,
+      created_at: null,
+    });
   }
   return [...latest.values()]
     .map(({ id: _id, created_at: _createdAt, ...status }) => status)
     .sort((left, right) => left.context.localeCompare(right.context));
+}
+
+/**
+ * Preserve explicit GitHub Draft authority without converting malformed evidence to ready state.
+ *
+ * GitHub's REST contract exposes `draft` as a boolean. Missing or malformed upstream evidence
+ * is normalized to `null`, which the merge evaluator treats as `draft-state-unknown` rather
+ * than silently collapsing it to `false` and granting non-Draft authority.
+ *
+ * @param {unknown} value Raw `draft` field from the GitHub pull-request payload.
+ * @returns {boolean|null} Exact boolean authority or a bounded unknown sentinel.
+ */
+function normalizeDraftAuthority(value) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function stringAuthority(value) {
+  return typeof value === 'string' ? value : '__invalid__';
+}
+
+/**
+ * Accept base-freshness evidence only when the compare response is bound to the requested pair.
+ *
+ * `behind_by: 0` is merge-authoritative, so a standalone number cannot prove which commits were
+ * actually compared. GitHub's compare response carries its canonical request URL, base commit,
+ * and merge-base commit. Missing, malformed, or mismatched provenance is reduced to `-1`, which
+ * the merge evaluator treats as out-of-date. When GitHub reports zero commits behind, the merge
+ * base must be the requested base commit as well.
+ *
+ * @param {unknown} payload Untrusted GitHub compare response.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {string} baseSha Exact pull-request base SHA used in the compare request.
+ * @param {string} headSha Exact pull-request head SHA used in the compare request.
+ * @returns {number} Non-negative behind count only for provenance-bound evidence; otherwise -1.
+ */
+function compareBehindAuthority(payload, repository, baseSha, headSha) {
+  const behindBy = payload?.behind_by;
+  if (!Number.isSafeInteger(behindBy) || behindBy < 0) return -1;
+
+  const expectedUrl = `${API_ORIGIN}/repos/${repository}/compare/${baseSha}...${headSha}`;
+  const responseUrl = payload?.url;
+  const responseBaseSha = payload?.base_commit?.sha;
+  if (
+    typeof responseUrl !== 'string' ||
+    responseUrl !== expectedUrl ||
+    typeof responseBaseSha !== 'string' ||
+    !SHA_PATTERN.test(responseBaseSha) ||
+    responseBaseSha.toLowerCase() !== baseSha.toLowerCase()
+  ) {
+    return -1;
+  }
+
+  if (behindBy === 0) {
+    const mergeBaseSha = payload?.merge_base_commit?.sha;
+    if (
+      typeof mergeBaseSha !== 'string' ||
+      !SHA_PATTERN.test(mergeBaseSha) ||
+      mergeBaseSha.toLowerCase() !== baseSha.toLowerCase()
+    ) {
+      return -1;
+    }
+  }
+
+  return behindBy;
 }
 
 async function collectOnePullRequest(client, repository, summary, policy) {
@@ -342,9 +884,13 @@ async function collectOnePullRequest(client, repository, summary, policy) {
   const detail = await client.requestJson(
     `/repos/${repository}/pulls/${number}`,
   );
-  const headSha = String(detail?.head?.sha ?? '');
-  if (!SHA_PATTERN.test(headSha)) {
+  const headSha = detail?.head?.sha;
+  if (typeof headSha !== 'string' || !SHA_PATTERN.test(headSha)) {
     throw new Error('GitHub pull request head was invalid');
+  }
+  const baseSha = detail?.base?.sha;
+  if (typeof baseSha !== 'string' || !SHA_PATTERN.test(baseSha)) {
+    throw new Error('GitHub pull request base was invalid');
   }
   const [reviews, workflowRuns, statuses, comparePayload, unresolvedThreads] =
     await Promise.all([
@@ -352,39 +898,50 @@ async function collectOnePullRequest(client, repository, summary, policy) {
         client,
         `/repos/${repository}/pulls/${number}/reviews`,
         'GitHub review response was invalid',
+        'GitHub review response changed during pagination',
       ),
-      collectWorkflowRuns(client, repository, headSha),
+      collectWorkflowRuns(client, repository, headSha, number),
       collectPaginatedArray(
         client,
         `/repos/${repository}/commits/${headSha}/statuses`,
         'GitHub status response was invalid',
+        'GitHub status response changed during pagination',
       ),
       client.requestJson(
         `/repos/${repository}/compare/${encodeURIComponent(
-          detail.base.sha,
-        )}...${encodeURIComponent(headSha)}`,
+          baseSha,
+        )}...${encodeURIComponent(headSha)}?per_page=1&page=2`,
       ),
       unresolvedThreadCount(client, repository, number),
     ]);
 
+  const pullRequestAuthor = detail?.user?.login;
   const pull = {
     number,
-    title: String(detail.title ?? ''),
-    state: String(detail.state ?? ''),
-    draft: detail.draft === true,
-    mergeable: detail.mergeable === true,
-    mergeable_state: String(detail.mergeable_state ?? 'unknown'),
-    base_ref: String(detail.base?.ref ?? ''),
+    title: typeof detail?.title === 'string' ? detail.title : '',
+    state: stringAuthority(detail?.state),
+    draft: normalizeDraftAuthority(detail?.draft),
+    mergeable: detail?.mergeable === true,
+    mergeable_state: stringAuthority(detail?.mergeable_state),
+    base_ref: stringAuthority(detail?.base?.ref),
     head_sha: headSha,
-    head_repo: String(detail.head?.repo?.full_name ?? ''),
+    head_repo: stringAuthority(detail?.head?.repo?.full_name),
     repository,
-    author_association: String(detail.author_association ?? ''),
-    behind_by: Number.isSafeInteger(comparePayload?.behind_by)
-      ? comparePayload.behind_by
-      : -1,
-    reviews: reviews.map(normalizeReview),
+    author_association:
+      typeof detail?.author_association === 'string'
+        ? detail.author_association
+        : '',
+    behind_by: compareBehindAuthority(
+      comparePayload,
+      repository,
+      baseSha,
+      headSha,
+    ),
+    reviews: reviews.map((review) =>
+      normalizeReview(review, pullRequestAuthor),
+    ),
     unresolved_threads: unresolvedThreads,
-    workflows: latestWorkflowRuns(workflowRuns),
+    workflows: latestWorkflowRuns(workflowRuns, headSha),
     statuses: latestStatuses(statuses, headSha),
   };
   return { ...pull, ...evaluatePullRequestForMerge(pull, policy) };
@@ -498,12 +1055,21 @@ export async function mergeEligiblePullRequests({
       candidate.head_sha,
       policy.merge_method,
     );
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      typeof result.merged !== 'boolean' ||
+      (result.merged === true &&
+        (typeof result.sha !== 'string' || !SHA_PATTERN.test(result.sha)))
+    ) {
+      throw new Error('GitHub merge response was invalid');
+    }
     results.push({
       number: candidate.number,
-      action: result?.merged === false ? 'blocked' : 'merged',
-      ...(result?.merged === false
+      action: result.merged === false ? 'blocked' : 'merged',
+      ...(result.merged === false
         ? { blockers: ['github-rejected-merge'] }
-        : {}),
+        : { merge_sha: result.sha }),
     });
   }
   return results;

@@ -274,6 +274,127 @@ function assertMergeExecutionContext(policy) {
   }
 }
 
+/**
+ * Verifies that a merge drain still runs from the exact protected default-branch commit.
+ *
+ * Scheduled and manual jobs can outlive the commit that started them. Immediately before
+ * any merge mutation, this check reads the live default-branch head and requires both explicit
+ * GitHub `protected: true` authority and an exact match to the workflow's immutable `GITHUB_SHA`;
+ * malformed, unprotected, or moved branch evidence fails closed so stale control-plane code,
+ * removed policy enforcement, or malformed API evidence cannot authorize a merge.
+ *
+ * @param {{requestJson: (path: string) => Promise<unknown>}} client Bounded GitHub API client.
+ * @param {string} repository Canonical owner/repository identifier already validated by snapshot collection.
+ * @param {string} defaultBranch Protected default branch from the validated merge policy.
+ * @param {string} expectedCommitSha Immutable workflow commit that must still own merge authority.
+ * @returns {Promise<void>} Resolves only while the live protected default branch is unchanged.
+ */
+export async function assertDefaultBranchHead(
+  client,
+  repository,
+  defaultBranch,
+  expectedCommitSha,
+) {
+  if (
+    !client ||
+    typeof client.requestJson !== 'function' ||
+    typeof repository !== 'string' ||
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
+    typeof defaultBranch !== 'string' ||
+    !defaultBranch ||
+    defaultBranch.length > 255 ||
+    /[\u0000-\u001f\u007f\\]/.test(defaultBranch) ||
+    typeof expectedCommitSha !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(expectedCommitSha)
+  ) {
+    throw new Error('Merge drain default-branch evidence is invalid');
+  }
+  const payload = await client.requestJson(
+    `/repos/${repository}/branches/${encodeURIComponent(defaultBranch)}`,
+  );
+  const liveHead = payload?.commit?.sha;
+  if (
+    payload?.protected !== true ||
+    typeof liveHead !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(liveHead) ||
+    liveHead !== expectedCommitSha
+  ) {
+    throw new Error('Protected default branch changed during merge drain');
+  }
+}
+
+/**
+ * Requires explicit GitHub merge-result evidence before a drain may record a mutation outcome.
+ *
+ * A malformed JSON response must never be interpreted as a successful merge by omission.
+ * Successful responses additionally carry the canonical merge-commit SHA so the durable drain
+ * receipt can be traced to an immutable repository state; explicit `merged:false` remains a
+ * valid GitHub rejection result for the caller to classify as blocked.
+ *
+ * @param {unknown} value Untrusted GitHub merge API response.
+ * @returns {object} The validated merge response object.
+ */
+export function assertMergeResponseEvidence(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    typeof value.merged !== 'boolean' ||
+    (value.merged === true &&
+      (typeof value.sha !== 'string' || !/^[0-9a-f]{40}$/.test(value.sha)))
+  ) {
+    throw new Error('GitHub merge response was invalid');
+  }
+  return value;
+}
+
+/**
+ * Pins at most one already-evaluated eligible PR for one mutating drain invocation.
+ *
+ * A successful squash merge necessarily advances the protected default branch and invalidates
+ * the workflow commit whose code and policy authorized that mutation. Merge mode therefore keeps
+ * one PR number for the lifetime of this process; later eligible PRs wait for a fresh scheduled or
+ * manual run from the new protected head. Mutating mode fails closed before candidate selection
+ * whenever one positive PR number appears more than once, so ambiguous snapshot identity cannot
+ * schedule duplicate mutation attempts or leave a successful merge without its drain receipt.
+ * Dry-run mode preserves the complete snapshot because it performs no repository mutation.
+ *
+ * @param {boolean} execute Whether this selector is used by merge mode.
+ * @returns {(pullRequests: unknown[]) => unknown[]} Stateful snapshot selector.
+ */
+export function createDrainPullRequestSelector(execute) {
+  let selectedNumber = null;
+  return (pullRequests) => {
+    if (!Array.isArray(pullRequests)) {
+      throw new Error('Pull request snapshot is invalid');
+    }
+    if (!execute) return pullRequests;
+    const seenNumbers = new Set();
+    for (const pullRequest of pullRequests) {
+      const number = pullRequest?.number;
+      if (!Number.isSafeInteger(number) || number <= 0) continue;
+      if (seenNumbers.has(number)) {
+        throw new Error(
+          'Pull request snapshot contains duplicate pull request identity',
+        );
+      }
+      seenNumbers.add(number);
+    }
+    if (selectedNumber === null) {
+      const candidate = pullRequests.find(
+        (pullRequest) =>
+          pullRequest?.eligible === true &&
+          Number.isSafeInteger(pullRequest?.number) &&
+          pullRequest.number > 0,
+      );
+      selectedNumber = candidate?.number ?? 0;
+    }
+    if (selectedNumber === 0) return [];
+    return pullRequests.filter(
+      (pullRequest) => pullRequest?.number === selectedNumber,
+    );
+  };
+}
+
 async function commandDrain(options) {
   requireOptions(options, ['repository', 'policy', 'output']);
   const policy = await loadPolicy(options.policy);
@@ -283,6 +404,7 @@ async function commandDrain(options) {
   const commitSha = process.env.GITHUB_SHA;
   if (typeof commitSha !== 'string')
     throw new Error('GitHub commit SHA is required');
+  const selectPullRequests = createDrainPullRequestSelector(execute);
   const collectPullRequests = async () => {
     const snapshot = validateGitHubSnapshot(
       await collectRepositorySnapshot(client, options.repository, {
@@ -291,21 +413,30 @@ async function commandDrain(options) {
         generatedAt: new Date().toISOString(),
       }),
     );
-    return snapshot.pull_requests;
+    return selectPullRequests(snapshot.pull_requests);
   };
   const results = await mergeEligiblePullRequests({
     repository: options.repository,
     policy,
     dryRun: !execute,
     collectPullRequests,
-    mergePullRequest: async (number, expectedHeadSha, mergeMethod) =>
-      await mergePullRequestThroughApi(
+    mergePullRequest: async (number, expectedHeadSha, mergeMethod) => {
+      await assertDefaultBranchHead(
         client,
         options.repository,
-        number,
-        expectedHeadSha,
-        mergeMethod,
-      ),
+        policy.default_branch,
+        commitSha,
+      );
+      return assertMergeResponseEvidence(
+        await mergePullRequestThroughApi(
+          client,
+          options.repository,
+          number,
+          expectedHeadSha,
+          mergeMethod,
+        ),
+      );
+    },
   });
   const payload = {
     schema: 'life-os.pr-drain.v1',

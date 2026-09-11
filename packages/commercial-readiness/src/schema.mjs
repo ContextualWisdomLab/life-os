@@ -367,7 +367,7 @@ export function validateCommercialReadinessPolicy(value) {
 
 const SNAPSHOT_SCHEMA = 'life-os.github-snapshot.v1';
 const SNAPSHOT_REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 function failSnapshot(detail = '') {
   throw new Error(`Invalid GitHub snapshot${detail ? `: ${detail}` : ''}`);
@@ -390,17 +390,40 @@ function snapshotExternalNumber(value, label) {
   return value;
 }
 
+/**
+ * Preserve bounded review commit binding evidence, including an empty/malformed sentinel.
+ *
+ * Legacy `life-os.github-snapshot.v1` rows predate `commit_id`; their missing binding is
+ * normalized to the empty sentinel so downstream merge evaluation stays fail closed instead of
+ * inferring the current head. New collector output still supplies the raw bounded binding.
+ *
+ * @param {unknown} value Raw normalized review commit binding or legacy empty sentinel.
+ * @returns {string} Bounded review commit evidence exactly as collected or normalized for v1.
+ */
+function snapshotReviewCommitId(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length > 100 ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    failSnapshot('invalid review commit');
+  }
+  return value;
+}
+
 function validateSnapshotReview(value) {
-  const allowed = new Set(['actor', 'state', 'submitted_at']);
+  const allowed = new Set(['actor', 'state', 'submitted_at', 'commit_id']);
   if (!exactKeys(value, allowed)) failSnapshot('invalid review');
   const submittedAt = value.submitted_at;
   if (submittedAt !== null && !Number.isFinite(Date.parse(submittedAt))) {
     failSnapshot('invalid review timestamp');
   }
+  const commitId = Object.hasOwn(value, 'commit_id') ? value.commit_id : '';
   return Object.freeze({
     actor: snapshotString(value.actor, 'invalid review actor', 100),
     state: snapshotString(value.state, 'invalid review state', 50),
     submitted_at: submittedAt,
+    commit_id: snapshotReviewCommitId(commitId),
   });
 }
 
