@@ -162,7 +162,7 @@ test('rejects the first item beyond the bounded item limit', async () => {
 
   await assert.rejects(
     () => collectRepositorySnapshot(client, 'o/r', snapshotOptions()),
-    /GitHub issue response was invalid exceeded the item limit/,
+    /GitHub issue list was invalid exceeded the item limit/,
   );
   assert.equal(
     requestedPaths.some(
