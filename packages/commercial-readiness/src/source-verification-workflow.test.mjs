@@ -79,6 +79,36 @@ function assertStepPrecedes(job, earlierStepName, laterStepName) {
   );
 }
 
+/** Finds executable uses entries for one exact GitHub Action identity. */
+function actionUseLines(workflowBlock, actionName) {
+  const usesEntry = /^uses:\s*(['"]?)([^'"\s#]+)\1(?:\s+#.*)?$/u;
+  return workflowBlock
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (line.startsWith('#')) {
+        return false;
+      }
+      const match = usesEntry.exec(line);
+      return match?.[2].startsWith(`${actionName}@`) ?? false;
+    });
+}
+
+/** Requires one action invocation and binds it to the reviewed named step. */
+function assertUniqueActionUseInStep(job, actionName, stepName) {
+  const jobUses = actionUseLines(job, actionName);
+  assert.equal(
+    jobUses.length,
+    1,
+    `expected exactly one ${actionName} use, found ${jobUses.length}`,
+  );
+  assert.equal(
+    actionUseLines(stepBlock(job, stepName), actionName).length,
+    1,
+    `${actionName} must be owned by ${stepName}`,
+  );
+}
+
 test('step extraction does not borrow evidence from unnamed sibling steps', () => {
   const job = [
     '  scan:',
@@ -137,6 +167,32 @@ test('step lookup rejects duplicate authority-bearing step names', () => {
   assert.throws(
     () => stepBlock(job, 'Upload AppGuardrail SARIF to code scanning'),
     /exactly one step/u,
+  );
+});
+
+test('SARIF upload authority rejects differently named duplicate action uses', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+    '        with:',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+    '      - name: Upload alternate SARIF',
+    '        uses: "github/codeql-action/upload-sarif@unreviewed-sha"',
+    '        with:',
+    '          sarif_file: alternate.sarif',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertUniqueActionUseInStep(
+        job,
+        'github/codeql-action/upload-sarif',
+        'Upload AppGuardrail SARIF to code scanning',
+      ),
+    /exactly one github\/codeql-action\/upload-sarif use/u,
   );
 });
 
@@ -219,6 +275,11 @@ test('required source-verification jobs explicitly checkout the contributor head
 
   const sarifUpload = stepBlock(
     appguardrail,
+    'Upload AppGuardrail SARIF to code scanning',
+  );
+  assertUniqueActionUseInStep(
+    appguardrail,
+    'github/codeql-action/upload-sarif',
     'Upload AppGuardrail SARIF to code scanning',
   );
   assertStepPrecedes(
