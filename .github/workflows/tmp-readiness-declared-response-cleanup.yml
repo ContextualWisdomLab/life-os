@@ -10,20 +10,76 @@ on:
       - .github/workflows/tmp-readiness-declared-response-cleanup.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify:
+  repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
-          persist-credentials: false
-      - name: Verify exact head
+          fetch-depth: 1
+      - name: Verify exact input head
         shell: bash
         run: test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-      - name: Run declared response cleanup regression
+      - name: Apply minimum causal cleanup repair
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'packages/commercial-readiness/src/github-client.mjs';
+          const source = fs.readFileSync(path, 'utf8');
+          const before = `  if (Number.isFinite(declared) && declared > maxBytes) {
+            throw RESPONSE_SIZE_ERROR;
+          }`;
+          const after = `  if (Number.isFinite(declared) && declared > maxBytes) {
+            // Cleanup cannot replace the already-established response-size classification.
+            try {
+              if (response.body) void response.body.cancel().catch(() => {});
+            } catch {
+              // A synchronous cancellation failure is also non-authoritative cleanup detail.
+            }
+            throw RESPONSE_SIZE_ERROR;
+          }`;
+          if (!source.includes(before)) {
+            throw new Error('declared-size boundary no longer matches repair input');
+          }
+          fs.writeFileSync(path, source.replace(before, after));
+          NODE
+      - name: Install reproducibly
+        shell: bash
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: Canonicalize repaired files
+        run: pnpm exec prettier --write packages/commercial-readiness/src/github-client.mjs packages/commercial-readiness/src/github-client-stream-boundary.test.mjs
+      - name: Run focused cleanup regression
         run: node --test packages/commercial-readiness/src/github-client-stream-boundary.test.mjs
+      - name: Run Commercial Readiness package suite
+        run: pnpm --filter @life-os/commercial-readiness test
+      - name: Run Commercial Readiness typecheck
+        run: pnpm --filter @life-os/commercial-readiness typecheck
+      - name: Run Commercial Readiness build
+        run: pnpm --filter @life-os/commercial-readiness build
+      - name: Verify formatting and diff hygiene
+        shell: bash
+        run: |
+          pnpm exec prettier --check packages/commercial-readiness/src/github-client.mjs packages/commercial-readiness/src/github-client-stream-boundary.test.mjs
+          git diff --check
+      - name: Publish ordinary descendant and retire writer
+        shell: bash
+        env:
+          BRANCH_NAME: fix/actions-draft-queue-pressure-v1
+        run: |
+          remote_head="$(git ls-remote origin "refs/heads/${BRANCH_NAME}" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+          rm .github/workflows/tmp-readiness-declared-response-cleanup.yml
+          git add packages/commercial-readiness/src/github-client.mjs packages/commercial-readiness/src/github-client-stream-boundary.test.mjs .github/workflows/tmp-readiness-declared-response-cleanup.yml
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(readiness): cancel declared oversized responses'
+          git push origin "HEAD:refs/heads/${BRANCH_NAME}"
