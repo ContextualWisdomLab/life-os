@@ -65,6 +65,15 @@ function directChildMappingBlock(block, key) {
   return mapping.join('\n');
 }
 
+/** Assert an exact scalar is a direct child of a PostgreSQL service block. */
+function expectDirectServiceEntry(block, key, value) {
+  const lines = block.split('\n');
+  const serviceMatch = /^(\s+)postgres:\s*$/u.exec(lines[0] ?? '');
+  if (!serviceMatch) throw new Error('invalid PostgreSQL service block');
+  const entryIndent = ' '.repeat(serviceMatch[1].length + 2);
+  expect(lines).toContain(`${entryIndent}${key}: ${value}`);
+}
+
 /** Assert an exact scalar is a direct entry of an extracted YAML mapping. */
 function expectDirectMappingEntry(mappingBlock, key, value) {
   const lines = mappingBlock.split('\n');
@@ -76,7 +85,7 @@ function expectDirectMappingEntry(mappingBlock, key, value) {
 
 /** Assert the current PostgreSQL service policy against one extracted service block. */
 function expectSecurePostgresServiceBlock(block) {
-  expect(block).toContain(`image: ${POSTGRES_CI_IMAGE}`);
+  expectDirectServiceEntry(block, 'image', POSTGRES_CI_IMAGE);
   const envBlock = directChildMappingBlock(block, 'env');
   expectDirectMappingEntry(
     envBlock,
