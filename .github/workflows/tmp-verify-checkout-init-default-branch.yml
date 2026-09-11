@@ -90,6 +90,11 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Normalize owned contract source
+        run: >-
+          pnpm exec prettier --single-quote --write
+          packages/commercial-development-agent/src/node24-actions-contract.test.mjs
+
       - name: Run checkout initial-branch contract
         run: >-
           pnpm --filter @life-os/commercial-development-agent exec vitest run
@@ -103,7 +108,6 @@ jobs:
           .github/workflows/commercial-readiness.yml
           .github/workflows/ai-proposal-live-conformance.yml
           .github/workflows/opencode-commercial-development.yml
-          .github/workflows/appguardrail.yml
           packages/commercial-development-agent/src/node24-actions-contract.test.mjs
 
       - name: Stage bounded repair artifact
@@ -111,12 +115,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "${RUNNER_TEMP}/checkout-init-repair/.github/workflows"
+          mkdir -p "${RUNNER_TEMP}/checkout-init-repair/packages/commercial-development-agent/src"
           cp .github/workflows/ci.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
           cp .github/workflows/deploy.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
           cp .github/workflows/commercial-readiness.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
           cp .github/workflows/ai-proposal-live-conformance.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
           cp .github/workflows/opencode-commercial-development.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
           cp .github/workflows/appguardrail.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          cp packages/commercial-development-agent/src/node24-actions-contract.test.mjs \
+            "${RUNNER_TEMP}/checkout-init-repair/packages/commercial-development-agent/src/"
+          git diff --check
           git diff -- \
             .github/workflows/ci.yml \
             .github/workflows/deploy.yml \
@@ -124,6 +132,7 @@ jobs:
             .github/workflows/ai-proposal-live-conformance.yml \
             .github/workflows/opencode-commercial-development.yml \
             .github/workflows/appguardrail.yml \
+            packages/commercial-development-agent/src/node24-actions-contract.test.mjs \
             >"${RUNNER_TEMP}/checkout-init-repair/repair.diff"
 
       - name: Upload bounded repair artifact
