@@ -16,6 +16,13 @@ function status(id, context, state = 'success') {
   };
 }
 
+test('status pagination fixture uses canonical GitHub UTC second precision', () => {
+  assert.match(
+    status(1, 'CodeRabbit').created_at,
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u,
+  );
+});
+
 function movingStatusPaginationFixture() {
   const originalStatuses = [
     status(200, 'CodeRabbit', 'success'),
