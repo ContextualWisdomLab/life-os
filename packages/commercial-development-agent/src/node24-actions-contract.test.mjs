@@ -38,6 +38,46 @@ function expectReviewedActionPins(path, workflow) {
   }
 }
 
+function expectCheckoutInitialBranchAuthority(path, workflow) {
+  const lines = workflow.split(String.fromCharCode(10));
+  const checkoutLineIndexes = lines.flatMap((line, index) =>
+    line.includes(`uses: ${checkoutNode24}`) ? [index] : [],
+  );
+
+  expect(checkoutLineIndexes.length, `${path} checkout count`).toBeGreaterThan(0);
+
+  for (const checkoutLineIndex of checkoutLineIndexes) {
+    const checkoutLine = lines[checkoutLineIndex];
+    const usesIndent = checkoutLine.length - checkoutLine.trimStart().length;
+    const stepIndent = Math.max(0, usesIndent - 2);
+    let stepEnd = lines.length;
+
+    for (let index = checkoutLineIndex + 1; index < lines.length; index += 1) {
+      const candidate = lines[index];
+      if (candidate.trim() === '') continue;
+      const candidateIndent = candidate.length - candidate.trimStart().length;
+      if (candidateIndent === stepIndent && candidate.trimStart().startsWith('- ')) {
+        stepEnd = index;
+        break;
+      }
+    }
+
+    const step = lines.slice(checkoutLineIndex, stepEnd).join(String.fromCharCode(10));
+    const envIndent = ' '.repeat(usesIndent);
+    const entryIndent = ' '.repeat(usesIndent + 2);
+    expect(step, `${path} checkout env`).toContain(`${envIndent}env:`);
+    expect(step, `${path} checkout git config count`).toContain(
+      `${entryIndent}GIT_CONFIG_COUNT: '1'`,
+    );
+    expect(step, `${path} checkout git config key`).toContain(
+      `${entryIndent}GIT_CONFIG_KEY_0: init.defaultBranch`,
+    );
+    expect(step, `${path} checkout git config value`).toContain(
+      `${entryIndent}GIT_CONFIG_VALUE_0: main`,
+    );
+  }
+}
+
 describe('persistent GitHub Action runtime authority', () => {
   it('uses reviewed Node 24 action pins without a runtime-forcing compatibility switch', () => {
     for (const [path, workflow] of Object.entries(workflows)) {
@@ -55,6 +95,12 @@ describe('persistent GitHub Action runtime authority', () => {
     expect(() =>
       expectReviewedActionPins('hostile-floating-ref.yml', hostileWorkflow),
     ).toThrow();
+  });
+
+  it('configures every persistent checkout git init to use main explicitly', () => {
+    for (const [path, workflow] of Object.entries(workflows)) {
+      expectCheckoutInitialBranchAuthority(path, workflow);
+    }
   });
 
   it('preserves AppGuardrail steps at the scan job boundary', () => {
