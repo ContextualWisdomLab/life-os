@@ -46,6 +46,26 @@ ON planning.task_completion_facts
 FOR EACH ROW
 EXECUTE FUNCTION planning.enforce_task_completion_fact_chronology();
 
+CREATE FUNCTION planning.reject_task_completion_fact_update()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'Task completion facts are immutable'
+    USING ERRCODE = '23514',
+          CONSTRAINT = 'task_completion_facts_immutable';
+END;
+$$;
+
+COMMENT ON FUNCTION planning.reject_task_completion_fact_update() IS
+  'Rejects UPDATE so durable Planning completion facts remain append-only while DELETE remains available for erasure and cascade.';
+
+CREATE TRIGGER task_completion_facts_immutability_guard
+BEFORE UPDATE
+ON planning.task_completion_facts
+FOR EACH ROW
+EXECUTE FUNCTION planning.reject_task_completion_fact_update();
+
 CREATE INDEX task_completion_facts_workspace_completed_idx
   ON planning.task_completion_facts
   (workspace_id, completed_at, task_id, completion_sequence);

@@ -14,6 +14,7 @@ const OTHER_WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TASK_ID = '44444444-4444-4444-8444-444444444444';
 const CONCURRENT_TASK_ID = '55555555-5555-4555-8555-555555555555';
 const CASCADE_TASK_ID = '66666666-6666-4666-8666-666666666666';
+const IMMUTABLE_TASK_ID = '99999999-9999-4999-8999-999999999998';
 const SCOPED_TASK_ID = '77777777-7777-4777-8777-777777777777';
 const CREATED_AT = '2026-09-10T15:00:00.000Z';
 const FIRST_COMPLETED_AT = '2026-09-10T16:00:00.000Z';
@@ -151,6 +152,68 @@ describeWithPostgres('Planning durable task completion facts', () => {
       [WORKSPACE_ID, CASCADE_TASK_ID],
     );
     expect(factsAfterErase.rows).toEqual([{ count: '0' }]);
+  });
+
+  it('rejects mutation of an existing completion fact', async () => {
+    await insertTask(IMMUTABLE_TASK_ID);
+    const repository = new PostgresTaskCompletionRepository(createSqlClient());
+    await repository.transitionTaskCompletion(WORKSPACE_ID, IMMUTABLE_TASK_ID, {
+      status: 'done',
+      completedAt: FIRST_COMPLETED_AT,
+    });
+
+    const original = await pool.query<{
+      completion_fact_id: string;
+      completed_at: Date;
+    }>(
+      `SELECT completion_fact_id::text AS completion_fact_id, completed_at
+       FROM planning_task_completion_history_test.task_completion_facts
+       WHERE workspace_id = $1 AND task_id = $2`,
+      [WORKSPACE_ID, IMMUTABLE_TASK_ID],
+    );
+    expect(original.rows).toHaveLength(1);
+    const completionFactId = original.rows[0]?.completion_fact_id;
+    expect(completionFactId).toMatch(UUID_V4_PATTERN);
+
+    await expect(
+      pool.query(
+        `UPDATE planning_task_completion_history_test.task_completion_facts
+         SET completed_at = $3::timestamptz
+         WHERE workspace_id = $1 AND task_id = $2`,
+        [WORKSPACE_ID, IMMUTABLE_TASK_ID, RETRIED_AT],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'task_completion_facts_immutable',
+    });
+
+    await expect(
+      pool.query(
+        `UPDATE planning_task_completion_history_test.task_completion_facts
+         SET completion_fact_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab'
+         WHERE workspace_id = $1 AND task_id = $2`,
+        [WORKSPACE_ID, IMMUTABLE_TASK_ID],
+      ),
+    ).rejects.toMatchObject({
+      code: '23514',
+      constraint: 'task_completion_facts_immutable',
+    });
+
+    const unchanged = await pool.query<{
+      completion_fact_id: string;
+      completed_at: Date;
+    }>(
+      `SELECT completion_fact_id::text AS completion_fact_id, completed_at
+       FROM planning_task_completion_history_test.task_completion_facts
+       WHERE workspace_id = $1 AND task_id = $2`,
+      [WORKSPACE_ID, IMMUTABLE_TASK_ID],
+    );
+    expect(unchanged.rows).toEqual([
+      {
+        completion_fact_id: completionFactId,
+        completed_at: new Date(FIRST_COMPLETED_AT),
+      },
+    ]);
   });
 
   it('retains each real todo-to-done fact across retries and later reopen', async () => {
