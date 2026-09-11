@@ -345,7 +345,7 @@ async function collectPaginatedArray(
   const separator = path.includes('?') ? '&' : '?';
   for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {
     const values = [];
-    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
+    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize) + 1;
     let firstPage = null;
     let pagesRead = 0;
     try {
