@@ -140,5 +140,6 @@ jobs:
         with:
           name: checkout-init-default-branch-repair-${{ github.run_id }}
           path: ${{ runner.temp }}/checkout-init-repair
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
