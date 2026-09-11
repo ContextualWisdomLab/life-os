@@ -4,7 +4,12 @@ const API_ORIGIN = 'https://api.github.com';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const API_PAGE_SIZE = 100;
+const FALLBACK_API_PAGE_SIZE = 50;
 const MAX_API_PAGES = 10;
+const MAX_API_ITEMS = API_PAGE_SIZE * MAX_API_PAGES;
+const RESPONSE_SIZE_ERROR = new Error(
+  'GitHub API response exceeded the size limit',
+);
 /** Maximum number of attempts for one idempotent GitHub GET, including the first request. */
 const MAX_READ_ATTEMPTS = 3;
 /** Backoff delays after the first and second retryable GET failures, in milliseconds. */
@@ -51,7 +56,7 @@ function parseCanonicalGitHubStatusTimestamp(value) {
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
-    throw new Error('GitHub API response exceeded the size limit');
+    throw RESPONSE_SIZE_ERROR;
   }
   if (!response.body) return '';
   const reader = response.body.getReader();
@@ -62,8 +67,13 @@ async function readBoundedText(response, maxBytes) {
     if (done) break;
     bytes += value.byteLength;
     if (bytes > maxBytes) {
-      await reader.cancel();
-      throw new Error('GitHub API response exceeded the size limit');
+      // Cleanup cannot replace the already-established response-size classification.
+      try {
+        void reader.cancel().catch(() => {});
+      } catch {
+        // A synchronous cancellation failure is also non-authoritative cleanup detail.
+      }
+      throw RESPONSE_SIZE_ERROR;
     }
     chunks.push(value);
   }
@@ -332,37 +342,53 @@ async function collectPaginatedArray(
   errorMessage,
   stabilityErrorMessage = null,
 ) {
-  const values = [];
   const separator = path.includes('?') ? '&' : '?';
-  let firstPage = null;
-  let pagesRead = 0;
-  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
-    const payload = await client.requestJson(
-      `${path}${separator}per_page=${API_PAGE_SIZE}&page=${page}`,
-    );
-    if (!Array.isArray(payload) || payload.length > API_PAGE_SIZE) {
-      throw new Error(errorMessage);
-    }
-    if (page === 1) firstPage = payload;
-    values.push(...payload);
-    pagesRead = page;
-    if (payload.length < API_PAGE_SIZE) {
-      if (stabilityErrorMessage && pagesRead > 1) {
-        const confirmation = await client.requestJson(
-          `${path}${separator}per_page=${API_PAGE_SIZE}&page=1`,
+  for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {
+    const values = [];
+    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
+    let firstPage = null;
+    let pagesRead = 0;
+    try {
+      for (let page = 1; page <= pageLimit; page += 1) {
+        const payload = await client.requestJson(
+          `${path}${separator}per_page=${pageSize}&page=${page}`,
         );
-        if (
-          !Array.isArray(confirmation) ||
-          confirmation.length > API_PAGE_SIZE ||
-          JSON.stringify(confirmation) !== JSON.stringify(firstPage)
-        ) {
-          throw new Error(stabilityErrorMessage);
+        if (!Array.isArray(payload) || payload.length > pageSize) {
+          throw new Error(errorMessage);
+        }
+        if (page === 1) firstPage = payload;
+        values.push(...payload);
+        if (values.length > MAX_API_ITEMS) {
+          throw new Error(`${errorMessage} exceeded the item limit`);
+        }
+        pagesRead = page;
+        if (payload.length < pageSize) {
+          if (stabilityErrorMessage && pagesRead > 1) {
+            const confirmation = await client.requestJson(
+              `${path}${separator}per_page=${pageSize}&page=1`,
+            );
+            if (
+              !Array.isArray(confirmation) ||
+              confirmation.length > pageSize ||
+              JSON.stringify(confirmation) !== JSON.stringify(firstPage)
+            ) {
+              throw new Error(stabilityErrorMessage);
+            }
+          }
+          return values;
         }
       }
-      return values;
+      throw new Error(`${errorMessage} exceeded the page limit`);
+    } catch (error) {
+      if (
+        error !== RESPONSE_SIZE_ERROR ||
+        pageSize === FALLBACK_API_PAGE_SIZE
+      ) {
+        throw error;
+      }
     }
   }
-  throw new Error(`${errorMessage} exceeded the page limit`);
+  throw new Error('GitHub pagination fallback invariant failed');
 }
 
 /**
