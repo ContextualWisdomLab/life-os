@@ -66,6 +66,27 @@ ON planning.task_completion_facts
 FOR EACH ROW
 EXECUTE FUNCTION planning.reject_task_completion_fact_update();
 
+CREATE FUNCTION planning.reject_task_completion_fact_truncate()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'Task completion facts cannot be truncated'
+    USING ERRCODE = '23514',
+          CONSTRAINT = 'task_completion_facts_truncate_forbidden';
+  RETURN NULL;
+END;
+$$;
+
+COMMENT ON FUNCTION planning.reject_task_completion_fact_truncate() IS
+  'Rejects table-wide TRUNCATE so accepted completion evidence can only be removed through explicit task/data-rights DELETE semantics.';
+
+CREATE TRIGGER task_completion_facts_truncate_guard
+BEFORE TRUNCATE
+ON planning.task_completion_facts
+FOR EACH STATEMENT
+EXECUTE FUNCTION planning.reject_task_completion_fact_truncate();
+
 CREATE INDEX task_completion_facts_workspace_completed_idx
   ON planning.task_completion_facts
   (workspace_id, completed_at, task_id, completion_sequence);
