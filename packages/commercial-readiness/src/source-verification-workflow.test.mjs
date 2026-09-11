@@ -110,6 +110,16 @@ test('required source-verification jobs explicitly checkout the contributor head
     'Materialize AppGuardrail SARIF PR merge provenance',
   );
   assert.ok(
+    sarifProvenance.includes("github.event_name == 'pull_request'"),
+    'AppGuardrail SARIF provenance must run only for pull_request events',
+  );
+  assert.ok(
+    sarifProvenance.includes(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    ),
+    'AppGuardrail SARIF provenance must be limited to same-repository pull requests',
+  );
+  assert.ok(
     sarifProvenance.includes(
       'PR_NUMBER: ${{ github.event.pull_request.number }}',
     ),
@@ -149,6 +159,12 @@ test('required source-verification jobs explicitly checkout the contributor head
   const sarifUpload = stepBlock(
     appguardrail,
     'Upload AppGuardrail SARIF to code scanning',
+  );
+  assert.ok(
+    appguardrail.indexOf(
+      '- name: Materialize AppGuardrail SARIF PR merge provenance',
+    ) < appguardrail.indexOf('- name: Upload AppGuardrail SARIF to code scanning'),
+    'AppGuardrail SARIF provenance must precede SARIF upload',
   );
   assert.ok(
     sarifUpload.includes(SARIF_SOURCE_REF),
