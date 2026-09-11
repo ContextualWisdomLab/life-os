@@ -124,6 +124,33 @@ jobs:
           )
           PY
 
+      - name: Materialize AppGuardrail SARIF PR merge provenance
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_MERGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pull request number is not a positive integer."
+            exit 1
+          fi
+          if ! [[ "$EXPECTED_MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Advertised pull request merge SHA is not a full commit SHA."
+            exit 1
+          fi
+
+          merge_ref="refs/pull/${PR_NUMBER}/merge"
+          git fetch --no-tags --depth=1 origin "$merge_ref"
+          fetched_merge_sha="$(git rev-parse FETCH_HEAD)"
+          if [ "$fetched_merge_sha" != "$EXPECTED_MERGE_SHA" ]; then
+            echo "::error::Fetched pull request merge provenance does not match github.sha."
+            exit 1
+          fi
+          git cat-file -e "${EXPECTED_MERGE_SHA}^{commit}"
+
       - name: Upload AppGuardrail SARIF to code scanning
         if: >-
           always()
@@ -140,8 +167,6 @@ jobs:
         id: stage_evidence
         if: always()
         continue-on-error: true
-        env:
-          REDACTION_OUTCOME: ${{ steps.redact_evidence.outcome }}
         run: |
           set -euo pipefail
           evidence_dir="${RUNNER_TEMP}/appguardrail-evidence"
@@ -160,6 +185,8 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
+        env:
+          REDACTION_OUTCOME: ${{ steps.redact_evidence.outcome }}
 
       - name: Upload AppGuardrail evidence
         if: >-
