@@ -433,113 +433,141 @@ async function collectWorkflowRuns(
   headSha,
   pullRequestNumber,
 ) {
-  const values = [];
-  const seenRunIds = new Set();
-  let expectedTotal = null;
-  let firstPageAnchor = null;
-  let collectionComplete = false;
-  let pagesRead = 0;
-  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
-    const payload = await client.requestJson(
-      `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
-        headSha,
-      )}&event=pull_request&per_page=${API_PAGE_SIZE}&page=${page}`,
-    );
-    const pageValues = payload?.workflow_runs;
-    if (
-      !Array.isArray(pageValues) ||
-      pageValues.length > API_PAGE_SIZE ||
-      !Number.isSafeInteger(payload?.total_count) ||
-      payload.total_count < 0
-    ) {
-      throw new Error('GitHub workflow run response was invalid');
-    }
-    if (expectedTotal === null) {
-      expectedTotal = payload.total_count;
-    } else if (payload.total_count !== expectedTotal) {
-      throw new Error('GitHub workflow run response changed during pagination');
-    }
-    for (const run of pageValues) {
-      if (!Number.isSafeInteger(run?.id) || run.id <= 0) {
-        throw new Error('GitHub workflow run response was invalid');
-      }
-      if (seenRunIds.has(run.id)) {
-        throw new Error(
-          'GitHub workflow run response changed during pagination',
+  for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {
+    const values = [];
+    const seenRunIds = new Set();
+    let expectedTotal = null;
+    let firstPageAnchor = null;
+    let collectionComplete = false;
+    let pagesRead = 0;
+    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
+    try {
+      for (let page = 1; page <= pageLimit; page += 1) {
+        const payload = await client.requestJson(
+          `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+            headSha,
+          )}&event=pull_request&per_page=${pageSize}&page=${page}`,
         );
+        const pageValues = payload?.workflow_runs;
+        if (
+          !Array.isArray(pageValues) ||
+          pageValues.length > pageSize ||
+          !Number.isSafeInteger(payload?.total_count) ||
+          payload.total_count < 0
+        ) {
+          throw new Error('GitHub workflow run response was invalid');
+        }
+        if (expectedTotal === null) {
+          expectedTotal = payload.total_count;
+        } else if (payload.total_count !== expectedTotal) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+        for (const run of pageValues) {
+          if (!Number.isSafeInteger(run?.id) || run.id <= 0) {
+            throw new Error('GitHub workflow run response was invalid');
+          }
+          if (seenRunIds.has(run.id)) {
+            throw new Error(
+              'GitHub workflow run response changed during pagination',
+            );
+          }
+          seenRunIds.add(run.id);
+        }
+        if (page === 1) {
+          firstPageAnchor = pageValues.map((run) => ({
+            id: run.id,
+            name: run?.name ?? null,
+            status: run?.status ?? null,
+            conclusion: run?.conclusion ?? null,
+            head_sha: run?.head_sha ?? null,
+            run_attempt: run?.run_attempt ?? null,
+            updated_at: run?.updated_at ?? null,
+            pull_requests: (Array.isArray(run?.pull_requests)
+              ? run.pull_requests
+              : []
+            ).map((pullRequest) => pullRequest?.number ?? null),
+          }));
+        }
+        values.push(...pageValues);
+        pagesRead = page;
+        if (values.length > MAX_API_ITEMS) {
+          throw new Error(
+            'GitHub workflow run response exceeded the item limit',
+          );
+        }
+        if (values.length > expectedTotal) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+        if (values.length === expectedTotal) {
+          collectionComplete = true;
+          break;
+        }
+        if (pageValues.length < pageSize) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
       }
-      seenRunIds.add(run.id);
-    }
-    if (page === 1) {
-      firstPageAnchor = pageValues.map((run) => ({
-        id: run.id,
-        name: run?.name ?? null,
-        status: run?.status ?? null,
-        conclusion: run?.conclusion ?? null,
-        head_sha: run?.head_sha ?? null,
-        run_attempt: run?.run_attempt ?? null,
-        updated_at: run?.updated_at ?? null,
-        pull_requests: (Array.isArray(run?.pull_requests)
-          ? run.pull_requests
-          : []
-        ).map((pullRequest) => pullRequest?.number ?? null),
-      }));
-    }
-    values.push(...pageValues);
-    pagesRead = page;
-    if (values.length > expectedTotal) {
-      throw new Error('GitHub workflow run response changed during pagination');
-    }
-    if (values.length === expectedTotal) {
-      collectionComplete = true;
-      break;
-    }
-    if (pageValues.length < API_PAGE_SIZE) {
-      throw new Error('GitHub workflow run response changed during pagination');
-    }
-  }
-  if (!collectionComplete) {
-    throw new Error('GitHub workflow run response exceeded the page limit');
-  }
-  if (pagesRead > 1) {
-    const confirmation = await client.requestJson(
-      `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
-        headSha,
-      )}&event=pull_request&per_page=${API_PAGE_SIZE}&page=1`,
-    );
-    const confirmationValues = confirmation?.workflow_runs;
-    if (
-      !Array.isArray(confirmationValues) ||
-      confirmationValues.length > API_PAGE_SIZE ||
-      confirmation?.total_count !== expectedTotal ||
-      confirmationValues.some(
-        (run) => !Number.isSafeInteger(run?.id) || run.id <= 0,
-      )
-    ) {
-      throw new Error('GitHub workflow run response changed during pagination');
-    }
-    const confirmationAnchor = confirmationValues.map((run) => ({
-      id: run.id,
-      name: run?.name ?? null,
-      status: run?.status ?? null,
-      conclusion: run?.conclusion ?? null,
-      head_sha: run?.head_sha ?? null,
-      run_attempt: run?.run_attempt ?? null,
-      updated_at: run?.updated_at ?? null,
-      pull_requests: (Array.isArray(run?.pull_requests)
-        ? run.pull_requests
-        : []
-      ).map((pullRequest) => pullRequest?.number ?? null),
-    }));
-    if (
-      JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)
-    ) {
-      throw new Error('GitHub workflow run response changed during pagination');
+      if (!collectionComplete) {
+        throw new Error('GitHub workflow run response exceeded the page limit');
+      }
+      if (pagesRead > 1) {
+        const confirmation = await client.requestJson(
+          `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+            headSha,
+          )}&event=pull_request&per_page=${pageSize}&page=1`,
+        );
+        const confirmationValues = confirmation?.workflow_runs;
+        if (
+          !Array.isArray(confirmationValues) ||
+          confirmationValues.length > pageSize ||
+          confirmation?.total_count !== expectedTotal ||
+          confirmationValues.some(
+            (run) => !Number.isSafeInteger(run?.id) || run.id <= 0,
+          )
+        ) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+        const confirmationAnchor = confirmationValues.map((run) => ({
+          id: run.id,
+          name: run?.name ?? null,
+          status: run?.status ?? null,
+          conclusion: run?.conclusion ?? null,
+          head_sha: run?.head_sha ?? null,
+          run_attempt: run?.run_attempt ?? null,
+          updated_at: run?.updated_at ?? null,
+          pull_requests: (Array.isArray(run?.pull_requests)
+            ? run.pull_requests
+            : []
+          ).map((pullRequest) => pullRequest?.number ?? null),
+        }));
+        if (
+          JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)
+        ) {
+          throw new Error(
+            'GitHub workflow run response changed during pagination',
+          );
+        }
+      }
+      return values.filter((run) =>
+        workflowRunBelongsToPullRequest(run, pullRequestNumber),
+      );
+    } catch (error) {
+      if (
+        error !== RESPONSE_SIZE_ERROR ||
+        pageSize === FALLBACK_API_PAGE_SIZE
+      ) {
+        throw error;
+      }
     }
   }
-  return values.filter((run) =>
-    workflowRunBelongsToPullRequest(run, pullRequestNumber),
-  );
+  throw new Error('GitHub workflow pagination fallback invariant failed');
 }
 
 /**
