@@ -65,6 +65,7 @@ jobs:
 
           corepack enable
           pnpm install --frozen-lockfile
+          pnpm exec prettier --write packages/commercial-readiness/src/github-client.mjs
           node --test packages/commercial-readiness/src/github-client-page-size.test.mjs
           pnpm --filter @life-os/commercial-readiness test
           pnpm --filter @life-os/commercial-readiness typecheck
@@ -74,14 +75,9 @@ jobs:
             packages/commercial-readiness/src/github-client-page-size.test.mjs
           git diff --check
 
-          rm .github/workflows/tmp-repair-commercial-response-halving.yml
-          git add \
-            packages/commercial-readiness/src/github-client.mjs \
-            .github/workflows/tmp-repair-commercial-response-halving.yml
-
+          git add packages/commercial-readiness/src/github-client.mjs
           test -n "$(git diff --cached --name-only)"
-          unexpected="$(git diff --cached --name-only | grep -Ev '^(packages/commercial-readiness/src/github-client\.mjs|\.github/workflows/tmp-repair-commercial-response-halving\.yml)$' || true)"
-          test -z "$unexpected"
+          test "$(git diff --cached --name-only)" = 'packages/commercial-readiness/src/github-client.mjs'
 
           git config user.name 'LifeOS Commercial Maintainer'
           git config user.email 'actions@users.noreply.github.com'
