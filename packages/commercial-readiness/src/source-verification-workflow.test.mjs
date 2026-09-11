@@ -43,9 +43,13 @@ function stepBlock(job, stepName) {
     (line) => line.trim() === `- name: ${stepName}`,
   );
   assert.notEqual(start, -1, `missing step ${stepName}`);
+  const startMatch = /^(\s*)-\s/u.exec(lines[start]);
+  assert.ok(startMatch, `invalid step indentation for ${stepName}`);
+  const stepIndent = startMatch[1];
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (/^\s+- name: /u.test(lines[index])) {
+    const siblingStep = /^(\s*)-\s/u.exec(lines[index]);
+    if (siblingStep?.[1] === stepIndent) {
       end = index;
       break;
     }
