@@ -4,7 +4,28 @@ const API_ORIGIN = 'https://api.github.com';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const API_PAGE_SIZE = 100;
-const FALLBACK_API_PAGE_SIZE = 50;
+const MIN_API_PAGE_SIZE = 1;
+
+/**
+ * Build a finite descending page-size sequence for response-bound retries.
+ *
+ * Oversized list responses are retried with progressively smaller GitHub page sizes without
+ * increasing the response-byte ceiling or reducing the repository item ceiling. Halving stops
+ * at one item, so even unusually large individual records fail closed after a finite traversal.
+ *
+ * @returns {number[]} Page sizes from the normal GitHub maximum down to one item.
+ */
+function buildResponseBoundedPageSizes() {
+  const pageSizes = [];
+  let pageSize = API_PAGE_SIZE;
+  while (true) {
+    pageSizes.push(pageSize);
+    if (pageSize === MIN_API_PAGE_SIZE) return pageSizes;
+    pageSize = Math.max(MIN_API_PAGE_SIZE, Math.floor(pageSize / 2));
+  }
+}
+
+const RESPONSE_BOUNDED_PAGE_SIZES = buildResponseBoundedPageSizes();
 const MAX_API_PAGES = 10;
 const MAX_API_ITEMS = API_PAGE_SIZE * MAX_API_PAGES;
 const RESPONSE_SIZE_ERROR = new Error(
@@ -349,7 +370,7 @@ async function collectPaginatedArray(
   stabilityErrorMessage = null,
 ) {
   const separator = path.includes('?') ? '&' : '?';
-  for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {
+  for (const pageSize of RESPONSE_BOUNDED_PAGE_SIZES) {
     const values = [];
     const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize) + 1;
     let firstPage = null;
@@ -386,10 +407,7 @@ async function collectPaginatedArray(
       }
       throw new Error(`${errorMessage} exceeded the page limit`);
     } catch (error) {
-      if (
-        error !== RESPONSE_SIZE_ERROR ||
-        pageSize === FALLBACK_API_PAGE_SIZE
-      ) {
+      if (error !== RESPONSE_SIZE_ERROR || pageSize === MIN_API_PAGE_SIZE) {
         throw error;
       }
     }
@@ -439,7 +457,7 @@ async function collectWorkflowRuns(
   headSha,
   pullRequestNumber,
 ) {
-  for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {
+  for (const pageSize of RESPONSE_BOUNDED_PAGE_SIZES) {
     const values = [];
     const seenRunIds = new Set();
     let expectedTotal = null;
@@ -565,10 +583,7 @@ async function collectWorkflowRuns(
         workflowRunBelongsToPullRequest(run, pullRequestNumber),
       );
     } catch (error) {
-      if (
-        error !== RESPONSE_SIZE_ERROR ||
-        pageSize === FALLBACK_API_PAGE_SIZE
-      ) {
+      if (error !== RESPONSE_SIZE_ERROR || pageSize === MIN_API_PAGE_SIZE) {
         throw error;
       }
     }
