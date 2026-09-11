@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout exact pushed head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -24,3 +24,18 @@ jobs:
         run: |
           set -euo pipefail
           node --test packages/commercial-readiness/src/github-client-page-size.test.mjs
+
+      - name: Run complete Commercial Readiness suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test packages/commercial-readiness/src/*.test.mjs
+          node --check packages/commercial-readiness/src/schema.mjs
+          node --check packages/commercial-readiness/src/audit.mjs
+          node --check packages/commercial-readiness/src/pr-gate.mjs
+          node --check packages/commercial-readiness/src/render.mjs
+          node --check packages/commercial-readiness/src/github-client.mjs
+          node --check packages/commercial-readiness/src/cli.mjs
+          node --check packages/commercial-readiness/src/buyer-gaps.mjs
+          node --check packages/commercial-readiness/src/buyer-gap-cli.mjs
+          node --check packages/commercial-readiness/src/workflow-registry.mjs
