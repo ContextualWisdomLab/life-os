@@ -1,0 +1,77 @@
+name: Temporary PostgreSQL auth profile probe
+
+on:
+  push:
+    branches: [fix/postgres-ci-init-contract-v1]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Probe explicit init authentication profiles
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          image='postgres:16.15-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825'
+          docker pull "$image"
+
+          probe() {
+            profile="$1"
+            local_auth="$2"
+            name="lifeos-postgres-${profile}"
+            log="${RUNNER_TEMP}/${profile}.log"
+            cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
+            cleanup
+            docker run -d --name "$name" \
+              -e POSTGRES_DB=life_os_test \
+              -e POSTGRES_USER=postgres \
+              -e POSTGRES_PASSWORD=postgres \
+              -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
+              -e "POSTGRES_INITDB_ARGS=--auth-local=${local_auth} --auth-host=scram-sha-256" \
+              "$image" >/dev/null
+
+            ready=false
+            for _ in $(seq 1 60); do
+              if docker exec "$name" pg_isready -U postgres -d life_os_test >/dev/null 2>&1; then
+                ready=true
+                break
+              fi
+              if [ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo false)" != true ]; then
+                break
+              fi
+              sleep 1
+            done
+            docker logs "$name" >"$log" 2>&1 || true
+            if grep -Fq 'no usable system locales were found' "$log" || \
+               grep -Fq 'enabling "trust" authentication' "$log" || \
+               grep -Fq 'sh: locale: not found' "$log"; then
+              cat "$log"
+              echo "::error::${profile} emitted a forbidden initialization warning"
+              cleanup
+              return 1
+            fi
+            if [ "$ready" != true ]; then
+              cat "$log"
+              echo "::error::${profile} did not become ready"
+              cleanup
+              return 1
+            fi
+            docker exec -e PGPASSWORD=postgres "$name" \
+              psql -h 127.0.0.1 -U postgres -d life_os_test -v ON_ERROR_STOP=1 -tAc 'SELECT 1' |
+              grep -Fx 1
+            cleanup
+          }
+
+          set +e
+          probe scram-local scram-sha-256
+          scram_status=$?
+          probe peer-local peer
+          peer_status=$?
+          set -e
+          echo "scram_local_status=$scram_status"
+          echo "peer_local_status=$peer_status"
+          test "$peer_status" -eq 0
