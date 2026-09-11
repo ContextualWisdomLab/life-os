@@ -116,6 +116,23 @@ test('step ordering ignores comments that only mention a step name', () => {
   );
 });
 
+test('step lookup rejects duplicate authority-bearing step names', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    `        ${SARIF_SOURCE_REF}`,
+    `        ${SARIF_SOURCE_SHA}`,
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        uses: github/codeql-action/upload-sarif@example',
+  ].join('\n');
+
+  assert.throws(
+    () => stepBlock(job, 'Upload AppGuardrail SARIF to code scanning'),
+    /exactly one step/u,
+  );
+});
+
 test('required source-verification jobs explicitly checkout the contributor head', () => {
   const ci = readWorkflow('ci.yml');
   for (const jobName of [
