@@ -22,19 +22,34 @@ function yamlJobBlock(source, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
+function yamlJobFoldedScalar(job, key) {
+  const lines = job.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === `    ${key}: >-`);
+  assert.notEqual(start, -1, `missing job-level drain condition: ${key}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^    [A-Za-z0-9_.-]+:\s*/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
 function assertDrainCondition(drain) {
+  const condition = yamlJobFoldedScalar(drain, 'if');
   assert.match(
-    drain,
+    condition,
     /^\s+always\(\)\s*$/mu,
     'drain must evaluate its own gate after readiness publication fails or is skipped',
   );
   assert.match(
-    drain,
+    condition,
     /^\s+&& needs\.audit\.result == 'success'\s*$/mu,
     'merge mutation must still require the authoritative audit job to succeed',
   );
   assert.doesNotMatch(
-    drain,
+    condition,
     /needs\.publish\.result\s*==\s*'success'/u,
     'living-issue publication is reporting evidence and must not become merge authority',
   );
