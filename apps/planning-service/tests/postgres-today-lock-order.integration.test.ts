@@ -14,7 +14,9 @@ const describeWithDatabase = DATABASE_URL ? describe : describe.skip;
 
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
-    throw new Error('PLANNING_DATABASE_URL is required for PostgreSQL integration tests');
+    throw new Error(
+      'PLANNING_DATABASE_URL is required for PostgreSQL integration tests',
+    );
   }
   return DATABASE_URL;
 }
@@ -30,6 +32,9 @@ async function applyPlanningMigrations(pool: Pool): Promise<void> {
     '0001_initial_planning.sql',
     '0002_durable_repository_contract.sql',
     '0003_durable_today_sync.sql',
+    '0004_data_rights_erasure_receipts.sql',
+    '0005_task_completion_chronology.sql',
+    '0006_validate_task_completion_chronology.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migrationFile),
@@ -106,7 +111,9 @@ describeWithDatabase('PostgreSQL Today lock ordering', () => {
         async () => await runtime?.close(),
         async () => await migrationPool?.end(),
         async () =>
-          await adminPool.query('DROP DATABASE IF EXISTS life_os_today_lock_test'),
+          await adminPool.query(
+            'DROP DATABASE IF EXISTS life_os_today_lock_test',
+          ),
         async () => await adminPool.end(),
       ];
       for (const cleanup of cleanups) {
