@@ -20,25 +20,27 @@ function isolatedSql(text: string): string {
   return text.replaceAll('planning.', 'planning_task_completion_truncate_test.');
 }
 
-describeWithPostgres('Planning completion fact append-only truncation boundary', () => {
-  beforeAll(async () => {
-    if (!DATABASE_URL) {
-      throw new Error(
-        'PLANNING_DATABASE_URL is required for integration tests',
-      );
-    }
+describeWithPostgres(
+  'Planning completion fact append-only truncation boundary',
+  () => {
+    beforeAll(async () => {
+      if (!DATABASE_URL) {
+        throw new Error(
+          'PLANNING_DATABASE_URL is required for integration tests',
+        );
+      }
 
-    pool = new Pool({
-      connectionString: DATABASE_URL,
-      application_name: 'life-os-planning-completion-truncate-test',
-      max: 2,
-    });
-    await pool.query(
-      'DROP SCHEMA IF EXISTS planning_task_completion_truncate_test CASCADE',
-    );
-    await pool.query('CREATE SCHEMA planning_task_completion_truncate_test');
-    await pool.query(
-      `CREATE TABLE planning_task_completion_truncate_test.tasks (
+      pool = new Pool({
+        connectionString: DATABASE_URL,
+        application_name: 'life-os-planning-completion-truncate-test',
+        max: 2,
+      });
+      await pool.query(
+        'DROP SCHEMA IF EXISTS planning_task_completion_truncate_test CASCADE',
+      );
+      await pool.query('CREATE SCHEMA planning_task_completion_truncate_test');
+      await pool.query(
+        `CREATE TABLE planning_task_completion_truncate_test.tasks (
          id uuid PRIMARY KEY,
          workspace_id uuid NOT NULL,
          status text NOT NULL CHECK (status IN ('todo', 'done')),
@@ -50,47 +52,48 @@ describeWithPostgres('Planning completion fact append-only truncation boundary',
            OR (status = 'done' AND completed_at IS NOT NULL AND completed_at >= created_at)
          )
        )`,
-    );
-    const migration = await readFile(migrationPath, 'utf8');
-    await pool.query(isolatedSql(migration));
-    await pool.query(
-      `INSERT INTO planning_task_completion_truncate_test.tasks
+      );
+      const migration = await readFile(migrationPath, 'utf8');
+      await pool.query(isolatedSql(migration));
+      await pool.query(
+        `INSERT INTO planning_task_completion_truncate_test.tasks
          (id, workspace_id, status, created_at, completed_at)
        VALUES ($1, $2, 'done', $3::timestamptz, $4::timestamptz)`,
-      [TASK_ID, WORKSPACE_ID, CREATED_AT, COMPLETED_AT],
-    );
-    await pool.query(
-      `INSERT INTO planning_task_completion_truncate_test.task_completion_facts
+        [TASK_ID, WORKSPACE_ID, CREATED_AT, COMPLETED_AT],
+      );
+      await pool.query(
+        `INSERT INTO planning_task_completion_truncate_test.task_completion_facts
          (completion_fact_id, workspace_id, task_id, completed_at)
        VALUES ($1, $2, $3, $4::timestamptz)`,
-      [COMPLETION_FACT_ID, WORKSPACE_ID, TASK_ID, COMPLETED_AT],
-    );
-  });
-
-  afterAll(async () => {
-    if (!pool) return;
-    await pool.query(
-      'DROP SCHEMA IF EXISTS planning_task_completion_truncate_test CASCADE',
-    );
-    await pool.end();
-  });
-
-  it('rejects table-wide truncation while preserving accepted completion evidence', async () => {
-    await expect(
-      pool.query(
-        'TRUNCATE TABLE planning_task_completion_truncate_test.task_completion_facts',
-      ),
-    ).rejects.toMatchObject({
-      code: '23514',
-      constraint: 'task_completion_facts_truncate_forbidden',
+        [COMPLETION_FACT_ID, WORKSPACE_ID, TASK_ID, COMPLETED_AT],
+      );
     });
 
-    const retained = await pool.query<{ count: string }>(
-      `SELECT count(*)::text AS count
+    afterAll(async () => {
+      if (!pool) return;
+      await pool.query(
+        'DROP SCHEMA IF EXISTS planning_task_completion_truncate_test CASCADE',
+      );
+      await pool.end();
+    });
+
+    it('rejects table-wide truncation while preserving accepted completion evidence', async () => {
+      await expect(
+        pool.query(
+          'TRUNCATE TABLE planning_task_completion_truncate_test.task_completion_facts',
+        ),
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'task_completion_facts_truncate_forbidden',
+      });
+
+      const retained = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
        FROM planning_task_completion_truncate_test.task_completion_facts
        WHERE workspace_id = $1 AND task_id = $2`,
-      [WORKSPACE_ID, TASK_ID],
-    );
-    expect(retained.rows).toEqual([{ count: '1' }]);
-  });
-});
+        [WORKSPACE_ID, TASK_ID],
+      );
+      expect(retained.rows).toEqual([{ count: '1' }]);
+    });
+  },
+);
