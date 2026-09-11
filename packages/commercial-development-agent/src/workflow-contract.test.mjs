@@ -106,7 +106,11 @@ describe('OpenCode commercial development workflow contract', () => {
     );
     expect(workflow).toContain('services:');
     expect(workflow).toContain(
-      'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777',
+      'postgres:16.15-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825',
+    );
+    expect(workflow).toContain('POSTGRES_HOST_AUTH_METHOD: scram-sha-256');
+    expect(workflow).toContain(
+      'POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256',
     );
     expect(workflow).toContain('pg_isready -U postgres -d life_os_test');
   });
