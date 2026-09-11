@@ -393,12 +393,12 @@ function snapshotExternalNumber(value, label) {
 /**
  * Preserve bounded review commit binding evidence, including an empty/malformed sentinel.
  *
- * The collector intentionally retains invalid `commit_id` values so the merge evaluator can
- * fail closed with `missing-approval` rather than silently inferring the current head. Snapshot
- * validation therefore bounds this untrusted scalar but does not rewrite it into a valid SHA.
+ * Legacy `life-os.github-snapshot.v1` rows predate `commit_id`; their missing binding is
+ * normalized to the empty sentinel so downstream merge evaluation stays fail closed instead of
+ * inferring the current head. New collector output still supplies the raw bounded binding.
  *
- * @param {unknown} value Raw normalized review commit binding.
- * @returns {string} Bounded review commit evidence exactly as collected.
+ * @param {unknown} value Raw normalized review commit binding or legacy empty sentinel.
+ * @returns {string} Bounded review commit evidence exactly as collected or normalized for v1.
  */
 function snapshotReviewCommitId(value) {
   if (
@@ -418,11 +418,12 @@ function validateSnapshotReview(value) {
   if (submittedAt !== null && !Number.isFinite(Date.parse(submittedAt))) {
     failSnapshot('invalid review timestamp');
   }
+  const commitId = Object.hasOwn(value, 'commit_id') ? value.commit_id : '';
   return Object.freeze({
     actor: snapshotString(value.actor, 'invalid review actor', 100),
     state: snapshotString(value.state, 'invalid review state', 50),
     submitted_at: submittedAt,
-    commit_id: snapshotReviewCommitId(value.commit_id),
+    commit_id: snapshotReviewCommitId(commitId),
   });
 }
 
