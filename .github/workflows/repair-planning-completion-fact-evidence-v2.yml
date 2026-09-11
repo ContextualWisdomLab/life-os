@@ -1,0 +1,141 @@
+name: Repair Planning Completion Fact Evidence V2
+
+on:
+  push:
+    branches: [feat/planning-task-completion-history-v1]
+    paths:
+      - .github/workflows/repair-planning-completion-fact-evidence-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      TARGET_BRANCH: feat/planning-task-completion-history-v1
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact repair input
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stage missing-evidence hostile regression
+        env:
+          SCRIPT_B64: ZHJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgiYXBwcy9wbGFubmluZy1zZXJ2aWNlL3NyYy90YXNrLWNvbXBsZXRpb24udGVzdC50cyIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dCgpCnRlc3RfbmFtZSA9ICJmYWlscyBjbG9zZWQgd2hlbiBhdG9taWMgYWNjZXB0YW5jZSBldmlkZW5jZSBjb2x1bW5zIGFyZSBtaXNzaW5nIgppZiB0ZXN0X25hbWUgaW4gdGV4dDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJ7dGVzdF9uYW1lfTogcmVncmVzc2lvbiBhbHJlYWR5IHByZXNlbnQiKQphbmNob3IgPSAiICBpdCgnZmFpbHMgY2xvc2VkIHdoZW4gcGVyc2lzdGVuY2UgcmVwb3J0cyBubyBmYWN0IGZvciBhIG5ldyBjb21wbGV0aW9uJywgYXN5bmMgKCkgPT4geyIKaWYgdGV4dC5jb3VudChhbmNob3IpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KGYiZXhwZWN0ZWQgb25lIHJlZ3Jlc3Npb24gaW5zZXJ0aW9uIGFuY2hvciwgZm91bmQge3RleHQuY291bnQoYW5jaG9yKX0iKQpyZWdyZXNzaW9uID0gIiIiICBpdCgnZmFpbHMgY2xvc2VkIHdoZW4gYXRvbWljIGFjY2VwdGFuY2UgZXZpZGVuY2UgY29sdW1ucyBhcmUgbWlzc2luZycsIGFzeW5jICgpID0+IHsKICAgIGNvbnN0IHJlcG9zaXRvcnkgPSBuZXcgUG9zdGdyZXNUYXNrQ29tcGxldGlvblJlcG9zaXRvcnkoCiAgICAgIG5ldyBSZWNvcmRpbmdTcWxDbGllbnQoWwogICAgICAgIHsKICAgICAgICAgIHdvcmtzcGFjZV9pZDogV09SS1NQQUNFX0lELAogICAgICAgICAgaWQ6IFRBU0tfSUQsCiAgICAgICAgICBzdGF0dXM6ICdkb25lJywKICAgICAgICAgIGNvbXBsZXRlZF9hdDogQ09NUExFVEVEX0FULAogICAgICAgIH0sCiAgICAgIF0pLAogICAgKTsKCiAgICBhd2FpdCBleHBlY3QoCiAgICAgIHJlcG9zaXRvcnkudHJhbnNpdGlvblRhc2tDb21wbGV0aW9uKFdPUktTUEFDRV9JRCwgVEFTS19JRCwgewogICAgICAgIHN0YXR1czogJ2RvbmUnLAogICAgICAgIGNvbXBsZXRlZEF0OiBDT01QTEVURURfQVQsCiAgICAgIH0pLAogICAgKS5yZWplY3RzLnRvQmVJbnN0YW5jZU9mKFRhc2tDb21wbGV0aW9uUGVyc2lzdGVuY2VFcnJvcik7CiAgfSk7CgoiIiIKcGF0aC53cml0ZV90ZXh0KHRleHQucmVwbGFjZShhbmNob3IsIHJlZ3Jlc3Npb24gKyBhbmNob3IsIDEpKQo=
+        run: |
+          set -Eeuo pipefail
+          printf '%s' "$SCRIPT_B64" | base64 --decode > /tmp/stage-red.py
+          python /tmp/stage-red.py
+          pnpm exec prettier --write apps/planning-service/src/task-completion.test.ts
+
+      - name: Prove missing durable acceptance evidence is RED
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          pnpm --filter @life-os/planning-service exec vitest run \
+            src/task-completion.test.ts \
+            -t 'fails closed when atomic acceptance evidence columns are missing' \
+            > /tmp/reality-red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/reality-red.log
+          test "$status" -ne 0
+          grep -F 'fails closed when atomic acceptance evidence columns are missing' /tmp/reality-red.log
+
+      - name: Apply causal review and docs repairs
+        env:
+          SCRIPT_B64: aW1wb3J0IHJlCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKZGVmIHJlcGxhY2Vfb25jZShwYXRoOiBzdHIsIG9sZDogc3RyLCBuZXc6IHN0cikgLT4gTm9uZToKICAgIHRhcmdldCA9IFBhdGgocGF0aCkKICAgIHRleHQgPSB0YXJnZXQucmVhZF90ZXh0KCkKICAgIGNvdW50ID0gdGV4dC5jb3VudChvbGQpCiAgICBpZiBjb3VudCAhPSAxOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJ7cGF0aH06IGV4cGVjdGVkIGV4YWN0bHkgb25lIHJlcGxhY2VtZW50IHRhcmdldCwgZm91bmQge2NvdW50fSIpCiAgICB0YXJnZXQud3JpdGVfdGV4dCh0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpKQoKZGVmIHJlZ2V4X3JlcGxhY2Vfb25jZShwYXRoOiBzdHIsIHBhdHRlcm46IHN0ciwgcmVwbGFjZW1lbnQ6IHN0cikgLT4gTm9uZToKICAgIHRhcmdldCA9IFBhdGgocGF0aCkKICAgIHRleHQgPSB0YXJnZXQucmVhZF90ZXh0KCkKICAgIHVwZGF0ZWQsIGNvdW50ID0gcmUuc3VibihwYXR0ZXJuLCByZXBsYWNlbWVudCwgdGV4dCwgY291bnQ9MSwgZmxhZ3M9cmUuTVVMVElMSU5FIHwgcmUuRE9UQUxMKQogICAgaWYgY291bnQgIT0gMToKICAgICAgICByYWlzZSBTeXN0ZW1FeGl0KGYie3BhdGh9OiBleHBlY3RlZCBleGFjdGx5IG9uZSByZWdleCByZXBsYWNlbWVudCB0YXJnZXQsIGZvdW5kIHtjb3VudH0iKQogICAgdGFyZ2V0LndyaXRlX3RleHQodXBkYXRlZCkKCnJlcGxhY2Vfb25jZSgKICAgICJhcHBzL3BsYW5uaW5nLXNlcnZpY2Uvc3JjL3BsYW5uaW5nLWRhdGEtcmlnaHRzLnRzIiwKICAgICIiImludGVyZmFjZSBQbGFubmluZ1Rhc2tDb21wbGV0aW9uRmFjdEV4cG9ydFJvdyB7CiAgdGFza19pZDogdW5rbm93bjsKICBjb21wbGV0ZWRfYXQ6IHVua25vd247Cn0KIiIiLAogICAgIiIiLyoqIERhdGEtcmlnaHRzIHByb2plY3Rpb24gb2YgdXNlci1vd25lZCBjb21wbGV0aW9uIGV2aWRlbmNlOyBpbnRlcm5hbCBmYWN0IGlkZW50aXR5IGFuZCBzZXF1ZW5jZSBzdGF5IHByaXZhdGUgdG8gUGxhbm5pbmcgcGVyc2lzdGVuY2UuICovCmludGVyZmFjZSBQbGFubmluZ1Rhc2tDb21wbGV0aW9uRmFjdEV4cG9ydFJvdyB7CiAgdGFza19pZDogdW5rbm93bjsKICBjb21wbGV0ZWRfYXQ6IHVua25vd247Cn0KIiIiLAopCgpyZWdleF9yZXBsYWNlX29uY2UoCiAgICAiYXBwcy9wbGFubmluZy1zZXJ2aWNlL3NyYy90YXNrLWNvbXBsZXRpb24udGVzdC50cyIsCiAgICByIiIiICAgIHJldHVybiBce1xuICAgICAgcm93czogdGhp c1wucm93c1wubWFwXCgo cm93XCkgPT4gXHtcb i4qP1xuICAgICAgXH1cKSxcb iAgICBcXH07IiIiLnJlcGxhY2UoIiAiLCAiIiksCiAgICAiICAgIHJldHVybiB7IHJvd3M6IHRoaXMucm93cyBhcyBSb3dbXSB9OyIsCikKCiMgRmlyc3Qgc3VjY2Vzc2Z1bCB0b2RvIC0+IGRvbmUgZml4dHVyZSBtdXN0IHN0YXRlIHRoZSBzYW1lIGR1cmFibGUgYWNjZXB0YW5jZSBldmlkZW5jZQojIHRoYXQgcHJvZHVjdGlvbiBTUUwgcmV0dXJuczsgb3RoZXJ3aXNlIHRoZSB0ZXN0IGRvdWJsZSBjYW4gaGlkZSBhIG1pc3NpbmcgY29sdW1uLgpwYXR0ZXJuID0gciciIiIoaXRcKCd1cGRhdGVzIHN0YXR1cyBhbmQgY29tcGxldGVkX2F0IGF0b21pY2FsbHkgaW5zaWRlIG9uZSB0ZW5hbnQtc2NvcGVkIHN0YXRlbWVudCcsIGFzeW5jIFwoXCkgPT4gXHtcb iAgICBjb25zdCBjbGllbnQgPSBuZXcgUmVjb3JkaW5nU3FsQ2xpZW50XC hcW1xuICAgICAgXHtcb iAgICAgICAgd29ya3NwYWNlX2lkOiBXT1JLU1BBQ0VfSUQsXG4gICAgICAgIGlkOiBUQVNLX0lELFxuICAgICAgICBzdGF0dXM6ICdkb25lJyxcbiAgICAgICAgY29tcGxldGVkX2F0OiBDT01QTEVURURfQVQsKShcbiAgICAgIFx9LCkiIiIucmVwbGFjZSgiICIsICIiKQpyZXBsYWNlbWVudCA9IHIiIiJcMQogICAgICAgIHByZXZpb3VzX3N0YXR1czogJ3RvZG8nLAogICAgICAgIGNvbXBsZXRpb25fZmFjdF9jb3VudDogMSxcMiIiIgpyZWdleF9yZXBsYWNlX29uY2UoImFwcHMvcGxhbm5pbmctc2VydmljZS9zcmMvdGFzay1jb21wbGV0aW9uLnRlc3QudHMiLCBwYXR0ZXJuLCByZXBsYWNlbWVudCkKCnJlcGxhY2Vfb25jZSgKICAgICJhcHBzL3BsYW5uaW5nLXNlcnZpY2Uvc3JjL3Rhc2stY29tcGxldGlvbi50ZXN0LnRzIiwKICAgICIiIiAgICBleHBlY3QoY2xpZW50LmNhbGxzWzBdPy50ZXh0KS50b0NvbnRhaW4oCiAgICAgICdSRVRVUk5JTkIHd29ya3NwYWNlX2lkLCBpZCwgc3RhdHVzLCBjb21wbGV0ZWRfYXQnLAogICAgKTsKIiIiLAogICAgIiIiICAgIGV4cGVjdChjbGllbnQuY2FsbHNbMF0/LnRleHQpLnRvQ29udGFpbigKICAgICAgJ1JFVFVSTklORyB3b3Jrc3BhY2VfaWQsIGlkLCBzdGF0dXMsIGNvbXBsZXRlZF9hdCcsCiAgICApOwogICAgZXhwZWN0KGNsaWVudC5jYWxsc1swXT8udGV4dCkudG9Db250YWluKAogICAgICAncHJldmlvdXMucHJldmlvdXNfc3RhdHVzIEFTIHByZXZpb3VzX3N0YXR1cycsCiAgICApOwogICAgZXhwZWN0KGNsaWVudC5jYWxsc1swXT8udGV4dCkudG9Db250YWluKCdBUyBjb21wbGV0aW9uX2ZhY3RfY291bnQnKTsKICAgIGV4cGVjdChjbGllbnQuY2FsbHNbMF0/LnRleHQpLnRvQ29udGFpbigKICAgICAgJ0lOU0VSVCBJTlRPIHBsYW5uaW5nLnRhc2tfY29tcGxldGlvbl9mYWN0cycsCiAgICApOwoiIiIsCikKCnBhdHRlcm4gPSByIiIiKGl0XCgnY2Fub25pY2FsaXplcyBhIHZhbGlkIERhdGUgcmV0dXJuZWQgYnkgdGhlIFBvc3RncmVTUUwgZHJpdmVyJywgYXN5bmMgXC hcKSA9PiBce1xuICAgIGNvbnN0IHJlcG9zaXRvcnkgPSBuZXcgUG9zdGdyZXNUYXNrQ29tcGxldGlvblJlcG9zaXRvcnlcKFxuICAgICAgbmV3IFJlY29yZGluZ1NxbENsaWVudFwoXFtcbiAgICAgICAgXHtcb iAgICAgICAgICB3b3Jrc3BhY2VfaWQ6IFdPUktTUEFDRV9JRCxcbiAgICAgICAgICBpZDogVEFTS19JRCxcbiAgICAgICAgICBzdGF0dXM6ICdkb25lJyxcbiAgICAgICAgICBjb21wbGV0ZWRfYXQ6IG5ldyBEYXRlXChDT01QTEVURURfQVRcKSwsKShcbiAgICAgICAgXH0sKSIiIi5yZXBsYWNlKCIgIiwgIiIpCnJlcGxhY2VtZW50ID0gciIiIlwxCiAgICAgICAgICBwcmV2aW91c19zdGF0dXM6ICd0b2RvJywKICAgICAgICAgIGNvbXBsZXRpb25fZmFjdF9jb3VudDogMSxcMiIiIgpyZWdleF9yZXBsYWNlX29uY2UoImFwcHMvcGxhbm5pbmctc2VydmljZS9zcmMvdGFzay1jb21wbGV0aW9uLnRlc3QudHMiLCBwYXR0ZXJuLCByZXBsYWNlbWVudCkKCnJlcGxhY2Vfb25jZSgKICAgICJhcHBzL3BsYW5uaW5nLXNlcnZpY2UvbWlncmF0aW9ucy9SRUFETUUubWQiLAogICAgIiIiLSBgMDAwN190YXNrX2NvbXBsZXRpb25fZmFjdHMuc3FsYCBjcmVhdGVzIHRoZSBQbGFubmluZy1vd25lZCBjb21wbGV0aW9uLWZhY3QgbGVkZ2VyIHVzZWQgdG8gcmV0YWluIGVhY2ggcmVhbCBgdG9kbyDigJogZG9uZWAgdHJhbnNpdGlvbiBhZnRlciBsYXRlciByZXRyaWVzIG9yIHJlb3Blbi4gRXZlcnkgZmFjdCBoYXMgYW4gYXBwbGljYXRpb24tZ2VuZXJhdGVkIG9wYXF1ZSBVVUlEdjQgcHJpbWFyeSBrZXk7IGBjb21wbGV0aW9uX3NlcXVlbmNlYCBpcyBhIHNlcGFyYXRlIHVuaXF1ZSBvcmRlcmluZyBrZXksIG5vdCBkb21haW4gaWRlbnRpdHkgYW5kIGlzIG5vdCBleHBvcnRlZCB0aHJvdWdoIHRoZSBkYXRhLXJpZ2h0cyBjb250cmFjdC4gRmFjdHMgcmV0YWluIHRlbmFudC90YXNrIG93bmVyc2hpcCBhbmQgdGhlIGNvbW1pdHRlZCBjb21wbGV0aW9uIGluc3RhbnQsIGNhc2NhZGUgd2l0aCB0YXNrIGVyYXN1cmUsIGFuZCBhcmUgaW5kZXhlZCBieSB3b3Jrc3BhY2UgKyBjb21wbGV0aW9uIHRpbWUgZm9yIGJvdW5kZWQgcGVyaW9kIHByb2plY3Rpb25zLiBUaGUgY29tcGxldGlvbiByZXBvc2l0b3J5IGFwcGVuZHMgYSBmYWN0IGluIHRoZSBzYW1lIFBvc3RncmVTUUwgc3RhdGVtZW50IHRoYXQgY2hhbmdlcyB0YXNrIHN0YXRlOyByZXRyaWVzIHdoaWxlIGFscmVhZHkgZG9uZSBkbyBub3QgYXBwZW5kIGR1cGxpY2F0ZXMuCiIiIiwKICAgICIiIi0gYDAwMDdfdGFza19jb21wbGV0aW9uX2ZhY3RzLnNxbGAgY3JlYXRlcyB0aGUgUGxhbm5pbmctb3duZWQgY29tcGxldGlvbi1mYWN0IGxlZGdlciB1c2VkIHRvIHJldGFpbiBlYWNoIHJlYWwgYHRvZG8g4oaSIGRvbmVgIHRyYW5zaXRpb24gYWZ0ZXIgbGF0ZXIgcmV0cmllcyBvciByZW9wZW4uIEV2ZXJ5IGZhY3QgaGFzIGFuIGFwcGxpY2F0aW9uLWdlbmVyYXRlZCBvcGFxdWUgVVVJRHY0IHByaW1hcnkga2V5OyBgY29tcGxldGlvbl9zZXF1ZW5jZWAgaXMgYSBzZXBhcmF0ZSB1bmlxdWUgb3JkZXJpbmcga2V5LCBub3QgZG9tYWluIGlkZW50aXR5IGFuZCBpcyBub3QgZXhwb3J0ZWQgdGhyb3VnaCB0aGUgZGF0YS1yaWdodHMgY29udHJhY3QuIEZhY3RzIHJldGFpbiB0ZW5hbnQvdGFzayBvd25lcnNoaXAgYW5kIHRoZSBjb21taXR0ZWQgY29tcGxldGlvbiBpbnN0YW50LCBjYXNjYWRlIHdpdGggdGFzayBlcmFzdXJlLCBhbmQgYXJlIGluZGV4ZWQgYnkgd29ya3NwYWNlICsgY29tcGxldGlvbiB0aW1lIGZvciBib3VuZGVkIHBlcmlvZCBwcm9qZWN0aW9ucy4gQSBQbGFubmluZy1vd25lZCB0cmlnZ2VyIHJlamVjdHMgYW55IGZhY3Qgd2hvc2UgY29tcGxldGlvbiBpbnN0YW50IHByZWRhdGVzIHRoZSBvd25pbmcgdGFzaydzIGNyZWF0aW9uIGluc3RhbnQuIFRoZSBjb21wbGV0aW9uIHJlcG9zaXRvcnkgYXBwZW5kcyBhIGZhY3QgaW4gdGhlIHNhbWUgUG9zdGdyZVNRTCBzdGF0ZW1lbnQgdGhhdCBjaGFuZ2VzIHRhc2sgc3RhdGU7IHJldHJpZXMgd2hpbGUgYWxyZWFkeSBkb25lIGRvIG5vdCBhcHBlbmQgZHVwbGljYXRlcy4KIiIiLAopCgpyZXBsYWNlX29uY2UoCiAgICAiYXBwcy9wbGFubmluZy1zZXJ2aWNlL21pZ3JhdGlvbnMvUkVBRE1FLm1kIiwKICAgICJNaWdyYXRpb25zIGFyZSBmb3J3YXJkLW9ubHkgaW4gYXV0b21hdGVkIGVudmlyb25tZW50cy4gUm9sbGluZyBiYWNrIGAwMDA3YCBkZXN0cm95cyBoaXN0b3JpY2FsIGNvbXBsZXRpb24gZmFjdHMsIHNvIGRyb3AgYHBsYW5uaW5nLnRhc2tfY29tcGxldGlvbl9mYWN0c2Agb25seSBhZnRlciBhbiBvcGVyYXRvci1hcHByb3ZlZCBleHBvcnQvcmV0ZW50aW9uIGRlY2lzaW9uIGFuZCBvbmx5IHdoZW4gbG9zcyBvZiBSZXZpZXcgcHJvdmVuYW5jZSBpcyBhY2NlcHRhYmxlLiIsCiAgICAiTWlncmF0aW9ucyBhcmUgZm9yd2FyZC1vbmx5IGluIGF1dG9tYXRlZCBlbnZpcm9ubWVudHMuIFJvbGxpbmcgYmFjayBgMDAwN2AgZGVzdHJveXMgaGlzdG9yaWNhbCBjb21wbGV0aW9uIGZhY3RzLCBzbyBkcm9wIGBwbGFubmluZy50YXNrX2NvbXBsZXRpb25fZmFjdHNgIG9ubHkgYWZ0ZXIgYW4gb3BlcmF0b3ItYXBwcm92ZWQgZXhwb3J0L3JldGVudGlvbiBkZWNpc2lvbiBhbmQgb25seSB3aGVuIGxvc3Mgb2YgUmV2aWV3IHByb3ZlbmFuY2UgaXMgYWNjZXB0YWJsZTsgYWZ0ZXIgdGhlIHRhYmxlIGFuZCBpdHMgdHJpZ2dlciBhcmUgcmVtb3ZlZCwgYWxzbyBkcm9wIGBwbGFubmluZy5lbmZvcmNlX3Rhc2tfY29tcGxldGlvbl9mYWN0X2Nocm9ub2xvZ3koKWAgc28gbm8gb3JwaGFuIG1pZ3JhdGlvbiBmdW5jdGlvbiByZW1haW5zLiIsCikKCnJlcGxhY2Vfb25jZSgKICAgICJDSEFORUxPRy5tZCIsCiAgICAiIiItIFBsYW5uaW5nIHRhc2sgY29tcGxldGlvbiBub3cgdHJlYXRzIHRoZSBhdG9taWMgY29tcGxldGlvbi1mYWN0IGNhcmRpbmFsaXR5IGFuZCBwcmlvciBkdXJhYmxlIHRhc2sgc3RhdGUgYXMgcGFydCBvZiBwZXJzaXN0ZW5jZSBhY2NlcHRhbmNlIGV2aWRlbmNlLCBzbyBhIHJlcG9zaXRvcnkgY2Fubm90IHJlcG9ydCBhIHN1Y2Nlc3NmdWwgbmV3IGNvbXBsZXRpb24gd2hlbiB0aGUgY29ycmVzcG9uZGluZyBhcHBlbmQtb25seSBmYWN0IGlzIGFic2VudCwgZHVwbGljYXRlZCwgb3Igb3RoZXJ3aXNlIGluY29uc2lzdGVudCB3aXRoIHRoZSByZXF1ZXN0ZWQgdHJhbnNpdGlvbi4KIiIiLAogICAgIiIiLSBQbGFubmluZyB0YXNrIGNvbXBsZXRpb24gbm93IHRyZWF0cyB0aGUgYXRvbWljIGNvbXBsZXRpb24tZmFjdCBjYXJkaW5hbGl0eSBhbmQgcHJpb3IgZHVyYWJsZSB0YXNrIHN0YXRlIGFzIHBhcnQgb2YgcGVyc2lzdGVuY2UgYWNjZXB0YW5jZSBldmlkZW5jZSwgc28gYSByZXBvc2l0b3J5IGNhbm5vdCByZXBvcnQgYSBzdWNjZXNzZnVsIG5ldyBjb21wbGV0aW9uIHdoZW4gdGhlIGNvcnJlc3BvbmRpbmcgYXBwZW5kLW9ubHkgZmFjdCBpcyBhYnNlbnQsIGR1cGxpY2F0ZWQsIG9yIG90aGVyd2lzZSBpbmNvbnNpc3RlbnQgd2l0aCB0aGUgcmVxdWVzdGVkIHRyYW5zaXRpb24uIFRoZSBjb21wbGV0aW9uLWZhY3QgbGVkZ2VyIGFsc28gcmVqZWN0cyBwZXJzaXN0ZWQgY29tcGxldGlvbiBpbnN0YW50cyB0aGF0IHByZWRhdGUgdGhlIG93bmluZyB0YXNrJ3MgY3JlYXRpb24gaW5zdGFudC4KIiIiLAopCg==
+        run: |
+          set -Eeuo pipefail
+          printf '%s' "$SCRIPT_B64" | base64 --decode > /tmp/repair.py
+          python /tmp/repair.py
+
+      - name: Remove purpose-complete repair workflows
+        run: >-
+          git rm
+          .github/workflows/repair-planning-completion-fact-chronology.yml
+          .github/workflows/verify-planning-completion-fact-chronology.yml
+          .github/workflows/repair-planning-completion-fact-evidence-v2.yml
+
+      - name: Canonicalize changed sources
+        run: >-
+          pnpm exec prettier --write
+          apps/planning-service/src/planning-data-rights.ts
+          apps/planning-service/src/task-completion.test.ts
+          apps/planning-service/src/task-completion-fact-chronology.integration.test.ts
+          apps/planning-service/migrations/README.md
+          CHANGELOG.md
+
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Run focused Planning persistence regressions
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          src/task-completion.test.ts
+          src/task-completion-history.integration.test.ts
+          src/task-completion-fact-chronology.integration.test.ts
+          tests/postgres-data-rights.integration.test.ts
+
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service test
+
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
+
+      - name: Check changed-source formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/planning-service/src/planning-data-rights.ts
+          apps/planning-service/src/task-completion.test.ts
+          apps/planning-service/src/task-completion-fact-chronology.integration.test.ts
+          apps/planning-service/migrations/README.md
+          CHANGELOG.md
+
+      - name: Publish ordinary repair descendant
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA"
+          git config user.name 'Seongho Bae'
+          git config user.email 'me@seonghobae.me'
+          git add \
+            apps/planning-service/src/planning-data-rights.ts \
+            apps/planning-service/src/task-completion.test.ts \
+            apps/planning-service/src/task-completion-fact-chronology.integration.test.ts \
+            apps/planning-service/migrations/README.md \
+            CHANGELOG.md
+          git diff --cached --check
+          git commit -m 'fix(planning): harden completion fact evidence'
+          git push origin "HEAD:${TARGET_BRANCH}"
