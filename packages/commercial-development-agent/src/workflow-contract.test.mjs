@@ -123,7 +123,7 @@ describe('OpenCode commercial development workflow contract', () => {
       'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
     );
     expect(workflow).toContain(
-      'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
+      'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
     );
     expect(workflow).toContain(
       'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',

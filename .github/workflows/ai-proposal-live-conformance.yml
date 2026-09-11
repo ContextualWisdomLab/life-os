@@ -18,7 +18,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CONTEXTUAL_ORCHESTRATOR_COMMIT: 6841b71935e0b7cb98fb52bcb4709cc5100c8d87
   PROVIDER_BASE_URL: https://integrate.api.nvidia.com/v1
   PROVIDER_ALLOWED_HOST: integrate.api.nvidia.com
@@ -51,7 +50,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
 

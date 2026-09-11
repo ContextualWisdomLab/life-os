@@ -30,7 +30,6 @@ jobs:
       security-events: write
     env:
       APPGUARDRAIL_COMMIT: 4e4f6c34e4e9640ba769020e9ab4a6ebee07bab1
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout LifeOS exact contributor head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
