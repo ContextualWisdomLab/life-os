@@ -112,4 +112,18 @@ describe('PostgreSQL CI service contract', () => {
 
     expect(() => expectSecurePostgresServiceBlock(malformedBlock)).toThrow();
   });
+
+  it('rejects a floating image even when the reviewed digest appears elsewhere', () => {
+    const malformedBlock = [
+      '      postgres:',
+      '        image: postgres:16.15-bookworm',
+      '        env:',
+      '          POSTGRES_HOST_AUTH_METHOD: scram-sha-256',
+      `          POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}`,
+      '        labels:',
+      `          reviewed-image: ${POSTGRES_CI_IMAGE}`,
+    ].join('\n');
+
+    expect(() => expectSecurePostgresServiceBlock(malformedBlock)).toThrow();
+  });
 });
