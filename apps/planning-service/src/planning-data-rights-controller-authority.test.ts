@@ -47,7 +47,9 @@ function signature(issuedAt: string): string {
 }
 
 /** Creates the smallest runtime-shaped collaborator observable by the controller. */
-function controllerWith(handle: ReturnType<typeof vi.fn>): PlanningDataRightsController {
+function controllerWith(
+  handle: ReturnType<typeof vi.fn>,
+): PlanningDataRightsController {
   const runtime = {
     dataRightsContributor: { handle },
   } as unknown as PlanningRuntime;
@@ -67,7 +69,7 @@ describe('Planning data-rights controller authority', () => {
       contributor: 'planning.service',
       requestId: REQUEST_ID,
       operation: 'export',
-      schemaVersion: 'planning.data-rights.v1',
+      schemaVersion: 'planning.data-rights.v2',
       recordCount: 0,
       sha256: '0'.repeat(64),
       data: {},

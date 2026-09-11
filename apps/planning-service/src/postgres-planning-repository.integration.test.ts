@@ -41,6 +41,7 @@ async function applyMigrations(pool: Pool): Promise<void> {
     '0004_data_rights_erasure_receipts.sql',
     '0005_task_completion_chronology.sql',
     '0006_validate_task_completion_chronology.sql',
+    '0007_task_completion_facts.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migration),
@@ -92,15 +93,15 @@ describeWithPostgres('PostgreSQL Planning repository integration', () => {
   }, 30_000);
 
   beforeEach(async () => {
-    await administrativePool.query(
-      `TRUNCATE
-         planning.today_idempotency_records,
-         planning.today_aggregates,
-         planning.data_rights_erasure_receipts,
-         planning.tasks,
-         planning.projects,
-         planning.goals`,
-    );
+    await administrativePool.query(`
+      DELETE FROM planning.task_completion_facts;
+      DELETE FROM planning.today_idempotency_records;
+      DELETE FROM planning.today_aggregates;
+      DELETE FROM planning.data_rights_erasure_receipts;
+      DELETE FROM planning.tasks;
+      DELETE FROM planning.projects;
+      DELETE FROM planning.goals;
+    `);
   });
 
   afterEach(async () => {

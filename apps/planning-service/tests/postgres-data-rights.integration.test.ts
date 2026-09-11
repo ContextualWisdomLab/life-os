@@ -23,7 +23,9 @@ const CONFLICTING_REQUEST_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
-    throw new Error('PLANNING_DATABASE_URL is required for PostgreSQL integration tests');
+    throw new Error(
+      'PLANNING_DATABASE_URL is required for PostgreSQL integration tests',
+    );
   }
   return DATABASE_URL;
 }
@@ -62,6 +64,9 @@ async function applyPlanningMigrations(pool: Pool): Promise<void> {
     '0002_durable_repository_contract.sql',
     '0003_durable_today_sync.sql',
     '0004_data_rights_erasure_receipts.sql',
+    '0005_task_completion_chronology.sql',
+    '0006_validate_task_completion_chronology.sql',
+    '0007_task_completion_facts.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migrationFile),
@@ -75,6 +80,7 @@ async function seedWorkspace(pool: Pool): Promise<void> {
   const goalId = '55555555-5555-4555-8555-555555555555';
   const projectId = '66666666-6666-4666-8666-666666666666';
   const taskId = '77777777-7777-4777-8777-777777777777';
+  const completionFactId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const aggregateId = '88888888-8888-4888-8888-888888888888';
   const revisionToken = '99999999-9999-4999-8999-999999999999';
   const todayIdempotencyKey = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -95,9 +101,15 @@ async function seedWorkspace(pool: Pool): Promise<void> {
     [projectId, WORKSPACE_ID, goalId],
   );
   await pool.query(
-    `INSERT INTO planning.tasks (id, workspace_id, project_id, title)
-     VALUES ($1, $2, $3, 'Task')`,
+    `INSERT INTO planning.tasks (id, workspace_id, project_id, title, created_at)
+     VALUES ($1, $2, $3, 'Task', TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
     [taskId, WORKSPACE_ID, projectId],
+  );
+  await pool.query(
+    `INSERT INTO planning.task_completion_facts
+       (completion_fact_id, workspace_id, task_id, completed_at)
+     VALUES ($1, $2, $3, TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
+    [completionFactId, WORKSPACE_ID, taskId],
   );
   await pool.query(
     `INSERT INTO planning.today_aggregates
@@ -168,13 +180,19 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
       });
       expect(exported).toMatchObject({
         operation: 'export',
-        schemaVersion: 'planning.data-rights.v1',
-        recordCount: 5,
+        schemaVersion: 'planning.data-rights.v2',
+        recordCount: 6,
       });
       if (exported.operation !== 'export') {
         throw new Error('Expected Planning export response');
       }
       expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(exported.data).toHaveProperty('taskCompletionFacts', [
+        {
+          taskId: '77777777-7777-4777-8777-777777777777',
+          completedAt: '2026-08-10T12:00:00.000Z',
+        },
+      ]);
 
       const erased = await runtime.dataRightsContributor.handle({
         contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
@@ -186,7 +204,7 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
       });
       expect(erased).toMatchObject({
         operation: 'erase',
-        erasedRecords: 5,
+        erasedRecords: 6,
       });
       if (erased.operation !== 'erase') {
         throw new Error('Expected Planning erasure response');
@@ -240,6 +258,7 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
              (SELECT count(*) FROM planning.goals WHERE workspace_id = $1) +
              (SELECT count(*) FROM planning.projects WHERE workspace_id = $1) +
              (SELECT count(*) FROM planning.tasks WHERE workspace_id = $1) +
+             (SELECT count(*) FROM planning.task_completion_facts WHERE workspace_id = $1) +
              (SELECT count(*) FROM planning.today_aggregates WHERE workspace_id = $1) +
              (SELECT count(*) FROM planning.today_idempotency_records WHERE workspace_id = $1)
            )::integer AS remaining_count`,

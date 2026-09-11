@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 /** Matches the UUIDv4 form used by Planning-owned durable identifiers. */
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -49,6 +51,8 @@ interface TaskCompletionRow {
   id: unknown;
   status: unknown;
   completed_at: unknown;
+  previous_status: unknown;
+  completion_fact_count: unknown;
 }
 
 /** Stable credential-free error for malformed completion evidence from persistence. */
@@ -110,6 +114,22 @@ function requirePersistedTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
+/** Requires the prior durable task state needed to interpret fact creation. */
+function requirePersistedPreviousStatus(value: unknown): 'todo' | 'done' {
+  if (value !== 'todo' && value !== 'done') {
+    return invalidPersistenceEvidence();
+  }
+  return value;
+}
+
+/** Requires the bounded fact cardinality emitted by the atomic completion statement. */
+function requirePersistedCompletionFactCount(value: unknown): 0 | 1 {
+  if (value !== 0 && value !== 1) {
+    return invalidPersistenceEvidence();
+  }
+  return value;
+}
+
 /** Parses one returned row and proves it matches the requested durable state. */
 function parseCompletionEvidence(
   row: TaskCompletionRow,
@@ -120,6 +140,16 @@ function parseCompletionEvidence(
   const workspaceId = requirePersistedUuid(row.workspace_id);
   const taskId = requirePersistedUuid(row.id);
   if (workspaceId !== expectedWorkspaceId || taskId !== expectedTaskId) {
+    return invalidPersistenceEvidence();
+  }
+
+  const previousStatus = requirePersistedPreviousStatus(row.previous_status);
+  const completionFactCount = requirePersistedCompletionFactCount(
+    row.completion_fact_count,
+  );
+  const expectedCompletionFactCount =
+    expectedTransition.status === 'done' && previousStatus === 'todo' ? 1 : 0;
+  if (completionFactCount !== expectedCompletionFactCount) {
     return invalidPersistenceEvidence();
   }
 
@@ -183,7 +213,10 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
   /** Creates an adapter over the Planning-owned parameterized SQL connection. */
   constructor(private readonly client: TaskCompletionSqlClient) {}
 
-  /** Performs one tenant-scoped UPDATE and validates the committed RETURNING row. */
+  /**
+   * Performs one tenant-scoped statement that locks prior state, mutates the
+   * task, and appends a completion fact only for a real todo-to-done transition.
+   */
   async transitionTaskCompletion(
     workspaceId: string,
     taskId: string,
@@ -191,23 +224,59 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
   ): Promise<TaskCompletionEvidence | undefined> {
     const safeWorkspaceId = requireRequestUuid(workspaceId);
     const safeTaskId = requireRequestUuid(taskId);
+    const completionFactId = randomUUID();
     return boundedPersistenceCall(async () => {
       const result = await this.client.query<TaskCompletionRow>(
-        `UPDATE planning.tasks
-         SET status = $3,
-             completed_at = CASE
-               WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
-                 THEN completed_at
-               WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
-               ELSE NULL
-             END
-         WHERE workspace_id = $1 AND id = $2
-         RETURNING workspace_id, id, status, completed_at`,
+        `WITH previous AS (
+           SELECT workspace_id AS previous_workspace_id,
+                  id AS previous_id,
+                  status AS previous_status
+           FROM planning.tasks
+           WHERE workspace_id = $1 AND id = $2
+           FOR UPDATE
+         ),
+         updated AS (
+           UPDATE planning.tasks
+           SET status = $3,
+               completed_at = CASE
+                 WHEN $3 = 'done' AND status = 'done' AND completed_at IS NOT NULL
+                   THEN completed_at
+                 WHEN $3 = 'done' THEN GREATEST($4::timestamptz, created_at)
+                 ELSE NULL
+               END
+           FROM previous
+           WHERE planning.tasks.workspace_id = previous.previous_workspace_id
+             AND planning.tasks.id = previous.previous_id
+           RETURNING workspace_id, id, status, completed_at,
+                     previous.previous_status AS previous_status
+         ),
+         completion_fact AS (
+           INSERT INTO planning.task_completion_facts (
+             completion_fact_id,
+             workspace_id,
+             task_id,
+             completed_at
+           )
+           SELECT $5::uuid, workspace_id, id, completed_at
+           FROM updated
+           WHERE previous_status = 'todo'
+             AND status = 'done'
+             AND completed_at IS NOT NULL
+           RETURNING completion_fact_id, completion_sequence
+         )
+         SELECT workspace_id,
+                id,
+                status,
+                completed_at,
+                previous_status,
+                (SELECT count(*)::integer FROM completion_fact) AS completion_fact_count
+         FROM updated`,
         [
           safeWorkspaceId,
           safeTaskId,
           transition.status,
           transition.completedAt,
+          completionFactId,
         ],
       );
       if (!Array.isArray(result.rows) || result.rows.length > 1) {
