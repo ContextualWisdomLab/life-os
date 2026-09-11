@@ -20,6 +20,8 @@ function clientForRun(run) {
           mergeable_state: 'clean',
           base: { ref: 'main', sha: baseSha },
           head: { sha: headSha, repo: { full_name: 'o/r' } },
+          user: { login: 'pr-author' },
+          author_association: 'OWNER',
         };
       }
       if (path.startsWith('/repos/o/r/pulls/7/reviews?')) {
@@ -36,7 +38,17 @@ function clientForRun(run) {
         return { total_count: 1, workflow_runs: [run] };
       }
       if (path.startsWith(`/repos/o/r/commits/${headSha}/statuses?`)) return [];
-      if (path.startsWith('/repos/o/r/compare/')) return { behind_by: 0 };
+      if (
+        path ===
+        `/repos/o/r/compare/${baseSha}...${headSha}?per_page=1&page=2`
+      ) {
+        return {
+          url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
+          behind_by: 0,
+          base_commit: { sha: baseSha },
+          merge_base_commit: { sha: baseSha },
+        };
+      }
       if (path === '/graphql') {
         return {
           data: {
@@ -90,6 +102,7 @@ it('does not coerce malformed workflow identity scalars into exact-head success 
   ]) {
     const pullRequest = await evaluateRun(malformed);
     assert.equal(pullRequest.eligible, false);
+    assert.equal(pullRequest.blockers.length, 1);
     assert.ok(
       pullRequest.blockers.includes('missing-workflow:CI') ||
         pullRequest.blockers.includes('workflow-not-successful:CI'),
