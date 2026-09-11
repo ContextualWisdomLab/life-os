@@ -1,4 +1,4 @@
-name: Temporary Readiness Stream RED
+name: Temporary Readiness Response-Bound RED
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: tmp-readiness-stream-red-${{ github.ref }}
+  group: tmp-readiness-response-bound-red-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,7 +33,8 @@ jobs:
         run: corepack enable
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run stream-boundary regression only
+      - name: Run response-bound regressions only
         run: >-
           pnpm --filter @life-os/commercial-readiness exec node --test
           src/github-client-stream-boundary.test.mjs
+          src/github-client-page-size.test.mjs
