@@ -74,74 +74,59 @@ jobs:
             throw new Error('Expected exactly one paginated-array collector seam');
           }
 
-          const replacement = `async function collectPaginatedArrayAtPageSize(
-            client,
-            path,
-            errorMessage,
-            stabilityErrorMessage,
-            pageSize,
-          ) {
-            const values = [];
-            const separator = path.includes('?') ? '&' : '?';
-            const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
-            let firstPage = null;
-            let pagesRead = 0;
-            for (let page = 1; page <= pageLimit; page += 1) {
-              const payload = await client.requestJson(
-                \`${'${path}'}${'${separator}'}per_page=${'${pageSize}'}&page=${'${page}'}\`,
-              );
-              if (!Array.isArray(payload) || payload.length > pageSize) {
-                throw new Error(errorMessage);
-              }
-              if (page === 1) firstPage = payload;
-              values.push(...payload);
-              if (values.length > MAX_API_ITEMS) {
-                throw new Error(\`${'${errorMessage}'} exceeded the item limit\`);
-              }
-              pagesRead = page;
-              if (payload.length < pageSize) {
-                if (stabilityErrorMessage && pagesRead > 1) {
-                  const confirmation = await client.requestJson(
-                    \`${'${path}'}${'${separator}'}per_page=${'${pageSize}'}&page=1\`,
-                  );
-                  if (
-                    !Array.isArray(confirmation) ||
-                    confirmation.length > pageSize ||
-                    JSON.stringify(confirmation) !== JSON.stringify(firstPage)
-                  ) {
-                    throw new Error(stabilityErrorMessage);
-                  }
-                }
-                return values;
-              }
-            }
-            throw new Error(\`${'${errorMessage}'} exceeded the page limit\`);
-          }
-
-          async function collectPaginatedArray(
+          const replacement = `async function collectPaginatedArray(
             client,
             path,
             errorMessage,
             stabilityErrorMessage = null,
           ) {
-            try {
-              return await collectPaginatedArrayAtPageSize(
-                client,
-                path,
-                errorMessage,
-                stabilityErrorMessage,
-                API_PAGE_SIZE,
-              );
-            } catch (error) {
-              if (error !== RESPONSE_SIZE_ERROR) throw error;
+            const separator = path.includes('?') ? '&' : '?';
+            for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {
+              const values = [];
+              const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
+              let firstPage = null;
+              let pagesRead = 0;
+              try {
+                for (let page = 1; page <= pageLimit; page += 1) {
+                  const payload = await client.requestJson(
+                    \`${'${path}'}${'${separator}'}per_page=${'${pageSize}'}&page=${'${page}'}\`,
+                  );
+                  if (!Array.isArray(payload) || payload.length > pageSize) {
+                    throw new Error(errorMessage);
+                  }
+                  if (page === 1) firstPage = payload;
+                  values.push(...payload);
+                  if (values.length > MAX_API_ITEMS) {
+                    throw new Error(\`${'${errorMessage}'} exceeded the item limit\`);
+                  }
+                  pagesRead = page;
+                  if (payload.length < pageSize) {
+                    if (stabilityErrorMessage && pagesRead > 1) {
+                      const confirmation = await client.requestJson(
+                        \`${'${path}'}${'${separator}'}per_page=${'${pageSize}'}&page=1\`,
+                      );
+                      if (
+                        !Array.isArray(confirmation) ||
+                        confirmation.length > pageSize ||
+                        JSON.stringify(confirmation) !== JSON.stringify(firstPage)
+                      ) {
+                        throw new Error(stabilityErrorMessage);
+                      }
+                    }
+                    return values;
+                  }
+                }
+                throw new Error(\`${'${errorMessage}'} exceeded the page limit\`);
+              } catch (error) {
+                if (
+                  error !== RESPONSE_SIZE_ERROR ||
+                  pageSize === FALLBACK_API_PAGE_SIZE
+                ) {
+                  throw error;
+                }
+              }
             }
-            return await collectPaginatedArrayAtPageSize(
-              client,
-              path,
-              errorMessage,
-              stabilityErrorMessage,
-              FALLBACK_API_PAGE_SIZE,
-            );
+            throw new Error('GitHub pagination fallback invariant failed');
           }
 
           `;
