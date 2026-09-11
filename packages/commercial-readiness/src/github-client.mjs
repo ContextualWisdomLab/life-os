@@ -5,6 +5,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const API_PAGE_SIZE = 100;
 const MAX_API_PAGES = 10;
+const MAX_API_ITEMS = API_PAGE_SIZE * MAX_API_PAGES;
+const RESPONSE_TOO_LARGE_CODE = 'GITHUB_API_RESPONSE_TOO_LARGE';
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
@@ -15,10 +17,20 @@ function assertRepository(repository) {
   return repository;
 }
 
+function responseTooLargeError() {
+  const error = new Error('GitHub API response exceeded the size limit');
+  error.code = RESPONSE_TOO_LARGE_CODE;
+  return error;
+}
+
+function isResponseTooLargeError(error) {
+  return error?.code === RESPONSE_TOO_LARGE_CODE;
+}
+
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
-    throw new Error('GitHub API response exceeded the size limit');
+    throw responseTooLargeError();
   }
   if (!response.body) return '';
   const reader = response.body.getReader();
@@ -30,7 +42,7 @@ async function readBoundedText(response, maxBytes) {
     bytes += value.byteLength;
     if (bytes > maxBytes) {
       await reader.cancel();
-      throw new Error('GitHub API response exceeded the size limit');
+      throw responseTooLargeError();
     }
     chunks.push(value);
   }
@@ -203,18 +215,41 @@ function normalizeReview(review) {
 }
 
 async function collectPaginatedArray(client, path, errorMessage) {
-  const values = [];
   const separator = path.includes('?') ? '&' : '?';
-  for (let page = 1; page <= MAX_API_PAGES; page += 1) {
-    const payload = await client.requestJson(
-      `${path}${separator}per_page=${API_PAGE_SIZE}&page=${page}`,
-    );
-    if (!Array.isArray(payload) || payload.length > API_PAGE_SIZE) {
-      throw new Error(errorMessage);
+  let pageSize = API_PAGE_SIZE;
+
+  while (pageSize >= 1) {
+    const values = [];
+    const maxPages = Math.ceil(MAX_API_ITEMS / pageSize);
+    let retryWithSmallerPage = false;
+
+    for (let page = 1; page <= maxPages; page += 1) {
+      let payload;
+      try {
+        payload = await client.requestJson(
+          `${path}${separator}per_page=${pageSize}&page=${page}`,
+        );
+      } catch (error) {
+        if (!isResponseTooLargeError(error) || pageSize === 1) throw error;
+        pageSize = Math.max(1, Math.floor(pageSize / 2));
+        retryWithSmallerPage = true;
+        break;
+      }
+
+      if (!Array.isArray(payload) || payload.length > pageSize) {
+        throw new Error(errorMessage);
+      }
+      values.push(...payload);
+      if (values.length > MAX_API_ITEMS) {
+        throw new Error(`${errorMessage} exceeded the page limit`);
+      }
+      if (payload.length < pageSize) return values;
     }
-    values.push(...payload);
-    if (payload.length < API_PAGE_SIZE) return values;
+
+    if (retryWithSmallerPage) continue;
+    throw new Error(`${errorMessage} exceeded the page limit`);
   }
+
   throw new Error(`${errorMessage} exceeded the page limit`);
 }
 
