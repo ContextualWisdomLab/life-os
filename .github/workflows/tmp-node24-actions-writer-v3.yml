@@ -1,0 +1,162 @@
+name: Temporary Node 24 Actions Repair v3
+
+on:
+  push:
+    branches:
+      - fix/ci-node24-actions-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Apply and verify bounded repair
+        shell: bash
+        env:
+          INPUT_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          old_checkout = 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4'
+          new_checkout = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1'
+          old_setup = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4'
+          new_setup = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0'
+          force = '  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true\n'
+
+          def replace_exact(path_name, old, new, expected):
+              path = Path(path_name)
+              text = path.read_text(encoding='utf-8')
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f'{path_name}: expected {expected} occurrences, found {actual}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          replace_exact('.github/workflows/ci.yml', old_checkout, new_checkout, 5)
+          replace_exact('.github/workflows/deploy.yml', old_checkout, new_checkout, 2)
+          replace_exact('.github/workflows/ci.yml', old_setup, new_setup, 4)
+          replace_exact('.github/workflows/commercial-readiness.yml', old_setup, new_setup, 3)
+          replace_exact('.github/workflows/ai-proposal-live-conformance.yml', old_setup, new_setup, 1)
+          replace_exact('.github/workflows/opencode-commercial-development.yml', old_setup, new_setup, 1)
+          replace_exact('apps/ai-service/src/proposal-quality-live-workflow.test.ts',
+                        'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
+                        'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020', 1)
+          replace_exact('packages/commercial-development-agent/src/workflow-contract.test.mjs',
+                        'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020',
+                        'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020', 1)
+
+          for workflow in (
+              '.github/workflows/appguardrail.yml',
+              '.github/workflows/commercial-readiness.yml',
+              '.github/workflows/ai-proposal-live-conformance.yml',
+              '.github/workflows/opencode-commercial-development.yml',
+          ):
+              replace_exact(workflow, force, '', 1)
+
+          Path('packages/commercial-development-agent/src/node24-actions-contract.test.mjs').write_text(
+          """import { readFileSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          import { describe, expect, it } from 'vitest';
+
+          const repositoryRoot = resolve(process.cwd(), '../..');
+          const workflowPaths = [
+            '.github/workflows/ci.yml',
+            '.github/workflows/deploy.yml',
+            '.github/workflows/commercial-readiness.yml',
+            '.github/workflows/ai-proposal-live-conformance.yml',
+            '.github/workflows/opencode-commercial-development.yml',
+            '.github/workflows/appguardrail.yml',
+          ];
+          const workflows = Object.fromEntries(
+            workflowPaths.map((path) => [path, readFileSync(resolve(repositoryRoot, path), 'utf8')]),
+          );
+          const checkoutNode24 = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
+          const setupNode24 = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
+          const checkoutNode20 = 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262';
+          const setupNode20 = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';
+
+          describe('persistent GitHub Action runtime authority', () => {
+            it('uses reviewed Node 24 action pins without a runtime-forcing compatibility switch', () => {
+              for (const [path, workflow] of Object.entries(workflows)) {
+                expect(workflow, path).not.toContain(checkoutNode20);
+                expect(workflow, path).not.toContain(setupNode20);
+                expect(workflow, path).not.toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24');
+                for (const match of workflow.matchAll(/actions\\/checkout@([0-9a-f]{40})/g)) {
+                  expect(match[0], path).toBe(checkoutNode24);
+                }
+                for (const match of workflow.matchAll(/actions\\/setup-node@([0-9a-f]{40})/g)) {
+                  expect(match[0], path).toBe(setupNode24);
+                }
+              }
+            });
+          });
+          """.replace('          ', ''), encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          anchor = '### Changed\n\n'
+          if text.count(anchor) != 1:
+              raise SystemExit('CHANGELOG Changed anchor is ambiguous')
+          entry = ('- Persistent GitHub workflows now use immutable Node-24-backed checkout and '
+                   'setup-node releases directly, removing the temporary runtime-forcing compatibility '
+                   'switch while preserving exact checkout and credential boundaries.\n')
+          changelog.write_text(text.replace(anchor, anchor + entry, 1), encoding='utf-8')
+          PY
+
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write \
+            packages/commercial-development-agent/src/node24-actions-contract.test.mjs \
+            packages/commercial-development-agent/src/workflow-contract.test.mjs \
+            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
+            CHANGELOG.md
+          pnpm exec prettier --check \
+            packages/commercial-development-agent/src/node24-actions-contract.test.mjs \
+            packages/commercial-development-agent/src/workflow-contract.test.mjs \
+            apps/ai-service/src/proposal-quality-live-workflow.test.ts \
+            CHANGELOG.md
+
+          pnpm --filter @life-os/commercial-development-agent exec vitest run \
+            src/node24-actions-contract.test.mjs src/workflow-contract.test.mjs \
+            --no-file-parallelism
+          pnpm --filter @life-os/ai-service exec vitest run \
+            src/proposal-quality-live-workflow.test.ts --no-file-parallelism
+
+          rm .github/workflows/tmp-node24-actions-writer-v3.yml
+          if git grep -n '11d5960a326750d5838078e36cf38b85af677262' -- .github/workflows; then
+            echo '::error::Deprecated checkout runtime pin remains in a persistent workflow.'
+            exit 1
+          fi
+          if git grep -n '49933ea5288caeca8642d1e84afbd3f7d6820020' -- .github/workflows apps packages; then
+            echo '::error::Deprecated setup-node runtime pin remains in executable workflow/test authority.'
+            exit 1
+          fi
+          if git grep -n 'FORCE_JAVASCRIPT_ACTIONS_TO_NODE24' -- .github/workflows; then
+            echo '::error::Runtime-forcing compatibility switch remains in a persistent workflow.'
+            exit 1
+          fi
+          git diff --check
+
+          git config user.name 'LifeOS CI repair writer'
+          git config user.email 'lifeos-ci-repair@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(ci): adopt Node 24 GitHub Action runtimes'
+          git fetch origin fix/ci-node24-actions-v1
+          test "$(git rev-parse FETCH_HEAD)" = "$INPUT_SHA"
+          git push origin HEAD:fix/ci-node24-actions-v1
