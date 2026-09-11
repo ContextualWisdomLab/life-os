@@ -31,6 +31,7 @@ export interface DataRightsJsonObject {
 export type DataRightsJsonValue =
   DataRightsJsonPrimitive | DataRightsJsonArray | DataRightsJsonObject;
 
+/** Authority fields shared by every Planning data-rights operation. */
 interface ContributorRequestBase {
   readonly contractVersion: typeof DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION;
   readonly workspaceId: string;
@@ -55,6 +56,7 @@ export type DataRightsContributorRequest = ContributorRequestBase &
     | { readonly operation: 'verify_erased' }
   );
 
+/** Correlation fields shared by every successful Planning contributor response. */
 interface ContributorResponseBase {
   readonly contractVersion: typeof DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION;
   readonly contributor: typeof CONTRIBUTOR_NAME;
@@ -94,14 +96,17 @@ export type DataRightsContributorResponse = ContributorResponseBase &
       }
   );
 
+/** Untrusted goal row before data-rights export normalization. */
 interface PlanningGoalExportRow {
   id: unknown;
   title: unknown;
   created_at: unknown;
 }
+/** Untrusted project row before data-rights export normalization. */
 interface PlanningProjectExportRow extends PlanningGoalExportRow {
   goal_id: unknown;
 }
+/** Untrusted task row before data-rights export normalization. */
 interface PlanningTaskExportRow extends PlanningGoalExportRow {
   project_id: unknown;
   status: unknown;
@@ -115,6 +120,7 @@ interface PlanningTaskCompletionFactExportRow {
   task_id: unknown;
   completed_at: unknown;
 }
+/** Untrusted Today aggregate row before data-rights export normalization. */
 interface TodayAggregateExportRow {
   local_date: unknown;
   aggregate_id: unknown;
@@ -124,6 +130,7 @@ interface TodayAggregateExportRow {
   created_at: unknown;
   updated_at: unknown;
 }
+/** Untrusted Today idempotency row before data-rights export normalization. */
 interface TodayIdempotencyExportRow {
   idempotency_key: unknown;
   request_digest: unknown;
@@ -133,9 +140,11 @@ interface TodayIdempotencyExportRow {
   payload_json: unknown;
   created_at: unknown;
 }
+/** Untrusted aggregate-count evidence returned by Planning persistence. */
 interface CountRow {
   record_count: unknown;
 }
+/** Untrusted durable erasure receipt before replay-evidence validation. */
 interface ErasureReceiptRow {
   requested_by_user_id: unknown;
   request_id: unknown;
@@ -145,12 +154,14 @@ interface ErasureReceiptRow {
 
 /** Stable credential-free failure for malformed contributor requests or evidence. */
 export class PlanningDataRightsError extends Error {
+  /** Creates a stable validation error without reflecting persisted values. */
   constructor(message = 'Planning data-rights operation failed validation') {
     super(message);
     this.name = 'PlanningDataRightsError';
   }
 }
 
+/** Validates one opaque UUIDv4 identifier without reflecting rejected data. */
 function requireUuidV4(value: unknown, field: string): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new PlanningDataRightsError(`${field} must be a UUIDv4`);
@@ -158,6 +169,7 @@ function requireUuidV4(value: unknown, field: string): string {
   return value.toLowerCase();
 }
 
+/** Validates one non-empty persisted string before it enters export evidence. */
 function requireString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.length === 0) {
     throw new PlanningDataRightsError(`${field} is invalid`);
@@ -165,6 +177,7 @@ function requireString(value: unknown, field: string): string {
   return value;
 }
 
+/** Normalizes one persisted timestamp to canonical UTC form. */
 function requireTimestamp(value: unknown, field: string): string | null {
   if (value === null) {
     return null;
@@ -177,6 +190,7 @@ function requireTimestamp(value: unknown, field: string): string | null {
   return parsed.toISOString();
 }
 
+/** Validates the persisted local-date shape used by Today export records. */
 function requireDate(value: unknown): string {
   const text = requireString(value, 'local_date');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
@@ -185,6 +199,7 @@ function requireDate(value: unknown): string {
   return text;
 }
 
+/** Accepts only bounded non-negative integer persistence evidence. */
 function requireNonnegativeInteger(value: unknown, field: string): number {
   const numeric = typeof value === 'string' ? Number(value) : value;
   if (
@@ -197,6 +212,7 @@ function requireNonnegativeInteger(value: unknown, field: string): number {
   return numeric;
 }
 
+/** Validates a canonical SHA-256 digest returned from Planning persistence. */
 function requireSha256(value: unknown): string {
   const candidate = requireString(value, 'sha256').toLowerCase();
   if (!SHA_256_PATTERN.test(candidate)) {
@@ -205,6 +221,7 @@ function requireSha256(value: unknown): string {
   return candidate;
 }
 
+/** Recursively normalizes untrusted persistence values into bounded immutable JSON. */
 function normalizeJson(value: unknown, depth = 0): DataRightsJsonValue {
   if (depth > MAXIMUM_JSON_DEPTH) {
     throw new PlanningDataRightsError(
@@ -266,6 +283,7 @@ function normalizeJson(value: unknown, depth = 0): DataRightsJsonValue {
   return Object.freeze(normalized);
 }
 
+/** Serializes normalized JSON deterministically for stable evidence hashing. */
 function canonicalJson(value: DataRightsJsonValue): string {
   if (value === null) return 'null';
   if (typeof value === 'string') return JSON.stringify(value);
@@ -280,12 +298,14 @@ function canonicalJson(value: DataRightsJsonValue): string {
     .join(',')}}`;
 }
 
+/** Hashes canonical JSON without exposing service-owned persistence metadata. */
 function digest(value: DataRightsJsonValue): string {
   return createHash('sha256')
     .update(canonicalJson(value), 'utf8')
     .digest('hex');
 }
 
+/** Validates request authority fields before any Planning persistence operation. */
 function normalizeRequest(request: DataRightsContributorRequest): {
   readonly request: DataRightsContributorRequest;
   readonly workspaceId: string;
@@ -399,6 +419,7 @@ const ERASURE_DELETE_SQL: Readonly<Record<ErasureTable, string>> =
    SELECT count(*)::integer AS record_count FROM deleted`,
   });
 
+/** Deletes one Planning-owned table slice and validates the returned cardinality. */
 async function countDeleted(
   client: PlanningSqlClient,
   table: ErasureTable,
@@ -415,6 +436,7 @@ async function countDeleted(
 
 /** Concrete Planning-owned implementation of life-os.data-rights-contributor.v1. */
 export class PlanningDataRightsContributor {
+  /** Creates a contributor over the Planning-owned transactional SQL boundary. */
   constructor(private readonly client: TodayTransactionalSqlClient) {}
 
   /**
@@ -446,6 +468,7 @@ export class PlanningDataRightsContributor {
     }
   }
 
+  /** Exports one workspace from a repeatable-read snapshot with deterministic ordering. */
   private async exportWorkspace(
     workspaceId: string,
     requestId: string,
@@ -609,6 +632,7 @@ export class PlanningDataRightsContributor {
     });
   }
 
+  /** Reports whether the durable erasure-receipt prerequisite is available. */
   private async preflightErase(
     requestId: string,
   ): Promise<DataRightsContributorResponse> {
@@ -631,6 +655,7 @@ export class PlanningDataRightsContributor {
     });
   }
 
+  /** Erases one workspace transactionally and returns replay-safe receipt evidence. */
   private async eraseWorkspace(
     workspaceId: string,
     requestedByUserId: string,
@@ -712,6 +737,7 @@ export class PlanningDataRightsContributor {
     });
   }
 
+  /** Verifies that no Planning-owned user records remain for the workspace. */
   private async verifyWorkspaceErased(
     workspaceId: string,
     requestId: string,
