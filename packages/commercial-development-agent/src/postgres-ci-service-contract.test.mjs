@@ -35,11 +35,55 @@ function postgresServiceBlocks(source) {
   return blocks;
 }
 
+/** Return one direct child mapping from a PostgreSQL service block. */
+function directChildMappingBlock(block, key) {
+  const lines = block.split('\n');
+  const serviceMatch = /^(\s+)postgres:\s*$/u.exec(lines[0] ?? '');
+  if (!serviceMatch) throw new Error('invalid PostgreSQL service block');
+
+  const mappingIndent = serviceMatch[1].length + 2;
+  const mappingIndexes = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    const match = /^(\s+)([\w-]+):\s*$/u.exec(line);
+    if (match && match[1].length === mappingIndent && match[2] === key) {
+      mappingIndexes.push(index);
+    }
+  }
+  expect(mappingIndexes).toHaveLength(1);
+
+  const start = mappingIndexes[0];
+  const mapping = [lines[start]];
+  for (let cursor = start + 1; cursor < lines.length; cursor += 1) {
+    const line = lines[cursor] ?? '';
+    if (line.trim()) {
+      const lineIndent = /^\s*/u.exec(line)?.[0].length ?? 0;
+      if (lineIndent <= mappingIndent) break;
+    }
+    mapping.push(line);
+  }
+  return mapping.join('\n');
+}
+
+/** Assert an exact scalar is a direct entry of an extracted YAML mapping. */
+function expectDirectMappingEntry(mappingBlock, key, value) {
+  const lines = mappingBlock.split('\n');
+  const mappingMatch = /^(\s+)[\w-]+:\s*$/u.exec(lines[0] ?? '');
+  if (!mappingMatch) throw new Error('invalid YAML mapping block');
+  const entryIndent = ' '.repeat(mappingMatch[1].length + 2);
+  expect(lines).toContain(`${entryIndent}${key}: ${value}`);
+}
+
 /** Assert the current PostgreSQL service policy against one extracted service block. */
 function expectSecurePostgresServiceBlock(block) {
   expect(block).toContain(`image: ${POSTGRES_CI_IMAGE}`);
-  expect(block).toContain('POSTGRES_HOST_AUTH_METHOD: scram-sha-256');
-  expect(block).toContain(`POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}`);
+  const envBlock = directChildMappingBlock(block, 'env');
+  expectDirectMappingEntry(
+    envBlock,
+    'POSTGRES_HOST_AUTH_METHOD',
+    'scram-sha-256',
+  );
+  expectDirectMappingEntry(envBlock, 'POSTGRES_INITDB_ARGS', POSTGRES_INITDB_ARGS);
   expect(block).not.toMatch(/image:\s+postgres:[^\n]*-alpine@/u);
 }
 
