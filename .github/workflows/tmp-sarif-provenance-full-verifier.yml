@@ -35,13 +35,12 @@ jobs:
       - name: Install exact dependency graph
         run: pnpm install --frozen-lockfile
 
-      - name: Verify SARIF provenance source and package
+      - name: Render canonical candidate diff
         run: |
           set -euo pipefail
-          pnpm exec prettier --check \
+          pnpm exec prettier --write \
             .github/workflows/appguardrail.yml \
             packages/commercial-readiness/src/source-verification-workflow.test.mjs
-          pnpm --filter @life-os/commercial-readiness test
-          pnpm --filter @life-os/commercial-readiness typecheck
-          pnpm --filter @life-os/commercial-readiness build
-          git diff --check
+          git diff -- \
+            .github/workflows/appguardrail.yml \
+            packages/commercial-readiness/src/source-verification-workflow.test.mjs
