@@ -56,6 +56,12 @@ function parseCanonicalGitHubStatusTimestamp(value) {
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
+    // Cleanup cannot replace the already-established response-size classification.
+    try {
+      if (response.body) void response.body.cancel().catch(() => {});
+    } catch {
+      // A synchronous cancellation failure is also non-authoritative cleanup detail.
+    }
     throw RESPONSE_SIZE_ERROR;
   }
   if (!response.body) return '';
