@@ -55,10 +55,13 @@ jobs:
           python <<'PY'
           from pathlib import Path
 
+          def nl(*lines: str) -> str:
+              return '\n'.join(lines) + '\n'
+
           path = Path('apps/planning-service/src/task-completion-history.integration.test.ts')
           text = path.read_text()
           const_anchor = "const CASCADE_TASK_ID = '66666666-6666-4666-8666-666666666666';\n"
-          if "IMMUTABLE_TASK_ID" not in text:
+          if 'IMMUTABLE_TASK_ID' not in text:
               if text.count(const_anchor) != 1:
                   raise SystemExit('immutable task constant anchor mismatch')
               text = text.replace(
@@ -68,73 +71,74 @@ jobs:
               )
 
           test_anchor = "  it('retains each real todo-to-done fact across retries and later reopen', async () => {\n"
-          test_name = "rejects mutation of an existing completion fact"
+          test_name = 'rejects mutation of an existing completion fact'
           if test_name not in text:
               if text.count(test_anchor) != 1:
                   raise SystemExit('immutability regression anchor mismatch')
-              regression = """  it('rejects mutation of an existing completion fact', async () => {
-    await insertTask(IMMUTABLE_TASK_ID);
-    const repository = new PostgresTaskCompletionRepository(createSqlClient());
-    await repository.transitionTaskCompletion(WORKSPACE_ID, IMMUTABLE_TASK_ID, {
-      status: 'done',
-      completedAt: FIRST_COMPLETED_AT,
-    });
-
-    const original = await pool.query<{
-      completion_fact_id: string;
-      completed_at: Date;
-    }>(
-      `SELECT completion_fact_id::text AS completion_fact_id, completed_at
-       FROM planning_task_completion_history_test.task_completion_facts
-       WHERE workspace_id = $1 AND task_id = $2`,
-      [WORKSPACE_ID, IMMUTABLE_TASK_ID],
-    );
-    expect(original.rows).toHaveLength(1);
-    const completionFactId = original.rows[0]?.completion_fact_id;
-    expect(completionFactId).toMatch(UUID_V4_PATTERN);
-
-    await expect(
-      pool.query(
-        `UPDATE planning_task_completion_history_test.task_completion_facts
-         SET completed_at = $3::timestamptz
-         WHERE workspace_id = $1 AND task_id = $2`,
-        [WORKSPACE_ID, IMMUTABLE_TASK_ID, RETRIED_AT],
-      ),
-    ).rejects.toMatchObject({
-      code: '23514',
-      constraint: 'task_completion_facts_immutable',
-    });
-
-    await expect(
-      pool.query(
-        `UPDATE planning_task_completion_history_test.task_completion_facts
-         SET completion_fact_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab'
-         WHERE workspace_id = $1 AND task_id = $2`,
-        [WORKSPACE_ID, IMMUTABLE_TASK_ID],
-      ),
-    ).rejects.toMatchObject({
-      code: '23514',
-      constraint: 'task_completion_facts_immutable',
-    });
-
-    const unchanged = await pool.query<{
-      completion_fact_id: string;
-      completed_at: Date;
-    }>(
-      `SELECT completion_fact_id::text AS completion_fact_id, completed_at
-       FROM planning_task_completion_history_test.task_completion_facts
-       WHERE workspace_id = $1 AND task_id = $2`,
-      [WORKSPACE_ID, IMMUTABLE_TASK_ID],
-    );
-    expect(unchanged.rows).toEqual([
-      {
-        completion_fact_id: completionFactId,
-        completed_at: new Date(FIRST_COMPLETED_AT),
-      },
-    ]);
-  });
-
-"""
+              regression = nl(
+                  "  it('rejects mutation of an existing completion fact', async () => {",
+                  '    await insertTask(IMMUTABLE_TASK_ID);',
+                  '    const repository = new PostgresTaskCompletionRepository(createSqlClient());',
+                  '    await repository.transitionTaskCompletion(WORKSPACE_ID, IMMUTABLE_TASK_ID, {',
+                  "      status: 'done',",
+                  '      completedAt: FIRST_COMPLETED_AT,',
+                  '    });',
+                  '',
+                  '    const original = await pool.query<{',
+                  '      completion_fact_id: string;',
+                  '      completed_at: Date;',
+                  '    }>(',
+                  '      `SELECT completion_fact_id::text AS completion_fact_id, completed_at',
+                  '       FROM planning_task_completion_history_test.task_completion_facts',
+                  '       WHERE workspace_id = $1 AND task_id = $2`,',
+                  '      [WORKSPACE_ID, IMMUTABLE_TASK_ID],',
+                  '    );',
+                  '    expect(original.rows).toHaveLength(1);',
+                  '    const completionFactId = original.rows[0]?.completion_fact_id;',
+                  '    expect(completionFactId).toMatch(UUID_V4_PATTERN);',
+                  '',
+                  '    await expect(',
+                  '      pool.query(',
+                  '        `UPDATE planning_task_completion_history_test.task_completion_facts',
+                  '         SET completed_at = $3::timestamptz',
+                  '         WHERE workspace_id = $1 AND task_id = $2`,',
+                  '        [WORKSPACE_ID, IMMUTABLE_TASK_ID, RETRIED_AT],',
+                  '      ),',
+                  '    ).rejects.toMatchObject({',
+                  "      code: '23514',",
+                  "      constraint: 'task_completion_facts_immutable',",
+                  '    });',
+                  '',
+                  '    await expect(',
+                  '      pool.query(',
+                  "        `UPDATE planning_task_completion_history_test.task_completion_facts",
+                  "         SET completion_fact_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab'",
+                  '         WHERE workspace_id = $1 AND task_id = $2`,',
+                  '        [WORKSPACE_ID, IMMUTABLE_TASK_ID],',
+                  '      ),',
+                  '    ).rejects.toMatchObject({',
+                  "      code: '23514',",
+                  "      constraint: 'task_completion_facts_immutable',",
+                  '    });',
+                  '',
+                  '    const unchanged = await pool.query<{',
+                  '      completion_fact_id: string;',
+                  '      completed_at: Date;',
+                  '    }>(',
+                  '      `SELECT completion_fact_id::text AS completion_fact_id, completed_at',
+                  '       FROM planning_task_completion_history_test.task_completion_facts',
+                  '       WHERE workspace_id = $1 AND task_id = $2`,',
+                  '      [WORKSPACE_ID, IMMUTABLE_TASK_ID],',
+                  '    );',
+                  '    expect(unchanged.rows).toEqual([',
+                  '      {',
+                  '        completion_fact_id: completionFactId,',
+                  '        completed_at: new Date(FIRST_COMPLETED_AT),',
+                  '      },',
+                  '    ]);',
+                  '  });',
+                  '',
+              )
               text = text.replace(test_anchor, regression + test_anchor, 1)
           path.write_text(text)
           PY
@@ -162,33 +166,38 @@ jobs:
           python <<'PY'
           from pathlib import Path
 
+          def nl(*lines: str) -> str:
+              return '\n'.join(lines) + '\n'
+
           migration = Path('apps/planning-service/migrations/0007_task_completion_facts.sql')
           text = migration.read_text()
-          anchor = """CREATE INDEX task_completion_facts_workspace_completed_idx
-  ON planning.task_completion_facts
-  (workspace_id, completed_at, task_id, completion_sequence);
-"""
-          addition = """CREATE FUNCTION planning.reject_task_completion_fact_update()
-RETURNS trigger
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  RAISE EXCEPTION 'Task completion facts are immutable'
-    USING ERRCODE = '23514',
-          CONSTRAINT = 'task_completion_facts_immutable';
-END;
-$$;
-
-COMMENT ON FUNCTION planning.reject_task_completion_fact_update() IS
-  'Rejects UPDATE so durable Planning completion facts remain append-only while DELETE remains available for erasure and cascade.';
-
-CREATE TRIGGER task_completion_facts_immutability_guard
-BEFORE UPDATE
-ON planning.task_completion_facts
-FOR EACH ROW
-EXECUTE FUNCTION planning.reject_task_completion_fact_update();
-
-"""
+          anchor = nl(
+              'CREATE INDEX task_completion_facts_workspace_completed_idx',
+              '  ON planning.task_completion_facts',
+              '  (workspace_id, completed_at, task_id, completion_sequence);',
+          )
+          addition = nl(
+              'CREATE FUNCTION planning.reject_task_completion_fact_update()',
+              'RETURNS trigger',
+              'LANGUAGE plpgsql',
+              'AS $$',
+              'BEGIN',
+              "  RAISE EXCEPTION 'Task completion facts are immutable'",
+              "    USING ERRCODE = '23514',",
+              "          CONSTRAINT = 'task_completion_facts_immutable';",
+              'END;',
+              '$$;',
+              '',
+              'COMMENT ON FUNCTION planning.reject_task_completion_fact_update() IS',
+              "  'Rejects UPDATE so durable Planning completion facts remain append-only while DELETE remains available for erasure and cascade.';",
+              '',
+              'CREATE TRIGGER task_completion_facts_immutability_guard',
+              'BEFORE UPDATE',
+              'ON planning.task_completion_facts',
+              'FOR EACH ROW',
+              'EXECUTE FUNCTION planning.reject_task_completion_fact_update();',
+              '',
+          )
           if 'task_completion_facts_immutability_guard' not in text:
               if text.count(anchor) != 1:
                   raise SystemExit('migration immutability insertion anchor mismatch')
