@@ -1,5 +1,6 @@
 name: Repair Planning PostgreSQL fixture migration chain
 
+# Bounded RED-to-GREEN repair for stale explicit Planning migration fixtures.
 on:
   push:
     branches: [feat/planning-task-completion-chronology-v1]
