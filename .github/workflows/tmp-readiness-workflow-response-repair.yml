@@ -37,6 +37,9 @@ jobs:
           git fetch origin fix/actions-draft-queue-pressure-v1
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/fix/actions-draft-queue-pressure-v1)"
 
+      - name: Install reproducible workspace
+        run: pnpm install --frozen-lockfile
+
       - name: Apply minimal workflow-run pagination repair
         shell: bash
         run: |
@@ -201,7 +204,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm install --frozen-lockfile
           node --test packages/commercial-readiness/src/github-client-workflow-response-boundary.test.mjs
           pnpm --filter @life-os/commercial-readiness test
           pnpm --filter @life-os/commercial-readiness typecheck
