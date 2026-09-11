@@ -13,7 +13,17 @@ async function repositoryFile(path) {
 }
 
 function mergeCompatibilityJobBlock(workflow) {
-  return workflow.slice(workflow.indexOf('  merge_compatibility:'));
+  const lines = workflow.split(/\r?\n/u);
+  const start = lines.findIndex((line) => line === '  merge_compatibility:');
+  assert.notEqual(start, -1, 'missing merge_compatibility workflow job');
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_.-]+:\s*(?:#.*)?$/u.test(lines[index] ?? '')) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
 }
 
 describe('CI GitHub read retry contract', () => {
