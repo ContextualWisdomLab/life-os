@@ -34,11 +34,12 @@ test('preserves the response-size classification when stream cancellation fails'
   assert.equal(cancelCalls, 1);
 });
 
-test('cancels a declared-oversized response before rejecting it', async () => {
+test('cancels a declared-oversized response without replacing the size classification', async () => {
   let cancelCalls = 0;
   const body = new ReadableStream({
     cancel() {
       cancelCalls += 1;
+      return Promise.reject(new Error('declared-size cancellation failed'));
     },
   });
   const client = new GitHubApiClient({
