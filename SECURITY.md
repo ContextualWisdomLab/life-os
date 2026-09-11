@@ -45,6 +45,12 @@ Never submit live credentials, tokens, private keys, production database content
 
 If a secret is exposed, revoke or rotate it immediately. Removing it from the latest commit is not sufficient because Git history, forks, caches, and logs may retain copies.
 
+## Dependency lifecycle-script policy
+
+Dependency install scripts are denied unless the dependency is explicitly reviewed in `pnpm-workspace.yaml`. The allowlist is intentionally narrow: each permitted package must have a concrete repository use and lockfile-backed version/integrity evidence. `strictDepBuilds: true` turns any newly requested, unreviewed dependency build script into an installation failure instead of a warning. Do not replace this boundary with `dangerouslyAllowAllBuilds`, a global script allowance, or an interactive approval that is not committed and reviewable.
+
+The current `esbuild` allowance exists because locked `vite@7.3.6` depends on `esbuild@0.28.1`, and LifeOS uses the Vite/Vitest toolchain for repository tests. Changing that dependency path, version, or integrity requires the installation-policy regression to be reviewed with the lockfile change.
+
 ## Dependency and deployment responsibility
 
 The upstream project monitors and fixes issues in its source and declared dependencies where practicable. Independent operators remain responsible for secure configuration, patch deployment, network controls, identity-provider settings, secrets management, backups, monitoring, incident response, and third-party services.
