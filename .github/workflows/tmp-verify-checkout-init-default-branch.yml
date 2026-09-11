@@ -38,6 +38,47 @@ jobs:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
+      - name: Apply bounded checkout initialization repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          checkout = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+          paths = [
+              Path('.github/workflows/ci.yml'),
+              Path('.github/workflows/deploy.yml'),
+              Path('.github/workflows/commercial-readiness.yml'),
+              Path('.github/workflows/ai-proposal-live-conformance.yml'),
+              Path('.github/workflows/opencode-commercial-development.yml'),
+              Path('.github/workflows/appguardrail.yml'),
+          ]
+          total = 0
+          for path in paths:
+              lines = path.read_text().splitlines(keepends=True)
+              repaired = []
+              count = 0
+              for line in lines:
+                  repaired.append(line)
+                  if f'uses: {checkout}' not in line:
+                      continue
+                  indent = line[: len(line) - len(line.lstrip())]
+                  repaired.extend([
+                      f'{indent}env:\n',
+                      f"{indent}  GIT_CONFIG_COUNT: '1'\n",
+                      f'{indent}  GIT_CONFIG_KEY_0: init.defaultBranch\n',
+                      f'{indent}  GIT_CONFIG_VALUE_0: main\n',
+                  ])
+                  count += 1
+              if count == 0:
+                  raise SystemExit(f'{path}: no reviewed checkout step found')
+              path.write_text(''.join(repaired))
+              total += count
+          print(f'configured {total} checkout steps across {len(paths)} workflows')
+          PY
+          git diff --check
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -53,3 +94,42 @@ jobs:
         run: >-
           pnpm --filter @life-os/commercial-development-agent exec vitest run
           src/node24-actions-contract.test.mjs
+
+      - name: Check bounded repair formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          .github/workflows/ci.yml
+          .github/workflows/deploy.yml
+          .github/workflows/commercial-readiness.yml
+          .github/workflows/ai-proposal-live-conformance.yml
+          .github/workflows/opencode-commercial-development.yml
+          .github/workflows/appguardrail.yml
+          packages/commercial-development-agent/src/node24-actions-contract.test.mjs
+
+      - name: Stage bounded repair artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "${RUNNER_TEMP}/checkout-init-repair/.github/workflows"
+          cp .github/workflows/ci.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          cp .github/workflows/deploy.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          cp .github/workflows/commercial-readiness.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          cp .github/workflows/ai-proposal-live-conformance.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          cp .github/workflows/opencode-commercial-development.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          cp .github/workflows/appguardrail.yml "${RUNNER_TEMP}/checkout-init-repair/.github/workflows/"
+          git diff -- \
+            .github/workflows/ci.yml \
+            .github/workflows/deploy.yml \
+            .github/workflows/commercial-readiness.yml \
+            .github/workflows/ai-proposal-live-conformance.yml \
+            .github/workflows/opencode-commercial-development.yml \
+            .github/workflows/appguardrail.yml \
+            >"${RUNNER_TEMP}/checkout-init-repair/repair.diff"
+
+      - name: Upload bounded repair artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checkout-init-default-branch-repair-${{ github.run_id }}
+          path: ${{ runner.temp }}/checkout-init-repair
+          if-no-files-found: error
+          retention-days: 1
