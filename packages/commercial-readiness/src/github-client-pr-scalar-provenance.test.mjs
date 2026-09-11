@@ -71,6 +71,12 @@ async function evaluateDetail(detailOverride) {
   });
 }
 
+it('keeps the valid scalar fixture eligible before malformed authority cases are introduced', async () => {
+  const snapshot = await evaluateDetail({});
+  assert.equal(snapshot.pull_requests[0].eligible, true);
+  assert.deepEqual(snapshot.pull_requests[0].blockers, []);
+});
+
 it('does not coerce malformed pull-request authority scalars into merge eligibility', async () => {
   for (const malformed of [
     { state: ['open'] },
