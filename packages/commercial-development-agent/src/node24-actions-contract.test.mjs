@@ -30,10 +30,10 @@ function expectReviewedActionPins(path, workflow) {
   expect(workflow, path).not.toContain(checkoutNode20);
   expect(workflow, path).not.toContain(setupNode20);
   expect(workflow, path).not.toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24');
-  for (const match of workflow.matchAll(/actions\/checkout@([0-9a-f]{40})/g)) {
+  for (const match of workflow.matchAll(/actions\/checkout@([^\s"'#]+)/g)) {
     expect(match[0], path).toBe(checkoutNode24);
   }
-  for (const match of workflow.matchAll(/actions\/setup-node@([0-9a-f]{40})/g)) {
+  for (const match of workflow.matchAll(/actions\/setup-node@([^\s"'#]+)/g)) {
     expect(match[0], path).toBe(setupNode24);
   }
 }
