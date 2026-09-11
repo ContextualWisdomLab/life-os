@@ -4,6 +4,12 @@ Apply SQL files in lexical order to the PostgreSQL database owned by the Plannin
 
 - `0001_initial_planning.sql` creates tenant-safe Goal → Project → Task tables. Parent-child foreign keys include `workspace_id`, preventing a child record from referencing a parent in another workspace.
 - `0002_durable_repository_contract.sql` enforces UUIDv4 identifiers, adds the composite task ownership key used by durable adapters, and replaces descending indexes with deterministic creation-order indexes.
+- `0003_durable_today_sync.sql` creates the durable Today aggregate and idempotency records used to make Planning-owned Today synchronization replay-safe.
+- `0004_data_rights_erasure_receipts.sql` creates durable Planning-owned erasure receipts so data-rights completion can be evidenced without retaining erased subject data.
+- `0005_task_completion_chronology.sql` stages the task completion-state invariant with `NOT VALID`. New and changed rows must already satisfy `todo ⇒ completed_at IS NULL` and `done ⇒ completed_at >= created_at`, while PostgreSQL avoids the initial historical-table validation scan during the constraint-add step.
+- `0006_validate_task_completion_chronology.sql` validates the staged completion constraint against historical rows in a separate migration boundary. Deployment must fail closed on any historical violation; do not shift application traffic until this migration succeeds.
+
+Keep `0005` and `0006` as separate lexical migration boundaries. Do not wrap the pair in one transaction: staged addition is intentionally separated from the historical validation scan so the stronger validation lock is not held across unrelated migration work.
 
 ## Runtime configuration
 
@@ -13,4 +19,4 @@ The application does not apply migrations during startup. Deployment automation 
 
 ## Rollback
 
-Migrations are forward-only in automated environments. For an operator-approved rollback of `0002`, drop the three `*_creation_idx` indexes, recreate the indexes from `0001`, drop `tasks_id_workspace_unique`, and drop the `*_uuid_v4` check constraints. Roll back `0001` only after exporting service-owned data because it removes the Planning schema.
+Migrations are forward-only in automated environments. For an operator-approved rollback of the `0005`/`0006` completion-chronology pair, drop `planning.tasks.tasks_completion_state_check` only after confirming that removing the durable invariant is an acceptable data-integrity regression; `0006` creates no separate database object to undo. For an operator-approved rollback of `0002`, drop the three `*_creation_idx` indexes, recreate the indexes from `0001`, drop `tasks_id_workspace_unique`, and drop the `*_uuid_v4` check constraints. Roll back `0001` only after exporting service-owned data because it removes the Planning schema.

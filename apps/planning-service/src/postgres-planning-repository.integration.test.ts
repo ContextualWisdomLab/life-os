@@ -37,6 +37,9 @@ async function applyMigrations(pool: Pool): Promise<void> {
     '0001_initial_planning.sql',
     '0002_durable_repository_contract.sql',
     '0003_durable_today_sync.sql',
+    '0004_data_rights_erasure_receipts.sql',
+    '0005_task_completion_chronology.sql',
+    '0006_validate_task_completion_chronology.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migration),
