@@ -39,7 +39,10 @@ function snapshotClient() {
         return { total_count: 0, workflow_runs: [] };
       }
       if (path.startsWith(`/repos/o/r/commits/${headSha}/statuses?`)) return [];
-      if (path === `/repos/o/r/compare/${baseSha}...${headSha}`) {
+      if (
+        path ===
+        `/repos/o/r/compare/${baseSha}...${headSha}?per_page=1&page=2`
+      ) {
         return {
           url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
           behind_by: 0,
