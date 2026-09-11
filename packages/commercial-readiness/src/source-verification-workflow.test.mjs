@@ -75,6 +75,47 @@ test('required source-verification jobs explicitly checkout the contributor head
     'AppGuardrail is not bound to the contributor head',
   );
 
+  const sarifProvenance = stepBlock(
+    appguardrail,
+    'Materialize AppGuardrail SARIF PR merge provenance',
+  );
+  assert.ok(
+    sarifProvenance.includes(
+      'PR_NUMBER: ${{ github.event.pull_request.number }}',
+    ),
+    'AppGuardrail SARIF provenance is not bound to the pull request number',
+  );
+  assert.ok(
+    sarifProvenance.includes('EXPECTED_MERGE_SHA: ${{ github.sha }}'),
+    'AppGuardrail SARIF provenance is not bound to the advertised merge SHA',
+  );
+  assert.ok(
+    sarifProvenance.includes(
+      'git fetch --no-tags --depth=1 origin "$merge_ref"',
+    ),
+    'AppGuardrail SARIF provenance must fetch only the bounded PR merge ref',
+  );
+  assert.ok(
+    sarifProvenance.includes('git rev-parse FETCH_HEAD'),
+    'AppGuardrail SARIF provenance must verify the fetched merge identity',
+  );
+  assert.ok(
+    sarifProvenance.includes(
+      'git cat-file -e "${EXPECTED_MERGE_SHA}^{commit}"',
+    ),
+    'AppGuardrail SARIF provenance must verify the merge commit object locally',
+  );
+  assert.equal(
+    sarifProvenance.includes('fetch-depth: 0'),
+    false,
+    'AppGuardrail SARIF provenance must not broaden checkout history',
+  );
+  assert.equal(
+    sarifProvenance.includes('git checkout'),
+    false,
+    'AppGuardrail SARIF provenance must not replace the analyzed contributor head',
+  );
+
   const sarifUpload = stepBlock(
     appguardrail,
     'Upload AppGuardrail SARIF to code scanning',
