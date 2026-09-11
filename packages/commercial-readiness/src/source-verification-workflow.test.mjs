@@ -5,14 +5,16 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
-const SOURCE_REF = 'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
+const SOURCE_REF =
+  'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 const ADVERTISED_MERGE_REF =
   'ref: refs/pull/${{ github.event.pull_request.number }}/merge';
 const LIVE_SOURCE_REF =
   'ref: ${{ steps.live-identities.outputs.current_source }}';
 const SARIF_SOURCE_REF =
   "ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref }}";
-const SARIF_SOURCE_SHA = 'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
+const SARIF_SOURCE_SHA =
+  'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
 
 /** Reads one repository workflow as UTF-8 text. */
 function readWorkflow(name) {
@@ -37,7 +39,9 @@ function jobBlock(workflow, jobName) {
 /** Extracts one named workflow step from an already bounded job block. */
 function stepBlock(job, stepName) {
   const lines = job.split('\n');
-  const start = lines.findIndex((line) => line.trim() === `- name: ${stepName}`);
+  const start = lines.findIndex(
+    (line) => line.trim() === `- name: ${stepName}`,
+  );
   assert.notEqual(start, -1, `missing step ${stepName}`);
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
@@ -142,7 +146,9 @@ test('merge compatibility reconstructs a fresh integration tree from current API
   assert.ok(block.includes('id: live-identities'));
   assert.ok(block.includes('GITHUB_TOKEN: ${{ github.token }}'));
   assert.ok(block.includes('/pulls/${{ github.event.pull_request.number }}'));
-  assert.ok(block.includes('/commits/${{ github.event.pull_request.base.ref }}'));
+  assert.ok(
+    block.includes('/commits/${{ github.event.pull_request.base.ref }}'),
+  );
   assert.ok(block.includes(LIVE_SOURCE_REF));
   assert.ok(
     block.includes('fetch-depth: 0'),
