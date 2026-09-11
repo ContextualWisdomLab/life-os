@@ -19,11 +19,13 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Run focused response-boundary regression
+      - name: Run focused response-boundary regressions
         shell: bash
         run: |
           set -euo pipefail
-          node --test packages/commercial-readiness/src/github-client-page-size.test.mjs
+          node --test \
+            packages/commercial-readiness/src/github-client-page-size.test.mjs \
+            packages/commercial-readiness/src/github-client-workflow-response-boundary.test.mjs
 
       - name: Run complete Commercial Readiness suite
         shell: bash
