@@ -52,6 +52,15 @@ describe('dependency installation boundary', () => {
   });
 
   it('binds the reviewed esbuild script authority to the locked Vite dependency', () => {
+    const lockedEsbuildVersions = [
+      ...new Set(
+        [...lockfile.matchAll(/^  esbuild@([^:\n]+):$/gmu)].map(
+          ([, version]) => version,
+        ),
+      ),
+    ].sort();
+
+    expect(lockedEsbuildVersions).toEqual(['0.28.1']);
     expect(lockfile).toContain('vite@7.3.6');
     expect(lockfile).toMatch(
       /vite@7\.3\.6[^:]*:\n(?:[ \t].*\n)*?[ \t]+dependencies:\n(?:[ \t].*\n)*?[ \t]+esbuild: 0\.28\.1/u,
