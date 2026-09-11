@@ -12,7 +12,9 @@ function status(id, context, state = 'success') {
     context,
     state,
     sha: HEAD_SHA,
-    created_at: new Date(Date.UTC(2026, 8, 6, 0, 0, id % 60)).toISOString(),
+    created_at: new Date(Date.UTC(2026, 8, 6, 0, 0, id % 60))
+      .toISOString()
+      .replace('.000Z', 'Z'),
   };
 }
 
