@@ -98,6 +98,54 @@ test('retries an oversized list page with a smaller bounded page size', async ()
   );
 });
 
+test('continues halving an oversized list page until one bounded page succeeds', async () => {
+  const requestedPaths = [];
+  const client = new GitHubApiClient({
+    token: 'token',
+    maxResponseBytes: 1024,
+    fetchImpl: async (url) => {
+      const requestUrl = new URL(url);
+      const path = `${requestUrl.pathname}${requestUrl.search}`;
+      requestedPaths.push(path);
+      if (path.startsWith('/repos/o/r/pulls?')) return jsonResponse([]);
+      if (!path.startsWith('/repos/o/r/issues?')) {
+        throw new Error(`Unexpected URL: ${url}`);
+      }
+      const pageSize = Number(requestUrl.searchParams.get('per_page'));
+      if (pageSize > 25) {
+        return jsonResponse([
+          {
+            number: 1,
+            title: 'x'.repeat(2048),
+            state: 'open',
+            labels: [],
+          },
+        ]);
+      }
+      assert.equal(pageSize, 25);
+      return jsonResponse([
+        { number: 1, title: 'bounded-at-25', state: 'open', labels: [] },
+      ]);
+    },
+  });
+
+  const snapshot = await collectRepositorySnapshot(
+    client,
+    'o/r',
+    snapshotOptions(),
+  );
+
+  assert.deepEqual(snapshot.issues, [
+    { number: 1, title: 'bounded-at-25', state: 'open', labels: [] },
+  ]);
+  assert.equal(
+    requestedPaths.some(
+      (path) => path.includes('/issues?') && path.includes('per_page=25'),
+    ),
+    true,
+  );
+});
+
 test('accepts exactly the bounded item limit after an empty confirmation page', async () => {
   const requestedPaths = [];
   const client = new GitHubApiClient({
