@@ -1,0 +1,93 @@
+name: Temporary Commercial Response Halving Repair
+
+on:
+  push:
+    branches:
+      - fix/actions-draft-queue-pressure-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+
+      - name: Apply bounded causal repair and verify
+        shell: bash
+        env:
+          BRANCH_NAME: fix/actions-draft-queue-pressure-v1
+        run: |
+          set -Eeuo pipefail
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'packages/commercial-readiness/src/github-client.mjs';
+          let source = fs.readFileSync(path, 'utf8');
+
+          const fallbackConstant = 'const FALLBACK_API_PAGE_SIZE = 50;';
+          if ((source.split(fallbackConstant).length - 1) !== 1) {
+            throw new Error('Expected exactly one fallback page-size constant');
+          }
+          source = source.replace(
+            fallbackConstant,
+            `const MIN_API_PAGE_SIZE = 1;\n\n/**\n * Build a finite descending page-size sequence for response-bound retries.\n *\n * Oversized list responses are retried with progressively smaller GitHub page sizes without\n * increasing the response-byte ceiling or reducing the repository item ceiling. Halving stops\n * at one item, so even unusually large individual records fail closed after a finite traversal.\n *\n * @returns {number[]} Page sizes from the normal GitHub maximum down to one item.\n */\nfunction buildResponseBoundedPageSizes() {\n  const pageSizes = [];\n  let pageSize = API_PAGE_SIZE;\n  while (true) {\n    pageSizes.push(pageSize);\n    if (pageSize === MIN_API_PAGE_SIZE) return pageSizes;\n    pageSize = Math.max(MIN_API_PAGE_SIZE, Math.floor(pageSize / 2));\n  }\n}\n\nconst RESPONSE_BOUNDED_PAGE_SIZES = buildResponseBoundedPageSizes();`,
+          );
+
+          const loopPattern =
+            'for (const pageSize of [API_PAGE_SIZE, FALLBACK_API_PAGE_SIZE]) {';
+          if ((source.split(loopPattern).length - 1) !== 2) {
+            throw new Error('Expected exactly two response-bound pagination loops');
+          }
+          source = source.split(loopPattern).join(
+            'for (const pageSize of RESPONSE_BOUNDED_PAGE_SIZES) {',
+          );
+
+          const terminalPattern = 'pageSize === FALLBACK_API_PAGE_SIZE';
+          if ((source.split(terminalPattern).length - 1) !== 2) {
+            throw new Error('Expected exactly two fallback terminal conditions');
+          }
+          source = source.split(terminalPattern).join(
+            'pageSize === MIN_API_PAGE_SIZE',
+          );
+
+          if (source.includes('FALLBACK_API_PAGE_SIZE')) {
+            throw new Error('Legacy two-step fallback constant survived repair');
+          }
+          fs.writeFileSync(path, source);
+          NODE
+
+          corepack enable
+          pnpm install --frozen-lockfile
+          node --test packages/commercial-readiness/src/github-client-page-size.test.mjs
+          pnpm --filter @life-os/commercial-readiness test
+          pnpm --filter @life-os/commercial-readiness typecheck
+          pnpm --filter @life-os/commercial-readiness build
+          pnpm exec prettier --check \
+            packages/commercial-readiness/src/github-client.mjs \
+            packages/commercial-readiness/src/github-client-page-size.test.mjs
+          git diff --check
+
+          rm .github/workflows/tmp-repair-commercial-response-halving.yml
+          git add \
+            packages/commercial-readiness/src/github-client.mjs \
+            .github/workflows/tmp-repair-commercial-response-halving.yml
+
+          test -n "$(git diff --cached --name-only)"
+          unexpected="$(git diff --cached --name-only | grep -Ev '^(packages/commercial-readiness/src/github-client\.mjs|\.github/workflows/tmp-repair-commercial-response-halving\.yml)$' || true)"
+          test -z "$unexpected"
+
+          git config user.name 'LifeOS Commercial Maintainer'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'fix(commercial): halve oversized GitHub pages to bounded floor'
+
+          git fetch --no-tags origin "refs/heads/${BRANCH_NAME}:refs/remotes/origin/${BRANCH_NAME}"
+          remote_head="$(git rev-parse "refs/remotes/origin/${BRANCH_NAME}")"
+          test "$remote_head" = "$GITHUB_SHA"
+          git push origin "HEAD:refs/heads/${BRANCH_NAME}"
