@@ -1,0 +1,103 @@
+name: Temporary Readiness Page Limit Repair
+
+on:
+  push:
+    branches:
+      - fix/actions-draft-queue-pressure-v1
+    paths:
+      - .github/workflows/tmp-readiness-page-limit-repair.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-readiness-page-limit-repair-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply minimal page-limit repair and retire temporary workflows
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = 'packages/commercial-readiness/src/github-client.mjs';
+          const before = '    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);';
+          const after = '    const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize) + 1;';
+          const source = fs.readFileSync(path, 'utf8');
+          const occurrences = source.split(before).length - 1;
+          if (occurrences !== 1) {
+            throw new Error(`Expected one pageLimit repair target, found ${occurrences}`);
+          }
+          fs.writeFileSync(path, source.replace(before, after));
+          NODE
+          rm .github/workflows/tmp-readiness-page-limit.yml
+          rm .github/workflows/tmp-readiness-page-limit-repair.yml
+          git diff --check
+
+      - name: Create exact candidate commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'LifeOS Commercial Writer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add packages/commercial-readiness/src/github-client.mjs \
+            packages/commercial-readiness/src/github-client-page-size.test.mjs \
+            .github/workflows/tmp-readiness-page-limit.yml \
+            .github/workflows/tmp-readiness-page-limit-repair.yml
+          git commit -m 'fix(readiness): permit pagination limit confirmation'
+          test -z "$(git status --porcelain)"
+
+      - name: Check focused formatting on exact candidate
+        run: >-
+          pnpm exec prettier --check
+          packages/commercial-readiness/src/github-client.mjs
+          packages/commercial-readiness/src/github-client-page-size.test.mjs
+
+      - name: Verify page-limit boundary on exact candidate
+        run: node --test packages/commercial-readiness/src/github-client-page-size.test.mjs
+
+      - name: Verify Commercial Readiness typecheck on exact candidate
+        run: pnpm --filter @life-os/commercial-readiness typecheck
+
+      - name: Verify Commercial Readiness build on exact candidate
+        run: pnpm --filter @life-os/commercial-readiness build
+
+      - name: Verify complete Commercial Readiness suite on exact candidate
+        run: pnpm --filter @life-os/commercial-readiness test
+
+      - name: Publish ordinary fast-forward candidate
+        shell: bash
+        env:
+          INPUT_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          git fetch origin fix/actions-draft-queue-pressure-v1
+          remote_sha="$(git rev-parse origin/fix/actions-draft-queue-pressure-v1)"
+          if [ "$remote_sha" != "$INPUT_SHA" ]; then
+            echo "Remote head moved from $INPUT_SHA to $remote_sha; refusing publication." >&2
+            exit 1
+          fi
+          git push origin HEAD:refs/heads/fix/actions-draft-queue-pressure-v1
