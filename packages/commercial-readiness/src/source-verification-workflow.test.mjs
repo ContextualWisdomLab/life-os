@@ -36,14 +36,21 @@ function jobBlock(workflow, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-/** Finds one named workflow step by its exact YAML sequence entry. */
+/** Finds one unique named workflow step by its exact YAML sequence entry. */
 function stepStartIndex(job, stepName) {
   const lines = job.split('\n');
-  const start = lines.findIndex(
-    (line) => line.trim() === `- name: ${stepName}`,
+  const matches = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trim() === `- name: ${stepName}`) {
+      matches.push(index);
+    }
+  }
+  assert.equal(
+    matches.length,
+    1,
+    `expected exactly one step ${stepName}, found ${matches.length}`,
   );
-  assert.notEqual(start, -1, `missing step ${stepName}`);
-  return start;
+  return matches[0];
 }
 
 /** Extracts one named workflow step from an already bounded job block. */
