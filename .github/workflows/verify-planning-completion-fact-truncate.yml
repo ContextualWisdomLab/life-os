@@ -1,6 +1,6 @@
 name: Verify Planning completion fact truncate guard
 
-# Exact-head GREEN verifier after the Planning-owned truncate guard repair.
+# Final exact-head verifier after source and rollback documentation are current.
 on:
   push:
     branches: [feat/planning-task-completion-history-v1]
