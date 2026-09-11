@@ -1,5 +1,6 @@
 name: Verify Planning completion fact truncate guard
 
+# Exact-head rerun after canonical regression formatting.
 on:
   push:
     branches: [feat/planning-task-completion-history-v1]
