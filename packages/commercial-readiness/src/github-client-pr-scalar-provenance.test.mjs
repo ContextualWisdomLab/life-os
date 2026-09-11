@@ -15,6 +15,8 @@ function clientForDetail(detailOverride) {
     mergeable_state: 'clean',
     base: { ref: 'main', sha: baseSha },
     head: { sha: headSha, repo: { full_name: 'o/r' } },
+    user: { login: 'author-a' },
+    author_association: 'MEMBER',
     ...detailOverride,
   };
   return {
@@ -36,7 +38,17 @@ function clientForDetail(detailOverride) {
         return { total_count: 0, workflow_runs: [] };
       }
       if (path.startsWith(`/repos/o/r/commits/${headSha}/statuses?`)) return [];
-      if (path.startsWith('/repos/o/r/compare/')) return { behind_by: 0 };
+      if (
+        path ===
+        `/repos/o/r/compare/${baseSha}...${headSha}?per_page=1&page=2`
+      ) {
+        return {
+          url: `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`,
+          behind_by: 0,
+          base_commit: { sha: baseSha },
+          merge_base_commit: { sha: baseSha },
+        };
+      }
       if (path === '/graphql') {
         return {
           data: {
@@ -78,14 +90,26 @@ it('keeps the valid scalar fixture eligible before malformed authority cases are
 });
 
 it('does not coerce malformed pull-request authority scalars into merge eligibility', async () => {
-  for (const malformed of [
-    { state: ['open'] },
-    { mergeable_state: ['clean'] },
-    { base: { ref: ['main'], sha: baseSha } },
-    { head: { sha: headSha, repo: { full_name: ['o/r'] } } },
+  for (const [malformed, blocker] of [
+    [{ state: ['open'] }, 'not-open'],
+    [{ mergeable_state: ['clean'] }, 'merge-state-unknown'],
+    [{ base: { ref: ['main'], sha: baseSha } }, 'wrong-base'],
+    [
+      { head: { sha: headSha, repo: { full_name: ['o/r'] } } },
+      'fork',
+    ],
   ]) {
     const snapshot = await evaluateDetail(malformed);
     assert.equal(snapshot.pull_requests[0].eligible, false);
+    assert.deepEqual(snapshot.pull_requests[0].blockers, [blocker]);
+    assert.equal(
+      snapshot.pull_requests[0].blockers.includes('base-out-of-date'),
+      false,
+    );
+    assert.equal(
+      snapshot.pull_requests[0].blockers.includes('missing-approval'),
+      false,
+    );
   }
 
   await assert.rejects(
