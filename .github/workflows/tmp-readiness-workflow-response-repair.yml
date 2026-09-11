@@ -195,6 +195,7 @@ jobs:
           '''
           path.write_text(text[:start] + replacement + text[end:])
           PY
+          pnpm exec prettier --single-quote --write packages/commercial-readiness/src/github-client.mjs
 
       - name: Validate exact candidate
         shell: bash
