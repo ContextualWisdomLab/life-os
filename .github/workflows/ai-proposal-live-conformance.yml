@@ -46,6 +46,10 @@ jobs:
     steps:
       - name: Checkout LifeOS
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
 
@@ -141,6 +145,10 @@ jobs:
       - name: Checkout pinned contextual-orchestrator
         if: env.LIVE_ENABLED == 'true' && steps.models.outputs.configured == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           repository: ContextualWisdomLab/contextual-orchestrator
           ref: ${{ env.CONTEXTUAL_ORCHESTRATOR_COMMIT }}

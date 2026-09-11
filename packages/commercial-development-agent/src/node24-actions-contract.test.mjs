@@ -44,7 +44,9 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
     line.includes(`uses: ${checkoutNode24}`) ? [index] : [],
   );
 
-  expect(checkoutLineIndexes.length, `${path} checkout count`).toBeGreaterThan(0);
+  expect(checkoutLineIndexes.length, `${path} checkout count`).toBeGreaterThan(
+    0,
+  );
 
   for (const checkoutLineIndex of checkoutLineIndexes) {
     const checkoutLine = lines[checkoutLineIndex];
@@ -56,13 +58,18 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
       const candidate = lines[index];
       if (candidate.trim() === '') continue;
       const candidateIndent = candidate.length - candidate.trimStart().length;
-      if (candidateIndent === stepIndent && candidate.trimStart().startsWith('- ')) {
+      if (
+        candidateIndent === stepIndent &&
+        candidate.trimStart().startsWith('- ')
+      ) {
         stepEnd = index;
         break;
       }
     }
 
-    const step = lines.slice(checkoutLineIndex, stepEnd).join(String.fromCharCode(10));
+    const step = lines
+      .slice(checkoutLineIndex, stepEnd)
+      .join(String.fromCharCode(10));
     const envIndent = ' '.repeat(usesIndent);
     const entryIndent = ' '.repeat(usesIndent + 2);
     expect(step, `${path} checkout env`).toContain(`${envIndent}env:`);
