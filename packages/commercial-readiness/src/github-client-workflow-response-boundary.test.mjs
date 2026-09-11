@@ -20,7 +20,7 @@ function jsonResponse(value) {
   });
 }
 
-function workflowRun(id) {
+function workflowRun(id, paddingLength = 180) {
   return {
     id,
     name: 'CI',
@@ -30,14 +30,14 @@ function workflowRun(id) {
     run_attempt: 1,
     updated_at: '2026-09-11T10:00:00Z',
     pull_requests: [{ number: 7 }],
-    padding: 'x'.repeat(180),
+    padding: 'x'.repeat(paddingLength),
   };
 }
 
-function boundedWorkflowFetch() {
+function boundedWorkflowFetch({ paddingLength = 180 } = {}) {
   const calls = [];
   const runs = Array.from({ length: 100 }, (_, index) =>
-    workflowRun(1_000 - index),
+    workflowRun(1_000 - index, paddingLength),
   );
 
   return {
@@ -149,5 +149,37 @@ describe('workflow-run response bounds', () => {
       ),
       true,
     );
+  });
+
+  it('continues halving oversized workflow-run pages until one bounded page succeeds', async () => {
+    const fixture = boundedWorkflowFetch({ paddingLength: 500 });
+    const client = new GitHubApiClient({
+      token: 'test-token',
+      fetchImpl: fixture.fetch,
+      maxResponseBytes: RESPONSE_LIMIT,
+    });
+
+    const snapshot = await collectRepositorySnapshot(client, 'o/r', {
+      policy: {
+        default_branch: 'main',
+        required_workflows: ['CI'],
+        required_statuses: [],
+        merge_method: 'squash',
+      },
+      commitSha: 'c'.repeat(40),
+      generatedAt: '2026-09-11T10:05:00Z',
+    });
+
+    assert.equal(snapshot.pull_requests[0].eligible, true);
+    for (const pageSize of [100, 50, 25]) {
+      assert.equal(
+        fixture.calls.some(
+          (path) =>
+            path.startsWith('/repos/o/r/actions/runs?') &&
+            path.includes(`per_page=${pageSize}`),
+        ),
+        true,
+      );
+    }
   });
 });
