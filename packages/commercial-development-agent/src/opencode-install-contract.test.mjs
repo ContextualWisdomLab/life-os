@@ -45,7 +45,9 @@ describe('dependency installation boundary', () => {
     expect(
       parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies'),
     ).toEqual(['opencode-ai', 'esbuild']);
-    expect(workspace).toMatch(/^strictDepBuilds:\s+true$/mu);
+    expect(
+      [...workspace.matchAll(/^strictDepBuilds:\s+true$/gmu)],
+    ).toHaveLength(1);
     expect(workspace).not.toContain('dangerouslyAllowAllBuilds');
   });
 
