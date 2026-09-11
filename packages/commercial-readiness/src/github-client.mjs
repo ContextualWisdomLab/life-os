@@ -17,16 +17,19 @@ function assertRepository(repository) {
   return repository;
 }
 
+/** Creates the private sentinel that permits only response-size failures to reduce page size. */
 function responseTooLargeError() {
   const error = new Error('GitHub API response exceeded the size limit');
   error.code = RESPONSE_TOO_LARGE_CODE;
   return error;
 }
 
+/** Returns whether an error is the bounded-response sentinel emitted by this client. */
 function isResponseTooLargeError(error) {
   return error?.code === RESPONSE_TOO_LARGE_CODE;
 }
 
+/** Reads one response without buffering beyond the caller's explicit byte ceiling. */
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
@@ -214,6 +217,10 @@ function normalizeReview(review) {
   };
 }
 
+/**
+ * Collects one bounded array while preserving completeness when a legitimate page exceeds the byte ceiling.
+ * Pagination restarts from page one after each size reduction so changing `per_page` cannot skip or duplicate evidence.
+ */
 async function collectPaginatedArray(client, path, errorMessage) {
   const separator = path.includes('?') ? '&' : '?';
   let pageSize = API_PAGE_SIZE;
