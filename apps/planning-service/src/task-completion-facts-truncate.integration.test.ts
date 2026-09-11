@@ -17,7 +17,10 @@ const migrationPath = resolve(
 let pool: Pool;
 
 function isolatedSql(text: string): string {
-  return text.replaceAll('planning.', 'planning_task_completion_truncate_test.');
+  return text.replaceAll(
+    'planning.',
+    'planning_task_completion_truncate_test.',
+  );
 }
 
 describeWithPostgres(
