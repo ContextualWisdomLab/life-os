@@ -6,6 +6,7 @@ import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const PLAIN_MAPPING = /^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/u;
+const SPACED_PLAIN_MAPPING_KEY = /^[A-Za-z_][A-Za-z0-9_-]*\s+:/u;
 const QUOTED_MAPPING_KEY =
   /^(?:"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')\s*:/u;
 const EXPLICIT_MAPPING_KEY = /^\?\s/u;
@@ -148,6 +149,11 @@ function assertPlainStructuralKeys(stepLines, stepIndent, jobName) {
       mappingCandidate,
       EXPLICIT_MAPPING_KEY,
       `${jobName} source-verification structural mapping keys must use canonical plain identifiers`,
+    );
+    assert.doesNotMatch(
+      mappingCandidate,
+      SPACED_PLAIN_MAPPING_KEY,
+      `${jobName} source-verification structural mapping keys must keep the key adjacent to its colon`,
     );
 
     const mapping = PLAIN_MAPPING.exec(mappingCandidate);
