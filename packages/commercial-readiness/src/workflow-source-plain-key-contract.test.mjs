@@ -8,6 +8,7 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const PLAIN_MAPPING = /^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/u;
 const QUOTED_MAPPING_KEY =
   /^(?:"(?:[^"\\]|\\.)*"|'(?:[^']|'')*')\s*:/u;
+const EXPLICIT_MAPPING_KEY = /^\?\s/u;
 const BLOCK_SCALAR = /^[|>](?:[1-9][+-]?|[+-][1-9]?)?(?:\s+#.*)?$/u;
 
 /** Extracts one direct job only from the workflow's top-level jobs mapping. */
@@ -141,6 +142,11 @@ function assertPlainStructuralKeys(stepLines, stepIndent, jobName) {
     assert.doesNotMatch(
       mappingCandidate,
       QUOTED_MAPPING_KEY,
+      `${jobName} source-verification structural mapping keys must use canonical plain identifiers`,
+    );
+    assert.doesNotMatch(
+      mappingCandidate,
+      EXPLICIT_MAPPING_KEY,
       `${jobName} source-verification structural mapping keys must use canonical plain identifiers`,
     );
 
