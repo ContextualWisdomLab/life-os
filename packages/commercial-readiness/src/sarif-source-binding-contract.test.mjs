@@ -219,3 +219,28 @@ test('SARIF source binding rejects duplicate direct ref or sha inputs', () => {
     'duplicate YAML keys must not override the reviewed contributor-head binding',
   );
 });
+
+
+test('SARIF source binding rejects scan-looking mappings outside top-level jobs', () => {
+  const hostileWorkflow = [
+    'jobs:',
+    '  build:',
+    '    steps:',
+    '      - name: Build',
+    '        run: echo build',
+    'env:',
+    '  scan:',
+    '    steps:',
+    `      - name: ${UPLOAD_STEP_NAME}`,
+    '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+    '        with:',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+  ].join('\n');
+
+  assert.throws(
+    () => namedStep(hostileWorkflow, UPLOAD_STEP_NAME),
+    /expected exactly one workflow job scan/u,
+    'a scan-shaped mapping outside top-level jobs must not satisfy workflow job authority',
+  );
+});
