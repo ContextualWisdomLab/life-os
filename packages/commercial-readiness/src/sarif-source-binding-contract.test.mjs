@@ -154,8 +154,35 @@ function assertUniqueDirectInput(mapping, key, expectedEntry) {
   );
 }
 
+/** Requires the named upload step to invoke the reviewed CodeQL SARIF action identity. */
+function assertSarifUploadAction(uploadStep) {
+  const lines = uploadStep.split('\n');
+  const stepMatch = /^(\s*)-\s/u.exec(lines[0]);
+  assert.ok(stepMatch, 'workflow step indentation is invalid');
+  const directPrefix = `${stepMatch[1]}  uses:`;
+  const directUses = lines.filter((line) => line.startsWith(directPrefix));
+  assert.equal(directUses.length, 1, 'expected exactly one direct uses authority');
+
+  const scalar = directUses[0]
+    .slice(directPrefix.length)
+    .trim()
+    .replace(/\s+#.*$/u, '');
+  const atIndex = scalar.lastIndexOf('@');
+  assert.ok(atIndex > 0, 'SARIF upload action must carry an explicit ref');
+
+  const segments = scalar.slice(0, atIndex).split('/');
+  assert.ok(
+    segments.length === 3 &&
+      segments[0].toLowerCase() === 'github' &&
+      segments[1].toLowerCase() === 'codeql-action' &&
+      segments[2] === 'upload-sarif',
+    'SARIF upload must use github/codeql-action/upload-sarif',
+  );
+}
+
 /** Requires contributor-head ref and sha to be unique direct upload-sarif with inputs. */
 function assertSarifSourceBinding(uploadStep) {
+  assertSarifUploadAction(uploadStep);
   const withMapping = directMapping(uploadStep, 'with');
   assertUniqueDirectInput(withMapping, 'ref', SARIF_SOURCE_REF);
   assertUniqueDirectInput(withMapping, 'sha', SARIF_SOURCE_SHA);
@@ -297,4 +324,17 @@ test('SARIF source binding rejects a correctly named step backed by the wrong ac
     /must use github\/codeql-action\/upload-sarif/u,
     'step name and contributor bindings must not substitute for reviewed upload action identity',
   );
+});
+
+test('SARIF source binding resolves GitHub action repository identity case-insensitively', () => {
+  const uploadStep = [
+    `      - name: ${UPLOAD_STEP_NAME}`,
+    '        uses: GitHub/CodeQL-Action/upload-sarif@reviewed-sha',
+    '        with:',
+    '          sarif_file: appguardrail.sarif',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+  ].join('\n');
+
+  assert.doesNotThrow(() => assertSarifSourceBinding(uploadStep));
 });
