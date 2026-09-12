@@ -34,12 +34,9 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Materialize canonical formatter output
+      - name: Materialize canonical formatter diff
         run: |
           set -euo pipefail
           target='packages/commercial-readiness/src/workflow-source-checkout-contract.test.mjs'
           pnpm exec prettier --single-quote --write "$target"
-          echo 'CANONICAL_FILE_BASE64_BEGIN'
-          base64 -w0 "$target"
-          echo
-          echo 'CANONICAL_FILE_BASE64_END'
+          git --no-pager diff -- "$target"
