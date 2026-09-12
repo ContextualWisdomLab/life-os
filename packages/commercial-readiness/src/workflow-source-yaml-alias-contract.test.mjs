@@ -122,7 +122,7 @@ function assertNoStructuralYamlReferences(stepLines, stepIndent, jobName) {
 
     const structural =
       index === 0
-        ? line.slice(stepIndent + 1)
+        ? line.slice(stepIndent)
         : indent >= directIndent
           ? line.slice(indent)
           : undefined;
@@ -254,25 +254,42 @@ test('source-verification rejects noncanonical sequence forms that raw checkout 
 });
 
 test('source-verification rejects YAML anchor and alias authority hidden in direct step scalar values', () => {
-  const hostile = [
-    'jobs:',
-    '  validate:',
-    '    steps:',
-    '      - name: Contributor checkout',
-    '        uses: &checkout_action actions/checkout@reviewed-sha',
-    '        with:',
-    '          persist-credentials: false',
-    '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
-    '      - name: Hidden second checkout',
-    '        uses: *checkout_action',
-    '        with:',
-    '          persist-credentials: false',
-    '          ref: refs/heads/main',
-  ].join('\n');
+  const hostileVariants = [
+    [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - uses: &checkout_action actions/checkout@reviewed-sha',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+      '      - uses: *checkout_action',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: refs/heads/main',
+    ].join('\n'),
+    [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - name: Contributor checkout',
+      '        uses: &checkout_action actions/checkout@reviewed-sha',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+      '      - name: Hidden second checkout',
+      '        uses: *checkout_action',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: refs/heads/main',
+    ].join('\n'),
+  ];
 
-  assert.throws(
-    () => assertDirectStepAuthority(hostile, 'validate'),
-    /structural scalars must not use YAML anchor or alias authority/u,
-    'scalar anchor/alias authority must not evade source-verification step scanning',
-  );
+  for (const hostile of hostileVariants) {
+    assert.throws(
+      () => assertDirectStepAuthority(hostile, 'validate'),
+      /structural scalars must not use YAML anchor or alias authority/u,
+      'scalar anchor/alias authority must not evade source-verification step scanning',
+    );
+  }
 });
