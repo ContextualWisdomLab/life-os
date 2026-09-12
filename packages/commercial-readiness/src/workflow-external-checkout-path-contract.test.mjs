@@ -185,7 +185,11 @@ function assertExternalCheckoutIsolation(workflow, jobName) {
     assert.doesNotMatch(path, /\\/u, 'external checkout path must use portable forward slashes');
     const segments = path.split('/');
     assert.ok(
-      segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..'),
+      !segments.includes('..'),
+      'external checkout path must be workspace-relative',
+    );
+    assert.ok(
+      segments.every((segment) => segment.length > 0 && segment !== '.'),
       'external checkout path must remain in a non-root workspace subdirectory',
     );
 
@@ -227,7 +231,15 @@ test('external checkout without a path is rejected', () => {
 });
 
 test('external checkout cannot target the workspace root or escape it', () => {
-  for (const unsafePath of ['.', '..', '../appguardrail', 'nested/../appguardrail', '/tmp/appguardrail']) {
+  const unsafePaths = [
+    ['.', /non-root workspace subdirectory/u],
+    ['..', /workspace-relative/u],
+    ['../appguardrail', /workspace-relative/u],
+    ['nested/../appguardrail', /workspace-relative/u],
+    ['/tmp/appguardrail', /workspace-relative/u],
+  ];
+
+  for (const [unsafePath, expectedError] of unsafePaths) {
     const hostile = [
       'jobs:',
       '  scan:',
@@ -238,7 +250,10 @@ test('external checkout cannot target the workspace root or escape it', () => {
       `          path: ${unsafePath}`,
       '          ref: reviewed-appguardrail-sha',
     ].join('\n');
-    assert.throws(() => assertExternalCheckoutIsolation(hostile, 'scan'));
+    assert.throws(
+      () => assertExternalCheckoutIsolation(hostile, 'scan'),
+      expectedError,
+    );
   }
 });
 
