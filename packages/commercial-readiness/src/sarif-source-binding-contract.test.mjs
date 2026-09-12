@@ -11,22 +11,74 @@ const SARIF_SOURCE_SHA =
   'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
 const UPLOAD_STEP_NAME = 'Upload AppGuardrail SARIF to code scanning';
 
-/** Extracts one uniquely named workflow step at the direct steps-sequence depth. */
-function namedStep(workflow, stepName) {
+/** Extracts one uniquely named direct workflow job from the top-level jobs mapping. */
+function namedJob(workflow, jobName) {
   const lines = workflow.split('\n');
-  const stepsIndex = lines.findIndex((line) => /^\s+steps:\s*$/u.test(line));
-  assert.notEqual(stepsIndex, -1, 'workflow must contain a steps mapping');
-  const stepsIndent = /^(\s*)steps:\s*$/u.exec(lines[stepsIndex])?.[1];
-  assert.notEqual(stepsIndent, undefined, 'workflow steps indentation is invalid');
-  const stepIndent = `${stepsIndent}  `;
-  const expected = `${stepIndent}- name: ${stepName}`;
+  const jobsIndexes = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index] === 'jobs:') {
+      jobsIndexes.push(index);
+    }
+  }
+  assert.equal(jobsIndexes.length, 1, 'workflow must contain exactly one jobs mapping');
+
+  const jobIndent = '  ';
+  const expected = `${jobIndent}${jobName}:`;
   const matches = [];
-  for (let index = stepsIndex + 1; index < lines.length; index += 1) {
+  for (let index = jobsIndexes[0] + 1; index < lines.length; index += 1) {
     if (lines[index] === expected) {
       matches.push(index);
     }
   }
-  assert.equal(matches.length, 1, `expected exactly one step ${stepName}`);
+  assert.equal(matches.length, 1, `expected exactly one workflow job ${jobName}`);
+
+  const start = matches[0];
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
+      end = index;
+      break;
+    }
+    if (/^[^\s#]/u.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+/** Extracts one uniquely named workflow step from the AppGuardrail scan job. */
+function namedStep(workflow, stepName) {
+  const scanJob = namedJob(workflow, 'scan');
+  const lines = scanJob.split('\n');
+  const jobMatch = /^(\s*)scan:\s*$/u.exec(lines[0]);
+  assert.ok(jobMatch, 'scan job indentation is invalid');
+  const stepsLine = `${jobMatch[1]}  steps:`;
+  const stepsIndexes = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    if (lines[index] === stepsLine) {
+      stepsIndexes.push(index);
+    }
+  }
+  assert.equal(
+    stepsIndexes.length,
+    1,
+    'scan job must contain exactly one direct steps mapping',
+  );
+
+  const stepIndent = `${jobMatch[1]}    `;
+  const expected = `${stepIndent}- name: ${stepName}`;
+  const matches = [];
+  for (let index = stepsIndexes[0] + 1; index < lines.length; index += 1) {
+    if (lines[index] === expected) {
+      matches.push(index);
+    }
+  }
+  assert.equal(
+    matches.length,
+    1,
+    `missing reviewed step from scan job: expected exactly one ${stepName}, found ${matches.length}`,
+  );
 
   const start = matches[0];
   let end = lines.length;
