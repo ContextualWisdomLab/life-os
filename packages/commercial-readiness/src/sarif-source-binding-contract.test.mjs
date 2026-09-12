@@ -45,6 +45,7 @@ function directMapping(step, mappingName) {
   const stepMatch = /^(\s*)-\s/u.exec(lines[0]);
   assert.ok(stepMatch, 'workflow step indentation is invalid');
   const directIndent = `${stepMatch[1]}  `;
+  const entryIndent = `${directIndent}  `;
   const mappingLine = `${directIndent}${mappingName}:`;
   const matches = [];
   for (let index = 1; index < lines.length; index += 1) {
@@ -61,25 +62,40 @@ function directMapping(step, mappingName) {
   const start = matches[0] + 1;
   let end = lines.length;
   for (let index = start; index < lines.length; index += 1) {
-    if (!lines[index].startsWith(`${directIndent}  `)) {
+    if (!lines[index].startsWith(entryIndent)) {
       end = index;
       break;
     }
   }
-  return lines.slice(start, end);
+  return { lines: lines.slice(start, end), entryIndent };
 }
 
-/** Requires contributor-head ref and sha to be direct upload-sarif with inputs. */
+/** Requires one unique direct mapping input with the reviewed exact value. */
+function assertUniqueDirectInput(mapping, key, expectedEntry) {
+  const prefix = `${mapping.entryIndent}${key}:`;
+  const directEntries = mapping.lines.filter((line) => {
+    if (!line.startsWith(prefix)) {
+      return false;
+    }
+    return !line.slice(mapping.entryIndent.length).startsWith(' ');
+  });
+  assert.equal(
+    directEntries.length,
+    1,
+    `expected exactly one direct ${key} input`,
+  );
+  assert.equal(
+    directEntries[0],
+    `${mapping.entryIndent}${expectedEntry}`,
+    `SARIF upload must bind ${key} to the analyzed contributor head in direct with inputs`,
+  );
+}
+
+/** Requires contributor-head ref and sha to be unique direct upload-sarif with inputs. */
 function assertSarifSourceBinding(uploadStep) {
-  const withEntries = directMapping(uploadStep, 'with');
-  assert.ok(
-    withEntries.includes(`          ${SARIF_SOURCE_REF}`),
-    'SARIF upload must bind ref to the analyzed contributor head in direct with inputs',
-  );
-  assert.ok(
-    withEntries.includes(`          ${SARIF_SOURCE_SHA}`),
-    'SARIF upload must bind sha to the analyzed contributor head in direct with inputs',
-  );
+  const withMapping = directMapping(uploadStep, 'with');
+  assertUniqueDirectInput(withMapping, 'ref', SARIF_SOURCE_REF);
+  assertUniqueDirectInput(withMapping, 'sha', SARIF_SOURCE_SHA);
 }
 
 test('AppGuardrail SARIF upload binds contributor identity through direct with inputs', () => {
@@ -105,7 +121,7 @@ test('SARIF source binding rejects contributor markers moved outside direct with
 
   assert.throws(
     () => assertSarifSourceBinding(hostileUploadStep),
-    /must bind ref/u,
+    /exactly one direct ref input/u,
     'authority-looking ref/sha text outside with: must not satisfy upload input binding',
   );
 });
@@ -124,7 +140,7 @@ test('SARIF source binding rejects duplicate direct ref or sha inputs', () => {
 
   assert.throws(
     () => assertSarifSourceBinding(hostileUploadStep),
-    /exactly one direct (ref|sha) input/u,
+    /exactly one direct ref input/u,
     'duplicate YAML keys must not override the reviewed contributor-head binding',
   );
 });
