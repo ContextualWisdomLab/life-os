@@ -6,6 +6,9 @@ import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SELF_REPOSITORY = 'contextualwisdomlab/life-os';
+const REVIEWED_EXTERNAL_CHECKOUT_PATHS = new Map([
+  ['contextualwisdomlab/appguardrail', '_appguardrail'],
+]);
 
 /** Reads one static YAML scalar without evaluating expressions. */
 function staticScalarValue(value) {
@@ -148,7 +151,7 @@ function directWithMap(step) {
   return entries;
 }
 
-/** Requires external dependency checkouts to stay below the current workspace root. */
+/** Requires external dependency checkouts to stay in their reviewed isolated workspace path. */
 function assertExternalCheckoutIsolation(workflow, jobName) {
   const job = namedJob(workflow, jobName);
   for (const step of stepBlocks(job)) {
@@ -184,6 +187,18 @@ function assertExternalCheckoutIsolation(workflow, jobName) {
     assert.ok(
       segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..'),
       'external checkout path must remain in a non-root workspace subdirectory',
+    );
+
+    const reviewedPath = REVIEWED_EXTERNAL_CHECKOUT_PATHS.get(repository.toLowerCase());
+    assert.notEqual(
+      reviewedPath,
+      undefined,
+      'external checkout repository must have one reviewed external checkout path',
+    );
+    assert.equal(
+      path,
+      reviewedPath,
+      'external checkout must use its reviewed external checkout path',
     );
   }
 }
