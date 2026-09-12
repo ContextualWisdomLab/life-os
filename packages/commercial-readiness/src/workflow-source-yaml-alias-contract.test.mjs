@@ -91,8 +91,16 @@ function directSteps(jobLines) {
  * jobs must not use step-level YAML anchor/alias indirection.
  */
 function assertDirectStepAuthority(workflow, jobName) {
-  const { lines } = directSteps(namedJob(workflow, jobName));
+  const { lines, stepIndent } = directSteps(namedJob(workflow, jobName));
   assert.ok(lines.length > 0, `${jobName} must contain direct workflow steps`);
+  for (const line of lines) {
+    const sequenceValue = line.slice(stepIndent + 2).trimStart();
+    assert.doesNotMatch(
+      sequenceValue,
+      /^[&*]/u,
+      `${jobName} source-verification steps must not use YAML anchor or alias authority`,
+    );
+  }
 }
 
 const REQUIRED_JOBS = [
