@@ -1,4 +1,4 @@
-name: Temporary commercial readiness checkout contract formatter
+name: Temporary commercial readiness checkout contract verifier
 
 on:
   push:
@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  format-diagnostic:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout exact verifier head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,9 +34,19 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Materialize canonical formatter diff
-        run: |
-          set -euo pipefail
-          target='packages/commercial-readiness/src/workflow-source-checkout-contract.test.mjs'
-          pnpm exec prettier --single-quote --write "$target"
-          git --no-pager diff -- "$target"
+      - name: Check permanent contract formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          packages/commercial-readiness/src/workflow-source-checkout-contract.test.mjs
+
+      - name: Run complete Commercial Readiness suite
+        run: pnpm --filter @life-os/commercial-readiness test
+
+      - name: Typecheck Commercial Readiness
+        run: pnpm --filter @life-os/commercial-readiness typecheck
+
+      - name: Build Commercial Readiness
+        run: pnpm --filter @life-os/commercial-readiness build
+
+      - name: Check patch whitespace
+        run: git diff --check HEAD^
