@@ -36,12 +36,28 @@ function jobBlock(workflow, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-/** Finds one unique named workflow step by its exact YAML sequence entry. */
+/** Resolves the exact sequence indentation for real workflow steps. */
+function stepSequenceIndent(job) {
+  const lines = job.split('\n');
+  const jobEntry = /^(\s*)[A-Za-z0-9_-]+:\s*$/u.exec(lines[0]);
+  assert.ok(jobEntry, 'invalid bounded workflow job');
+  const stepsLine = `${jobEntry[1]}  steps:`;
+  assert.equal(
+    lines.filter((line) => line === stepsLine).length,
+    1,
+    'expected exactly one direct steps mapping in bounded workflow job',
+  );
+  return `${jobEntry[1]}    `;
+}
+
+/** Finds one unique named workflow step at the real steps sequence depth. */
 function stepStartIndex(job, stepName) {
   const lines = job.split('\n');
+  const stepIndent = stepSequenceIndent(job);
+  const expected = `${stepIndent}- name: ${stepName}`;
   const matches = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (lines[index].trim() === `- name: ${stepName}`) {
+    if (lines[index] === expected) {
       matches.push(index);
     }
   }
@@ -57,13 +73,10 @@ function stepStartIndex(job, stepName) {
 function stepBlock(job, stepName) {
   const lines = job.split('\n');
   const start = stepStartIndex(job, stepName);
-  const startMatch = /^(\s*)-\s/u.exec(lines[start]);
-  assert.ok(startMatch, `invalid step indentation for ${stepName}`);
-  const stepIndent = startMatch[1];
+  const stepIndent = stepSequenceIndent(job);
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
-    const siblingStep = /^(\s*)-\s/u.exec(lines[index]);
-    if (siblingStep?.[1] === stepIndent) {
+    if (lines[index].startsWith(`${stepIndent}- `)) {
       end = index;
       break;
     }
@@ -79,32 +92,57 @@ function assertStepPrecedes(job, earlierStepName, laterStepName) {
   );
 }
 
-/** Finds executable uses entries for one exact GitHub Action identity. */
-function actionUseLines(workflowBlock, actionName) {
-  const usesEntry = /^(?:-\s+)?uses:\s*(['"]?)([^'"\s#]+)\1(?:\s+#.*)?$/u;
-  return workflowBlock
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => {
-      if (line.startsWith('#')) {
-        return false;
+/** Finds executable action uses only from real step entries and direct step keys. */
+function actionUses(job, actionName) {
+  const lines = job.split('\n');
+  const stepIndent = stepSequenceIndent(job);
+  const directKeyIndent = `${stepIndent}  `;
+  const usesEntry = /^uses:\s*(['"]?)([^'"\s#]+)\1(?:\s+#.*)?$/u;
+  const uses = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].startsWith(`${stepIndent}- `)) {
+      continue;
+    }
+
+    const inline = usesEntry.exec(lines[index].slice(`${stepIndent}- `.length));
+    if (inline?.[2].startsWith(`${actionName}@`)) {
+      uses.push({ line: lines[index], stepStart: index });
+    }
+
+    let end = lines.length;
+    for (let sibling = index + 1; sibling < lines.length; sibling += 1) {
+      if (lines[sibling].startsWith(`${stepIndent}- `)) {
+        end = sibling;
+        break;
       }
-      const match = usesEntry.exec(line);
-      return match?.[2].startsWith(`${actionName}@`) ?? false;
-    });
+    }
+    for (let child = index + 1; child < end; child += 1) {
+      const direct = lines[child].slice(directKeyIndent.length);
+      if (!lines[child].startsWith(directKeyIndent) || direct.startsWith(' ')) {
+        continue;
+      }
+      const match = usesEntry.exec(direct);
+      if (match?.[2].startsWith(`${actionName}@`)) {
+        uses.push({ line: lines[child], stepStart: index });
+      }
+    }
+  }
+
+  return uses;
 }
 
 /** Requires one action invocation and binds it to the reviewed named step. */
 function assertUniqueActionUseInStep(job, actionName, stepName) {
-  const jobUses = actionUseLines(job, actionName);
+  const jobUses = actionUses(job, actionName);
   assert.equal(
     jobUses.length,
     1,
     `expected exactly one ${actionName} use, found ${jobUses.length}`,
   );
   assert.equal(
-    actionUseLines(stepBlock(job, stepName), actionName).length,
-    1,
+    jobUses[0].stepStart,
+    stepStartIndex(job, stepName),
     `${actionName} must be owned by ${stepName}`,
   );
 }
@@ -218,6 +256,31 @@ test('SARIF upload authority rejects unnamed duplicate action uses', () => {
         'Upload AppGuardrail SARIF to code scanning',
       ),
     /exactly one github\/codeql-action\/upload-sarif use/u,
+  );
+});
+
+test('workflow-step authority ignores name and uses text inside run blocks', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      - name: Generate harmless evidence note',
+    '        run: |',
+    "          cat <<'EOF' > note.txt",
+    '          - name: Upload AppGuardrail SARIF to code scanning',
+    '            uses: github/codeql-action/upload-sarif@fake-sha',
+    `            ${SARIF_SOURCE_REF}`,
+    `            ${SARIF_SOURCE_SHA}`,
+    '          EOF',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertUniqueActionUseInStep(
+        job,
+        'github/codeql-action/upload-sarif',
+        'Upload AppGuardrail SARIF to code scanning',
+      ),
+    /expected exactly one github\/codeql-action\/upload-sarif use, found 0/u,
   );
 });
 
