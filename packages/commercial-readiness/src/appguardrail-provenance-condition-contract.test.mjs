@@ -130,3 +130,27 @@ test('provenance condition rejects duplicate direct if authority', () => {
     /exactly one direct if key/u,
   );
 });
+
+test('provenance step authority rejects step-shaped text inside a run block', () => {
+  const hostileWorkflow = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - name: Harmless generator',
+    '        run: |',
+    "          cat <<'EOF' > note.yml",
+    `          - name: ${PROVENANCE_STEP_NAME}`,
+    '            if: >-',
+    `              ${PULL_REQUEST_CONDITION}`,
+    `              && ${SAME_REPOSITORY_CONDITION}`,
+    '            run: echo fake-authority',
+    '          EOF',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertProvenanceGuard(namedStep(hostileWorkflow, PROVENANCE_STEP_NAME)),
+    /workflow step/u,
+    'run-block text must not become provenance workflow-step authority',
+  );
+});
