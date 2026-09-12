@@ -1,0 +1,32 @@
+name: Verify external checkout action identity
+
+on:
+  push:
+    branches:
+      - fix/appguardrail-sarif-provenance-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact verifier head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node 22.16.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22.16.0
+      - name: Verify external checkout isolation contract
+        run: node --test packages/commercial-readiness/src/workflow-external-checkout-path-contract.test.mjs
+      - name: Verify contract syntax
+        run: node --check packages/commercial-readiness/src/workflow-external-checkout-path-contract.test.mjs
