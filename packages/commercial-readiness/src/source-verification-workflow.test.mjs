@@ -81,7 +81,7 @@ function assertStepPrecedes(job, earlierStepName, laterStepName) {
 
 /** Finds executable uses entries for one exact GitHub Action identity. */
 function actionUseLines(workflowBlock, actionName) {
-  const usesEntry = /^uses:\s*(['"]?)([^'"\s#]+)\1(?:\s+#.*)?$/u;
+  const usesEntry = /^(?:-\s+)?uses:\s*(['"]?)([^'"\s#]+)\1(?:\s+#.*)?$/u;
   return workflowBlock
     .split('\n')
     .map((line) => line.trim())
@@ -181,6 +181,31 @@ test('SARIF upload authority rejects differently named duplicate action uses', (
     `          ${SARIF_SOURCE_SHA}`,
     '      - name: Upload alternate SARIF',
     '        uses: "github/codeql-action/upload-sarif@unreviewed-sha"',
+    '        with:',
+    '          sarif_file: alternate.sarif',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertUniqueActionUseInStep(
+        job,
+        'github/codeql-action/upload-sarif',
+        'Upload AppGuardrail SARIF to code scanning',
+      ),
+    /exactly one github\/codeql-action\/upload-sarif use/u,
+  );
+});
+
+test('SARIF upload authority rejects unnamed duplicate action uses', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+    '        with:',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+    '      - uses: "github/codeql-action/upload-sarif@unreviewed-sha"',
     '        with:',
     '          sarif_file: alternate.sarif',
   ].join('\n');
