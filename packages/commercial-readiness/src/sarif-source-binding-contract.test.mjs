@@ -188,6 +188,29 @@ test('SARIF source binding rejects upload authority moved to another workflow jo
   );
 });
 
+for (const siblingJobLine of ['  "decoy":', "  'decoy': # sibling"]) {
+  test(`SARIF source binding rejects authority borrowed across sibling boundary ${siblingJobLine}`, () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      '    runs-on: ubuntu-latest',
+      siblingJobLine,
+      '    steps:',
+      `      - name: ${UPLOAD_STEP_NAME}`,
+      '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+      '        with:',
+      `          ${SARIF_SOURCE_REF}`,
+      `          ${SARIF_SOURCE_SHA}`,
+    ].join('\n');
+
+    assert.throws(
+      () => namedStep(hostileWorkflow, UPLOAD_STEP_NAME),
+      /scan job must contain exactly one direct steps mapping/u,
+      'quoted or commented sibling jobs must terminate scan authority before their steps',
+    );
+  });
+}
+
 test('SARIF source binding rejects contributor markers moved outside direct with entries', () => {
   const hostileUploadStep = [
     '      - name: Upload AppGuardrail SARIF to code scanning',
@@ -224,7 +247,6 @@ test('SARIF source binding rejects duplicate direct ref or sha inputs', () => {
     'duplicate YAML keys must not override the reviewed contributor-head binding',
   );
 });
-
 
 test('SARIF source binding rejects scan-looking mappings outside top-level jobs', () => {
   const hostileWorkflow = [
