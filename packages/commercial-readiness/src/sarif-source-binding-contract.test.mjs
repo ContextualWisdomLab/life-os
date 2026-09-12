@@ -281,3 +281,20 @@ test('SARIF source binding rejects scan-looking mappings outside top-level jobs'
     'a scan-shaped mapping outside top-level jobs must not satisfy workflow job authority',
   );
 });
+
+test('SARIF source binding rejects a correctly named step backed by the wrong action', () => {
+  const hostileUploadStep = [
+    `      - name: ${UPLOAD_STEP_NAME}`,
+    '        uses: attacker/example@reviewed-sha',
+    '        with:',
+    '          sarif_file: appguardrail.sarif',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+  ].join('\n');
+
+  assert.throws(
+    () => assertSarifSourceBinding(hostileUploadStep),
+    /must use github\/codeql-action\/upload-sarif/u,
+    'step name and contributor bindings must not substitute for reviewed upload action identity',
+  );
+});
