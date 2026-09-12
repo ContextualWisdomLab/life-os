@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -21,8 +21,12 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
-      - name: Reproduce final-step boundary contamination
+      - name: Run commercial-readiness contracts
+        run: node --test packages/commercial-readiness/src/*.test.mjs
+      - name: Verify changed-source syntax and whitespace
         run: |
           set -euo pipefail
-          node --test packages/commercial-readiness/src/workflow-external-checkout-path-contract.test.mjs
           node --check packages/commercial-readiness/src/workflow-external-checkout-path-contract.test.mjs
+          git fetch --no-tags --depth=1 origin 7973277a4c97db6eaa071ff2726187f6b33009f5
+          test "$(git rev-parse FETCH_HEAD)" = "7973277a4c97db6eaa071ff2726187f6b33009f5"
+          git diff --check 7973277a4c97db6eaa071ff2726187f6b33009f5 HEAD
