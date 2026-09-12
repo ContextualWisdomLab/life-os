@@ -30,6 +30,18 @@ function staticScalarValue(value) {
   return (comment ? value.slice(0, comment.index) : value).trim();
 }
 
+/** Recognizes checkout by case-insensitive action repository identity while preserving its ref. */
+function isCheckoutAction(uses) {
+  if (!uses) {
+    return false;
+  }
+  const separator = uses.indexOf('@');
+  return (
+    separator > 0 &&
+    uses.slice(0, separator).toLowerCase() === 'actions/checkout'
+  );
+}
+
 /** Extracts exactly one direct job from the top-level jobs mapping. */
 function namedJob(workflow, jobName) {
   const lines = workflow.split('\n');
@@ -156,7 +168,7 @@ function assertExternalCheckoutIsolation(workflow, jobName) {
   const job = namedJob(workflow, jobName);
   for (const step of stepBlocks(job)) {
     const uses = staticScalarValue(directStepScalar(step, 'uses'));
-    if (!uses?.startsWith('actions/checkout@')) {
+    if (!isCheckoutAction(uses)) {
       continue;
     }
 
