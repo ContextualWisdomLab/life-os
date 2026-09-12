@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Execute checkout through an explicit YAML string tag
         uses: !!str actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
       - name: Reproduce source-verification YAML-tag bypass
@@ -42,7 +46,7 @@ jobs:
             "    '        with:',",
             "    '          persist-credentials: false',",
             "    '          ref: refs/heads/main',",
-            "  ].join('\\\\n');",
+            "  ].join('\\n');",
             '  assert.throws(',
             "    () => assertDirectStepAuthority(hostile, 'validate'),",
             '    /YAML tag authority/u,',
