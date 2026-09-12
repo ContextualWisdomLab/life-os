@@ -48,7 +48,7 @@ function namedJob(workflow, jobName) {
   return lines.slice(start, end);
 }
 
-/** Bounds the direct steps sequence of one job. */
+/** Bounds every direct sequence item in one job's steps mapping. */
 function directSteps(jobLines) {
   const jobIndent = /^\s*/u.exec(jobLines[0])?.[0].length ?? 0;
   const keyIndent = jobIndent + 2;
@@ -67,6 +67,7 @@ function directSteps(jobLines) {
   );
 
   const lines = [];
+  const sequenceMarker = `${' '.repeat(stepIndent)}-`;
   for (let index = indexes[0] + 1; index < jobLines.length; index += 1) {
     const line = jobLines[index];
     if (line.trim().length === 0 || line.trimStart().startsWith('#')) {
@@ -76,7 +77,10 @@ function directSteps(jobLines) {
     if (indent <= keyIndent) {
       break;
     }
-    if (indent === stepIndent && line.startsWith(`${' '.repeat(stepIndent)}- `)) {
+    if (
+      indent === stepIndent &&
+      (line === sequenceMarker || line.startsWith(`${sequenceMarker} `))
+    ) {
       lines.push(line);
     }
   }
@@ -86,19 +90,26 @@ function directSteps(jobLines) {
 /**
  * Requires source-verification workflow steps to expose their authority directly.
  *
- * YAML aliases can replay a previously declared step after raw-text checkout
- * verification has counted the declaration only once, so source-verification
- * jobs must not use step-level YAML anchor/alias indirection.
+ * The existing source-verification scanners reason about block-style direct step
+ * mappings. YAML anchor/alias, bare-sequence, and flow-mapping forms would be
+ * executable YAML while escaping that authority model, so this boundary keeps
+ * those jobs in one canonical direct mapping form.
  */
 function assertDirectStepAuthority(workflow, jobName) {
   const { lines, stepIndent } = directSteps(namedJob(workflow, jobName));
   assert.ok(lines.length > 0, `${jobName} must contain direct workflow steps`);
   for (const line of lines) {
-    const sequenceValue = line.slice(stepIndent + 2).trimStart();
+    const sequenceValue = line.slice(stepIndent + 1);
+    const trimmedValue = sequenceValue.trimStart();
     assert.doesNotMatch(
-      sequenceValue,
+      trimmedValue,
       /^[&*]/u,
       `${jobName} source-verification steps must not use YAML anchor or alias authority`,
+    );
+    assert.match(
+      sequenceValue,
+      /^ [A-Za-z_][A-Za-z0-9_-]*:/u,
+      `${jobName} source-verification steps must use one canonical direct mapping sequence form`,
     );
   }
 }
