@@ -289,6 +289,32 @@ test('SARIF upload authority rejects unnamed duplicate action uses', () => {
   );
 });
 
+test('SARIF upload authority rejects case-aliased duplicate action repository identity', () => {
+  const job = [
+    '  scan:',
+    '    steps:',
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+    '        with:',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+    '      - name: Upload case-aliased SARIF',
+    '        uses: GitHub/CodeQL-Action/upload-sarif@unreviewed-sha',
+    '        with:',
+    '          sarif_file: alternate.sarif',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertUniqueActionUseInStep(
+        job,
+        'github/codeql-action/upload-sarif',
+        'Upload AppGuardrail SARIF to code scanning',
+      ),
+    /expected exactly one github\/codeql-action\/upload-sarif use, found 2/u,
+  );
+});
+
 test('workflow-step authority ignores name and uses text inside run blocks', () => {
   const job = [
     '  scan:',
