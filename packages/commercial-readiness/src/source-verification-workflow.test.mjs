@@ -21,6 +21,13 @@ function readWorkflow(name) {
   return readFileSync(join(REPOSITORY_ROOT, '.github/workflows', name), 'utf8');
 }
 
+/** Recognizes direct top-level job entries, including quoted IDs and inline comments. */
+function isDirectJobEntry(line) {
+  return /^  (?:[A-Za-z_][A-Za-z0-9_-]*|"[A-Za-z_][A-Za-z0-9_-]*"|'[A-Za-z_][A-Za-z0-9_-]*'):\s*(?:#.*)?$/u.test(
+    line,
+  );
+}
+
 /** Extracts one top-level workflow job without requiring a YAML parser. */
 function jobBlock(workflow, jobName) {
   const lines = workflow.split('\n');
@@ -28,7 +35,7 @@ function jobBlock(workflow, jobName) {
   assert.notEqual(start, -1, `missing job ${jobName}`);
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
+    if (isDirectJobEntry(lines[index])) {
       end = index;
       break;
     }
@@ -146,6 +153,29 @@ function assertUniqueActionUseInStep(job, actionName, stepName) {
     `${actionName} must be owned by ${stepName}`,
   );
 }
+
+test('job extraction does not borrow authority from quoted or commented sibling jobs', () => {
+  for (const sibling of [
+    '  "decoy":',
+    "  'decoy': # sibling",
+    '  decoy: # sibling',
+  ]) {
+    const workflow = [
+      'jobs:',
+      '  scan:',
+      sibling,
+      '    steps:',
+      '      - name: Upload AppGuardrail SARIF to code scanning',
+      '        uses: github/codeql-action/upload-sarif@fake-sha',
+    ].join('\n');
+
+    assert.equal(
+      jobBlock(workflow, 'scan'),
+      '  scan:',
+      'a bounded job must stop before every direct sibling job spelling',
+    );
+  }
+});
 
 test('step extraction does not borrow evidence from unnamed sibling steps', () => {
   const job = [
