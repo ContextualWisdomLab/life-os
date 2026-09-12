@@ -241,6 +241,23 @@ test('external checkout path cannot be runtime-dynamic', () => {
   assert.throws(() => assertExternalCheckoutIsolation(hostile, 'scan'), /must not be dynamic/u);
 });
 
+test('external checkout cannot overwrite a LifeOS source subtree', () => {
+  const hostile = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          repository: ContextualWisdomLab/appguardrail',
+    '          path: packages/commercial-readiness',
+    '          ref: reviewed-appguardrail-sha',
+  ].join('\n');
+  assert.throws(
+    () => assertExternalCheckoutIsolation(hostile, 'scan'),
+    /reviewed external checkout path/u,
+  );
+});
+
 test('external checkout may use one explicit isolated subdirectory', () => {
   const valid = [
     'jobs:',
