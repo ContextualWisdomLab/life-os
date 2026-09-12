@@ -30,3 +30,6 @@ jobs:
 
       - name: Verify focused SARIF source-binding contract
         run: node --test packages/commercial-readiness/src/sarif-source-binding-contract.test.mjs
+
+      - name: Verify Commercial Readiness test suite
+        run: node --test packages/commercial-readiness/src/*.test.mjs
