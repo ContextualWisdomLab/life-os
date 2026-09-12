@@ -12,26 +12,83 @@ const SAME_REPOSITORY_CONDITION =
   'github.event.pull_request.head.repo.full_name == github.repository';
 const EXPECTED_PROVENANCE_CONDITION = `${PULL_REQUEST_CONDITION} && ${SAME_REPOSITORY_CONDITION}`;
 
-/** Extracts one uniquely named real workflow step at its YAML sequence indentation. */
-function namedStep(workflow, stepName) {
+/** Extracts one uniquely named direct job from the workflow's top-level jobs mapping. */
+function namedJob(workflow, jobName) {
   const lines = workflow.split('\n');
-  const matches = [];
+  const jobsIndexes = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const match = /^(\s*)- name: (.+)$/u.exec(lines[index]);
-    if (match?.[2] === stepName) {
-      matches.push({ index, indent: match[1] });
+    if (lines[index] === 'jobs:') {
+      jobsIndexes.push(index);
+    }
+  }
+  assert.equal(jobsIndexes.length, 1, 'workflow must contain exactly one jobs mapping');
+
+  const jobsStart = jobsIndexes[0];
+  let jobsEnd = lines.length;
+  for (let index = jobsStart + 1; index < lines.length; index += 1) {
+    if (/^[^\s#]/u.test(lines[index])) {
+      jobsEnd = index;
+      break;
+    }
+  }
+
+  const expected = `  ${jobName}:`;
+  const matches = [];
+  for (let index = jobsStart + 1; index < jobsEnd; index += 1) {
+    if (lines[index] === expected) {
+      matches.push(index);
+    }
+  }
+  assert.equal(matches.length, 1, `expected exactly one workflow job ${jobName}`);
+
+  const start = matches[0];
+  let end = jobsEnd;
+  for (let index = start + 1; index < jobsEnd; index += 1) {
+    if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
+/** Extracts one uniquely named real step from the direct steps sequence of jobs.scan. */
+function namedStep(workflow, stepName) {
+  const scanJob = namedJob(workflow, 'scan');
+  const lines = scanJob.split('\n');
+  const jobMatch = /^(\s*)scan:\s*$/u.exec(lines[0]);
+  assert.ok(jobMatch, 'scan job indentation is invalid');
+  const stepsLine = `${jobMatch[1]}  steps:`;
+  const stepsIndexes = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    if (lines[index] === stepsLine) {
+      stepsIndexes.push(index);
+    }
+  }
+  assert.equal(
+    stepsIndexes.length,
+    1,
+    'scan job must contain exactly one direct steps mapping',
+  );
+
+  const stepIndent = `${jobMatch[1]}    `;
+  const expected = `${stepIndent}- name: ${stepName}`;
+  const matches = [];
+  for (let index = stepsIndexes[0] + 1; index < lines.length; index += 1) {
+    if (lines[index] === expected) {
+      matches.push(index);
     }
   }
   assert.equal(
     matches.length,
     1,
-    `expected exactly one workflow step ${stepName}`,
+    `expected exactly one direct workflow step ${stepName}`,
   );
 
-  const { index: start, indent } = matches[0];
+  const start = matches[0];
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (lines[index].startsWith(`${indent}- `)) {
+    if (lines[index].startsWith(`${stepIndent}- `)) {
       end = index;
       break;
     }
@@ -150,7 +207,7 @@ test('provenance step authority rejects step-shaped text inside a run block', ()
   assert.throws(
     () =>
       assertProvenanceGuard(namedStep(hostileWorkflow, PROVENANCE_STEP_NAME)),
-    /workflow step/u,
+    /direct workflow step/u,
     'run-block text must not become provenance workflow-step authority',
   );
 });
