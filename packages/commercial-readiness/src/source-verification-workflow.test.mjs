@@ -99,6 +99,26 @@ function assertStepPrecedes(job, earlierStepName, laterStepName) {
   );
 }
 
+/** Matches GitHub Action repository identity case-insensitively while preserving subpath spelling. */
+function matchesActionIdentity(uses, actionName) {
+  const refSeparator = uses.indexOf('@');
+  if (refSeparator <= 0) {
+    return false;
+  }
+
+  const candidate = uses.slice(0, refSeparator).split('/');
+  const reviewed = actionName.split('/');
+  if (candidate.length !== reviewed.length || candidate.length < 2) {
+    return false;
+  }
+
+  return (
+    candidate[0].toLowerCase() === reviewed[0].toLowerCase() &&
+    candidate[1].toLowerCase() === reviewed[1].toLowerCase() &&
+    candidate.slice(2).every((segment, index) => segment === reviewed[index + 2])
+  );
+}
+
 /** Finds executable action uses only from real step entries and direct step keys. */
 function actionUses(job, actionName) {
   const lines = job.split('\n');
@@ -113,7 +133,7 @@ function actionUses(job, actionName) {
     }
 
     const inline = usesEntry.exec(lines[index].slice(`${stepIndent}- `.length));
-    if (inline?.[2].startsWith(`${actionName}@`)) {
+    if (inline?.[2] && matchesActionIdentity(inline[2], actionName)) {
       uses.push({ line: lines[index], stepStart: index });
     }
 
@@ -130,7 +150,7 @@ function actionUses(job, actionName) {
         continue;
       }
       const match = usesEntry.exec(direct);
-      if (match?.[2].startsWith(`${actionName}@`)) {
+      if (match?.[2] && matchesActionIdentity(match[2], actionName)) {
         uses.push({ line: lines[child], stepStart: index });
       }
     }
