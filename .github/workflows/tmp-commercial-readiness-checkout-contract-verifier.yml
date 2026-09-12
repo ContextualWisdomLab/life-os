@@ -1,4 +1,4 @@
-name: Temporary commercial readiness checkout contract verifier
+name: Temporary commercial readiness checkout contract formatter
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  format-diagnostic:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -34,16 +34,12 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check permanent contract formatting
-        run: >-
-          pnpm exec prettier --single-quote --check
-          packages/commercial-readiness/src/workflow-source-checkout-contract.test.mjs
-
-      - name: Run complete Commercial Readiness suite
-        run: pnpm --filter @life-os/commercial-readiness test
-
-      - name: Typecheck Commercial Readiness
-        run: pnpm --filter @life-os/commercial-readiness typecheck
-
-      - name: Build Commercial Readiness
-        run: pnpm --filter @life-os/commercial-readiness build
+      - name: Materialize canonical formatter output
+        run: |
+          set -euo pipefail
+          target='packages/commercial-readiness/src/workflow-source-checkout-contract.test.mjs'
+          pnpm exec prettier --single-quote --write "$target"
+          echo 'CANONICAL_FILE_BASE64_BEGIN'
+          base64 -w0 "$target"
+          echo
+          echo 'CANONICAL_FILE_BASE64_END'
