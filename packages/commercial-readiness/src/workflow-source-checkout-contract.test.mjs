@@ -132,6 +132,20 @@ function directStepScalar(stepLines, key, stepIndent) {
   return values[0];
 }
 
+/** Removes one YAML quote pair from a static scalar without evaluating expressions. */
+function unquoteStaticScalar(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
 /** Reads direct with inputs without borrowing nested or sibling text. */
 function directWithEntries(stepLines, stepIndent) {
   const directIndent = `${stepIndent}  `;
@@ -178,13 +192,9 @@ function checkoutRepositoryKind(entries) {
     return 'self';
   }
 
-  let repository = repositories[0].slice('repository:'.length).trim();
-  if (
-    (repository.startsWith('"') && repository.endsWith('"')) ||
-    (repository.startsWith("'") && repository.endsWith("'"))
-  ) {
-    repository = repository.slice(1, -1);
-  }
+  const repository = unquoteStaticScalar(
+    repositories[0].slice('repository:'.length).trim(),
+  );
   if (
     repository.toLowerCase() === SELF_REPOSITORY_NORMALIZED ||
     repository === '${{ github.repository }}'
@@ -206,7 +216,9 @@ function assertExactContributorCheckout(workflow, jobName) {
   const selfCheckouts = [];
 
   for (const step of stepBlocks(job)) {
-    const uses = directStepScalar(step, 'uses', section.stepIndent);
+    const uses = unquoteStaticScalar(
+      directStepScalar(step, 'uses', section.stepIndent),
+    );
     if (!uses?.startsWith('actions/checkout@')) {
       continue;
     }
@@ -316,6 +328,28 @@ test('checkout source binding rejects a later current-repository checkout', () =
   assert.throws(
     () => assertExactContributorCheckout(hostile, 'validate'),
     /must own exactly one current-repository checkout/u,
+  );
+});
+
+test('checkout source binding rejects a quoted later current-repository checkout', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: "actions/checkout@reviewed-sha"',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertExactContributorCheckout(hostile, 'validate'),
+    /must own exactly one current-repository checkout/u,
+    'quoted YAML uses scalars must not hide a second current-repository checkout',
   );
 });
 
