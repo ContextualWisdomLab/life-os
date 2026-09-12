@@ -6,6 +6,7 @@ import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SELF_REPOSITORY = 'ContextualWisdomLab/life-os';
+const SELF_REPOSITORY_NORMALIZED = SELF_REPOSITORY.toLowerCase();
 const SOURCE_REF =
   'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 
@@ -185,7 +186,7 @@ function checkoutRepositoryKind(entries) {
     repository = repository.slice(1, -1);
   }
   if (
-    repository === SELF_REPOSITORY ||
+    repository.toLowerCase() === SELF_REPOSITORY_NORMALIZED ||
     repository === '${{ github.repository }}'
   ) {
     return 'self';
@@ -315,6 +316,29 @@ test('checkout source binding rejects a later current-repository checkout', () =
   assert.throws(
     () => assertExactContributorCheckout(hostile, 'validate'),
     /must own exactly one current-repository checkout/u,
+  );
+});
+
+test('checkout source binding treats case-variant current-repository authority as self', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          repository: contextualwisdomlab/LIFE-OS',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertExactContributorCheckout(hostile, 'validate'),
+    /must own exactly one current-repository checkout/u,
+    'GitHub repository owner/name matching is case-insensitive and must not create an external-checkout escape hatch',
   );
 });
 
