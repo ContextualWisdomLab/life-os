@@ -21,41 +21,8 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
-      - name: Reproduce source-verification YAML-tag bypass
+      - name: Verify permanent YAML-tag source contract
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { readFileSync, rmSync, writeFileSync } from 'node:fs';
-          import { spawnSync } from 'node:child_process';
-          const sourcePath = 'packages/commercial-readiness/src/workflow-source-yaml-alias-contract.test.mjs';
-          const probePath = 'packages/commercial-readiness/src/workflow-source-yaml-tag-red.test.mjs';
-          const source = readFileSync(sourcePath, 'utf8');
-          const hostileTest = [
-            '',
-            "test('explicit YAML tags cannot hide checkout authority from source verification', () => {",
-            '  const hostile = [',
-            "    'jobs:',",
-            "    '  validate:',",
-            "    '    steps:',",
-            "    '      - uses: actions/checkout@reviewed-sha',",
-            "    '        with:',",
-            "    '          persist-credentials: false',",
-            "    '          ref: reviewed-contributor-sha',",
-            "    '      - name: Hidden tagged checkout',",
-            "    '        uses: !!str actions/checkout@reviewed-sha',",
-            "    '        with:',",
-            "    '          persist-credentials: false',",
-            "    '          ref: refs/heads/main',",
-            "  ].join('\\n');",
-            '  assert.throws(',
-            "    () => assertDirectStepAuthority(hostile, 'validate'),",
-            '    /YAML tag authority/u,',
-            '  );',
-            '});',
-            '',
-          ].join('\n');
-          writeFileSync(probePath, source + hostileTest, 'utf8');
-          const result = spawnSync(process.execPath, ['--test', probePath], { stdio: 'inherit' });
-          rmSync(probePath, { force: true });
-          process.exit(result.status ?? 1);
-          NODE
+          node --test packages/commercial-readiness/src/workflow-source-yaml-tag-contract.test.mjs
+          node --check packages/commercial-readiness/src/workflow-source-yaml-tag-contract.test.mjs
