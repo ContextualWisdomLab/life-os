@@ -1,0 +1,52 @@
+name: LifeOS maintainer verifier
+
+on:
+  push:
+    branches: [fix/appguardrail-sarif-provenance-v1]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact pushed head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify canonical formatting with diagnostic diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='packages/commercial-readiness/src/workflow-source-checkout-contract.test.mjs'
+          formatted="${RUNNER_TEMP}/workflow-source-checkout-contract.test.mjs"
+          pnpm exec prettier --single-quote "$target" > "$formatted"
+          diff -u "$target" "$formatted"
+
+      - name: Test Commercial Readiness
+        run: pnpm --filter @life-os/commercial-readiness test
+
+      - name: Typecheck Commercial Readiness
+        run: pnpm --filter @life-os/commercial-readiness typecheck
+
+      - name: Build Commercial Readiness
+        run: pnpm --filter @life-os/commercial-readiness build
