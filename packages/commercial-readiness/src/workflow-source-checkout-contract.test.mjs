@@ -132,18 +132,24 @@ function directStepScalar(stepLines, key, stepIndent) {
   return values[0];
 }
 
-/** Removes one YAML quote pair from a static scalar without evaluating expressions. */
-function unquoteStaticScalar(value) {
+/** Parses one static YAML scalar while preserving fail-closed expression handling. */
+function staticScalarValue(value) {
   if (value === undefined) {
     return undefined;
   }
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
+
+  const doubleQuoted = /^("(?:[^"\\]|\\.)*")(?:\s+#.*)?$/u.exec(value);
+  if (doubleQuoted) {
+    return JSON.parse(doubleQuoted[1]);
   }
-  return value;
+
+  const singleQuoted = /^'((?:[^']|'')*)'(?:\s+#.*)?$/u.exec(value);
+  if (singleQuoted) {
+    return singleQuoted[1].replaceAll("''", "'");
+  }
+
+  const comment = /\s+#/u.exec(value);
+  return (comment ? value.slice(0, comment.index) : value).trim();
 }
 
 /** Reads direct with inputs without borrowing nested or sibling text. */
@@ -192,7 +198,7 @@ function checkoutRepositoryKind(entries) {
     return 'self';
   }
 
-  const repository = unquoteStaticScalar(
+  const repository = staticScalarValue(
     repositories[0].slice('repository:'.length).trim(),
   );
   if (
@@ -216,7 +222,7 @@ function assertExactContributorCheckout(workflow, jobName) {
   const selfCheckouts = [];
 
   for (const step of stepBlocks(job)) {
-    const uses = unquoteStaticScalar(
+    const uses = staticScalarValue(
       directStepScalar(step, 'uses', section.stepIndent),
     );
     if (!uses?.startsWith('actions/checkout@')) {
@@ -350,6 +356,28 @@ test('checkout source binding rejects a quoted later current-repository checkout
     () => assertExactContributorCheckout(hostile, 'validate'),
     /must own exactly one current-repository checkout/u,
     'quoted YAML uses scalars must not hide a second current-repository checkout',
+  );
+});
+
+test('checkout source binding rejects quoted checkout authority with an inline comment', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: "actions/checkout@reviewed-sha" # still a checkout',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertExactContributorCheckout(hostile, 'validate'),
+    /must own exactly one current-repository checkout/u,
+    'an inline YAML comment must not hide quoted checkout authority',
   );
 });
 
