@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+const SELF_REPOSITORY = 'ContextualWisdomLab/life-os';
 const SOURCE_REF =
   'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 
@@ -163,11 +164,40 @@ function directWithEntries(stepLines, stepIndent) {
   return entries;
 }
 
-/** Requires an exact-head checkout to be direct, unique, and credential-clean. */
+/** Classifies checkout repository authority without accepting dynamic ambiguity. */
+function checkoutRepositoryKind(entries) {
+  const repositories = entries.filter((entry) => entry.startsWith('repository:'));
+  assert.ok(
+    repositories.length <= 1,
+    'checkout step must not duplicate direct repository authority',
+  );
+  if (repositories.length === 0) {
+    return 'self';
+  }
+
+  let repository = repositories[0].slice('repository:'.length).trim();
+  if (
+    (repository.startsWith('"') && repository.endsWith('"')) ||
+    (repository.startsWith("'") && repository.endsWith("'"))
+  ) {
+    repository = repository.slice(1, -1);
+  }
+  if (repository === SELF_REPOSITORY || repository === '${{ github.repository }}') {
+    return 'self';
+  }
+  assert.match(
+    repository,
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u,
+    'external checkout repository authority must be one static owner/name',
+  );
+  return 'external';
+}
+
+/** Requires one exact self checkout while allowing explicit static external dependencies. */
 function assertExactContributorCheckout(workflow, jobName) {
   const job = namedJob(workflow, jobName);
   const section = stepsSection(job);
-  const matches = [];
+  const selfCheckouts = [];
 
   for (const step of stepBlocks(job)) {
     const uses = directStepScalar(step, 'uses', section.stepIndent);
@@ -175,19 +205,23 @@ function assertExactContributorCheckout(workflow, jobName) {
       continue;
     }
     const entries = directWithEntries(step, section.stepIndent);
-    const refs = entries.filter((entry) => entry.startsWith('ref:'));
-    if (refs.length === 1 && refs[0] === SOURCE_REF) {
-      matches.push(entries);
+    if (checkoutRepositoryKind(entries) === 'self') {
+      selfCheckouts.push(entries);
     }
   }
 
   assert.equal(
-    matches.length,
+    selfCheckouts.length,
     1,
-    `${jobName} must own exactly one direct checkout bound to the contributor head`,
+    `${jobName} must own exactly one current-repository checkout`,
   );
   assert.deepEqual(
-    matches[0].filter((entry) => entry.startsWith('persist-credentials:')),
+    selfCheckouts[0].filter((entry) => entry.startsWith('ref:')),
+    [SOURCE_REF],
+    `${jobName} current-repository checkout must bind exactly to the contributor head`,
+  );
+  assert.deepEqual(
+    selfCheckouts[0].filter((entry) => entry.startsWith('persist-credentials:')),
     ['persist-credentials: false'],
     `${jobName} contributor checkout must disable credential persistence exactly once`,
   );
@@ -234,7 +268,7 @@ test('job extraction rejects checkout evidence borrowed from an inline-comment s
 
   assert.throws(
     () => assertExactContributorCheckout(hostile, 'validate'),
-    /must own exactly one direct checkout bound to the contributor head/u,
+    /current-repository checkout must bind exactly to the contributor head/u,
   );
 });
 
@@ -252,7 +286,7 @@ test('checkout source binding rejects duplicate direct ref authority', () => {
 
   assert.throws(
     () => assertExactContributorCheckout(hostile, 'validate'),
-    /must own exactly one direct checkout bound to the contributor head/u,
+    /current-repository checkout must bind exactly to the contributor head/u,
   );
 });
 
@@ -274,5 +308,45 @@ test('checkout source binding rejects a later current-repository checkout', () =
   assert.throws(
     () => assertExactContributorCheckout(hostile, 'validate'),
     /must own exactly one current-repository checkout/u,
+  );
+});
+
+test('checkout source binding allows one explicit static external dependency checkout', () => {
+  const valid = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          repository: ContextualWisdomLab/appguardrail',
+    '          ref: reviewed-appguardrail-sha',
+    '          persist-credentials: false',
+  ].join('\n');
+
+  assert.doesNotThrow(() => assertExactContributorCheckout(valid, 'scan'));
+});
+
+test('checkout source binding rejects ambiguous dynamic repository authority', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          repository: ${{ matrix.repository }}',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertExactContributorCheckout(hostile, 'validate'),
+    /external checkout repository authority must be one static owner\/name/u,
   );
 });
