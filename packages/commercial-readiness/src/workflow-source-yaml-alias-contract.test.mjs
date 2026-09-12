@@ -143,3 +143,39 @@ test('source-verification rejects YAML alias replay of a checkout step', () => {
     'an alias-replayed checkout must not evade exact checkout counting',
   );
 });
+
+test('source-verification rejects noncanonical sequence forms that raw checkout scanning cannot parse', () => {
+  const hostileVariants = [
+    [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - uses: actions/checkout@reviewed-sha',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+      '      -',
+      '        uses: actions/checkout@reviewed-sha',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: refs/heads/main',
+    ].join('\n'),
+    [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - uses: actions/checkout@reviewed-sha',
+      '        with:',
+      '          persist-credentials: false',
+      '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+      '      - { uses: actions/checkout@reviewed-sha, with: { persist-credentials: false, ref: refs/heads/main } }',
+    ].join('\n'),
+  ];
+
+  for (const hostile of hostileVariants) {
+    assert.throws(
+      () => assertDirectStepAuthority(hostile, 'validate'),
+      /canonical direct mapping/u,
+    );
+  }
+});
