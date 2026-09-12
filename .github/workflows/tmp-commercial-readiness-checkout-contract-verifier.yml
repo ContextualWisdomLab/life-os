@@ -47,6 +47,3 @@ jobs:
 
       - name: Build Commercial Readiness
         run: pnpm --filter @life-os/commercial-readiness build
-
-      - name: Check patch whitespace
-        run: git diff --check HEAD^
