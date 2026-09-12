@@ -230,6 +230,22 @@ test('external checkout without a path is rejected', () => {
   assert.throws(() => assertExternalCheckoutIsolation(hostile, 'scan'), /must use one direct isolated path/u);
 });
 
+test('case-variant checkout action cannot bypass external checkout isolation', () => {
+  const hostile = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - uses: Actions/Checkout@reviewed-sha',
+    '        with:',
+    '          repository: attacker/example',
+    '          ref: reviewed-external-sha',
+  ].join('\n');
+  assert.throws(
+    () => assertExternalCheckoutIsolation(hostile, 'scan'),
+    /must use one direct isolated path/u,
+  );
+});
+
 test('external checkout cannot target the workspace root or escape it', () => {
   const unsafePaths = [
     ['.', /non-root workspace subdirectory/u],
