@@ -89,6 +89,7 @@ function stepBlocks(jobLines) {
   assert.equal(stepsIndexes.length, 1, 'job must contain exactly one direct steps mapping');
 
   const starts = [];
+  let stepsEnd = jobLines.length;
   for (let index = stepsIndexes[0] + 1; index < jobLines.length; index += 1) {
     const line = jobLines[index];
     if (line.trim().length === 0 || line.trimStart().startsWith('#')) {
@@ -96,6 +97,7 @@ function stepBlocks(jobLines) {
     }
     const indent = /^\s*/u.exec(line)?.[0].length ?? 0;
     if (indent <= keyIndent) {
+      stepsEnd = index;
       break;
     }
     if (indent === stepIndent && line.startsWith(`${' '.repeat(stepIndent)}- `)) {
@@ -104,7 +106,7 @@ function stepBlocks(jobLines) {
   }
 
   return starts.map((start, position) => {
-    const end = position + 1 < starts.length ? starts[position + 1] : jobLines.length;
+    const end = position + 1 < starts.length ? starts[position + 1] : stepsEnd;
     return { lines: jobLines.slice(start, end), stepIndent };
   });
 }
