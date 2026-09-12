@@ -7,6 +7,7 @@ import test from 'node:test';
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const SELF_REPOSITORY = 'ContextualWisdomLab/life-os';
 const SELF_REPOSITORY_NORMALIZED = SELF_REPOSITORY.toLowerCase();
+const CHECKOUT_ACTION_REPOSITORY = 'actions/checkout';
 const SOURCE_REF =
   'ref: ${{ github.event.pull_request.head.sha || github.sha }}';
 
@@ -215,6 +216,18 @@ function checkoutRepositoryKind(entries) {
   return 'external';
 }
 
+/** Matches the checkout action by case-insensitive repository identity while preserving the ref. */
+function isCheckoutAction(uses) {
+  if (uses === undefined) {
+    return false;
+  }
+  const refSeparator = uses.indexOf('@');
+  return (
+    refSeparator > 0 &&
+    uses.slice(0, refSeparator).toLowerCase() === CHECKOUT_ACTION_REPOSITORY
+  );
+}
+
 /** Requires one exact self checkout while allowing explicit static external dependencies. */
 function assertExactContributorCheckout(workflow, jobName) {
   const job = namedJob(workflow, jobName);
@@ -225,7 +238,7 @@ function assertExactContributorCheckout(workflow, jobName) {
     const uses = staticScalarValue(
       directStepScalar(step, 'uses', section.stepIndent),
     );
-    if (!uses?.startsWith('actions/checkout@')) {
+    if (!isCheckoutAction(uses)) {
       continue;
     }
     const entries = directWithEntries(step, section.stepIndent);
