@@ -66,25 +66,86 @@ function directSteps(jobLines) {
     'job must contain exactly one direct steps mapping',
   );
 
-  const lines = [];
+  const sectionLines = [];
   const sequenceMarker = `${' '.repeat(stepIndent)}-`;
   for (let index = indexes[0] + 1; index < jobLines.length; index += 1) {
     const line = jobLines[index];
     if (line.trim().length === 0 || line.trimStart().startsWith('#')) {
+      sectionLines.push(line);
       continue;
     }
     const indent = /^\s*/u.exec(line)?.[0].length ?? 0;
     if (indent <= keyIndent) {
       break;
     }
+    sectionLines.push(line);
+  }
+
+  const starts = [];
+  for (let index = 0; index < sectionLines.length; index += 1) {
+    const line = sectionLines[index];
+    const indent = /^\s*/u.exec(line)?.[0].length ?? 0;
     if (
       indent === stepIndent &&
       (line === sequenceMarker || line.startsWith(`${sequenceMarker} `))
     ) {
-      lines.push(line);
+      starts.push(index);
     }
   }
-  return { lines, stepIndent };
+
+  const blocks = starts.map((start, position) => {
+    const end =
+      position + 1 < starts.length ? starts[position + 1] : sectionLines.length;
+    return sectionLines.slice(start, end);
+  });
+  return { blocks, stepIndent };
+}
+
+/** Rejects YAML anchor/alias authority from structural step mappings. */
+function assertNoStructuralYamlReferences(stepLines, stepIndent, jobName) {
+  const directIndent = stepIndent + 2;
+  let blockScalarIndent;
+
+  for (let index = 0; index < stepLines.length; index += 1) {
+    const line = stepLines[index];
+    if (line.trim().length === 0 || line.trimStart().startsWith('#')) {
+      continue;
+    }
+
+    const indent = /^\s*/u.exec(line)?.[0].length ?? 0;
+    if (blockScalarIndent !== undefined) {
+      if (indent > blockScalarIndent) {
+        continue;
+      }
+      blockScalarIndent = undefined;
+    }
+
+    const structural =
+      index === 0
+        ? line.slice(stepIndent + 1)
+        : indent >= directIndent
+          ? line.slice(indent)
+          : undefined;
+    if (structural === undefined) {
+      continue;
+    }
+
+    const mapping = /^(?:-\s+)?[A-Za-z_][A-Za-z0-9_-]*:\s*(.*)$/u.exec(
+      structural,
+    );
+    if (!mapping) {
+      continue;
+    }
+    const value = mapping[1].trimStart();
+    assert.doesNotMatch(
+      value,
+      /^[&*][A-Za-z0-9_-]+(?:\s|$)/u,
+      `${jobName} source-verification structural scalars must not use YAML anchor or alias authority`,
+    );
+    if (/^[|>][+-]?(?:\s+#.*)?$/u.test(value)) {
+      blockScalarIndent = indent;
+    }
+  }
 }
 
 /**
@@ -96,10 +157,10 @@ function directSteps(jobLines) {
  * those jobs in one canonical direct mapping form.
  */
 function assertDirectStepAuthority(workflow, jobName) {
-  const { lines, stepIndent } = directSteps(namedJob(workflow, jobName));
-  assert.ok(lines.length > 0, `${jobName} must contain direct workflow steps`);
-  for (const line of lines) {
-    const sequenceValue = line.slice(stepIndent + 1);
+  const { blocks, stepIndent } = directSteps(namedJob(workflow, jobName));
+  assert.ok(blocks.length > 0, `${jobName} must contain direct workflow steps`);
+  for (const block of blocks) {
+    const sequenceValue = block[0].slice(stepIndent + 1);
     const trimmedValue = sequenceValue.trimStart();
     assert.doesNotMatch(
       trimmedValue,
@@ -111,6 +172,7 @@ function assertDirectStepAuthority(workflow, jobName) {
       /^ [A-Za-z_][A-Za-z0-9_-]*:/u,
       `${jobName} source-verification steps must use one canonical direct mapping sequence form`,
     );
+    assertNoStructuralYamlReferences(block, stepIndent, jobName);
   }
 }
 
@@ -208,7 +270,7 @@ test('source-verification rejects YAML anchor and alias authority hidden in dire
 
   assert.throws(
     () => assertDirectStepAuthority(hostile, 'validate'),
-    /YAML anchor or alias/u,
+    /structural scalars must not use YAML anchor or alias authority/u,
     'scalar anchor/alias authority must not evade source-verification step scanning',
   );
 });
