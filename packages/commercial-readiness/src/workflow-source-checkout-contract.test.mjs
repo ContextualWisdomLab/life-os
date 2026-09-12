@@ -105,7 +105,9 @@ function stepBlocks(job) {
   }
   return starts.map((start, position) => {
     const end =
-      position + 1 < starts.length ? starts[position + 1] : section.lines.length;
+      position + 1 < starts.length
+        ? starts[position + 1]
+        : section.lines.length;
     return section.lines.slice(start, end);
   });
 }
