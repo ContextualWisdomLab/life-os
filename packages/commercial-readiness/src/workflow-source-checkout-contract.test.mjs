@@ -404,6 +404,28 @@ test('checkout source binding treats case-variant current-repository authority a
   );
 });
 
+test('checkout source binding rejects case-variant checkout action identity', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: Actions/Checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertExactContributorCheckout(hostile, 'validate'),
+    /must own exactly one current-repository checkout/u,
+    'GitHub repository identity is case-insensitive, so action-path casing must not hide a second checkout',
+  );
+});
+
 test('checkout source binding allows one explicit static external dependency checkout', () => {
   const valid = [
     'jobs:',
