@@ -25,5 +25,8 @@ jobs:
         run: node --test packages/commercial-readiness/src/*.test.mjs
       - name: Verify changed-source syntax and whitespace
         run: |
+          set -euo pipefail
           node --check packages/commercial-readiness/src/workflow-source-yaml-tag-contract.test.mjs
-          git diff --check 7973277a4c97db6eaa071ff2726187f6b33009f5...HEAD
+          git fetch --no-tags --depth=1 origin 7973277a4c97db6eaa071ff2726187f6b33009f5
+          test "$(git rev-parse FETCH_HEAD)" = "7973277a4c97db6eaa071ff2726187f6b33009f5"
+          git diff --check 7973277a4c97db6eaa071ff2726187f6b33009f5 HEAD
