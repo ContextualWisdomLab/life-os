@@ -130,8 +130,15 @@ function assertNoStructuralYamlReferences(stepLines, stepIndent, jobName) {
       continue;
     }
 
-    const mapping = /^(?:-\s+)?[A-Za-z_][A-Za-z0-9_-]*:\s*(.*)$/u.exec(
-      structural,
+    const mappingCandidate = structural.replace(/^-\s+/u, '');
+    assert.doesNotMatch(
+      mappingCandidate,
+      /^[&*][A-Za-z0-9_-]+(?:\s|$)/u,
+      `${jobName} source-verification structural mapping keys must not use YAML anchor or alias authority`,
+    );
+
+    const mapping = /^[A-Za-z_][A-Za-z0-9_-]*:\s*(.*)$/u.exec(
+      mappingCandidate,
     );
     if (!mapping) {
       continue;
@@ -142,7 +149,7 @@ function assertNoStructuralYamlReferences(stepLines, stepIndent, jobName) {
       /^[&*][A-Za-z0-9_-]+(?:\s|$)/u,
       `${jobName} source-verification structural scalars must not use YAML anchor or alias authority`,
     );
-    if (/^[|>][+-]?(?:\s+#.*)?$/u.test(value)) {
+    if (/^[|>](?:[1-9][+-]?|[+-][1-9]?)?(?:\s+#.*)?$/u.test(value)) {
       blockScalarIndent = indent;
     }
   }
@@ -290,6 +297,58 @@ test('source-verification rejects YAML anchor and alias authority hidden in dire
       () => assertDirectStepAuthority(hostile, 'validate'),
       /structural scalars must not use YAML anchor or alias authority/u,
       'scalar anchor/alias authority must not evade source-verification step scanning',
+    );
+  }
+});
+
+test('source-verification rejects YAML anchor or alias authority attached to structural mapping keys', () => {
+  const hostileVariants = [
+    [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - uses: actions/checkout@reviewed-sha',
+      '        with:',
+      '          &repository_key repository: attacker/example',
+      '          persist-credentials: false',
+      '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+    ].join('\n'),
+    [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - uses: actions/checkout@reviewed-sha',
+      '        with:',
+      '          repository: &repository_value attacker/example',
+      '          *repository_value : attacker/example',
+      '          persist-credentials: false',
+      '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+    ].join('\n'),
+  ];
+
+  for (const hostile of hostileVariants) {
+    assert.throws(
+      () => assertDirectStepAuthority(hostile, 'validate'),
+      /structural mapping keys must not use YAML anchor or alias authority/u,
+      'mapping-key composition must not evade direct checkout authority scanning',
+    );
+  }
+});
+
+test('source-verification ignores structural-looking text inside block scalars with indentation indicators', () => {
+  for (const header of ['|2', '>-2', '|+2']) {
+    const valid = [
+      'jobs:',
+      '  validate:',
+      '    steps:',
+      '      - name: Safe shell',
+      `        run: ${header}`,
+      '          repository: *not-yaml-authority',
+    ].join('\n');
+
+    assert.doesNotThrow(
+      () => assertDirectStepAuthority(valid, 'validate'),
+      `block scalar ${header} payload must not become structural authority`,
     );
   }
 });
