@@ -211,6 +211,30 @@ test('source verification rejects quoted structural keys that can hide a second 
   }
 });
 
+test('source verification rejects explicit mapping-key syntax that can hide a second checkout', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+    '      - name: Hidden second checkout',
+    '        ? uses',
+    '        : actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertJobUsesPlainStructuralKeys(hostile, 'validate'),
+    /structural mapping keys must use canonical plain identifiers/u,
+    'explicit mapping-key syntax must not hide executable checkout authority from source verification',
+  );
+});
+
 test('quoted mapping-looking text inside a block scalar is not workflow authority', () => {
   const valid = [
     'jobs:',
