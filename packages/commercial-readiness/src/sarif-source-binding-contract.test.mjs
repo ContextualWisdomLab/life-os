@@ -108,6 +108,29 @@ test('AppGuardrail SARIF upload binds contributor identity through direct with i
   assert.doesNotThrow(() => assertSarifSourceBinding(uploadStep));
 });
 
+test('SARIF source binding rejects upload authority moved to another workflow job', () => {
+  const hostileWorkflow = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - name: Harmless scan step',
+    '        run: echo scan',
+    '  decoy:',
+    '    steps:',
+    `      - name: ${UPLOAD_STEP_NAME}`,
+    '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+    '        with:',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+  ].join('\n');
+
+  assert.throws(
+    () => namedStep(hostileWorkflow, UPLOAD_STEP_NAME),
+    /missing reviewed step from scan job/u,
+    'a SARIF upload in another workflow job must not satisfy the scan-job authority contract',
+  );
+});
+
 test('SARIF source binding rejects contributor markers moved outside direct with entries', () => {
   const hostileUploadStep = [
     '      - name: Upload AppGuardrail SARIF to code scanning',
