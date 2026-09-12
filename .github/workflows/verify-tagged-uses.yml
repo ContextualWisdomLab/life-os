@@ -37,7 +37,7 @@ test('explicit YAML tags cannot hide checkout authority from source verification
     '      - uses: actions/checkout@reviewed-sha',
     '        with:',
     '          persist-credentials: false',
-    '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+    '          ref: reviewed-contributor-sha',
     '      - name: Hidden tagged checkout',
     '        uses: !!str actions/checkout@reviewed-sha',
     '        with:',
