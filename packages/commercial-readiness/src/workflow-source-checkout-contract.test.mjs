@@ -166,7 +166,9 @@ function directWithEntries(stepLines, stepIndent) {
 
 /** Classifies checkout repository authority without accepting dynamic ambiguity. */
 function checkoutRepositoryKind(entries) {
-  const repositories = entries.filter((entry) => entry.startsWith('repository:'));
+  const repositories = entries.filter((entry) =>
+    entry.startsWith('repository:'),
+  );
   assert.ok(
     repositories.length <= 1,
     'checkout step must not duplicate direct repository authority',
@@ -182,7 +184,10 @@ function checkoutRepositoryKind(entries) {
   ) {
     repository = repository.slice(1, -1);
   }
-  if (repository === SELF_REPOSITORY || repository === '${{ github.repository }}') {
+  if (
+    repository === SELF_REPOSITORY ||
+    repository === '${{ github.repository }}'
+  ) {
     return 'self';
   }
   assert.match(
@@ -221,7 +226,9 @@ function assertExactContributorCheckout(workflow, jobName) {
     `${jobName} current-repository checkout must bind exactly to the contributor head`,
   );
   assert.deepEqual(
-    selfCheckouts[0].filter((entry) => entry.startsWith('persist-credentials:')),
+    selfCheckouts[0].filter((entry) =>
+      entry.startsWith('persist-credentials:'),
+    ),
     ['persist-credentials: false'],
     `${jobName} contributor checkout must disable credential persistence exactly once`,
   );
