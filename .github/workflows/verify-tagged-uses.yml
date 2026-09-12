@@ -17,5 +17,44 @@ jobs:
         uses: !!str actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify checkout executed
-        run: test -f packages/commercial-readiness/package.json
+      - name: Reproduce source-verification YAML-tag bypass
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+
+          const sourcePath = 'packages/commercial-readiness/src/workflow-source-yaml-alias-contract.test.mjs';
+          const probePath = 'packages/commercial-readiness/src/workflow-source-yaml-tag-red.test.mjs';
+          const source = readFileSync(sourcePath, 'utf8');
+          const hostile = String.raw`
+
+test('explicit YAML tags cannot hide checkout authority from source verification', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: ${{ github.event.pull_request.head.sha || github.sha }}',
+    '      - name: Hidden tagged checkout',
+    '        uses: !!str actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\\n');
+
+  assert.throws(
+    () => assertDirectStepAuthority(hostile, 'validate'),
+    /YAML tag authority/u,
+  );
+});
+`;
+          writeFileSync(probePath, source + hostile, 'utf8');
+          const result = spawnSync(process.execPath, ['--test', probePath], {
+            stdio: 'inherit',
+          });
+          rmSync(probePath, { force: true });
+          process.exit(result.status ?? 1);
+          NODE
