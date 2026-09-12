@@ -242,6 +242,28 @@ test('external checkout without a path is rejected', () => {
   assert.throws(() => assertExternalCheckoutIsolation(hostile, 'scan'), /must use one direct isolated path/u);
 });
 
+test('post-steps mappings cannot contaminate the final checkout step boundary', () => {
+  const hostile = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          repository: ContextualWisdomLab/appguardrail',
+    '          ref: reviewed-appguardrail-sha',
+    '          persist-credentials: false',
+    '    strategy:',
+    '      matrix:',
+    '        with:',
+    '          path: _appguardrail',
+  ].join('\n');
+  assert.throws(
+    () => assertExternalCheckoutIsolation(hostile, 'scan'),
+    /must use one direct isolated path/u,
+    'post-steps job mappings must not become authority for the final checkout step',
+  );
+});
+
 test('case-variant checkout action cannot bypass external checkout isolation', () => {
   const hostile = [
     'jobs:',
