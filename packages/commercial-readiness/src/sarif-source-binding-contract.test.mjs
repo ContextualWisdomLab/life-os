@@ -109,3 +109,22 @@ test('SARIF source binding rejects contributor markers moved outside direct with
     'authority-looking ref/sha text outside with: must not satisfy upload input binding',
   );
 });
+
+test('SARIF source binding rejects duplicate direct ref or sha inputs', () => {
+  const hostileUploadStep = [
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+    '        with:',
+    '          sarif_file: appguardrail.sarif',
+    `          ${SARIF_SOURCE_REF}`,
+    `          ${SARIF_SOURCE_SHA}`,
+    "          ref: ${{ format('refs/pull/{0}/merge', github.event.pull_request.number) }}",
+    '          sha: ${{ github.sha }}',
+  ].join('\n');
+
+  assert.throws(
+    () => assertSarifSourceBinding(hostileUploadStep),
+    /exactly one direct (ref|sha) input/u,
+    'duplicate YAML keys must not override the reviewed contributor-head binding',
+  );
+});
