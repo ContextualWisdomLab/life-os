@@ -10,6 +10,14 @@ const SARIF_SOURCE_REF =
 const SARIF_SOURCE_SHA =
   'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
 const UPLOAD_STEP_NAME = 'Upload AppGuardrail SARIF to code scanning';
+const DIRECT_JOB_ENTRY =
+  /^  (?:([A-Za-z_][A-Za-z0-9_-]*)|"([A-Za-z_][A-Za-z0-9_-]*)"|'([A-Za-z_][A-Za-z0-9_-]*)'):\s*(?:#.*)?$/u;
+
+/** Returns the canonical job ID for one direct job entry, or null for non-job lines. */
+function directJobName(line) {
+  const match = DIRECT_JOB_ENTRY.exec(line);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
 
 /** Extracts one uniquely named direct workflow job from the top-level jobs mapping. */
 function namedJob(workflow, jobName) {
@@ -31,11 +39,9 @@ function namedJob(workflow, jobName) {
     }
   }
 
-  const jobIndent = '  ';
-  const expected = `${jobIndent}${jobName}:`;
   const matches = [];
   for (let index = jobsStart + 1; index < jobsEnd; index += 1) {
-    if (lines[index] === expected) {
+    if (directJobName(lines[index]) === jobName) {
       matches.push(index);
     }
   }
@@ -44,7 +50,7 @@ function namedJob(workflow, jobName) {
   const start = matches[0];
   let end = jobsEnd;
   for (let index = start + 1; index < jobsEnd; index += 1) {
-    if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
+    if (directJobName(lines[index]) !== null) {
       end = index;
       break;
     }
@@ -188,7 +194,11 @@ test('SARIF source binding rejects upload authority moved to another workflow jo
   );
 });
 
-for (const siblingJobLine of ['  "decoy":', "  'decoy': # sibling"]) {
+for (const siblingJobLine of [
+  '  "decoy":',
+  "  'decoy': # sibling",
+  '  decoy: # sibling',
+]) {
   test(`SARIF source binding rejects authority borrowed across sibling boundary ${siblingJobLine}`, () => {
     const hostileWorkflow = [
       'jobs:',
