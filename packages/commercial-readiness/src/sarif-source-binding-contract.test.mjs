@@ -22,10 +22,19 @@ function namedJob(workflow, jobName) {
   }
   assert.equal(jobsIndexes.length, 1, 'workflow must contain exactly one jobs mapping');
 
+  const jobsStart = jobsIndexes[0];
+  let jobsEnd = lines.length;
+  for (let index = jobsStart + 1; index < lines.length; index += 1) {
+    if (/^[^\s#]/u.test(lines[index])) {
+      jobsEnd = index;
+      break;
+    }
+  }
+
   const jobIndent = '  ';
   const expected = `${jobIndent}${jobName}:`;
   const matches = [];
-  for (let index = jobsIndexes[0] + 1; index < lines.length; index += 1) {
+  for (let index = jobsStart + 1; index < jobsEnd; index += 1) {
     if (lines[index] === expected) {
       matches.push(index);
     }
@@ -33,13 +42,9 @@ function namedJob(workflow, jobName) {
   assert.equal(matches.length, 1, `expected exactly one workflow job ${jobName}`);
 
   const start = matches[0];
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
+  let end = jobsEnd;
+  for (let index = start + 1; index < jobsEnd; index += 1) {
     if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
-      end = index;
-      break;
-    }
-    if (/^[^\s#]/u.test(lines[index])) {
       end = index;
       break;
     }
