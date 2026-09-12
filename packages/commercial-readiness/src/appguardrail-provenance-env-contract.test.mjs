@@ -11,6 +11,20 @@ const EXPECTED_PR_NUMBER =
   'PR_NUMBER: ${{ github.event.pull_request.number }}';
 const EXPECTED_MERGE_SHA = 'EXPECTED_MERGE_SHA: ${{ github.sha }}';
 
+/** Finds direct jobs while respecting quoted IDs and inline-comment boundaries. */
+function directJobEntries(lines, start, end) {
+  const entries = [];
+  const pattern =
+    /^  (?:([A-Za-z_][A-Za-z0-9_-]*)|"([A-Za-z_][A-Za-z0-9_-]*)"|'([A-Za-z_][A-Za-z0-9_-]*)'):\s*(?:#.*)?$/u;
+  for (let index = start; index < end; index += 1) {
+    const match = pattern.exec(lines[index]);
+    if (match) {
+      entries.push({ index, name: match[1] ?? match[2] ?? match[3] });
+    }
+  }
+  return entries;
+}
+
 /** Extracts one uniquely named direct job from the workflow's top-level jobs mapping. */
 function namedJob(workflow, jobName) {
   const lines = workflow.split('\n');
@@ -31,23 +45,14 @@ function namedJob(workflow, jobName) {
     }
   }
 
-  const expected = `  ${jobName}:`;
-  const matches = [];
-  for (let index = jobsStart + 1; index < jobsEnd; index += 1) {
-    if (lines[index] === expected) {
-      matches.push(index);
-    }
-  }
+  const entries = directJobEntries(lines, jobsStart + 1, jobsEnd);
+  const matches = entries.filter((entry) => entry.name === jobName);
   assert.equal(matches.length, 1, `expected exactly one workflow job ${jobName}`);
 
-  const start = matches[0];
-  let end = jobsEnd;
-  for (let index = start + 1; index < jobsEnd; index += 1) {
-    if (/^  [A-Za-z0-9_-]+:\s*$/u.test(lines[index])) {
-      end = index;
-      break;
-    }
-  }
+  const start = matches[0].index;
+  const position = entries.findIndex((entry) => entry.index === start);
+  const end =
+    position + 1 < entries.length ? entries[position + 1].index : jobsEnd;
   return lines.slice(start, end).join('\n');
 }
 
@@ -197,4 +202,26 @@ test('provenance env rejects duplicate pull-request identity keys', () => {
     /exactly one direct PR_NUMBER entry/u,
     'duplicate YAML env keys must not override reviewed provenance identity',
   );
+});
+
+test('provenance env does not borrow identity from quoted or commented sibling jobs', () => {
+  for (const sibling of ['  decoy: # sibling', '  "decoy":']) {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      sibling,
+      '    steps:',
+      `      - name: ${PROVENANCE_STEP_NAME}`,
+      '        env:',
+      `          ${EXPECTED_PR_NUMBER}`,
+      `          ${EXPECTED_MERGE_SHA}`,
+      '        run: echo sibling-authority',
+    ].join('\n');
+
+    assert.throws(
+      () => assertProvenanceEnv(namedStep(hostileWorkflow, PROVENANCE_STEP_NAME)),
+      /direct steps mapping/u,
+      'a sibling job must not lend provenance environment authority to jobs.scan',
+    );
+  }
 });
