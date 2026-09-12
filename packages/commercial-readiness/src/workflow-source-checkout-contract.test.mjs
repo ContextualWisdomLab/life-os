@@ -255,3 +255,24 @@ test('checkout source binding rejects duplicate direct ref authority', () => {
     /must own exactly one direct checkout bound to the contributor head/u,
   );
 });
+
+test('checkout source binding rejects a later current-repository checkout', () => {
+  const hostile = [
+    'jobs:',
+    '  validate:',
+    '    steps:',
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    `          ${SOURCE_REF}`,
+    '      - uses: actions/checkout@reviewed-sha',
+    '        with:',
+    '          persist-credentials: false',
+    '          ref: refs/heads/main',
+  ].join('\n');
+
+  assert.throws(
+    () => assertExactContributorCheckout(hostile, 'validate'),
+    /must own exactly one current-repository checkout/u,
+  );
+});
