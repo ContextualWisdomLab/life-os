@@ -89,9 +89,8 @@ function directStepUsesAuthority(lines, lineIndex, reviewedAction) {
 
   const line = lines[lineIndex];
   const trimmed = line.trimStart();
-  const directSequenceScalar = trimmed.startsWith('- ')
-    ? trimmed.slice(2)
-    : null;
+  const directSequenceMatch = /^-( +)(uses:.*)$/.exec(trimmed);
+  const directSequenceScalar = directSequenceMatch?.[2] ?? null;
   const isDirectSequence =
     directSequenceScalar !== null &&
     isReviewedUsesScalar(directSequenceScalar, reviewedAction);
@@ -100,7 +99,9 @@ function directStepUsesAuthority(lines, lineIndex, reviewedAction) {
 
   const lineIndentValue = lineIndent(line);
   const stepIndent = isDirectSequence ? lineIndentValue : lineIndentValue - 2;
-  const usesIndent = isDirectSequence ? stepIndent + 2 : lineIndentValue;
+  const usesIndent = isDirectSequence
+    ? stepIndent + 1 + directSequenceMatch[1].length
+    : lineIndentValue;
   const stepsIndent = stepIndent - 2;
   if (stepIndent < 2 || stepsIndent < 0) return null;
 
@@ -314,6 +315,26 @@ describe('persistent GitHub Action runtime authority', () => {
     expect(() =>
       expectCheckoutInitialBranchAuthority(
         'hostile-direct-sequence-checkout-without-env.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
+  it('requires checkout branch authority for multi-space direct sequence steps', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Reviewed checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+      `  -  uses: ${checkoutNode24}`,
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-multi-space-direct-sequence-checkout-without-env.yml',
         hostileWorkflow,
       ),
     ).toThrow();
