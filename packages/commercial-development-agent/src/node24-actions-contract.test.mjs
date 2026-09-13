@@ -134,10 +134,7 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
       const candidate = lines[index];
       if (candidate.trim() === '') continue;
       const candidateIndent = lineIndent(candidate);
-      if (
-        candidateIndent === stepIndent &&
-        candidate.trimStart().startsWith('- ')
-      ) {
+      if (candidateIndent <= stepIndent) {
         stepEnd = index;
         break;
       }
