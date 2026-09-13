@@ -72,15 +72,24 @@ function isInsideBlockScalar(lines, lineIndex) {
   return false;
 }
 
+function isReviewedUsesScalar(trimmed, reviewedAction) {
+  const authorities = [
+    `uses: ${reviewedAction}`,
+    `uses: '${reviewedAction}'`,
+    `uses: "${reviewedAction}"`,
+  ];
+  return authorities.some(
+    (authority) =>
+      trimmed === authority || trimmed.startsWith(`${authority} #`),
+  );
+}
+
 function isDirectStepUses(lines, lineIndex, reviewedAction) {
   if (isInsideBlockScalar(lines, lineIndex)) return false;
 
   const line = lines[lineIndex];
   const trimmed = line.trimStart();
-  const authority = `uses: ${reviewedAction}`;
-  if (trimmed !== authority && !trimmed.startsWith(`${authority} #`)) {
-    return false;
-  }
+  if (!isReviewedUsesScalar(trimmed, reviewedAction)) return false;
 
   const usesIndent = lineIndent(line);
   if (usesIndent < 4) return false;
@@ -240,6 +249,27 @@ describe('persistent GitHub Action runtime authority', () => {
 
     expect(() =>
       expectReviewedActionPins('hostile-case-variant-ref.yml', hostileWorkflow),
+    ).toThrow();
+  });
+
+  it('requires checkout branch authority for quoted executable uses scalars', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Reviewed checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+      '  - name: Hostile quoted checkout',
+      `    uses: "${checkoutNode24}"`,
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-quoted-checkout-without-env.yml',
+        hostileWorkflow,
+      ),
     ).toThrow();
   });
 
