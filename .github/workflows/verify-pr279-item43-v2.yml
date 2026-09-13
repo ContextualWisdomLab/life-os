@@ -1,0 +1,52 @@
+name: Verify PR 279 item 43 v2
+
+on:
+  push:
+    branches:
+      - fix/appguardrail-sarif-provenance-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact verifier head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Verify provenance run authority contract
+        run: node --test packages/commercial-readiness/src/appguardrail-provenance-run-contract.test.mjs
+
+      - name: Verify full commercial-readiness contract suite
+        run: node --test packages/commercial-readiness/src/*.test.mjs
+
+      - name: Verify contract syntax
+        run: node --check packages/commercial-readiness/src/appguardrail-provenance-run-contract.test.mjs
+
+      - name: Verify exact repair source hygiene
+        env:
+          BASE_SHA: 3d7b53c07f0cbdae07ca7c1516fa1826c6fd76bd
+          REPAIR_SHA: 4ef8d98ec3d226c5289b9d18687387f2933d5ce1
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          fetched_base="$(git rev-parse FETCH_HEAD)"
+          test "$fetched_base" = "$BASE_SHA"
+          git fetch --no-tags --depth=1 origin "$REPAIR_SHA"
+          fetched_repair="$(git rev-parse FETCH_HEAD)"
+          test "$fetched_repair" = "$REPAIR_SHA"
+          git diff --check "$BASE_SHA" "$REPAIR_SHA"
