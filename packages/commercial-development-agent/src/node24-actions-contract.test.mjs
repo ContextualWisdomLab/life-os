@@ -67,21 +67,31 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
       }
     }
 
-    const step = lines
-      .slice(checkoutLineIndex, stepEnd)
-      .join(String.fromCharCode(10));
+    const stepLines = lines.slice(checkoutLineIndex, stepEnd);
     const envIndent = ' '.repeat(usesIndent);
     const entryIndent = ' '.repeat(usesIndent + 2);
-    expect(step, `${path} checkout env`).toContain(`${envIndent}env:`);
-    expect(step, `${path} checkout git config count`).toContain(
-      `${entryIndent}GIT_CONFIG_COUNT: '1'`,
-    );
-    expect(step, `${path} checkout git config key`).toContain(
-      `${entryIndent}GIT_CONFIG_KEY_0: init.defaultBranch`,
-    );
-    expect(step, `${path} checkout git config value`).toContain(
-      `${entryIndent}GIT_CONFIG_VALUE_0: main`,
-    );
+    expect(
+      stepLines.filter((line) => line === `${envIndent}env:`),
+      `${path} checkout env`,
+    ).toHaveLength(1);
+    expect(
+      stepLines.filter(
+        (line) => line === `${entryIndent}GIT_CONFIG_COUNT: '1'`,
+      ),
+      `${path} checkout git config count`,
+    ).toHaveLength(1);
+    expect(
+      stepLines.filter(
+        (line) => line === `${entryIndent}GIT_CONFIG_KEY_0: init.defaultBranch`,
+      ),
+      `${path} checkout git config key`,
+    ).toHaveLength(1);
+    expect(
+      stepLines.filter(
+        (line) => line === `${entryIndent}GIT_CONFIG_VALUE_0: main`,
+      ),
+      `${path} checkout git config value`,
+    ).toHaveLength(1);
   }
 }
 
@@ -108,6 +118,25 @@ describe('persistent GitHub Action runtime authority', () => {
     for (const [path, workflow] of Object.entries(workflows)) {
       expectCheckoutInitialBranchAuthority(path, workflow);
     }
+  });
+
+  it('rejects a scalar env payload impersonating checkout Git config authority', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env: |',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-scalar-env.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
   });
 
   it('preserves AppGuardrail steps at the scan job boundary', () => {
