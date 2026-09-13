@@ -33,4 +33,4 @@ jobs:
       - name: Verify syntax and diff hygiene
         run: |
           node --check packages/commercial-readiness/src/appguardrail-provenance-condition-contract.test.mjs
-          git diff --check HEAD^
+          git show --check --format= HEAD
