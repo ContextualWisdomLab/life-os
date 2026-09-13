@@ -38,10 +38,35 @@ function expectReviewedActionPins(path, workflow) {
   }
 }
 
+function isDirectStepUses(lines, lineIndex, reviewedAction) {
+  const line = lines[lineIndex];
+  const trimmed = line.trimStart();
+  const authority = `uses: ${reviewedAction}`;
+  if (trimmed !== authority && !trimmed.startsWith(`${authority} #`)) {
+    return false;
+  }
+
+  const usesIndent = line.length - trimmed.length;
+  if (usesIndent < 2) return false;
+  const stepIndent = usesIndent - 2;
+
+  for (let index = lineIndex - 1; index >= 0; index -= 1) {
+    const candidate = lines[index];
+    if (candidate.trim() === '') continue;
+    const candidateIndent = candidate.length - candidate.trimStart().length;
+    if (candidateIndent < stepIndent) return false;
+    if (candidateIndent === stepIndent) {
+      return candidate.trimStart().startsWith('- ');
+    }
+  }
+
+  return false;
+}
+
 function expectCheckoutInitialBranchAuthority(path, workflow) {
   const lines = workflow.split(String.fromCharCode(10));
   const checkoutLineIndexes = lines.flatMap((line, index) =>
-    line.includes(`uses: ${checkoutNode24}`) ? [index] : [],
+    isDirectStepUses(lines, index, checkoutNode24) ? [index] : [],
   );
 
   expect(checkoutLineIndexes.length, `${path} checkout count`).toBeGreaterThan(
