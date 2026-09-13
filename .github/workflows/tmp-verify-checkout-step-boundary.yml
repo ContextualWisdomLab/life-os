@@ -1,0 +1,61 @@
+name: Temporary checkout step-boundary verifier
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - packages/commercial-development-agent/src/node24-actions-contract.test.mjs
+      - .github/workflows/tmp-verify-checkout-step-boundary.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout verifier head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prove regression RED then repair GREEN
+        env:
+          REGRESSION_SHA: e29b2f70f5116179f01608e5d41645adff2430e5
+          REPAIR_SHA: 8f8986583c030a1fa16c4560b38d2e7fb07b8ae9
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$REGRESSION_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$REGRESSION_SHA"
+          git checkout --detach "$REGRESSION_SHA"
+          set +e
+          pnpm --dir packages/commercial-development-agent exec vitest run src/node24-actions-contract.test.mjs --no-file-parallelism
+          red_status=$?
+          set -e
+          if [ "$red_status" -eq 0 ]; then
+            echo '::error::Regression head unexpectedly accepted post-step env authority.'
+            exit 1
+          fi
+
+          git fetch --no-tags --depth=1 origin "$REPAIR_SHA"
+          test "$(git rev-parse FETCH_HEAD)" = "$REPAIR_SHA"
+          git checkout --detach "$REPAIR_SHA"
+          pnpm --dir packages/commercial-development-agent exec vitest run src/node24-actions-contract.test.mjs --no-file-parallelism
