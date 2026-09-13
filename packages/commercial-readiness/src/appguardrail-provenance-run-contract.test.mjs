@@ -93,6 +93,9 @@ function directLiteralRun(step) {
     }
     body.push(line.slice(bodyIndent.length));
   }
+  while (body.at(-1) === '') {
+    body.pop();
+  }
   return body.join('\n');
 }
 
@@ -111,6 +114,17 @@ test('AppGuardrail provenance owns the reviewed bounded run authority', () => {
     'utf8',
   );
   assert.doesNotThrow(() => assertProvenanceRun(provenanceStep(workflow)));
+});
+
+test('provenance run authority treats separator blank lines as outside the reviewed body', () => {
+  const validStep = [
+    `      - name: ${PROVENANCE_STEP_NAME}`,
+    '        run: |',
+    ...EXPECTED_PROVENANCE_RUN.split('\n').map((line) => `          ${line}`),
+    '',
+  ].join('\n');
+
+  assert.doesNotThrow(() => assertProvenanceRun(validStep));
 });
 
 test('provenance run authority rejects marker text that exists only in shell comments', () => {
