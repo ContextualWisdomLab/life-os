@@ -33,4 +33,6 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run focused checkout authority contract
-        run: pnpm exec vitest run packages/commercial-development-agent/src/node24-actions-contract.test.mjs --no-file-parallelism
+        run: >-
+          pnpm --filter @life-os/commercial-development-agent exec vitest run
+          src/node24-actions-contract.test.mjs --no-file-parallelism
