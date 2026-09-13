@@ -217,6 +217,29 @@ test('provenance step authority rejects step-shaped text inside a run block', ()
   );
 });
 
+test('provenance condition rejects step-shaped text after the direct steps sequence', () => {
+  const hostileWorkflow = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - name: Harmless scan step',
+    '        run: echo scan',
+    '    name: |',
+    `      - name: ${PROVENANCE_STEP_NAME}`,
+    '        if: >-',
+    `          ${PULL_REQUEST_CONDITION}`,
+    `          && ${SAME_REPOSITORY_CONDITION}`,
+    '        run: echo fake-authority',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      assertProvenanceGuard(namedStep(hostileWorkflow, PROVENANCE_STEP_NAME)),
+    /direct workflow step/u,
+    'job-level mappings after steps must not lend provenance-step authority',
+  );
+});
+
 test('provenance condition does not borrow authority from quoted or commented sibling jobs', () => {
   for (const sibling of ['  decoy: # sibling', '  "decoy":']) {
     const hostileWorkflow = [
