@@ -30,10 +30,10 @@ function expectReviewedActionPins(path, workflow) {
   expect(workflow, path).not.toContain(checkoutNode20);
   expect(workflow, path).not.toContain(setupNode20);
   expect(workflow, path).not.toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24');
-  for (const match of workflow.matchAll(/actions\/checkout@([^\s"'#]+)/g)) {
+  for (const match of workflow.matchAll(/actions\/checkout@([^\s"'#]+)/gi)) {
     expect(match[0], path).toBe(checkoutNode24);
   }
-  for (const match of workflow.matchAll(/actions\/setup-node@([^\s"'#]+)/g)) {
+  for (const match of workflow.matchAll(/actions\/setup-node@([^\s"'#]+)/gi)) {
     expect(match[0], path).toBe(setupNode24);
   }
 }
@@ -225,6 +225,21 @@ describe('persistent GitHub Action runtime authority', () => {
 
     expect(() =>
       expectReviewedActionPins('hostile-floating-ref.yml', hostileWorkflow),
+    ).toThrow();
+  });
+
+  it('rejects case-variant checkout/setup-node identities with unreviewed refs', () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      '    runs-on: ubuntu-24.04',
+      '    steps:',
+      '      - uses: Actions/Checkout@v4',
+      '      - uses: Actions/Setup-Node@main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectReviewedActionPins('hostile-case-variant-ref.yml', hostileWorkflow),
     ).toThrow();
   });
 
