@@ -7,6 +7,8 @@ import test from 'node:test';
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const PROVENANCE_STEP_NAME =
   'Materialize AppGuardrail SARIF PR merge provenance';
+const DIRECT_JOB_ENTRY =
+  /^  (?:([A-Za-z_][A-Za-z0-9_-]*)|"([A-Za-z_][A-Za-z0-9_-]*)"|'([A-Za-z_][A-Za-z0-9_-]*)'):\s*(?:#.*)?$/u;
 const EXPECTED_PROVENANCE_RUN = [
   'set -euo pipefail',
   'if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then',
@@ -28,26 +30,96 @@ const EXPECTED_PROVENANCE_RUN = [
   'git cat-file -e "${EXPECTED_MERGE_SHA}^{commit}"',
 ].join('\n');
 
-/** Extracts the reviewed provenance step from the direct scan steps sequence. */
+/** Returns the canonical job ID for one direct jobs mapping entry. */
+function directJobName(line) {
+  const match = DIRECT_JOB_ENTRY.exec(line);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+}
+
+/** Extracts the reviewed provenance step only from the direct scan steps sequence. */
 function provenanceStep(workflow) {
   const lines = workflow.split('\n');
-  const jobsIndex = lines.indexOf('jobs:');
-  assert.notEqual(jobsIndex, -1, 'workflow must contain jobs');
-  const scanIndex = lines.indexOf('  scan:', jobsIndex + 1);
-  assert.notEqual(scanIndex, -1, 'workflow must contain jobs.scan');
-  const stepsIndex = lines.indexOf('    steps:', scanIndex + 1);
-  assert.notEqual(stepsIndex, -1, 'jobs.scan must contain direct steps');
+  const jobsIndexes = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index] === 'jobs:') {
+      jobsIndexes.push(index);
+    }
+  }
+  assert.equal(
+    jobsIndexes.length,
+    1,
+    'workflow must contain exactly one top-level jobs mapping',
+  );
 
-  const expected = `      - name: ${PROVENANCE_STEP_NAME}`;
-  const start = lines.indexOf(expected, stepsIndex + 1);
-  assert.notEqual(start, -1, 'scan must contain the reviewed provenance step');
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (lines[index].startsWith('      - ')) {
-      end = index;
+  const jobsStart = jobsIndexes[0];
+  let jobsEnd = lines.length;
+  for (let index = jobsStart + 1; index < lines.length; index += 1) {
+    if (/^[^\s#]/u.test(lines[index])) {
+      jobsEnd = index;
       break;
     }
-    if (/^    [A-Za-z_][A-Za-z0-9_-]*:/u.test(lines[index])) {
+  }
+
+  const scanIndexes = [];
+  for (let index = jobsStart + 1; index < jobsEnd; index += 1) {
+    if (directJobName(lines[index]) === 'scan') {
+      scanIndexes.push(index);
+    }
+  }
+  assert.equal(scanIndexes.length, 1, 'workflow must contain exactly one jobs.scan');
+
+  const scanStart = scanIndexes[0];
+  let scanEnd = jobsEnd;
+  for (let index = scanStart + 1; index < jobsEnd; index += 1) {
+    if (directJobName(lines[index]) !== null) {
+      scanEnd = index;
+      break;
+    }
+  }
+
+  const stepsIndexes = [];
+  for (let index = scanStart + 1; index < scanEnd; index += 1) {
+    if (lines[index] === '    steps:') {
+      stepsIndexes.push(index);
+    }
+  }
+  assert.equal(
+    stepsIndexes.length,
+    1,
+    'jobs.scan must contain exactly one direct steps sequence',
+  );
+
+  const stepsStart = stepsIndexes[0];
+  let stepsEnd = scanEnd;
+  for (let index = stepsStart + 1; index < scanEnd; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
+    if (line.startsWith('    ') && !line.startsWith('      ')) {
+      stepsEnd = index;
+      break;
+    }
+  }
+
+  const expected = `      - name: ${PROVENANCE_STEP_NAME}`;
+  const matches = [];
+  for (let index = stepsStart + 1; index < stepsEnd; index += 1) {
+    if (lines[index] === expected) {
+      matches.push(index);
+    }
+  }
+  assert.equal(
+    matches.length,
+    1,
+    'scan must contain the reviewed provenance step exactly once',
+  );
+
+  const start = matches[0];
+  let end = stepsEnd;
+  for (let index = start + 1; index < stepsEnd; index += 1) {
+    if (lines[index].startsWith('      - ')) {
       end = index;
       break;
     }
