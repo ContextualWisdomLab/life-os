@@ -326,6 +326,27 @@ describe('persistent GitHub Action runtime authority', () => {
     ).toThrow();
   });
 
+  it('rejects checkout Git config authority borrowed from a sibling mapping', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      '      DECOY: safe',
+      '    with:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-sibling-mapping-env-borrow.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
   it('rejects conflicting duplicate checkout Git configuration keys', () => {
     const hostileWorkflow = [
       'steps:',
