@@ -28,8 +28,8 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Verify provenance run authority contract
-        run: node --test packages/commercial-readiness/src/appguardrail-provenance-run-contract.test.mjs
+      - name: Verify full commercial-readiness contract suite
+        run: node --test packages/commercial-readiness/src/*.test.mjs
 
-      - name: Verify contract syntax
+      - name: Verify new contract syntax
         run: node --check packages/commercial-readiness/src/appguardrail-provenance-run-contract.test.mjs
