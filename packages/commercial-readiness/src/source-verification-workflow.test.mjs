@@ -43,27 +43,49 @@ function jobBlock(workflow, jobName) {
   return lines.slice(start, end).join('\n');
 }
 
-/** Resolves the exact sequence indentation for real workflow steps. */
-function stepSequenceIndent(job) {
+/** Resolves the bounded direct steps sequence inside one workflow job. */
+function stepsSection(job) {
   const lines = job.split('\n');
   const jobEntry = /^(\s*)[A-Za-z0-9_-]+:\s*$/u.exec(lines[0]);
   assert.ok(jobEntry, 'invalid bounded workflow job');
-  const stepsLine = `${jobEntry[1]}  steps:`;
+  const directJobMemberIndent = `${jobEntry[1]}  `;
+  const stepIndent = `${jobEntry[1]}    `;
+  const stepsLine = `${directJobMemberIndent}steps:`;
+  const stepsIndexes = [];
+  for (let index = 1; index < lines.length; index += 1) {
+    if (lines[index] === stepsLine) {
+      stepsIndexes.push(index);
+    }
+  }
   assert.equal(
-    lines.filter((line) => line === stepsLine).length,
+    stepsIndexes.length,
     1,
     'expected exactly one direct steps mapping in bounded workflow job',
   );
-  return `${jobEntry[1]}    `;
+
+  const start = stepsIndexes[0];
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
+    if (line.startsWith(directJobMemberIndent) && !line.startsWith(stepIndent)) {
+      end = index;
+      break;
+    }
+  }
+
+  return { lines, start, end, stepIndent };
 }
 
 /** Finds one unique named workflow step at the real steps sequence depth. */
 function stepStartIndex(job, stepName) {
-  const lines = job.split('\n');
-  const stepIndent = stepSequenceIndent(job);
+  const { lines, start, end, stepIndent } = stepsSection(job);
   const expected = `${stepIndent}- name: ${stepName}`;
   const matches = [];
-  for (let index = 0; index < lines.length; index += 1) {
+  for (let index = start + 1; index < end; index += 1) {
     if (lines[index] === expected) {
       matches.push(index);
     }
@@ -78,11 +100,10 @@ function stepStartIndex(job, stepName) {
 
 /** Extracts one named workflow step from an already bounded job block. */
 function stepBlock(job, stepName) {
-  const lines = job.split('\n');
+  const { lines, end: stepsEnd, stepIndent } = stepsSection(job);
   const start = stepStartIndex(job, stepName);
-  const stepIndent = stepSequenceIndent(job);
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
+  let end = stepsEnd;
+  for (let index = start + 1; index < stepsEnd; index += 1) {
     if (lines[index].startsWith(`${stepIndent}- `)) {
       end = index;
       break;
@@ -121,13 +142,17 @@ function matchesActionIdentity(uses, actionName) {
 
 /** Finds executable action uses only from real step entries and direct step keys. */
 function actionUses(job, actionName) {
-  const lines = job.split('\n');
-  const stepIndent = stepSequenceIndent(job);
+  const {
+    lines,
+    start: stepsStart,
+    end: stepsEnd,
+    stepIndent,
+  } = stepsSection(job);
   const directKeyIndent = `${stepIndent}  `;
   const usesEntry = /^uses:\s*(['"]?)([^'"\s#]+)\1(?:\s+#.*)?$/u;
   const uses = [];
 
-  for (let index = 0; index < lines.length; index += 1) {
+  for (let index = stepsStart + 1; index < stepsEnd; index += 1) {
     if (!lines[index].startsWith(`${stepIndent}- `)) {
       continue;
     }
@@ -137,8 +162,8 @@ function actionUses(job, actionName) {
       uses.push({ line: lines[index], stepStart: index });
     }
 
-    let end = lines.length;
-    for (let sibling = index + 1; sibling < lines.length; sibling += 1) {
+    let end = stepsEnd;
+    for (let sibling = index + 1; sibling < stepsEnd; sibling += 1) {
       if (lines[sibling].startsWith(`${stepIndent}- `)) {
         end = sibling;
         break;
@@ -195,6 +220,35 @@ test('job extraction does not borrow authority from quoted or commented sibling 
       'a bounded job must stop before every direct sibling job spelling',
     );
   }
+});
+
+test('step extraction does not borrow authority from job-level block scalar text', () => {
+  const job = [
+    '  scan:',
+    '    name: |',
+    '      - name: Materialize AppGuardrail SARIF PR merge provenance',
+    "        if: github.event_name == 'pull_request'",
+    '        env:',
+    '          PR_NUMBER: ${{ github.event.pull_request.number }}',
+    '          EXPECTED_MERGE_SHA: ${{ github.sha }}',
+    '        run: echo borrowed-provenance',
+    '      - name: Upload AppGuardrail SARIF to code scanning',
+    '        uses: github/codeql-action/upload-sarif@fake-sha',
+    '    steps:',
+    '      - name: Harmless real step',
+    '        run: echo real-step',
+  ].join('\n');
+
+  assert.throws(
+    () =>
+      stepBlock(job, 'Materialize AppGuardrail SARIF PR merge provenance'),
+    /expected exactly one step/u,
+  );
+  assert.equal(
+    actionUses(job, 'github/codeql-action/upload-sarif').length,
+    0,
+    'action authority must come only from the direct steps sequence',
+  );
 });
 
 test('step extraction does not borrow evidence from unnamed sibling steps', () => {
