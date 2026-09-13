@@ -75,10 +75,28 @@ function namedStep(workflow, stepName) {
     'scan job must contain exactly one direct steps mapping',
   );
 
+  const stepsStart = stepsIndexes[0];
+  const directJobMemberIndent = `${jobMatch[1]}  `;
   const stepIndent = `${jobMatch[1]}    `;
+  let stepsEnd = lines.length;
+  for (let index = stepsStart + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
+    if (
+      line.startsWith(directJobMemberIndent) &&
+      !line.startsWith(stepIndent)
+    ) {
+      stepsEnd = index;
+      break;
+    }
+  }
+
   const expected = `${stepIndent}- name: ${stepName}`;
   const matches = [];
-  for (let index = stepsIndexes[0] + 1; index < lines.length; index += 1) {
+  for (let index = stepsStart + 1; index < stepsEnd; index += 1) {
     if (lines[index] === expected) {
       matches.push(index);
     }
@@ -90,8 +108,8 @@ function namedStep(workflow, stepName) {
   );
 
   const start = matches[0];
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
+  let end = stepsEnd;
+  for (let index = start + 1; index < stepsEnd; index += 1) {
     if (lines[index].startsWith(`${stepIndent}- `)) {
       end = index;
       break;
