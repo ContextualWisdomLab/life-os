@@ -204,6 +204,28 @@ test('provenance env rejects duplicate pull-request identity keys', () => {
   );
 });
 
+test('provenance env rejects step-shaped text after the direct steps sequence', () => {
+  const hostileWorkflow = [
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - name: Harmless scan step',
+    '        run: echo scan',
+    '    name: |',
+    `      - name: ${PROVENANCE_STEP_NAME}`,
+    '        env:',
+    `          ${EXPECTED_PR_NUMBER}`,
+    `          ${EXPECTED_MERGE_SHA}`,
+    '        run: echo fake-authority',
+  ].join('\n');
+
+  assert.throws(
+    () => assertProvenanceEnv(namedStep(hostileWorkflow, PROVENANCE_STEP_NAME)),
+    /direct workflow step/u,
+    'job-level mappings after steps must not lend provenance environment authority',
+  );
+});
+
 test('provenance env does not borrow identity from quoted or commented sibling jobs', () => {
   for (const sibling of ['  decoy: # sibling', '  "decoy":']) {
     const hostileWorkflow = [
