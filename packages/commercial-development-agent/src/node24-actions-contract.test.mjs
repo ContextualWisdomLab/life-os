@@ -38,7 +38,43 @@ function expectReviewedActionPins(path, workflow) {
   }
 }
 
+function lineIndent(line) {
+  return line.length - line.trimStart().length;
+}
+
+function isBlockScalarHeader(line) {
+  return /(?:^|:\s+|-\s+)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(?:#.*)?$/.test(
+    line.trimStart(),
+  );
+}
+
+function isInsideBlockScalar(lines, lineIndex) {
+  const targetIndent = lineIndent(lines[lineIndex]);
+
+  for (let headerIndex = lineIndex - 1; headerIndex >= 0; headerIndex -= 1) {
+    const header = lines[headerIndex];
+    if (header.trim() === '') continue;
+    const headerIndent = lineIndent(header);
+    if (headerIndent >= targetIndent || !isBlockScalarHeader(header)) continue;
+
+    let boundedByHeader = true;
+    for (let index = headerIndex + 1; index <= lineIndex; index += 1) {
+      const candidate = lines[index];
+      if (candidate.trim() === '') continue;
+      if (lineIndent(candidate) <= headerIndent) {
+        boundedByHeader = false;
+        break;
+      }
+    }
+    if (boundedByHeader) return true;
+  }
+
+  return false;
+}
+
 function isDirectStepUses(lines, lineIndex, reviewedAction) {
+  if (isInsideBlockScalar(lines, lineIndex)) return false;
+
   const line = lines[lineIndex];
   const trimmed = line.trimStart();
   const authority = `uses: ${reviewedAction}`;
@@ -46,14 +82,14 @@ function isDirectStepUses(lines, lineIndex, reviewedAction) {
     return false;
   }
 
-  const usesIndent = line.length - trimmed.length;
+  const usesIndent = lineIndent(line);
   if (usesIndent < 2) return false;
   const stepIndent = usesIndent - 2;
 
   for (let index = lineIndex - 1; index >= 0; index -= 1) {
     const candidate = lines[index];
     if (candidate.trim() === '') continue;
-    const candidateIndent = candidate.length - candidate.trimStart().length;
+    const candidateIndent = lineIndent(candidate);
     if (candidateIndent < stepIndent) return false;
     if (candidateIndent === stepIndent) {
       return candidate.trimStart().startsWith('- ');
@@ -75,14 +111,14 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
 
   for (const checkoutLineIndex of checkoutLineIndexes) {
     const checkoutLine = lines[checkoutLineIndex];
-    const usesIndent = checkoutLine.length - checkoutLine.trimStart().length;
+    const usesIndent = lineIndent(checkoutLine);
     const stepIndent = Math.max(0, usesIndent - 2);
     let stepEnd = lines.length;
 
     for (let index = checkoutLineIndex + 1; index < lines.length; index += 1) {
       const candidate = lines[index];
       if (candidate.trim() === '') continue;
-      const candidateIndent = candidate.length - candidate.trimStart().length;
+      const candidateIndent = lineIndent(candidate);
       if (
         candidateIndent === stepIndent &&
         candidate.trimStart().startsWith('- ')
@@ -179,6 +215,27 @@ describe('persistent GitHub Action runtime authority', () => {
     expect(() =>
       expectCheckoutInitialBranchAuthority(
         'hostile-scalar-checkout.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
+  it('rejects a nested scalar sequence impersonating a checkout step boundary', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile shell scalar',
+      '    run: |',
+      '      - fake checkout',
+      `        uses: ${checkoutNode24}`,
+      '        env:',
+      "          GIT_CONFIG_COUNT: '1'",
+      '          GIT_CONFIG_KEY_0: init.defaultBranch',
+      '          GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-nested-scalar-checkout.yml',
         hostileWorkflow,
       ),
     ).toThrow();
