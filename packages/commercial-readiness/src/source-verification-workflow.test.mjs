@@ -15,27 +15,60 @@ const SARIF_SOURCE_REF =
   "ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref }}";
 const SARIF_SOURCE_SHA =
   'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
+const DIRECT_JOB_ENTRY =
+  /^  (?:([A-Za-z_][A-Za-z0-9_-]*)|"([A-Za-z_][A-Za-z0-9_-]*)"|'([A-Za-z_][A-Za-z0-9_-]*)'):\s*(?:#.*)?$/u;
 
 /** Reads one repository workflow as UTF-8 text. */
 function readWorkflow(name) {
   return readFileSync(join(REPOSITORY_ROOT, '.github/workflows', name), 'utf8');
 }
 
-/** Recognizes direct top-level job entries, including quoted IDs and inline comments. */
-function isDirectJobEntry(line) {
-  return /^  (?:[A-Za-z_][A-Za-z0-9_-]*|"[A-Za-z_][A-Za-z0-9_-]*"|'[A-Za-z_][A-Za-z0-9_-]*'):\s*(?:#.*)?$/u.test(
-    line,
-  );
+/** Returns the canonical job ID for one direct job entry, or null for non-job lines. */
+function directJobName(line) {
+  const match = DIRECT_JOB_ENTRY.exec(line);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
 }
 
-/** Extracts one top-level workflow job without requiring a YAML parser. */
+/** Extracts one direct job only from the workflow's top-level jobs mapping. */
 function jobBlock(workflow, jobName) {
   const lines = workflow.split('\n');
-  const start = lines.findIndex((line) => line === `  ${jobName}:`);
-  assert.notEqual(start, -1, `missing job ${jobName}`);
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (isDirectJobEntry(lines[index])) {
+  const jobsIndexes = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index] === 'jobs:') {
+      jobsIndexes.push(index);
+    }
+  }
+  assert.equal(
+    jobsIndexes.length,
+    1,
+    'workflow must contain exactly one top-level jobs mapping',
+  );
+
+  const jobsStart = jobsIndexes[0];
+  let jobsEnd = lines.length;
+  for (let index = jobsStart + 1; index < lines.length; index += 1) {
+    if (/^[^\s#]/u.test(lines[index])) {
+      jobsEnd = index;
+      break;
+    }
+  }
+
+  const matches = [];
+  for (let index = jobsStart + 1; index < jobsEnd; index += 1) {
+    if (directJobName(lines[index]) === jobName) {
+      matches.push(index);
+    }
+  }
+  assert.equal(
+    matches.length,
+    1,
+    `expected exactly one workflow job ${jobName}`,
+  );
+
+  const start = matches[0];
+  let end = jobsEnd;
+  for (let index = start + 1; index < jobsEnd; index += 1) {
+    if (directJobName(lines[index]) !== null) {
       end = index;
       break;
     }
@@ -71,7 +104,10 @@ function stepsSection(job) {
     if (trimmed === '' || trimmed.startsWith('#')) {
       continue;
     }
-    if (line.startsWith(directJobMemberIndent) && !line.startsWith(stepIndent)) {
+    if (
+      line.startsWith(directJobMemberIndent) &&
+      !line.startsWith(stepIndent)
+    ) {
       end = index;
       break;
     }
@@ -220,6 +256,29 @@ test('job extraction does not borrow authority from quoted or commented sibling 
       'a bounded job must stop before every direct sibling job spelling',
     );
   }
+});
+
+test('job extraction ignores job-shaped text outside the top-level jobs mapping', () => {
+  const workflow = [
+    'name: |',
+    '  scan:',
+    '    steps:',
+    '      - name: Materialize AppGuardrail SARIF PR merge provenance',
+    '        run: echo fake-job-authority',
+    'jobs:',
+    '  scan:',
+    '    steps:',
+    '      - name: Harmless real step',
+    '        run: echo real-job-authority',
+  ].join('\n');
+
+  const block = jobBlock(workflow, 'scan');
+  assert.ok(block.includes('Harmless real step'));
+  assert.equal(
+    block.includes('fake-job-authority'),
+    false,
+    'job authority must come only from the top-level jobs mapping',
+  );
 });
 
 test('step extraction does not borrow authority from job-level block scalar text', () => {
