@@ -110,6 +110,25 @@ describe('persistent GitHub Action runtime authority', () => {
     }
   });
 
+  it('rejects a scalar env payload impersonating checkout Git config authority', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env: |',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-scalar-env.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
   it('preserves AppGuardrail steps at the scan job boundary', () => {
     const appguardrail = workflows['.github/workflows/appguardrail.yml'];
     const stepsLines = appguardrail
