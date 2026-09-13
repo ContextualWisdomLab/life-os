@@ -148,3 +148,26 @@ test('provenance run authority rejects marker text that exists only in shell com
     'comment-only marker text must not satisfy executable provenance authority',
   );
 });
+
+test('provenance run authority rejects job-level block scalar step impersonation', () => {
+  const hostileWorkflow = [
+    'name: Hostile workflow',
+    'on: workflow_dispatch',
+    'jobs:',
+    '  scan:',
+    '    runs-on: ubuntu-24.04',
+    '    steps:',
+    '      - name: Harmless scan work',
+    '        run: echo harmless',
+    '    "name": |',
+    `      - name: ${PROVENANCE_STEP_NAME}`,
+    '        run: |',
+    ...EXPECTED_PROVENANCE_RUN.split('\n').map((line) => `          ${line}`),
+  ].join('\n');
+
+  assert.throws(
+    () => assertProvenanceRun(provenanceStep(hostileWorkflow)),
+    /scan must contain the reviewed provenance step/u,
+    'job-level scalar payload must not impersonate a direct scan step',
+  );
+});
