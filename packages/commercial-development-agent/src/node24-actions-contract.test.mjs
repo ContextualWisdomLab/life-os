@@ -84,59 +84,73 @@ function isReviewedUsesScalar(trimmed, reviewedAction) {
   );
 }
 
-function isDirectStepUses(lines, lineIndex, reviewedAction) {
-  if (isInsideBlockScalar(lines, lineIndex)) return false;
+function directStepUsesAuthority(lines, lineIndex, reviewedAction) {
+  if (isInsideBlockScalar(lines, lineIndex)) return null;
 
   const line = lines[lineIndex];
   const trimmed = line.trimStart();
-  if (!isReviewedUsesScalar(trimmed, reviewedAction)) return false;
+  const directSequenceScalar = trimmed.startsWith('- ')
+    ? trimmed.slice(2)
+    : null;
+  const isDirectSequence =
+    directSequenceScalar !== null &&
+    isReviewedUsesScalar(directSequenceScalar, reviewedAction);
+  const isMappingMember = isReviewedUsesScalar(trimmed, reviewedAction);
+  if (!isDirectSequence && !isMappingMember) return null;
 
-  const usesIndent = lineIndent(line);
-  if (usesIndent < 4) return false;
-  const stepIndent = usesIndent - 2;
+  const lineIndentValue = lineIndent(line);
+  const stepIndent = isDirectSequence ? lineIndentValue : lineIndentValue - 2;
+  const usesIndent = isDirectSequence ? stepIndent + 2 : lineIndentValue;
   const stepsIndent = stepIndent - 2;
-  let stepStart = -1;
+  if (stepIndent < 2 || stepsIndent < 0) return null;
 
-  for (let index = lineIndex - 1; index >= 0; index -= 1) {
-    const candidate = lines[index];
-    if (candidate.trim() === '') continue;
-    const candidateIndent = lineIndent(candidate);
-    if (candidateIndent < stepIndent) return false;
-    if (candidateIndent === stepIndent) {
-      if (!candidate.trimStart().startsWith('- ')) return false;
-      stepStart = index;
-      break;
+  let stepStart = lineIndex;
+  if (!isDirectSequence) {
+    stepStart = -1;
+    for (let index = lineIndex - 1; index >= 0; index -= 1) {
+      const candidate = lines[index];
+      if (candidate.trim() === '') continue;
+      const candidateIndent = lineIndent(candidate);
+      if (candidateIndent < stepIndent) return null;
+      if (candidateIndent === stepIndent) {
+        if (!candidate.trimStart().startsWith('- ')) return null;
+        stepStart = index;
+        break;
+      }
     }
   }
 
-  if (stepStart < 0 || stepsIndent < 0) return false;
+  if (stepStart < 0) return null;
   for (let index = stepStart - 1; index >= 0; index -= 1) {
     const candidate = lines[index];
     if (candidate.trim() === '') continue;
     const candidateIndent = lineIndent(candidate);
-    if (candidateIndent < stepsIndent) return false;
+    if (candidateIndent < stepsIndent) return null;
     if (candidateIndent === stepsIndent) {
-      return candidate.trimStart() === 'steps:';
+      if (candidate.trimStart() !== 'steps:') return null;
+      return { stepIndent, usesIndent };
     }
   }
 
-  return false;
+  return null;
 }
 
 function expectCheckoutInitialBranchAuthority(path, workflow) {
   const lines = workflow.split(String.fromCharCode(10));
-  const checkoutLineIndexes = lines.flatMap((line, index) =>
-    isDirectStepUses(lines, index, checkoutNode24) ? [index] : [],
-  );
+  const checkoutAuthorities = lines.flatMap((line, index) => {
+    const authority = directStepUsesAuthority(lines, index, checkoutNode24);
+    return authority === null ? [] : [{ lineIndex: index, ...authority }];
+  });
 
-  expect(checkoutLineIndexes.length, `${path} checkout count`).toBeGreaterThan(
+  expect(checkoutAuthorities.length, `${path} checkout count`).toBeGreaterThan(
     0,
   );
 
-  for (const checkoutLineIndex of checkoutLineIndexes) {
-    const checkoutLine = lines[checkoutLineIndex];
-    const usesIndent = lineIndent(checkoutLine);
-    const stepIndent = Math.max(0, usesIndent - 2);
+  for (const {
+    lineIndex: checkoutLineIndex,
+    stepIndent,
+    usesIndent,
+  } of checkoutAuthorities) {
     let stepEnd = lines.length;
 
     for (let index = checkoutLineIndex + 1; index < lines.length; index += 1) {
@@ -280,6 +294,26 @@ describe('persistent GitHub Action runtime authority', () => {
     expect(() =>
       expectCheckoutInitialBranchAuthority(
         'hostile-quoted-checkout-without-env.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
+  it('requires checkout branch authority for direct sequence uses steps', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Reviewed checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+      `  - uses: ${checkoutNode24}`,
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-direct-sequence-checkout-without-env.yml',
         hostileWorkflow,
       ),
     ).toThrow();
