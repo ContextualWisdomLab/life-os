@@ -143,10 +143,22 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
     const stepLines = lines.slice(checkoutLineIndex, stepEnd);
     const envIndent = ' '.repeat(usesIndent);
     const entryIndent = ' '.repeat(usesIndent + 2);
-    expect(
-      stepLines.filter((line) => line === `${envIndent}env:`),
-      `${path} checkout env`,
-    ).toHaveLength(1);
+    const envLineIndexes = stepLines.flatMap((line, index) =>
+      line === `${envIndent}env:` ? [index] : [],
+    );
+    expect(envLineIndexes, `${path} checkout env`).toHaveLength(1);
+
+    const envLineIndex = envLineIndexes[0];
+    let envEnd = stepLines.length;
+    for (let index = envLineIndex + 1; index < stepLines.length; index += 1) {
+      const candidate = stepLines[index];
+      if (candidate.trim() === '') continue;
+      if (lineIndent(candidate) <= usesIndent) {
+        envEnd = index;
+        break;
+      }
+    }
+    const envLines = stepLines.slice(envLineIndex + 1, envEnd);
 
     const reviewedEntries = [
       ['GIT_CONFIG_COUNT', "'1'"],
@@ -154,7 +166,7 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
       ['GIT_CONFIG_VALUE_0', 'main'],
     ];
     for (const [key, expectedValue] of reviewedEntries) {
-      const declarations = stepLines.filter((line) =>
+      const declarations = envLines.filter((line) =>
         line.startsWith(`${entryIndent}${key}:`),
       );
       expect(declarations, `${path} checkout ${key} declaration`).toHaveLength(1);
@@ -321,6 +333,27 @@ describe('persistent GitHub Action runtime authority', () => {
     expect(() =>
       expectCheckoutInitialBranchAuthority(
         'hostile-post-step-env-borrow.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
+  it('rejects checkout Git config authority borrowed from a sibling mapping', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      '      DECOY: safe',
+      '    with:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-sibling-mapping-env-borrow.yml',
         hostileWorkflow,
       ),
     ).toThrow();
