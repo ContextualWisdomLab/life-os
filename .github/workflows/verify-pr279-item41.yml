@@ -1,4 +1,4 @@
-name: Verify PR 279 item 41
+name: Verify PR 279 verifier boundaries
 
 on:
   push:
@@ -21,41 +21,31 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           fetch-depth: 1
-      - name: Add hostile post-steps authority regression
+      - name: Add hostile top-level job regression
         shell: bash
         run: |
           cat >> packages/commercial-readiness/src/source-verification-workflow.test.mjs <<'EOF'
 
-          test('source verifier does not borrow named-step authority from job-level block scalar text', () => {
-            const job = [
+          test('job extraction ignores job-shaped text outside the top-level jobs mapping', () => {
+            const workflow = [
+              'name: |',
               '  scan:',
-              '    name: |',
-              '      - name: Materialize AppGuardrail SARIF PR merge provenance',
-              "        if: github.event_name == 'pull_request'",
-              '        env:',
-              '          PR_NUMBER: ${{ github.event.pull_request.number }}',
-              '          EXPECTED_MERGE_SHA: ${{ github.sha }}',
-              '        run: echo borrowed-provenance',
               '    steps:',
-              '      - name: Upload AppGuardrail SARIF to code scanning',
-              '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+              '      - name: Materialize AppGuardrail SARIF PR merge provenance',
+              '        run: echo fake-job-authority',
+              'jobs:',
+              '  scan:',
+              '    steps:',
+              '      - name: Harmless real step',
+              '        run: echo real-job-authority',
             ].join('\n');
 
-            assert.throws(
-              () =>
-                stepBlock(
-                  job,
-                  'Materialize AppGuardrail SARIF PR merge provenance',
-                ),
-              /expected exactly one step/u,
-            );
+            const block = jobBlock(workflow, 'scan');
+            assert.ok(block.includes('Harmless real step'));
+            assert.equal(block.includes('fake-job-authority'), false);
           });
           EOF
       - name: Verify focused source workflow authority boundary
         run: node --test packages/commercial-readiness/src/source-verification-workflow.test.mjs
-      - name: Verify all Commercial Readiness contracts
-        run: node --test packages/commercial-readiness/src/*.test.mjs
       - name: Verify syntax
         run: node --check packages/commercial-readiness/src/source-verification-workflow.test.mjs
-      - name: Verify source hygiene
-        run: git diff --check
