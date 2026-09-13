@@ -194,14 +194,26 @@ function expectAppGuardrailScanSteps(workflow) {
   expect(jobsIndexes, 'top-level jobs authority').toHaveLength(1);
 
   const jobsIndex = jobsIndexes[0];
+  let jobsEnd = lines.length;
+  for (let index = jobsIndex + 1; index < lines.length; index += 1) {
+    const candidate = lines[index];
+    if (candidate.trim() === '' || candidate.trimStart().startsWith('#')) {
+      continue;
+    }
+    if (lineIndent(candidate) === 0) {
+      jobsEnd = index;
+      break;
+    }
+  }
+
   const scanIndexes = lines.flatMap((line, index) =>
-    index > jobsIndex && line === '  scan:' ? [index] : [],
+    index > jobsIndex && index < jobsEnd && line === '  scan:' ? [index] : [],
   );
   expect(scanIndexes, 'jobs.scan authority').toHaveLength(1);
 
   const scanIndex = scanIndexes[0];
-  let scanEnd = lines.length;
-  for (let index = scanIndex + 1; index < lines.length; index += 1) {
+  let scanEnd = jobsEnd;
+  for (let index = scanIndex + 1; index < jobsEnd; index += 1) {
     const candidate = lines[index];
     if (candidate.trim() === '') continue;
     if (lineIndent(candidate) === 2 && /:\s*(?:#.*)?$/.test(candidate.trim())) {
@@ -435,6 +447,20 @@ describe('persistent GitHub Action runtime authority', () => {
       '    permissions:',
       '      contents: read',
       '  decoy:',
+      '    steps:',
+      '      - run: echo decoy',
+    ].join(String.fromCharCode(10));
+
+    expect(() => expectAppGuardrailScanSteps(hostileWorkflow)).toThrow();
+  });
+
+  it('rejects AppGuardrail scan authority outside the jobs mapping', () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  build:',
+      '    runs-on: ubuntu-24.04',
+      'other:',
+      '  scan:',
       '    steps:',
       '      - run: echo decoy',
     ].join(String.fromCharCode(10));
