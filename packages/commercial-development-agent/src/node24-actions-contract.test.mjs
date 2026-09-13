@@ -83,8 +83,10 @@ function isDirectStepUses(lines, lineIndex, reviewedAction) {
   }
 
   const usesIndent = lineIndent(line);
-  if (usesIndent < 2) return false;
+  if (usesIndent < 4) return false;
   const stepIndent = usesIndent - 2;
+  const stepsIndent = stepIndent - 2;
+  let stepStart = -1;
 
   for (let index = lineIndex - 1; index >= 0; index -= 1) {
     const candidate = lines[index];
@@ -92,7 +94,20 @@ function isDirectStepUses(lines, lineIndex, reviewedAction) {
     const candidateIndent = lineIndent(candidate);
     if (candidateIndent < stepIndent) return false;
     if (candidateIndent === stepIndent) {
-      return candidate.trimStart().startsWith('- ');
+      if (!candidate.trimStart().startsWith('- ')) return false;
+      stepStart = index;
+      break;
+    }
+  }
+
+  if (stepStart < 0 || stepsIndent < 0) return false;
+  for (let index = stepStart - 1; index >= 0; index -= 1) {
+    const candidate = lines[index];
+    if (candidate.trim() === '') continue;
+    const candidateIndent = lineIndent(candidate);
+    if (candidateIndent < stepsIndent) return false;
+    if (candidateIndent === stepsIndent) {
+      return candidate.trimStart() === 'steps:';
     }
   }
 
@@ -135,33 +150,54 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
       stepLines.filter((line) => line === `${envIndent}env:`),
       `${path} checkout env`,
     ).toHaveLength(1);
-    expect(
-      stepLines.filter(
-        (line) => line === `${entryIndent}GIT_CONFIG_COUNT: '1'`,
-      ),
-      `${path} checkout git config count`,
-    ).toHaveLength(1);
-    expect(
-      stepLines.filter(
-        (line) => line === `${entryIndent}GIT_CONFIG_KEY_0: init.defaultBranch`,
-      ),
-      `${path} checkout git config key`,
-    ).toHaveLength(1);
-    expect(
-      stepLines.filter(
-        (line) => line === `${entryIndent}GIT_CONFIG_VALUE_0: main`,
-      ),
-      `${path} checkout git config value`,
-    ).toHaveLength(1);
+
+    const reviewedEntries = [
+      ['GIT_CONFIG_COUNT', "'1'"],
+      ['GIT_CONFIG_KEY_0', 'init.defaultBranch'],
+      ['GIT_CONFIG_VALUE_0', 'main'],
+    ];
+    for (const [key, expectedValue] of reviewedEntries) {
+      const declarations = stepLines.filter((line) =>
+        line.startsWith(`${entryIndent}${key}:`),
+      );
+      expect(declarations, `${path} checkout ${key} declaration`).toHaveLength(1);
+      expect(declarations[0], `${path} checkout ${key} value`).toBe(
+        `${entryIndent}${key}: ${expectedValue}`,
+      );
+    }
   }
 }
 
 function expectAppGuardrailScanSteps(workflow) {
-  const stepsLines = workflow
-    .split(String.fromCharCode(10))
-    .filter((line) => line.trim() === 'steps:');
-  expect(stepsLines).toContain('    steps:');
-  expect(stepsLines).not.toContain('        steps:');
+  const lines = workflow.split(String.fromCharCode(10));
+  const jobsIndexes = lines.flatMap((line, index) =>
+    line === 'jobs:' ? [index] : [],
+  );
+  expect(jobsIndexes, 'top-level jobs authority').toHaveLength(1);
+
+  const jobsIndex = jobsIndexes[0];
+  const scanIndexes = lines.flatMap((line, index) =>
+    index > jobsIndex && line === '  scan:' ? [index] : [],
+  );
+  expect(scanIndexes, 'jobs.scan authority').toHaveLength(1);
+
+  const scanIndex = scanIndexes[0];
+  let scanEnd = lines.length;
+  for (let index = scanIndex + 1; index < lines.length; index += 1) {
+    const candidate = lines[index];
+    if (candidate.trim() === '') continue;
+    if (lineIndent(candidate) === 2 && /:\s*(?:#.*)?$/.test(candidate.trim())) {
+      scanEnd = index;
+      break;
+    }
+  }
+
+  const scanLines = lines.slice(scanIndex + 1, scanEnd);
+  expect(
+    scanLines.filter((line) => line === '    steps:'),
+    'jobs.scan.steps authority',
+  ).toHaveLength(1);
+  expect(scanLines).not.toContain('        steps:');
 }
 
 describe('persistent GitHub Action runtime authority', () => {
