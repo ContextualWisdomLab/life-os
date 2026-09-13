@@ -125,6 +125,7 @@ jobs:
           PY
 
       - name: Materialize AppGuardrail SARIF PR merge provenance
+        id: materialize_pr_provenance
         if: >-
           github.event_name == 'pull_request'
           && github.event.pull_request.head.repo.full_name == github.repository
@@ -156,7 +157,8 @@ jobs:
           always()
           && hashFiles('appguardrail.sarif') != ''
           && (github.event_name != 'pull_request'
-              || github.event.pull_request.head.repo.full_name == github.repository)
+              || (github.event.pull_request.head.repo.full_name == github.repository
+                  && steps.materialize_pr_provenance.outcome == 'success'))
         uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           sarif_file: appguardrail.sarif
