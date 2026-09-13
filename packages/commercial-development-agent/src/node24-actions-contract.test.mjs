@@ -38,10 +38,35 @@ function expectReviewedActionPins(path, workflow) {
   }
 }
 
+function isDirectStepUses(lines, lineIndex, reviewedAction) {
+  const line = lines[lineIndex];
+  const trimmed = line.trimStart();
+  const authority = `uses: ${reviewedAction}`;
+  if (trimmed !== authority && !trimmed.startsWith(`${authority} #`)) {
+    return false;
+  }
+
+  const usesIndent = line.length - trimmed.length;
+  if (usesIndent < 2) return false;
+  const stepIndent = usesIndent - 2;
+
+  for (let index = lineIndex - 1; index >= 0; index -= 1) {
+    const candidate = lines[index];
+    if (candidate.trim() === '') continue;
+    const candidateIndent = candidate.length - candidate.trimStart().length;
+    if (candidateIndent < stepIndent) return false;
+    if (candidateIndent === stepIndent) {
+      return candidate.trimStart().startsWith('- ');
+    }
+  }
+
+  return false;
+}
+
 function expectCheckoutInitialBranchAuthority(path, workflow) {
   const lines = workflow.split(String.fromCharCode(10));
   const checkoutLineIndexes = lines.flatMap((line, index) =>
-    line.includes(`uses: ${checkoutNode24}`) ? [index] : [],
+    isDirectStepUses(lines, index, checkoutNode24) ? [index] : [],
   );
 
   expect(checkoutLineIndexes.length, `${path} checkout count`).toBeGreaterThan(
@@ -134,6 +159,26 @@ describe('persistent GitHub Action runtime authority', () => {
     expect(() =>
       expectCheckoutInitialBranchAuthority(
         'hostile-scalar-env.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
+  it('rejects a block scalar impersonating an executable checkout step', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile shell scalar',
+      '    run: |',
+      `      uses: ${checkoutNode24}`,
+      '      env:',
+      "        GIT_CONFIG_COUNT: '1'",
+      '        GIT_CONFIG_KEY_0: init.defaultBranch',
+      '        GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-scalar-checkout.yml',
         hostileWorkflow,
       ),
     ).toThrow();
