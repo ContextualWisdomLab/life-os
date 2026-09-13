@@ -243,6 +243,27 @@ describe('persistent GitHub Action runtime authority', () => {
     ).toThrow();
   });
 
+  it('requires checkout branch authority for quoted executable uses scalars', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Reviewed checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+      '  - name: Hostile quoted checkout',
+      `    uses: "${checkoutNode24}"`,
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-quoted-checkout-without-env.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
   it('configures every persistent checkout git init to use main explicitly', () => {
     for (const [path, workflow] of Object.entries(workflows)) {
       expectCheckoutInitialBranchAuthority(path, workflow);
