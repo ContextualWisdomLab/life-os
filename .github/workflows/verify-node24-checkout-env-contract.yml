@@ -1,0 +1,38 @@
+name: Verify Node24 checkout env contract
+
+on:
+  push:
+    branches:
+      - fix/ci-node24-actions-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify hostile checkout-env contract
+        shell: bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          pnpm --filter @life-os/commercial-development-agent exec vitest run src/node24-actions-contract.test.mjs
+          git diff --exit-code
