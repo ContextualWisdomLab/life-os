@@ -47,5 +47,9 @@ jobs:
           EOF
       - name: Verify focused source workflow authority boundary
         run: node --test packages/commercial-readiness/src/source-verification-workflow.test.mjs
+      - name: Verify all Commercial Readiness contracts
+        run: node --test packages/commercial-readiness/src/*.test.mjs
       - name: Verify syntax
         run: node --check packages/commercial-readiness/src/source-verification-workflow.test.mjs
+      - name: Verify source hygiene
+        run: git diff --check
