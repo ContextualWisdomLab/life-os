@@ -1,0 +1,57 @@
+name: Verify PR 279 item 41
+
+on:
+  push:
+    branches:
+      - fix/appguardrail-sarif-provenance-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Configure Git initial branch
+        run: git config --global init.defaultBranch main
+      - name: Checkout exact verifier head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Add hostile post-steps authority regression
+        shell: bash
+        run: |
+          cat >> packages/commercial-readiness/src/source-verification-workflow.test.mjs <<'EOF'
+
+          test('source verifier does not borrow named-step authority from job-level block scalar text', () => {
+            const job = [
+              '  scan:',
+              '    name: |',
+              '      - name: Materialize AppGuardrail SARIF PR merge provenance',
+              "        if: github.event_name == 'pull_request'",
+              '        env:',
+              '          PR_NUMBER: ${{ github.event.pull_request.number }}',
+              '          EXPECTED_MERGE_SHA: ${{ github.sha }}',
+              '        run: echo borrowed-provenance',
+              '    steps:',
+              '      - name: Upload AppGuardrail SARIF to code scanning',
+              '        uses: github/codeql-action/upload-sarif@reviewed-sha',
+            ].join('\n');
+
+            assert.throws(
+              () =>
+                stepBlock(
+                  job,
+                  'Materialize AppGuardrail SARIF PR merge provenance',
+                ),
+              /expected exactly one step/u,
+            );
+          });
+          EOF
+      - name: Verify source workflow authority boundary
+        run: node --test packages/commercial-readiness/src/source-verification-workflow.test.mjs
+      - name: Verify syntax
+        run: node --check packages/commercial-readiness/src/source-verification-workflow.test.mjs
