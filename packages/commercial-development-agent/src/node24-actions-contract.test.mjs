@@ -306,6 +306,29 @@ describe('persistent GitHub Action runtime authority', () => {
     ).toThrow();
   });
 
+  it('rejects checkout env authority borrowed after the executable step ends', () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      '    steps:',
+      '      - name: Hostile checkout',
+      `        uses: ${checkoutNode24}`,
+      '    decoy:',
+      '      nested:',
+      '        env:',
+      "          GIT_CONFIG_COUNT: '1'",
+      '          GIT_CONFIG_KEY_0: init.defaultBranch',
+      '          GIT_CONFIG_VALUE_0: main',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-post-step-env-borrow.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
   it('rejects conflicting duplicate checkout Git configuration keys', () => {
     const hostileWorkflow = [
       'steps:',
