@@ -31,5 +31,11 @@ jobs:
       - name: Verify provenance run authority contract
         run: node --test packages/commercial-readiness/src/appguardrail-provenance-run-contract.test.mjs
 
+      - name: Verify complete Commercial Readiness contract suite
+        run: node --test packages/commercial-readiness/src/*.test.mjs
+
       - name: Verify contract syntax
         run: node --check packages/commercial-readiness/src/appguardrail-provenance-run-contract.test.mjs
+
+      - name: Verify clean verifier execution
+        run: test -z "$(git status --porcelain)"
