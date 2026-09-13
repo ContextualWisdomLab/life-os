@@ -72,15 +72,24 @@ function isInsideBlockScalar(lines, lineIndex) {
   return false;
 }
 
+function isReviewedUsesScalar(trimmed, reviewedAction) {
+  const authorities = [
+    `uses: ${reviewedAction}`,
+    `uses: '${reviewedAction}'`,
+    `uses: "${reviewedAction}"`,
+  ];
+  return authorities.some(
+    (authority) =>
+      trimmed === authority || trimmed.startsWith(`${authority} #`),
+  );
+}
+
 function isDirectStepUses(lines, lineIndex, reviewedAction) {
   if (isInsideBlockScalar(lines, lineIndex)) return false;
 
   const line = lines[lineIndex];
   const trimmed = line.trimStart();
-  const authority = `uses: ${reviewedAction}`;
-  if (trimmed !== authority && !trimmed.startsWith(`${authority} #`)) {
-    return false;
-  }
+  if (!isReviewedUsesScalar(trimmed, reviewedAction)) return false;
 
   const usesIndent = lineIndent(line);
   if (usesIndent < 4) return false;
