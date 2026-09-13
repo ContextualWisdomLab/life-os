@@ -156,6 +156,14 @@ function expectCheckoutInitialBranchAuthority(path, workflow) {
   }
 }
 
+function expectAppGuardrailScanSteps(workflow) {
+  const stepsLines = workflow
+    .split(String.fromCharCode(10))
+    .filter((line) => line.trim() === 'steps:');
+  expect(stepsLines).toContain('    steps:');
+  expect(stepsLines).not.toContain('        steps:');
+}
+
 describe('persistent GitHub Action runtime authority', () => {
   it('uses reviewed Node 24 action pins without a runtime-forcing compatibility switch', () => {
     for (const [path, workflow] of Object.entries(workflows)) {
@@ -262,12 +270,41 @@ describe('persistent GitHub Action runtime authority', () => {
     ).toThrow();
   });
 
+  it('rejects conflicting duplicate checkout Git configuration keys', () => {
+    const hostileWorkflow = [
+      'steps:',
+      '  - name: Hostile checkout',
+      `    uses: ${checkoutNode24}`,
+      '    env:',
+      "      GIT_CONFIG_COUNT: '1'",
+      '      GIT_CONFIG_KEY_0: init.defaultBranch',
+      '      GIT_CONFIG_VALUE_0: main',
+      '      GIT_CONFIG_VALUE_0: master',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectCheckoutInitialBranchAuthority(
+        'hostile-duplicate-git-config.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow();
+  });
+
   it('preserves AppGuardrail steps at the scan job boundary', () => {
-    const appguardrail = workflows['.github/workflows/appguardrail.yml'];
-    const stepsLines = appguardrail
-      .split(String.fromCharCode(10))
-      .filter((line) => line.trim() === 'steps:');
-    expect(stepsLines).toContain('    steps:');
-    expect(stepsLines).not.toContain('        steps:');
+    expectAppGuardrailScanSteps(workflows['.github/workflows/appguardrail.yml']);
+  });
+
+  it('rejects AppGuardrail steps owned only by a sibling job', () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      '    permissions:',
+      '      contents: read',
+      '  decoy:',
+      '    steps:',
+      '      - run: echo decoy',
+    ].join(String.fromCharCode(10));
+
+    expect(() => expectAppGuardrailScanSteps(hostileWorkflow)).toThrow();
   });
 });
