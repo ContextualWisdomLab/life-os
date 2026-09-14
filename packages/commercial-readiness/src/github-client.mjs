@@ -583,39 +583,59 @@ async function collectWorkflowRuns(
 }
 
 /**
- * Count unresolved GitHub review threads without treating ambiguous GraphQL evidence as resolved.
+ * Traverse one bounded GraphQL review-thread connection and retain exact identity/state anchors.
  *
- * Every returned thread must expose an explicit boolean `isResolved`. Pagination must expose
- * a boolean `hasNextPage`, and any claimed next page must provide a non-empty string cursor.
- * Malformed thread or pagination evidence throws before it can reduce the merge blocker count.
+ * Review-thread resolution is merge-authoritative. A cursor traversal that observes thread state
+ * at different times must therefore retain canonical node IDs and reject duplicate identities so
+ * a later verification traversal can distinguish stable evidence from concurrent resolve/unresolve
+ * or insertion activity.
  *
  * @param {object} client Bounded GitHub API client used for GraphQL requests.
- * @param {string} repository Canonical owner/repository identifier.
- * @param {number} number Repository-local pull request number.
- * @returns {Promise<number>} Exact unresolved-thread count from a complete bounded traversal.
+ * @param {string} query Fixed GraphQL review-thread query.
+ * @param {{owner: string, name: string, number: number}} variables Stable query variables.
+ * @returns {Promise<{count: number, pageAnchors: Array<Array<{id: string, isResolved: boolean}>>}>} Unresolved count and ordered evidence anchors.
  */
-async function unresolvedThreadCount(client, repository, number) {
-  const [owner, name] = repository.split('/');
-  const query = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}`;
+async function collectReviewThreadTraversal(client, query, variables) {
   let cursor = null;
   let count = 0;
   let pages = 0;
+  const pageAnchors = [];
+  const seenThreadIds = new Set();
   do {
     const payload = await client.requestJson('/graphql', {
       method: 'POST',
-      body: { query, variables: { owner, name, number, cursor } },
+      body: { query, variables: { ...variables, cursor } },
     });
     if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
       throw new Error('GitHub review thread query failed');
     }
     const threads = payload?.data?.repository?.pullRequest?.reviewThreads;
-    if (!threads || !Array.isArray(threads.nodes)) {
+    if (
+      !threads ||
+      !Array.isArray(threads.nodes) ||
+      threads.nodes.length > API_PAGE_SIZE
+    ) {
       throw new Error('GitHub review thread response was invalid');
     }
-    if (threads.nodes.some((node) => typeof node?.isResolved !== 'boolean')) {
-      throw new Error('GitHub review thread response was invalid');
+    const pageAnchor = [];
+    for (const node of threads.nodes) {
+      const id = node?.id;
+      if (
+        typeof id !== 'string' ||
+        !id ||
+        id.trim() !== id ||
+        typeof node?.isResolved !== 'boolean'
+      ) {
+        throw new Error('GitHub review thread response was invalid');
+      }
+      if (seenThreadIds.has(id)) {
+        throw new Error('GitHub review thread response changed during pagination');
+      }
+      seenThreadIds.add(id);
+      pageAnchor.push({ id, isResolved: node.isResolved });
+      if (node.isResolved === false) count += 1;
     }
-    count += threads.nodes.filter((node) => node.isResolved === false).length;
+    pageAnchors.push(pageAnchor);
     const pageInfo = threads.pageInfo;
     if (!pageInfo || typeof pageInfo.hasNextPage !== 'boolean') {
       throw new Error('GitHub review thread response pagination was invalid');
@@ -633,7 +653,42 @@ async function unresolvedThreadCount(client, repository, number) {
       throw new Error('GitHub review thread response exceeded the page limit');
     }
   } while (cursor);
-  return count;
+  return { count, pageAnchors };
+}
+
+/**
+ * Count unresolved GitHub review threads without accepting a mixed-time multi-page snapshot.
+ *
+ * Every returned thread must expose a canonical node ID and explicit boolean `isResolved` state.
+ * Multi-page cursor traversals are repeated from the beginning and their ordered identity/state
+ * anchors must match exactly before the unresolved-thread count can become merge-authoritative.
+ * Pagination metadata is validated on both traversals and malformed or drifting evidence fails
+ * closed instead of allowing a thread that became unresolved to disappear from merge blockers.
+ *
+ * @param {object} client Bounded GitHub API client used for GraphQL requests.
+ * @param {string} repository Canonical owner/repository identifier.
+ * @param {number} number Repository-local pull request number.
+ * @returns {Promise<number>} Exact unresolved-thread count from one stable bounded traversal.
+ */
+async function unresolvedThreadCount(client, repository, number) {
+  const [owner, name] = repository.split('/');
+  const query = `query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){nodes{id isResolved}pageInfo{hasNextPage endCursor}}}}}`;
+  const variables = { owner, name, number };
+  const initial = await collectReviewThreadTraversal(client, query, variables);
+  if (initial.pageAnchors.length > 1) {
+    const confirmation = await collectReviewThreadTraversal(
+      client,
+      query,
+      variables,
+    );
+    if (
+      JSON.stringify(confirmation.pageAnchors) !==
+      JSON.stringify(initial.pageAnchors)
+    ) {
+      throw new Error('GitHub review thread response changed during pagination');
+    }
+  }
+  return initial.count;
 }
 
 function runIsNewer(candidate, current) {
