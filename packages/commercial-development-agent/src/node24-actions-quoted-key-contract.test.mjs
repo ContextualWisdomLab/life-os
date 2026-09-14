@@ -12,16 +12,22 @@ const workflowPaths = [
   '.github/workflows/appguardrail.yml',
 ];
 
+/** Return leading indentation so scalar ownership can be bounded without parsing payload text. */
 function lineIndent(line) {
   return line.length - line.trimStart().length;
 }
 
+/** Identify YAML literal/folded scalar headers whose body must not create executable authority. */
 function isBlockScalarHeader(line) {
   return /(?:^|:\s+|-\s+)[|>](?:[1-9][+-]?|[+-][1-9]?)?\s*(?:#.*)?$/.test(
     line.trimStart(),
   );
 }
 
+/**
+ * Determine whether a candidate line is owned by an enclosing block scalar.
+ * Security contracts must ignore scalar text even when it resembles a workflow mapping key.
+ */
 function isInsideBlockScalar(lines, lineIndex) {
   const targetIndent = lineIndent(lines[lineIndex]);
 
@@ -46,6 +52,11 @@ function isInsideBlockScalar(lines, lineIndex) {
   return false;
 }
 
+/**
+ * Reject quoted `uses` mapping keys outside scalar payloads.
+ * YAML normalizes quoted and unquoted mapping keys to the same semantic key, while the
+ * existing checkout-authority contract intentionally recognizes the canonical unquoted form.
+ */
 function expectCanonicalUsesKeys(path, workflow) {
   const lines = workflow.split(String.fromCharCode(10));
   const quotedUsesKeyIndexes = lines.flatMap((line, index) => {
