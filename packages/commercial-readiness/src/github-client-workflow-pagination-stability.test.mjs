@@ -136,6 +136,47 @@ function countPreservingWorkflowPaginationFixture() {
   };
 }
 
+/**
+ * Simulate a later workflow page changing while page one and total count stay stable.
+ *
+ * The first traversal sees 101 successful runs. Page one never changes, but the only run on
+ * page two changes from success to failure before stability confirmation. A merge-authoritative
+ * collector must re-read page two as well as page one so stale success evidence cannot survive.
+ *
+ * @returns {{requestJson(path: string): Promise<unknown>}} Deterministic GitHub API fixture.
+ */
+function laterPageWorkflowStateDriftFixture() {
+  const originalRuns = Array.from({ length: 101 }, (_, index) =>
+    workflowRun(200 - index),
+  );
+  const changedRuns = originalRuns.map((run) =>
+    run.id === 100
+      ? {
+          ...run,
+          conclusion: 'failure',
+          updated_at: '2026-09-05T02:00:00Z',
+        }
+      : run,
+  );
+  let secondPageReads = 0;
+
+  return {
+    async requestJson(path) {
+      const evidence = pullRequestEvidence(path);
+      if (evidence !== undefined) return evidence;
+      if (path.includes('/actions/runs?') && /(?:[?&])page=1(?:&|$)/u.test(path)) {
+        return { total_count: 101, workflow_runs: originalRuns.slice(0, 100) };
+      }
+      if (path.includes('/actions/runs?') && /(?:[?&])page=2(?:&|$)/u.test(path)) {
+        secondPageReads += 1;
+        const source = secondPageReads === 1 ? originalRuns : changedRuns;
+        return { total_count: 101, workflow_runs: source.slice(100, 200) };
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    },
+  };
+}
+
 describe('workflow-run pagination stability', () => {
   it('fails closed when same-head workflow-run pagination moves during collection', async () => {
     await assert.rejects(
@@ -169,6 +210,22 @@ describe('workflow-run pagination stability', () => {
           generatedAt: '2026-09-05T01:05:00Z',
         },
       ),
+      /GitHub workflow run response changed during pagination/u,
+    );
+  });
+
+  it('fails closed when a later workflow page changes after traversal', async () => {
+    await assert.rejects(
+      collectRepositorySnapshot(laterPageWorkflowStateDriftFixture(), 'o/r', {
+        policy: {
+          default_branch: 'main',
+          required_workflows: ['CI'],
+          required_statuses: [],
+          merge_method: 'squash',
+        },
+        commitSha: 'c'.repeat(40),
+        generatedAt: '2026-09-05T01:05:00Z',
+      }),
       /GitHub workflow run response changed during pagination/u,
     );
   });
