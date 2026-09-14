@@ -64,7 +64,11 @@ describe('GitHub snapshot collection ceiling', () => {
     for (const count of [101, 1_000]) {
       assert.equal(
         validateGitHubSnapshot(
-          snapshot({ issues: Array.from({ length: count }, (_, index) => issue(index + 1)) }),
+          snapshot({
+            issues: Array.from({ length: count }, (_, index) =>
+              issue(index + 1),
+            ),
+          }),
         ).issues.length,
         count,
       );
@@ -99,7 +103,11 @@ describe('GitHub snapshot collection ceiling', () => {
     assert.throws(
       () =>
         validateGitHubSnapshot(
-          snapshot({ issues: Array.from({ length: 1_001 }, (_, index) => issue(index + 1)) }),
+          snapshot({
+            issues: Array.from({ length: 1_001 }, (_, index) =>
+              issue(index + 1),
+            ),
+          }),
         ),
       /Invalid GitHub snapshot: invalid issues/,
     );
