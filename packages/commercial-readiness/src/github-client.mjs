@@ -435,13 +435,34 @@ function workflowRunBelongsToPullRequest(run, pullRequestNumber) {
 }
 
 /**
+ * Reduce a workflow-run record to the merge-authoritative fields that must remain stable.
+ *
+ * @param {unknown} run Untrusted workflow-run payload from the GitHub Actions API.
+ * @returns {{id: unknown, name: unknown, status: unknown, conclusion: unknown, head_sha: unknown, run_attempt: unknown, updated_at: unknown, pull_requests: unknown[]}} Stability anchor for one workflow run.
+ */
+function workflowRunAnchor(run) {
+  return {
+    id: run?.id ?? null,
+    name: run?.name ?? null,
+    status: run?.status ?? null,
+    conclusion: run?.conclusion ?? null,
+    head_sha: run?.head_sha ?? null,
+    run_attempt: run?.run_attempt ?? null,
+    updated_at: run?.updated_at ?? null,
+    pull_requests: (Array.isArray(run?.pull_requests) ? run.pull_requests : []).map(
+      (pullRequest) => pullRequest?.number ?? null,
+    ),
+  };
+}
+
+/**
  * Collect bounded workflow-run evidence for one exact head and one exact pull request.
  *
  * The Actions endpoint is queried by head SHA for pagination efficiency, then every result
  * is constrained by GitHub's immutable pull-request association before it can reach merge
  * evaluation. Because the endpoint uses offset pagination over a live newest-first list,
  * the traversal requires a stable `total_count`, unique positive run IDs, exact cardinality,
- * and—after any multi-page traversal—an unchanged first-page evidence anchor. Concurrent
+ * and—after any multi-page traversal—unchanged evidence on every traversed page. Concurrent
  * insertion/deletion or same-run state changes therefore fail closed instead of allowing a
  * stale successful run to hide newer or mutated evidence.
  *
@@ -461,7 +482,7 @@ async function collectWorkflowRuns(
     const values = [];
     const seenRunIds = new Set();
     let expectedTotal = null;
-    let firstPageAnchor = null;
+    const pageAnchors = [];
     let collectionComplete = false;
     let pagesRead = 0;
     const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize);
@@ -499,21 +520,7 @@ async function collectWorkflowRuns(
           }
           seenRunIds.add(run.id);
         }
-        if (page === 1) {
-          firstPageAnchor = pageValues.map((run) => ({
-            id: run.id,
-            name: run?.name ?? null,
-            status: run?.status ?? null,
-            conclusion: run?.conclusion ?? null,
-            head_sha: run?.head_sha ?? null,
-            run_attempt: run?.run_attempt ?? null,
-            updated_at: run?.updated_at ?? null,
-            pull_requests: (Array.isArray(run?.pull_requests)
-              ? run.pull_requests
-              : []
-            ).map((pullRequest) => pullRequest?.number ?? null),
-          }));
-        }
+        pageAnchors.push(pageValues.map(workflowRunAnchor));
         values.push(...pageValues);
         pagesRead = page;
         if (values.length > MAX_API_ITEMS) {
@@ -540,43 +547,27 @@ async function collectWorkflowRuns(
         throw new Error('GitHub workflow run response exceeded the page limit');
       }
       if (pagesRead > 1) {
-        const confirmation = await client.requestJson(
-          `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
-            headSha,
-          )}&event=pull_request&per_page=${pageSize}&page=1`,
-        );
-        const confirmationValues = confirmation?.workflow_runs;
-        if (
-          !Array.isArray(confirmationValues) ||
-          confirmationValues.length > pageSize ||
-          confirmation?.total_count !== expectedTotal ||
-          confirmationValues.some(
-            (run) => !Number.isSafeInteger(run?.id) || run.id <= 0,
-          )
-        ) {
-          throw new Error(
-            'GitHub workflow run response changed during pagination',
+        for (let pageIndex = 0; pageIndex < pagesRead; pageIndex += 1) {
+          const confirmation = await client.requestJson(
+            `/repos/${repository}/actions/runs?head_sha=${encodeURIComponent(
+              headSha,
+            )}&event=pull_request&per_page=${pageSize}&page=${pageIndex + 1}`,
           );
-        }
-        const confirmationAnchor = confirmationValues.map((run) => ({
-          id: run.id,
-          name: run?.name ?? null,
-          status: run?.status ?? null,
-          conclusion: run?.conclusion ?? null,
-          head_sha: run?.head_sha ?? null,
-          run_attempt: run?.run_attempt ?? null,
-          updated_at: run?.updated_at ?? null,
-          pull_requests: (Array.isArray(run?.pull_requests)
-            ? run.pull_requests
-            : []
-          ).map((pullRequest) => pullRequest?.number ?? null),
-        }));
-        if (
-          JSON.stringify(confirmationAnchor) !== JSON.stringify(firstPageAnchor)
-        ) {
-          throw new Error(
-            'GitHub workflow run response changed during pagination',
-          );
+          const confirmationValues = confirmation?.workflow_runs;
+          if (
+            !Array.isArray(confirmationValues) ||
+            confirmationValues.length > pageSize ||
+            confirmation?.total_count !== expectedTotal ||
+            confirmationValues.some(
+              (run) => !Number.isSafeInteger(run?.id) || run.id <= 0,
+            ) ||
+            JSON.stringify(confirmationValues.map(workflowRunAnchor)) !==
+              JSON.stringify(pageAnchors[pageIndex])
+          ) {
+            throw new Error(
+              'GitHub workflow run response changed during pagination',
+            );
+          }
         }
       }
       return values.filter((run) =>
