@@ -348,19 +348,19 @@ function normalizeReview(review, pullRequestAuthor) {
 }
 
 /**
- * Collect a bounded GitHub REST array and optionally verify that a multi-page offset traversal
- * retained the same first-page authority from start to finish.
+ * Collect a bounded GitHub REST array and optionally verify that every page in a multi-page
+ * offset traversal retained the same authority from start to finish.
  *
  * The stability check is opt-in because not every collection participates in a merge decision.
  * Merge-authoritative pull-request reviews and commit statuses opt in: concurrent insertions,
- * dismissals, or state changes can otherwise shift or mutate page-one authority while later
- * pages are being read. Re-reading page 1 after any multi-page traversal makes that drift
- * explicit instead of allowing stale approval or success evidence to remain authoritative.
+ * dismissals, or state changes can otherwise mutate a later page while page one remains stable.
+ * Re-reading every page that participated in the traversal makes that drift explicit instead of
+ * allowing stale approval or success evidence from any page to remain authoritative.
  *
  * @param {object} client Bounded GitHub API client.
  * @param {string} path REST path before pagination parameters are appended.
  * @param {string} errorMessage Error used for malformed page evidence.
- * @param {string|null} [stabilityErrorMessage=null] Fail-closed error used when first-page authority moves.
+ * @param {string|null} [stabilityErrorMessage=null] Fail-closed error used when any traversed page changes.
  * @returns {Promise<unknown[]>} Complete bounded array from one stable traversal.
  */
 async function collectPaginatedArray(
@@ -373,8 +373,7 @@ async function collectPaginatedArray(
   for (const pageSize of RESPONSE_BOUNDED_PAGE_SIZES) {
     const values = [];
     const pageLimit = Math.ceil(MAX_API_ITEMS / pageSize) + 1;
-    let firstPage = null;
-    let pagesRead = 0;
+    const pages = [];
     try {
       for (let page = 1; page <= pageLimit; page += 1) {
         const payload = await client.requestJson(
@@ -383,23 +382,24 @@ async function collectPaginatedArray(
         if (!Array.isArray(payload) || payload.length > pageSize) {
           throw new Error(errorMessage);
         }
-        if (page === 1) firstPage = payload;
+        if (stabilityErrorMessage) pages.push(payload);
         values.push(...payload);
         if (values.length > MAX_API_ITEMS) {
           throw new Error(`${errorMessage} exceeded the item limit`);
         }
-        pagesRead = page;
         if (payload.length < pageSize) {
-          if (stabilityErrorMessage && pagesRead > 1) {
-            const confirmation = await client.requestJson(
-              `${path}${separator}per_page=${pageSize}&page=1`,
-            );
-            if (
-              !Array.isArray(confirmation) ||
-              confirmation.length > pageSize ||
-              JSON.stringify(confirmation) !== JSON.stringify(firstPage)
-            ) {
-              throw new Error(stabilityErrorMessage);
+          if (stabilityErrorMessage && pages.length > 1) {
+            for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+              const confirmation = await client.requestJson(
+                `${path}${separator}per_page=${pageSize}&page=${pageIndex + 1}`,
+              );
+              if (
+                !Array.isArray(confirmation) ||
+                confirmation.length > pageSize ||
+                JSON.stringify(confirmation) !== JSON.stringify(pages[pageIndex])
+              ) {
+                throw new Error(stabilityErrorMessage);
+              }
             }
           }
           return values;
