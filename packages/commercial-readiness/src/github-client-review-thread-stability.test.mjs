@@ -6,16 +6,19 @@ const headSha = 'a'.repeat(40);
 const baseSha = 'b'.repeat(40);
 const compareUrl = `https://api.github.com/repos/o/r/compare/${baseSha}...${headSha}`;
 
-function reviewThreadPage(start, count, firstThreadUnresolved = false) {
+function reviewThreadPage(start, count, unresolvedIndex = -1) {
   return Array.from({ length: count }, (_, index) => ({
     id: `PRRT_${start + index}`,
-    isResolved: firstThreadUnresolved && index === 0 ? false : true,
+    isResolved: index !== unresolvedIndex,
   }));
 }
 
-it('fails closed when an earlier review-thread page changes during a multi-page traversal', async () => {
+function snapshotClient({ driftOnConfirmation = false, unresolvedTail = false }) {
   let firstPageReads = 0;
-  const client = {
+  return {
+    get firstPageReads() {
+      return firstPageReads;
+    },
     async requestJson(path, options = {}) {
       if (path.startsWith('/repos/o/r/pulls?')) return [{ number: 7 }];
       if (path.startsWith('/repos/o/r/issues?')) return [];
@@ -54,7 +57,11 @@ it('fails closed when an earlier review-thread page changes during a multi-page 
               repository: {
                 pullRequest: {
                   reviewThreads: {
-                    nodes: reviewThreadPage(0, 100, firstPageReads > 1),
+                    nodes: reviewThreadPage(
+                      0,
+                      100,
+                      driftOnConfirmation && firstPageReads > 1 ? 0 : -1,
+                    ),
                     pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
                   },
                 },
@@ -68,7 +75,7 @@ it('fails closed when an earlier review-thread page changes during a multi-page 
               repository: {
                 pullRequest: {
                   reviewThreads: {
-                    nodes: reviewThreadPage(100, 1),
+                    nodes: reviewThreadPage(100, 1, unresolvedTail ? 0 : -1),
                     pageInfo: { hasNextPage: false, endCursor: null },
                   },
                 },
@@ -80,18 +87,33 @@ it('fails closed when an earlier review-thread page changes during a multi-page 
       throw new Error(`Unexpected path: ${path}`);
     },
   };
+}
 
+function collect(client) {
+  return collectRepositorySnapshot(client, 'o/r', {
+    policy: {
+      default_branch: 'main',
+      required_workflows: [],
+      required_statuses: [],
+    },
+    commitSha: 'c'.repeat(40),
+    generatedAt: '2026-09-14T10:00:00Z',
+  });
+}
+
+it('fails closed when an earlier review-thread page changes during a multi-page traversal', async () => {
+  const client = snapshotClient({ driftOnConfirmation: true });
   await assert.rejects(
-    () =>
-      collectRepositorySnapshot(client, 'o/r', {
-        policy: {
-          default_branch: 'main',
-          required_workflows: [],
-          required_statuses: [],
-        },
-        commitSha: 'c'.repeat(40),
-        generatedAt: '2026-09-14T10:00:00Z',
-      }),
+    () => collect(client),
     new Error('GitHub review thread response changed during pagination'),
   );
+  assert.equal(client.firstPageReads, 2);
+});
+
+it('accepts a stable multi-page review-thread traversal and preserves unresolved count', async () => {
+  const client = snapshotClient({ unresolvedTail: true });
+  const snapshot = await collect(client);
+  assert.equal(client.firstPageReads, 2);
+  assert.equal(snapshot.pull_requests[0].unresolved_threads, 1);
+  assert.ok(snapshot.pull_requests[0].blockers.includes('unresolved-review-threads'));
 });
