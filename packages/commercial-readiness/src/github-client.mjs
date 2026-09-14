@@ -702,6 +702,24 @@ function runIsNewer(candidate, current) {
 }
 
 /**
+ * Compare GitHub evidence identity strings without consulting the process locale.
+ *
+ * Workflow names and commit-status contexts are durable snapshot identity fields. Their exact
+ * code-unit order must not change with ICU or `LANG`/`LC_ALL`, because the resulting JSON is used
+ * as reproducible merge evidence. Direct string comparison preserves the original scalar values
+ * while making ordering independent of the host locale.
+ *
+ * @param {string} left First workflow name or status context.
+ * @param {string} right Second workflow name or status context.
+ * @returns {number} Negative, zero, or positive stable lexical ordering result.
+ */
+function compareStableEvidenceIdentity(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+/**
  * Reduce pull-request workflow runs without allowing contradictory head provenance to disappear.
  *
  * A run may create workflow authority only when its own scalar `name`, `status`, `head_sha`, and
@@ -766,7 +784,7 @@ function latestWorkflowRuns(runs, headSha) {
   }
   return [...latest.values()]
     .map(({ id: _id, ...run }) => run)
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => compareStableEvidenceIdentity(left.name, right.name));
 }
 
 function statusIsNewer(candidate, current) {
@@ -858,7 +876,9 @@ function latestStatuses(statuses, headSha) {
   }
   return [...latest.values()]
     .map(({ id: _id, created_at: _createdAt, ...status }) => status)
-    .sort((left, right) => left.context.localeCompare(right.context));
+    .sort((left, right) =>
+      compareStableEvidenceIdentity(left.context, right.context),
+    );
 }
 
 /**
