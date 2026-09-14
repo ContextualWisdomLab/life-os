@@ -368,6 +368,8 @@ export function validateCommercialReadinessPolicy(value) {
 const SNAPSHOT_SCHEMA = 'life-os.github-snapshot.v1';
 const SNAPSHOT_REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+/** Maximum raw GitHub list cardinality that may cross the durable snapshot boundary. */
+const SNAPSHOT_COLLECTION_MAX_ITEMS = 1_000;
 
 function failSnapshot(detail = '') {
   throw new Error(`Invalid GitHub snapshot${detail ? `: ${detail}` : ''}`);
@@ -513,7 +515,10 @@ function validateSnapshotPullRequest(value) {
   }
   if (typeof value.eligible !== 'boolean')
     failSnapshot('invalid merge eligibility');
-  if (!Array.isArray(value.reviews) || value.reviews.length > 100) {
+  if (
+    !Array.isArray(value.reviews) ||
+    value.reviews.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid reviews');
   }
   if (!Array.isArray(value.workflows) || value.workflows.length > 100) {
@@ -624,10 +629,16 @@ export function validateGitHubSnapshot(value) {
     failSnapshot('invalid timestamp');
   if (typeof value.truncated !== 'boolean')
     failSnapshot('invalid truncation flag');
-  if (!Array.isArray(value.pull_requests) || value.pull_requests.length > 100) {
+  if (
+    !Array.isArray(value.pull_requests) ||
+    value.pull_requests.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid pull requests');
   }
-  if (!Array.isArray(value.issues) || value.issues.length > 100) {
+  if (
+    !Array.isArray(value.issues) ||
+    value.issues.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid issues');
   }
   return Object.freeze({
