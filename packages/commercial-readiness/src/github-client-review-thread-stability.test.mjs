@@ -115,5 +115,5 @@ it('accepts a stable multi-page review-thread traversal and preserves unresolved
   const snapshot = await collect(client);
   assert.equal(client.firstPageReads, 2);
   assert.equal(snapshot.pull_requests[0].unresolved_threads, 1);
-  assert.ok(snapshot.pull_requests[0].blockers.includes('unresolved-review-threads'));
+  assert.ok(snapshot.pull_requests[0].blockers.includes('unresolved-review-thread'));
 });
