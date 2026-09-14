@@ -23,6 +23,25 @@ function review(index) {
   };
 }
 
+function workflow(index) {
+  return {
+    name: `Workflow ${index}`,
+    status: 'completed',
+    conclusion: 'success',
+    head_sha: headSha,
+    run_attempt: 1,
+    updated_at: '2026-09-14T00:00:00Z',
+  };
+}
+
+function status(index) {
+  return {
+    context: `context-${index}`,
+    state: 'success',
+    sha: headSha,
+  };
+}
+
 function pullRequest(number, reviews = []) {
   return {
     number,
@@ -124,6 +143,47 @@ describe('GitHub snapshot collection ceiling', () => {
           }),
         ),
       /Invalid GitHub snapshot: invalid reviews/,
+    );
+  });
+
+  it('accepts complete workflow and status evidence through 1,000 items and rejects limit-plus-one input', () => {
+    for (const count of [101, 1_000]) {
+      const pull = pullRequest(1);
+      pull.workflows = Array.from({ length: count }, (_, index) =>
+        workflow(index + 1),
+      );
+      pull.statuses = Array.from({ length: count }, (_, index) =>
+        status(index + 1),
+      );
+      const validated = validateGitHubSnapshot(
+        snapshot({ pull_requests: [pull] }),
+      );
+      assert.equal(validated.pull_requests[0].workflows.length, count);
+      assert.equal(validated.pull_requests[0].statuses.length, count);
+    }
+
+    const tooManyWorkflows = pullRequest(1);
+    tooManyWorkflows.workflows = Array.from({ length: 1_001 }, (_, index) =>
+      workflow(index + 1),
+    );
+    assert.throws(
+      () =>
+        validateGitHubSnapshot(
+          snapshot({ pull_requests: [tooManyWorkflows] }),
+        ),
+      /Invalid GitHub snapshot: invalid workflows/,
+    );
+
+    const tooManyStatuses = pullRequest(1);
+    tooManyStatuses.statuses = Array.from({ length: 1_001 }, (_, index) =>
+      status(index + 1),
+    );
+    assert.throws(
+      () =>
+        validateGitHubSnapshot(
+          snapshot({ pull_requests: [tooManyStatuses] }),
+        ),
+      /Invalid GitHub snapshot: invalid statuses/,
     );
   });
 });
