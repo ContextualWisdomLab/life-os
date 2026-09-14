@@ -521,10 +521,16 @@ function validateSnapshotPullRequest(value) {
   ) {
     failSnapshot('invalid reviews');
   }
-  if (!Array.isArray(value.workflows) || value.workflows.length > 100) {
+  if (
+    !Array.isArray(value.workflows) ||
+    value.workflows.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid workflows');
   }
-  if (!Array.isArray(value.statuses) || value.statuses.length > 100) {
+  if (
+    !Array.isArray(value.statuses) ||
+    value.statuses.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid statuses');
   }
   if (!Array.isArray(value.blockers) || value.blockers.length > 100) {
