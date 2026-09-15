@@ -46,6 +46,47 @@ function isInsideBlockScalar(lines, lineIndex) {
   return false;
 }
 
+function flowBraceDelta(line) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+
+    if (quote === '"') {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (quote === "'") {
+      if (character === "'" && line[index + 1] === "'") {
+        index += 1;
+      } else if (character === "'") {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === '#') break;
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+    }
+  }
+
+  return depth;
+}
+
 function expectNoFlowStyleReviewedActionSteps(path, workflow) {
   const lines = workflow.split(String.fromCharCode(10));
 
@@ -56,15 +97,19 @@ function expectNoFlowStyleReviewedActionSteps(path, workflow) {
     const trimmed = line.trimStart();
     if (!/^-\s*\{/u.test(trimmed)) continue;
 
-    const stepIndent = lineIndent(line);
     const mappingLines = [trimmed];
     let cursor = lineIndex;
+    let braceDepth = flowBraceDelta(trimmed);
 
-    while (!mappingLines.join('\n').includes('}') && cursor + 1 < lines.length) {
+    while (braceDepth > 0 && cursor + 1 < lines.length) {
       cursor += 1;
       const candidate = lines[cursor];
-      if (candidate.trim() !== '' && lineIndent(candidate) < stepIndent) break;
       mappingLines.push(candidate.trim());
+      braceDepth += flowBraceDelta(candidate);
+    }
+
+    if (braceDepth !== 0) {
+      throw new Error(`${path} contains an unterminated flow-style step mapping`);
     }
 
     const flowMapping = mappingLines.join('\n');
@@ -128,6 +173,25 @@ describe('Node 24 action flow-style authority', () => {
     expect(() =>
       expectNoFlowStyleReviewedActionSteps(
         'hostile-flow-setup-node.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow(/flow-style checkout\/setup-node/u);
+  });
+
+  it('does not stop at a nested flow mapping before the uses authority', () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      '    steps:',
+      '      - {',
+      '          with: { fetch-depth: 1 },',
+      '          uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+      '        }',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectNoFlowStyleReviewedActionSteps(
+        'hostile-nested-flow-before-uses.yml',
         hostileWorkflow,
       ),
     ).toThrow(/flow-style checkout\/setup-node/u);
