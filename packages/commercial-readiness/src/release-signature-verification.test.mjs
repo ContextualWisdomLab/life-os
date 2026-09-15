@@ -14,6 +14,7 @@ const SOURCE_COMMIT = 'a'.repeat(40);
 const CHANNEL = 'rc';
 const VERSION = '0.1.0-rc.1';
 const GENERATED_AT = '2026-09-01T00:00:00.000Z';
+const OPEN_P0_BUYER_GAPS = Object.freeze([209, 210]);
 const KEY_ID = 'release-operator-1';
 
 function sha256(buffer) {
@@ -27,6 +28,8 @@ function signatureMessage(subjectArtifactName, subjectSha256) {
       SOURCE_COMMIT,
       CHANNEL,
       VERSION,
+      GENERATED_AT,
+      JSON.stringify(OPEN_P0_BUYER_GAPS),
       subjectArtifactName,
       subjectSha256,
       '',
@@ -120,7 +123,7 @@ async function createFixture({
     version: VERSION,
     source_commit: SOURCE_COMMIT,
     generated_at: GENERATED_AT,
-    open_p0_buyer_gaps: [209, 210],
+    open_p0_buyer_gaps: [...OPEN_P0_BUYER_GAPS],
     artifacts: [
       artifact(subjectArtifactName, 'container', subjectBytes),
       artifact(migrationArtifactName, 'migration', migrationBytes, {
@@ -181,6 +184,27 @@ test('verifies each indexed detached Ed25519 signature against an explicit trust
     assert.equal(verified.source_commit, SOURCE_COMMIT);
     assert.equal(verified.channel, CHANNEL);
     assert.equal(verified.version, VERSION);
+  });
+});
+
+test('rejects release metadata substitution that was not authorized by the signer', async () => {
+  await withFixture({}, async ({ directory, index, trustedPublicKeys }) => {
+    await assert.rejects(
+      verifyReleaseEvidenceSignatures(
+        { ...index, generated_at: '2026-09-01T00:00:01.000Z' },
+        directory,
+        trustedPublicKeys,
+      ),
+      ReleaseSignatureVerificationError,
+    );
+    await assert.rejects(
+      verifyReleaseEvidenceSignatures(
+        { ...index, open_p0_buyer_gaps: [209] },
+        directory,
+        trustedPublicKeys,
+      ),
+      ReleaseSignatureVerificationError,
+    );
   });
 });
 

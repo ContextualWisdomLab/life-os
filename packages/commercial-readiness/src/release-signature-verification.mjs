@@ -158,7 +158,7 @@ function requireSignatureBytes(value) {
   return bytes;
 }
 
-/** Builds the versioned signed statement that binds release, subject identity, and exact digest. */
+/** Builds the versioned signed statement that binds release metadata, subject identity, and exact digest. */
 function signatureMessage(index, artifact) {
   return Buffer.from(
     [
@@ -166,6 +166,8 @@ function signatureMessage(index, artifact) {
       index.source_commit,
       index.channel,
       index.version,
+      index.generated_at,
+      JSON.stringify(index.open_p0_buyer_gaps),
       artifact.subject_artifact_name,
       artifact.subject_sha256,
       '',
@@ -205,15 +207,15 @@ async function verifyIndexedSignature(index, directory, artifact, trustedKeys) {
  *
  * Structural validation and byte/digest verification run first through the release-evidence
  * contract. Each detached signature envelope is then reopened without following a final symlink,
- * rebound to the exact source commit, release channel/version, subject artifact name and digest,
- * and verified with Ed25519 against an operator-supplied explicit trust map. After all signatures
- * pass, the complete normalized evidence set is byte-verified again. That second pass prevents a
- * subject or sibling evidence file changed after the initial artifact pass from being accepted as
- * the retained evidence set merely because its earlier digest was correctly signed. Trust is never
- * inferred from a key embedded in the artifact, a GitHub actor, or model output. The function
- * establishes signature validity only; it does not distribute/rotate trust roots, claim release
- * readiness, or substitute for SBOM, provenance, install, recovery, accessibility, or buyer-
- * journey acceptance gates.
+ * rebound to the exact source commit, release channel/version, generated timestamp, unresolved P0
+ * buyer-gap set, subject artifact name and digest, and verified with Ed25519 against an
+ * operator-supplied explicit trust map. After all signatures pass, the complete normalized
+ * evidence set is byte-verified again. That second pass prevents a subject or sibling evidence file
+ * changed after the initial artifact pass from being accepted as the retained evidence set merely
+ * because its earlier digest was correctly signed. Trust is never inferred from a key embedded in
+ * the artifact, a GitHub actor, or model output. The function establishes signature validity only;
+ * it does not distribute/rotate trust roots, claim release readiness, or substitute for SBOM,
+ * provenance, install, recovery, accessibility, or buyer-journey acceptance gates.
  *
  * @param {unknown} value Untrusted `life-os.release-evidence.v1` index.
  * @param {string} artifactDirectory Directory containing the exact indexed artifacts.
