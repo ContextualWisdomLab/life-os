@@ -145,20 +145,22 @@ function oneOrUndefined<Row>(
   const [rows, rowCount] = boundedEvidenceRead(
     () => [result.rows, result.rowCount] as const,
   );
+  const rowCountSnapshot = boundedEvidenceRead(() => {
+    if (!Array.isArray(rows)) return invalidEvidence();
+    return rows.length;
+  });
   if (
-    !Array.isArray(rows) ||
     typeof rowCount !== 'number' ||
     !Number.isInteger(rowCount) ||
     rowCount < 0 ||
-    rowCount !== rows.length ||
-    rows.length > 1
+    rowCount !== rowCountSnapshot ||
+    rowCountSnapshot > 1
   ) {
     return invalidEvidence();
   }
-  if (rows.length === 1 && rows[0] === undefined) {
-    return invalidEvidence();
-  }
-  return rows[0];
+  if (rowCountSnapshot === 0) return undefined;
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
 function validateCreate(
