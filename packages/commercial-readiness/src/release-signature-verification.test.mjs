@@ -10,6 +10,8 @@ import {
   verifyReleaseEvidenceSignatures,
 } from './release-signature-verification.mjs';
 
+const RELEASE_SCHEMA_VERSION = 'life-os.release-evidence.v1';
+const SIGNATURE_SCHEMA_VERSION = 'life-os.release-signature.v1';
 const SOURCE_COMMIT = 'a'.repeat(40);
 const CHANNEL = 'rc';
 const VERSION = '0.1.0-rc.1';
@@ -21,15 +23,38 @@ function sha256(buffer) {
   return `sha256:${createHash('sha256').update(buffer).digest('hex')}`;
 }
 
-function signatureMessage(subjectArtifactName, subjectSha256) {
+function artifact(artifactName, evidenceType, bytes, extra = {}) {
+  return {
+    artifact_name: artifactName,
+    evidence_type: evidenceType,
+    ...extra,
+    sha256: sha256(bytes),
+    size_bytes: bytes.length,
+    source_commit: SOURCE_COMMIT,
+  };
+}
+
+function compareArtifactNames(left, right) {
+  if (left.artifact_name < right.artifact_name) return -1;
+  if (left.artifact_name > right.artifact_name) return 1;
+  return 0;
+}
+
+function canonicalNonSignatureArtifactMetadata(artifacts) {
+  return JSON.stringify([...artifacts].sort(compareArtifactNames));
+}
+
+function signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifacts) {
   return Buffer.from(
     [
-      'life-os.release-signature.v1',
+      SIGNATURE_SCHEMA_VERSION,
+      RELEASE_SCHEMA_VERSION,
       SOURCE_COMMIT,
       CHANNEL,
       VERSION,
       GENERATED_AT,
       JSON.stringify(OPEN_P0_BUYER_GAPS),
+      canonicalNonSignatureArtifactMetadata(nonSignatureArtifacts),
       subjectArtifactName,
       subjectSha256,
       '',
@@ -38,9 +63,14 @@ function signatureMessage(subjectArtifactName, subjectSha256) {
   );
 }
 
-function signedEnvelope(privateKey, subjectArtifactName, subjectSha256) {
+function signedEnvelope(
+  privateKey,
+  subjectArtifactName,
+  subjectSha256,
+  nonSignatureArtifacts,
+) {
   return {
-    schema_version: 'life-os.release-signature.v1',
+    schema_version: SIGNATURE_SCHEMA_VERSION,
     algorithm: 'ed25519',
     key_id: KEY_ID,
     source_commit: SOURCE_COMMIT,
@@ -50,7 +80,7 @@ function signedEnvelope(privateKey, subjectArtifactName, subjectSha256) {
     subject_sha256: subjectSha256,
     signature_base64: sign(
       null,
-      signatureMessage(subjectArtifactName, subjectSha256),
+      signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifacts),
       privateKey,
     ).toString('base64'),
   };
@@ -88,19 +118,53 @@ async function createFixture({
   );
   const checksumSha256 = sha256(checksumBytes);
 
-  const envelope = signedEnvelope(privateKey, subjectArtifactName, subjectSha256);
+  const nonSignatureArtifacts = [
+    artifact(subjectArtifactName, 'container', subjectBytes),
+    artifact(migrationArtifactName, 'migration', migrationBytes, {
+      compatibility: {
+        minimum_source_version: '0.0.1',
+        maximum_source_version: '0.0.9',
+      },
+    }),
+    artifact(sbomArtifactName, 'sbom', sbomBytes, { spec_version: '3.0.1' }),
+    artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
+      predicate_type: 'https://slsa.dev/provenance/v1',
+    }),
+    artifact(checksumArtifactName, 'checksum', checksumBytes),
+  ];
+
+  const envelope = signedEnvelope(
+    privateKey,
+    subjectArtifactName,
+    subjectSha256,
+    nonSignatureArtifacts,
+  );
   if (mutateEnvelope) mutateEnvelope(envelope);
   const signatureArtifactName = 'life-os-web.tar.sig.json';
   const signatureArtifactBytes = Buffer.from(`${JSON.stringify(envelope)}\n`, 'utf8');
 
   const provenanceSignatureArtifactName = 'life-os.provenance.json.sig.json';
   const provenanceSignatureBytes = Buffer.from(
-    `${JSON.stringify(signedEnvelope(privateKey, provenanceArtifactName, provenanceSha256))}\n`,
+    `${JSON.stringify(
+      signedEnvelope(
+        privateKey,
+        provenanceArtifactName,
+        provenanceSha256,
+        nonSignatureArtifacts,
+      ),
+    )}\n`,
     'utf8',
   );
   const checksumSignatureArtifactName = 'SHA256SUMS.sig.json';
   const checksumSignatureBytes = Buffer.from(
-    `${JSON.stringify(signedEnvelope(privateKey, checksumArtifactName, checksumSha256))}\n`,
+    `${JSON.stringify(
+      signedEnvelope(
+        privateKey,
+        checksumArtifactName,
+        checksumSha256,
+        nonSignatureArtifacts,
+      ),
+    )}\n`,
     'utf8',
   );
 
@@ -115,39 +179,20 @@ async function createFixture({
     writeFile(join(directory, checksumSignatureArtifactName), checksumSignatureBytes),
   ]);
 
-  const artifact = (artifactName, evidenceType, bytes, extra = {}) => ({
-    artifact_name: artifactName,
-    evidence_type: evidenceType,
-    ...extra,
-    sha256: sha256(bytes),
-    size_bytes: bytes.length,
-    source_commit: SOURCE_COMMIT,
-  });
   const signatureArtifact = (artifactName, bytes, subjectName, subjectDigest) =>
     artifact(artifactName, 'signature', bytes, {
       subject_artifact_name: subjectName,
       subject_sha256: subjectDigest,
     });
   const index = {
-    schema_version: 'life-os.release-evidence.v1',
+    schema_version: RELEASE_SCHEMA_VERSION,
     channel: CHANNEL,
     version: VERSION,
     source_commit: SOURCE_COMMIT,
     generated_at: GENERATED_AT,
     open_p0_buyer_gaps: [...OPEN_P0_BUYER_GAPS],
     artifacts: [
-      artifact(subjectArtifactName, 'container', subjectBytes),
-      artifact(migrationArtifactName, 'migration', migrationBytes, {
-        compatibility: {
-          minimum_source_version: '0.0.1',
-          maximum_source_version: '0.0.9',
-        },
-      }),
-      artifact(sbomArtifactName, 'sbom', sbomBytes, { spec_version: '3.0.1' }),
-      artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
-        predicate_type: 'https://slsa.dev/provenance/v1',
-      }),
-      artifact(checksumArtifactName, 'checksum', checksumBytes),
+      ...nonSignatureArtifacts,
       signatureArtifact(
         signatureArtifactName,
         signatureArtifactBytes,
@@ -219,9 +264,36 @@ test('rejects release metadata substitution that was not authorized by the signe
   });
 });
 
+test('rejects retained evidence metadata substitution that was not authorized by the signer', async () => {
+  await withFixture({}, async ({ directory, index, trustedPublicKeys }) => {
+    const artifacts = index.artifacts.map((entry) =>
+      entry.evidence_type === 'migration'
+        ? {
+            ...entry,
+            compatibility: {
+              minimum_source_version: '0.0.2',
+              maximum_source_version: '0.0.9',
+            },
+          }
+        : entry,
+    );
+    await assert.rejects(
+      verifyReleaseEvidenceSignatures(
+        { ...index, artifacts },
+        directory,
+        trustedPublicKeys,
+      ),
+      ReleaseSignatureVerificationError,
+    );
+  });
+});
+
 test('fails closed for a forged detached signature without exposing the envelope', async () => {
   await withFixture(
-    { mutateEnvelope: (envelope) => (envelope.signature_base64 = Buffer.alloc(64, 7).toString('base64')) },
+    {
+      mutateEnvelope: (envelope) =>
+        (envelope.signature_base64 = Buffer.alloc(64, 7).toString('base64')),
+    },
     async ({ directory, index, trustedPublicKeys }) => {
       await assert.rejects(
         verifyReleaseEvidenceSignatures(index, directory, trustedPublicKeys),
@@ -257,7 +329,10 @@ test('rejects unknown key identity and release-identity substitution', async () 
 
 test('rejects subject substitution and non-Ed25519 trust material', async () => {
   await withFixture(
-    { mutateEnvelope: (envelope) => (envelope.subject_sha256 = `sha256:${'0'.repeat(64)}`) },
+    {
+      mutateEnvelope: (envelope) =>
+        (envelope.subject_sha256 = `sha256:${'0'.repeat(64)}`),
+    },
     async ({ directory, index, trustedPublicKeys }) => {
       await assert.rejects(
         verifyReleaseEvidenceSignatures(index, directory, trustedPublicKeys),
@@ -266,7 +341,9 @@ test('rejects subject substitution and non-Ed25519 trust material', async () => 
     },
   );
 
-  const { publicKey: rsaPublicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const { publicKey: rsaPublicKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+  });
   await withFixture(
     { trustedPublicKey: rsaPublicKey.export({ type: 'spki', format: 'pem' }) },
     async ({ directory, index, trustedPublicKeys }) => {
