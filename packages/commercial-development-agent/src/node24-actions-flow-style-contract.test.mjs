@@ -114,7 +114,7 @@ function expectNoFlowStyleReviewedActionSteps(path, workflow) {
 
     const flowMapping = mappingLines.join('\n');
     if (
-      /\buses\s*:\s*['"]?actions\/(?:checkout|setup-node)@/iu.test(
+      /(?:\buses|'uses'|"uses")\s*:\s*['"]?actions\/(?:checkout|setup-node)@/iu.test(
         flowMapping,
       )
     ) {
@@ -154,6 +154,23 @@ describe('Node 24 action flow-style authority', () => {
     expect(() =>
       expectNoFlowStyleReviewedActionSteps(
         'hostile-flow-checkout.yml',
+        hostileWorkflow,
+      ),
+    ).toThrow(/flow-style checkout\/setup-node/u);
+  });
+
+  it('rejects quoted uses keys in flow-style checkout steps', () => {
+    const hostileWorkflow = [
+      'jobs:',
+      '  scan:',
+      '    steps:',
+      "      - { 'uses': actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 }",
+      '      - { "uses": actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 }',
+    ].join(String.fromCharCode(10));
+
+    expect(() =>
+      expectNoFlowStyleReviewedActionSteps(
+        'hostile-quoted-flow-uses-key.yml',
         hostileWorkflow,
       ),
     ).toThrow(/flow-style checkout\/setup-node/u);
