@@ -103,6 +103,24 @@ function gapPriority(capability, observed, dependentCount) {
   );
 }
 
+/**
+ * Compare canonical manifest identifiers without consulting the process locale.
+ *
+ * Commercial Readiness reports are durable evidence. Equal-priority gaps must therefore keep
+ * the same order on every runner instead of inheriting ICU collation from `LANG`/`LC_ALL`.
+ * Manifest identifiers are canonical ASCII strings, so direct code-unit ordering is stable and
+ * preserves the schema identity rather than applying language-specific collation rules.
+ *
+ * @param {string} left First canonical manifest identifier.
+ * @param {string} right Second canonical manifest identifier.
+ * @returns {number} Negative, zero, or positive lexical ordering result.
+ */
+function compareCanonicalIdentifier(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function missingEvidenceForTarget(capability, evidenceResults) {
   const targetRank = MATURITY_RANK[capability.target_maturity];
   return [
@@ -202,7 +220,7 @@ export async function evaluateCapabilities(
     .sort(
       (left, right) =>
         right.priority_score - left.priority_score ||
-        left.capability_id.localeCompare(right.capability_id),
+        compareCanonicalIdentifier(left.capability_id, right.capability_id),
     );
 
   let weightedObserved = 0;
