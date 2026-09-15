@@ -11,6 +11,10 @@ import {
   PostgresTodayRepository,
   type TodayTransactionalSqlClient,
 } from './postgres-today-repository';
+import {
+  PostgresTaskCompletionRepository,
+  TaskCompletionService,
+} from './task-completion';
 import { TodaySyncService } from './today-sync';
 
 const MAXIMUM_CONFIGURATION_LENGTH = 8 * 1024;
@@ -200,6 +204,8 @@ export class PlanningRuntime implements OnApplicationShutdown {
     private readonly pool: PlanningPool,
     readonly service: PlanningService,
     readonly todayService: TodaySyncService,
+    /** Performs the Planning-owned atomic task completion transition. */
+    readonly taskCompletionService: TaskCompletionService,
     /** Handles Planning-owned data-rights requests through the runtime's shared transactional SQL client. */
     readonly dataRightsContributor: PlanningDataRightsContributor,
   ) {}
@@ -229,6 +235,7 @@ export function createPlanningRuntime(
     pool,
     new PlanningService(repository),
     new TodaySyncService(todayRepository),
+    new TaskCompletionService(new PostgresTaskCompletionRepository(client)),
     new PlanningDataRightsContributor(client),
   );
 }

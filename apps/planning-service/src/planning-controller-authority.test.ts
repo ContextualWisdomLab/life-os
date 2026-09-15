@@ -5,13 +5,13 @@ import { HttpException } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlanningService } from './planning-domain';
 import { PlanningController } from './main';
+import type { TaskCompletionService } from './task-completion';
 import type { TodaySyncService } from './today-sync';
 
 const CONTROLLER_SOURCE = readFileSync(join(__dirname, 'main.ts'), 'utf8');
 
 const LEGACY_WORKSPACE_HEADER = /@Headers\(['"]x-workspace-id['"]\)/gu;
-const TRUSTED_WORKSPACE_HEADER =
-  /@Headers\(['"]x-life-os-workspace-id['"]\)/gu;
+const TRUSTED_WORKSPACE_HEADER = /@Headers\(['"]x-life-os-workspace-id['"]\)/gu;
 const TRUSTED_ISSUED_AT_HEADER =
   /@Headers\(['"]x-life-os-context-issued-at['"]\)/gu;
 const TRUSTED_SIGNATURE_HEADER =
@@ -144,11 +144,12 @@ function createPlanningServiceSpies(): PlanningServiceSpies {
   };
 }
 
-/** Creates a controller with no durable Today dependency because these routes do not use it. */
+/** Creates a controller with inert dependencies that these CRUD routes do not use. */
 function createController(service: PlanningServiceSpies): PlanningController {
   return new PlanningController(
     service as unknown as PlanningService,
     {} as TodaySyncService,
+    {} as TaskCompletionService,
   );
 }
 
@@ -190,7 +191,9 @@ async function rejectedStatus(operation: Promise<unknown>): Promise<number> {
     expect(error).toBeInstanceOf(HttpException);
     return (error as HttpException).getStatus();
   }
-  throw new Error('Expected Planning route to reject untrusted workspace context');
+  throw new Error(
+    'Expected Planning route to reject untrusted workspace context',
+  );
 }
 
 afterEach(() => {
@@ -205,11 +208,13 @@ describe.sequential('PlanningController workspace authority contract', () => {
   });
 
   it('binds every workspace-scoped planning route to the signed workspace context', () => {
-    // search + Today GET/PUT + six Goal/Project/Task routes.
-    expect(count(TRUSTED_WORKSPACE_HEADER)).toBe(9);
-    expect(count(TRUSTED_ISSUED_AT_HEADER)).toBe(9);
-    expect(count(TRUSTED_SIGNATURE_HEADER)).toBe(9);
-    expect(CONTROLLER_SOURCE.match(/requireTrustedWorkspaceContext\(/gu)).toHaveLength(9);
+    // search + Today GET/PUT + six CRUD routes + task completion PUT.
+    expect(count(TRUSTED_WORKSPACE_HEADER)).toBe(10);
+    expect(count(TRUSTED_ISSUED_AT_HEADER)).toBe(10);
+    expect(count(TRUSTED_SIGNATURE_HEADER)).toBe(10);
+    expect(
+      CONTROLLER_SOURCE.match(/requireTrustedWorkspaceContext\(/gu),
+    ).toHaveLength(10);
   });
 
   it('passes the verified workspace to every Goal, Project, and Task service route', async () => {
