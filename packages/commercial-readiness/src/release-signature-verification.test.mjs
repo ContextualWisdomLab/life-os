@@ -69,12 +69,23 @@ async function createFixture({
   const subjectSha256 = sha256(subjectBytes);
   const migrationArtifactName = 'life-os-migrations.tar';
   const migrationBytes = Buffer.from('immutable migration payload\n', 'utf8');
+  const migrationSha256 = sha256(migrationBytes);
+  const sbomArtifactName = 'life-os.spdx.json';
   const sbomBytes = suppliedSbomBytes ?? Buffer.from('{}\n', 'utf8');
+  const sbomSha256 = sha256(sbomBytes);
   const provenanceArtifactName = 'life-os.provenance.json';
   const provenanceBytes = Buffer.from('{}\n', 'utf8');
   const provenanceSha256 = sha256(provenanceBytes);
   const checksumArtifactName = 'SHA256SUMS';
-  const checksumBytes = Buffer.from(`${subjectSha256}  ${subjectArtifactName}\n`, 'utf8');
+  const checksumBytes = Buffer.from(
+    [
+      `${migrationSha256.slice('sha256:'.length)}  ${migrationArtifactName}\n`,
+      `${subjectSha256.slice('sha256:'.length)}  ${subjectArtifactName}\n`,
+      `${provenanceSha256.slice('sha256:'.length)}  ${provenanceArtifactName}\n`,
+      `${sbomSha256.slice('sha256:'.length)}  ${sbomArtifactName}\n`,
+    ].join(''),
+    'utf8',
+  );
   const checksumSha256 = sha256(checksumBytes);
 
   const envelope = signedEnvelope(privateKey, subjectArtifactName, subjectSha256);
@@ -97,7 +108,7 @@ async function createFixture({
     writeFile(join(directory, subjectArtifactName), subjectBytes),
     writeFile(join(directory, migrationArtifactName), migrationBytes),
     writeFile(join(directory, signatureArtifactName), signatureArtifactBytes),
-    writeFile(join(directory, 'life-os.spdx.json'), sbomBytes),
+    writeFile(join(directory, sbomArtifactName), sbomBytes),
     writeFile(join(directory, provenanceArtifactName), provenanceBytes),
     writeFile(join(directory, checksumArtifactName), checksumBytes),
     writeFile(join(directory, provenanceSignatureArtifactName), provenanceSignatureBytes),
@@ -132,7 +143,7 @@ async function createFixture({
           maximum_source_version: '0.1.0',
         },
       }),
-      artifact('life-os.spdx.json', 'sbom', sbomBytes, { spec_version: '3.0.1' }),
+      artifact(sbomArtifactName, 'sbom', sbomBytes, { spec_version: '3.0.1' }),
       artifact(provenanceArtifactName, 'provenance', provenanceBytes, {
         predicate_type: 'https://slsa.dev/provenance/v1',
       }),
