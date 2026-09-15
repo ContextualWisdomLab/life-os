@@ -139,8 +139,8 @@ async function createFixture({
       artifact(subjectArtifactName, 'container', subjectBytes),
       artifact(migrationArtifactName, 'migration', migrationBytes, {
         compatibility: {
-          minimum_source_version: '0.1.0',
-          maximum_source_version: '0.1.0',
+          minimum_source_version: '0.0.1',
+          maximum_source_version: '0.0.9',
         },
       }),
       artifact(sbomArtifactName, 'sbom', sbomBytes, { spec_version: '3.0.1' }),
