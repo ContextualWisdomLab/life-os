@@ -95,7 +95,9 @@ async function runConcurrentDurations(count, concurrency, operation) {
       }
       const durationMs = await operation(index);
       if (!Number.isFinite(durationMs) || durationMs < 0) {
-        return fail('Direct Integration status profile returned invalid timing');
+        return fail(
+          'Direct Integration status profile returned invalid timing',
+        );
       }
       samples[index] = durationMs;
     }
