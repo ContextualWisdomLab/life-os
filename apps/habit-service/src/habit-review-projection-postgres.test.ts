@@ -214,6 +214,21 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
     ).rejects.toThrowError('Habit persistence operation failed');
   });
 
+  it('fails closed when a sentinel habit proves the requested ceiling was exceeded', async () => {
+    const rows = Array.from({ length: 101 }, (_, index) =>
+      reviewRow({
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        completion_workspace_id: null,
+        completion_habit_id: null,
+        completion_scheduled_local_date: null,
+      }),
+    );
+
+    await expect(readEvidence(rows)).rejects.toThrowError(
+      'Habit persistence operation failed',
+    );
+  });
+
   it('fails closed when the adapter returns more rows than the bounded weekly cardinality permits', async () => {
     const rows = Array.from({ length: 708 }, () => reviewRow());
 
