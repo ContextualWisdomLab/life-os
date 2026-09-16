@@ -26,8 +26,15 @@ jobs:
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
       - name: Check focused formatting
-        run: pnpm exec prettier --check apps/integration-service/src/plugin-delivery-attempt-repository.ts apps/integration-service/src/plugin-delivery-attempt-repository-hostile-collection.test.ts
+        run: >-
+          pnpm exec prettier --check
+          apps/integration-service/src/plugin-delivery-attempt-repository.ts
+          apps/integration-service/src/plugin-delivery-attempt-repository-hostile-collection.test.ts
+          apps/integration-service/src/plugin-delivery-attempt.ts
+          apps/integration-service/src/plugin-delivery-attempt.test.ts
       - name: Run hostile row collection regression
         run: pnpm --filter @life-os/integration-service test -- plugin-delivery-attempt-repository-hostile-collection.test.ts
+      - name: Run hostile application authority regression
+        run: pnpm --filter @life-os/integration-service test -- plugin-delivery-attempt.test.ts
       - name: Typecheck Integration
         run: pnpm --filter @life-os/integration-service typecheck
