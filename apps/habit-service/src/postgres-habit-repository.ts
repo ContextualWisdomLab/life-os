@@ -103,7 +103,11 @@ function snapshotReviewProjectionRows(
       return invalidRow();
     }
     const rowCount = rows.length;
-    if (!Number.isSafeInteger(rowCount) || rowCount < 0 || rowCount > maximumRows) {
+    if (
+      !Number.isSafeInteger(rowCount) ||
+      rowCount < 0 ||
+      rowCount > maximumRows
+    ) {
       return invalidRow();
     }
 
