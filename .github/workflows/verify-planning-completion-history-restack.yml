@@ -50,7 +50,7 @@ jobs:
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
       - name: Check Planning formatting
-        run: pnpm exec prettier --check apps/planning-service CHANGELOG.md
+        run: pnpm exec prettier --single-quote --check apps/planning-service CHANGELOG.md
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
       - name: Run complete Planning package
