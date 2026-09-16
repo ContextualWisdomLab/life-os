@@ -176,4 +176,139 @@ describeWithPostgres('Habit durable rule-change idempotency authority', () => {
       }),
     ).rejects.toThrow();
   });
+
+  it('converges concurrent same-key requests from independent service instances on one durable revision', async () => {
+    const workspaceId = randomUUID();
+    const habitId = randomUUID();
+    const seedRepository = repository(administrativePool);
+    await seedDailyHabit(seedRepository, workspaceId, habitId);
+
+    const command: HabitDefinitionRevisionCommand = {
+      effectiveFromLocalDate: '2026-09-14',
+      title: 'Weekly walk',
+      timezone: 'Asia/Seoul',
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
+      idempotencyKey: randomUUID(),
+    };
+    const firstService = requireRuleChangeAuthority(
+      new HabitService(
+        repository(administrativePool),
+        () => '2026-09-14T00:00:00.000Z',
+      ),
+    );
+    const secondService = requireRuleChangeAuthority(
+      new HabitService(
+        repository(administrativePool),
+        () => '2026-09-14T00:00:00.000Z',
+      ),
+    );
+
+    const [first, second] = await Promise.all([
+      firstService.reviseHabitDefinition(workspaceId, habitId, command),
+      secondService.reviseHabitDefinition(workspaceId, habitId, command),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({
+      schemaVersion: 'life-os.habit-definition-revision.v1',
+      workspaceId,
+      habitId,
+      revisionNumber: 2,
+      effectiveFromLocalDate: '2026-09-14',
+      recordedAt: '2026-09-14T00:00:00.000Z',
+    });
+
+    const nextService = requireRuleChangeAuthority(
+      new HabitService(
+        repository(administrativePool),
+        () => '2026-09-15T00:00:00.000Z',
+      ),
+    );
+    const nextRevision = await nextService.reviseHabitDefinition(
+      workspaceId,
+      habitId,
+      {
+        effectiveFromLocalDate: '2026-09-15',
+        title: 'Tuesday walk',
+        timezone: 'Asia/Seoul',
+        recurrence: { kind: 'weekly', interval: 1, weekdays: [2] },
+        idempotencyKey: randomUUID(),
+      },
+    );
+    expect(nextRevision.revisionNumber).toBe(3);
+  });
+
+  it('allows exactly one concurrent command to claim an effective boundary', async () => {
+    const workspaceId = randomUUID();
+    const habitId = randomUUID();
+    const seedRepository = repository(administrativePool);
+    await seedDailyHabit(seedRepository, workspaceId, habitId);
+
+    const firstService = requireRuleChangeAuthority(
+      new HabitService(
+        repository(administrativePool),
+        () => '2026-09-14T00:00:00.000Z',
+      ),
+    );
+    const secondService = requireRuleChangeAuthority(
+      new HabitService(
+        repository(administrativePool),
+        () => '2026-09-14T00:00:00.000Z',
+      ),
+    );
+    const firstCommand: HabitDefinitionRevisionCommand = {
+      effectiveFromLocalDate: '2026-09-14',
+      title: 'Monday walk',
+      timezone: 'Asia/Seoul',
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
+      idempotencyKey: randomUUID(),
+    };
+    const secondCommand: HabitDefinitionRevisionCommand = {
+      effectiveFromLocalDate: '2026-09-14',
+      title: 'Friday walk',
+      timezone: 'Asia/Seoul',
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [5] },
+      idempotencyKey: randomUUID(),
+    };
+
+    const results = await Promise.allSettled([
+      firstService.reviseHabitDefinition(workspaceId, habitId, firstCommand),
+      secondService.reviseHabitDefinition(workspaceId, habitId, secondCommand),
+    ]);
+    const accepted = results.filter(
+      (result): result is PromiseFulfilledResult<HabitDefinitionRevisionEvidence> =>
+        result.status === 'fulfilled',
+    );
+    const rejected = results.filter((result) => result.status === 'rejected');
+
+    expect(accepted).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(accepted[0]?.value).toMatchObject({
+      schemaVersion: 'life-os.habit-definition-revision.v1',
+      workspaceId,
+      habitId,
+      revisionNumber: 2,
+      effectiveFromLocalDate: '2026-09-14',
+      recordedAt: '2026-09-14T00:00:00.000Z',
+    });
+
+    const nextService = requireRuleChangeAuthority(
+      new HabitService(
+        repository(administrativePool),
+        () => '2026-09-15T00:00:00.000Z',
+      ),
+    );
+    const nextRevision = await nextService.reviseHabitDefinition(
+      workspaceId,
+      habitId,
+      {
+        effectiveFromLocalDate: '2026-09-15',
+        title: 'Tuesday walk',
+        timezone: 'Asia/Seoul',
+        recurrence: { kind: 'weekly', interval: 1, weekdays: [2] },
+        idempotencyKey: randomUUID(),
+      },
+    );
+    expect(nextRevision.revisionNumber).toBe(3);
+  });
 });
