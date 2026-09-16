@@ -46,7 +46,11 @@ function row(): Record<string, unknown> {
 class ScriptedSqlClient implements PluginDeliveryAttemptSqlClient {
   readonly calls: string[] = [];
 
-  constructor(private readonly results: PluginDeliveryAttemptSqlResult<Record<string, unknown>>[]) {}
+  constructor(
+    private readonly results: PluginDeliveryAttemptSqlResult<
+      Record<string, unknown>
+    >[],
+  ) {}
 
   async query<Row>(text: string): Promise<PluginDeliveryAttemptSqlResult<Row>> {
     this.calls.push(text);
@@ -57,12 +61,46 @@ class ScriptedSqlClient implements PluginDeliveryAttemptSqlClient {
 }
 
 describe('PostgresPluginDeliveryAttemptStore hostile row collections', () => {
+  it('rejects a revoked SQL result proxy as fixed persistence evidence failure', async () => {
+    const revocable = Proxy.revocable(
+      { rows: [row()], rowCount: 1 } as PluginDeliveryAttemptSqlResult<
+        Record<string, unknown>
+      >,
+      {},
+    );
+    revocable.revoke();
+    const client = new ScriptedSqlClient([
+      revocable.proxy as PluginDeliveryAttemptSqlResult<Record<string, unknown>>,
+    ]);
+    const store = new PostgresPluginDeliveryAttemptStore(client);
+
+    await expect(store.createIfAbsent(RECORD)).rejects.toBeInstanceOf(
+      PluginDeliveryAttemptPersistenceEvidenceError,
+    );
+  });
+
   it('rejects a revoked row-array proxy as fixed persistence evidence failure', async () => {
     const revocable = Proxy.revocable([row()], {});
     revocable.revoke();
     const client = new ScriptedSqlClient([
       {
         rows: revocable.proxy,
+        rowCount: 1,
+      } as PluginDeliveryAttemptSqlResult<Record<string, unknown>>,
+    ]);
+    const store = new PostgresPluginDeliveryAttemptStore(client);
+
+    await expect(store.createIfAbsent(RECORD)).rejects.toBeInstanceOf(
+      PluginDeliveryAttemptPersistenceEvidenceError,
+    );
+  });
+
+  it('rejects a revoked durable row proxy as fixed persistence evidence failure', async () => {
+    const revocable = Proxy.revocable(row(), {});
+    revocable.revoke();
+    const client = new ScriptedSqlClient([
+      {
+        rows: [revocable.proxy],
         rowCount: 1,
       } as PluginDeliveryAttemptSqlResult<Record<string, unknown>>,
     ]);
