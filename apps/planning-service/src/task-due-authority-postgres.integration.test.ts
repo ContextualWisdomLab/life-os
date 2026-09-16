@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import type { Task } from './planning-domain';
 import { createPlanningRuntime, type PlanningRuntime } from './planning-runtime';
 
@@ -122,22 +130,37 @@ describeWithPostgres('Planning task due authority', () => {
     });
   });
 
-  it('represents a task without a deadline as explicit null evidence', async () => {
+  it('treats omitted and explicit null deadlines as the same durable no-deadline authority', async () => {
     const workspaceId = randomUUID();
     const runtime = createRuntime();
     const project = await seedProject(runtime, workspaceId);
 
-    const created = await createTaskWithDueAuthority(runtime, workspaceId, {
+    const omitted = await createTaskWithDueAuthority(runtime, workspaceId, {
       projectId: project.id,
       title: 'Undated backlog item',
     });
+    const explicitNull = await createTaskWithDueAuthority(runtime, workspaceId, {
+      projectId: project.id,
+      title: 'Explicitly undated backlog item',
+      dueAt: null,
+    });
 
-    expect(created).toHaveProperty('dueAt', null);
+    expect(omitted).toHaveProperty('dueAt', null);
+    expect(explicitNull).toHaveProperty('dueAt', null);
+
     const tasks = (await runtime.service.listTasks(
       workspaceId,
       project.id,
     )) as TaskWithDueAuthority[];
-    expect(tasks[0]).toHaveProperty('dueAt', null);
+    expect(tasks).toHaveLength(2);
+    expect(tasks.find((task) => task.id === omitted.id)).toHaveProperty(
+      'dueAt',
+      null,
+    );
+    expect(tasks.find((task) => task.id === explicitNull.id)).toHaveProperty(
+      'dueAt',
+      null,
+    );
   });
 
   it('rejects non-UTC due input instead of silently changing deadline meaning', async () => {
