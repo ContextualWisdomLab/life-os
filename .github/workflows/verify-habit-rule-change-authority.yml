@@ -46,6 +46,7 @@ jobs:
           pnpm exec prettier --check
           apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
+          apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
       - name: Typecheck Habit
         run: pnpm --filter @life-os/habit-service typecheck
       - name: Prove Habit owns effective-dated rule changes
@@ -53,3 +54,4 @@ jobs:
           pnpm --filter @life-os/habit-service exec vitest run
           src/habit-rule-change-postgres.integration.test.ts
           src/habit-rule-change-idempotency-postgres.integration.test.ts
+          src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
