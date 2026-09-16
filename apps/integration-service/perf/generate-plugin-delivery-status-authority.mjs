@@ -61,5 +61,6 @@ const authorities = Array.from({ length: count }, () => {
 
 await writeFile(outputPath, `${JSON.stringify(authorities)}\n`, {
   encoding: 'utf8',
+  flag: 'wx',
   mode: 0o600,
 });
