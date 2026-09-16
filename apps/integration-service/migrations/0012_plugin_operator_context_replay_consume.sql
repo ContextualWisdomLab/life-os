@@ -9,6 +9,10 @@ AS $$
 DECLARE
     consumed_evidence_id uuid;
 BEGIN
+    IF p_expires_at <= now() THEN
+        RETURN false;
+    END IF;
+
     INSERT INTO plugin_integration.plugin_operator_context_replay_record (
         evidence_id,
         consumed_at,
@@ -44,4 +48,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION plugin_integration.consume_plugin_operator_context_replay(uuid, timestamptz, timestamptz) IS
-    'Atomically consumes one Plugin operator evidence identity and performs bounded post-consume expiry cleanup in the same PostgreSQL round trip.';
+    'Atomically consumes one unexpired Plugin operator evidence identity and performs bounded post-consume expiry cleanup in the same PostgreSQL round trip.';
