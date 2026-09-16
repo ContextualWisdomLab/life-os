@@ -43,7 +43,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Check focused formatting
         run: >-
-          pnpm exec prettier --check
+          pnpm exec prettier --single-quote --check
           apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
