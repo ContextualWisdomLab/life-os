@@ -158,9 +158,7 @@ describeWithPostgres('Habit durable rule-change idempotency authority', () => {
       restartedRepository,
       () => '2026-09-15T00:00:00.000Z',
     );
-    const restartedService = requireRuleChangeAuthority(
-      restartedMutationService,
-    );
+    const restartedService = requireRuleChangeAuthority(restartedMutationService);
 
     const replay = await restartedService.reviseHabitDefinition(
       workspaceId,
