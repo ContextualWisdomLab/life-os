@@ -549,6 +549,9 @@ export class PostgresHabitRepository implements HabitRepository {
           return invalidRow();
         }
         habitsById.set(habit.id, habit);
+        if (habitsById.size > safeMaximumHabits) {
+          return invalidRow();
+        }
 
         const completionFields = [
           row.completion_workspace_id,
