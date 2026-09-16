@@ -48,7 +48,9 @@ async function expectCredentialFreePersistenceFailure(
     .catch((caught: unknown) => caught);
 
   expect(error).toBeInstanceOf(HabitPersistenceError);
-  expect(error).toMatchObject({ message: 'Habit persistence operation failed' });
+  expect(error).toMatchObject({
+    message: 'Habit persistence operation failed',
+  });
 }
 
 describe('Habit Weekly Review hostile PostgreSQL evidence', () => {
