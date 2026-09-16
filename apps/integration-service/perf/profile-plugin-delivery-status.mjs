@@ -100,7 +100,7 @@ function signedHeaders(secret) {
   };
 }
 
-async function requestDirectStatus(port, secret, agent) {
+async function requestDirectStatus(port, headers, agent) {
   await new Promise((resolve, reject) => {
     const outbound = request(
       {
@@ -108,7 +108,7 @@ async function requestDirectStatus(port, secret, agent) {
         port,
         method: 'GET',
         path: PATH,
-        headers: signedHeaders(secret),
+        headers,
         agent,
       },
       (response) => {
@@ -160,11 +160,14 @@ const servicePort = boundedInteger(
   'INTEGRATION_SERVICE_PORT',
 );
 
+const directHeaders = Array.from({ length: iterations }, () =>
+  signedHeaders(contextSecret),
+);
 const { Agent } = await import('node:http');
 const agent = new Agent({ keepAlive: true, maxSockets: vus });
 try {
-  const directHttpSamples = await runConcurrent(iterations, vus, () =>
-    requestDirectStatus(servicePort, contextSecret, agent),
+  const directHttpSamples = await runConcurrent(iterations, vus, (index) =>
+    requestDirectStatus(servicePort, directHeaders[index], agent),
   );
   report('direct_http_application', directHttpSamples);
 } finally {
@@ -184,14 +187,20 @@ const pool = new Pool({
 try {
   await pool.query('SELECT 1');
 
-  const replaySamples = await runConcurrent(iterations, vus, async () => {
-    const consumedAt = new Date();
-    const expiresAt = new Date(consumedAt.getTime() + 60_000);
+  const replayConsumedAt = new Date();
+  const replayExpiresAt = new Date(replayConsumedAt.getTime() + 60_000);
+  const replayEvidence = Array.from({ length: iterations }, () => ({
+    evidenceId: randomUUID(),
+    consumedAt: replayConsumedAt.toISOString(),
+    expiresAt: replayExpiresAt.toISOString(),
+  }));
+  const replaySamples = await runConcurrent(iterations, vus, async (index) => {
+    const evidence = replayEvidence[index];
     const result = await pool.query(
       `SELECT plugin_integration.consume_plugin_operator_context_replay(
          $1::uuid, $2::timestamptz, $3::timestamptz
        ) AS consumed`,
-      [randomUUID(), consumedAt.toISOString(), expiresAt.toISOString()],
+      [evidence.evidenceId, evidence.consumedAt, evidence.expiresAt],
     );
     if (result.rowCount !== 1 || result.rows[0]?.consumed !== true) {
       return fail('Replay persistence profile did not consume evidence');
