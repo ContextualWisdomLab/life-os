@@ -83,6 +83,55 @@ function invalidRow(): never {
   throw new HabitPersistenceError();
 }
 
+/** Bounds hostile Weekly Review persistence evidence to the stable repository error contract. */
+function boundedReviewEvidenceRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    throw new HabitPersistenceError();
+  }
+}
+
+/** Snapshots one bounded Weekly Review SQL result before semantic validation. */
+function snapshotReviewProjectionRows(
+  result: HabitSqlQueryResult<ReviewProjectionRow>,
+  maximumRows: number,
+): ReviewProjectionRow[] {
+  return boundedReviewEvidenceRead(() => {
+    const rows = result.rows;
+    if (!Array.isArray(rows)) {
+      return invalidRow();
+    }
+    const rowCount = rows.length;
+    if (!Number.isSafeInteger(rowCount) || rowCount < 0 || rowCount > maximumRows) {
+      return invalidRow();
+    }
+
+    const snapshot: ReviewProjectionRow[] = [];
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = rows[index];
+      if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+        return invalidRow();
+      }
+      snapshot.push({
+        id: row.id,
+        workspace_id: row.workspace_id,
+        title: row.title,
+        timezone_name: row.timezone_name,
+        recurrence_kind: row.recurrence_kind,
+        recurrence_interval: row.recurrence_interval,
+        weekday_mask: row.weekday_mask,
+        starts_on: row.starts_on,
+        created_at: row.created_at,
+        completion_workspace_id: row.completion_workspace_id,
+        completion_habit_id: row.completion_habit_id,
+        completion_scheduled_local_date: row.completion_scheduled_local_date,
+      });
+    }
+    return snapshot;
+  });
+}
+
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidRow();
@@ -485,51 +534,56 @@ export class PostgresHabitRepository implements HabitRepository {
         queryLimit,
       ],
     );
-    if (result.rows.length > queryLimit * REVIEW_WEEK_DAYS) {
-      return invalidRow();
-    }
+    const rows = snapshotReviewProjectionRows(
+      result,
+      queryLimit * REVIEW_WEEK_DAYS,
+    );
 
-    const habitsById = new Map<string, Habit>();
-    const completions: HabitReviewCompletionEvidence[] = [];
-    for (const row of result.rows) {
-      const habit = parseHabit(row, safeWorkspaceId);
-      const existing = habitsById.get(habit.id);
-      if (existing && JSON.stringify(existing) !== JSON.stringify(habit)) {
-        return invalidRow();
-      }
-      habitsById.set(habit.id, habit);
+    return boundedReviewEvidenceRead(() => {
+      const habitsById = new Map<string, Habit>();
+      const completions: HabitReviewCompletionEvidence[] = [];
+      for (const row of rows) {
+        const habit = parseHabit(row, safeWorkspaceId);
+        const existing = habitsById.get(habit.id);
+        if (existing && JSON.stringify(existing) !== JSON.stringify(habit)) {
+          return invalidRow();
+        }
+        habitsById.set(habit.id, habit);
 
-      const completionFields = [
-        row.completion_workspace_id,
-        row.completion_habit_id,
-        row.completion_scheduled_local_date,
-      ];
-      if (completionFields.every((value) => value === null)) {
-        continue;
+        const completionFields = [
+          row.completion_workspace_id,
+          row.completion_habit_id,
+          row.completion_scheduled_local_date,
+        ];
+        if (completionFields.every((value) => value === null)) {
+          continue;
+        }
+        if (completionFields.some((value) => value === null)) {
+          return invalidRow();
+        }
+        const completionWorkspaceId = requireUuidV4(
+          row.completion_workspace_id,
+        );
+        const completionHabitId = requireUuidV4(row.completion_habit_id);
+        const scheduledLocalDate = requireLocalDate(
+          row.completion_scheduled_local_date,
+        );
+        requireExpected(completionWorkspaceId, safeWorkspaceId);
+        requireExpected(completionHabitId, habit.id);
+        if (
+          scheduledLocalDate < safePeriodStartDate ||
+          scheduledLocalDate > safePeriodEndDate
+        ) {
+          return invalidRow();
+        }
+        completions.push({
+          workspaceId: completionWorkspaceId,
+          habitId: completionHabitId,
+          scheduledLocalDate,
+        });
       }
-      if (completionFields.some((value) => value === null)) {
-        return invalidRow();
-      }
-      const completionWorkspaceId = requireUuidV4(row.completion_workspace_id);
-      const completionHabitId = requireUuidV4(row.completion_habit_id);
-      const scheduledLocalDate = requireLocalDate(
-        row.completion_scheduled_local_date,
-      );
-      requireExpected(completionWorkspaceId, safeWorkspaceId);
-      requireExpected(completionHabitId, habit.id);
-      if (
-        scheduledLocalDate < safePeriodStartDate ||
-        scheduledLocalDate > safePeriodEndDate
-      ) {
-        return invalidRow();
-      }
-      completions.push({
-        workspaceId: completionWorkspaceId,
-        habitId: completionHabitId,
-        scheduledLocalDate,
-      });
-    }
-    return { habits: [...habitsById.values()], completions };
+      return { habits: [...habitsById.values()], completions };
+    });
   }
 
   async appendCompletion(
