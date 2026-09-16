@@ -209,7 +209,7 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
     });
   });
 
-  it('replays the same rule-change command without creating another revision and rejects conflicting reuse', async () => {
+  it('replays the same rule-change command without creating another revision and rejects ambiguous reuse', async () => {
     const workspaceId = randomUUID();
     const habitId = randomUUID();
     const durableRepository = repository(administrativePool);
@@ -247,6 +247,14 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
       ruleChangeService.reviseHabitDefinition(workspaceId, habitId, {
         ...command,
         recurrence: { kind: 'daily', interval: 1 },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      ruleChangeService.reviseHabitDefinition(workspaceId, habitId, {
+        ...command,
+        recurrence: { kind: 'daily', interval: 1 },
+        idempotencyKey: randomUUID(),
       }),
     ).rejects.toThrow();
 
