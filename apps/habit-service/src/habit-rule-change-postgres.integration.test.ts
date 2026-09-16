@@ -208,7 +208,7 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
     });
   });
 
-  it('rejects a later rule change that backdates its effective boundary into prior history', async () => {
+  it('rejects backdating against the Habit-local calendar day rather than the UTC day', async () => {
     const workspaceId = randomUUID();
     const habitId = randomUUID();
     const durableRepository = repository(administrativePool);
@@ -216,7 +216,7 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
 
     const mutationService = new HabitService(
       durableRepository,
-      () => '2026-09-14T00:00:00.000Z',
+      () => '2026-09-13T16:00:00.000Z',
     );
     const ruleChangeService = requireRuleChangeAuthority(mutationService);
 
