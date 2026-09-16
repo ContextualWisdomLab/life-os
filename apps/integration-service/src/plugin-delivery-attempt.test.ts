@@ -171,6 +171,81 @@ describe('plugin delivery attempt admission', () => {
     expect(createIfAbsent).not.toHaveBeenCalled();
   });
 
+  it('normalizes revoked object-shape checks at request and durable evidence boundaries', async () => {
+    const revokedContext = Proxy.revocable({ ...CONTEXT }, {});
+    revokedContext.revoke();
+    const revokedInput = Proxy.revocable(
+      {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      },
+      {},
+    );
+    revokedInput.revoke();
+
+    const noDependencyCalls = new PluginDeliveryAttemptApplication(
+      { createIfAbsent: vi.fn() },
+      { getGrant: vi.fn() },
+      () => NOW,
+    );
+    await expect(
+      noDependencyCalls.schedule(
+        revokedContext.proxy as typeof CONTEXT,
+        INSTALLATION_ID,
+        {
+          deliveryId: DELIVERY_ID,
+          grantId: GRANT_ID,
+          maxAttempts: 3,
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+    await expect(
+      noDependencyCalls.schedule(
+        CONTEXT,
+        INSTALLATION_ID,
+        revokedInput.proxy,
+      ),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+
+    const revokedRecord = Proxy.revocable(
+      exactReplay({
+        authorityVersion: 'life-os.plugin-delivery-attempt.v1',
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        installationId: INSTALLATION_ID,
+        workspaceId: CONTEXT.workspaceId,
+        requestedByUserId: CONTEXT.actorUserId,
+        status: 'pending',
+        attemptCount: 0,
+        maxAttempts: 3,
+        requestedAt: NOW.toISOString(),
+        updatedAt: NOW.toISOString(),
+        nextAttemptAt: NOW.toISOString(),
+        terminalAt: null,
+        lastOutcomeCode: null,
+      }),
+      {},
+    );
+    revokedRecord.revoke();
+    const application = new PluginDeliveryAttemptApplication(
+      {
+        createIfAbsent: vi.fn(async () =>
+          revokedRecord.proxy as PluginDeliveryAttemptRecord,
+        ),
+      },
+      { getGrant: vi.fn(async () => activeGrant()) },
+      () => NOW,
+    );
+    await expect(
+      application.schedule(CONTEXT, INSTALLATION_ID, {
+        deliveryId: DELIVERY_ID,
+        grantId: GRANT_ID,
+        maxAttempts: 3,
+      }),
+    ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
+  });
+
   it('bounds delivery-origin dependency rejection before persistence authority', async () => {
     const createIfAbsent = vi.fn();
     const application = new PluginDeliveryAttemptApplication(
