@@ -1,0 +1,49 @@
+name: Verify Habit Rule Change Authority
+
+on:
+  push:
+    branches:
+      - feat/habit-rule-change-authority-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Enable repository pnpm
+        run: corepack enable
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Check focused formatting
+        run: pnpm exec prettier --check apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
+      - name: Typecheck Habit
+        run: pnpm --filter @life-os/habit-service typecheck
+      - name: Prove Habit owns effective-dated rule changes
+        run: pnpm --filter @life-os/habit-service exec vitest run src/habit-rule-change-postgres.integration.test.ts
