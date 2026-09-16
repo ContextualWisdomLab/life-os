@@ -47,8 +47,8 @@ function invalid(): never {
   throw new PluginOperatorReplayValidationError();
 }
 
-/** Collapses hostile SQL-result access to the fixed credential-free evidence error. */
-function boundedReplaySqlRead<T>(read: () => T): T {
+/** Collapses hostile caller or SQL evidence access to the fixed credential-free error. */
+function boundedReplayEvidenceRead<T>(read: () => T): T {
   try {
     return read();
   } catch {
@@ -80,13 +80,16 @@ function instant(value: unknown): string {
 function replayEvidence(
   value: PluginOperatorReplayEvidence,
 ): PluginOperatorReplayEvidence {
-  const consumedAt = instant(value.consumedAt);
-  const expiresAt = instant(value.expiresAt);
+  const rawEvidenceId = boundedReplayEvidenceRead(() => value.evidenceId);
+  const rawConsumedAt = boundedReplayEvidenceRead(() => value.consumedAt);
+  const rawExpiresAt = boundedReplayEvidenceRead(() => value.expiresAt);
+  const consumedAt = instant(rawConsumedAt);
+  const expiresAt = instant(rawExpiresAt);
   if (new Date(expiresAt).getTime() < new Date(consumedAt).getTime()) {
     return invalid();
   }
   return Object.freeze({
-    evidenceId: evidenceId(value.evidenceId),
+    evidenceId: evidenceId(rawEvidenceId),
     consumedAt,
     expiresAt,
   });
@@ -116,18 +119,18 @@ export class PostgresPluginOperatorReplayGuard implements PluginOperatorReplayGu
        ) AS consumed`,
       [safe.evidenceId, safe.consumedAt, safe.expiresAt],
     );
-    const rows = boundedReplaySqlRead(() => result.rows);
-    const rowCount = boundedReplaySqlRead(() => result.rowCount);
-    const rowsAreArray = boundedReplaySqlRead(() => Array.isArray(rows));
+    const rows = boundedReplayEvidenceRead(() => result.rows);
+    const rowCount = boundedReplayEvidenceRead(() => result.rowCount);
+    const rowsAreArray = boundedReplayEvidenceRead(() => Array.isArray(rows));
     if (!rowsAreArray) {
       return invalid();
     }
-    const rowsLength = boundedReplaySqlRead(() => rows.length);
+    const rowsLength = boundedReplayEvidenceRead(() => rows.length);
     if (rowCount !== 1 || rowsLength !== 1) {
       return invalid();
     }
-    const row = boundedReplaySqlRead(() => rows[0]);
-    const consumed = boundedReplaySqlRead(() => row?.consumed);
+    const row = boundedReplayEvidenceRead(() => rows[0]);
+    const consumed = boundedReplayEvidenceRead(() => row?.consumed);
     if (typeof consumed !== 'boolean') {
       return invalid();
     }
