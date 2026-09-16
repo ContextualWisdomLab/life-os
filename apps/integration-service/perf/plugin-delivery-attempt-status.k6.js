@@ -60,8 +60,8 @@ const baseUrl = __ENV.K6_BASE_URL;
 if (!authorityFile) {
   throw new Error('K6_AUTHORITY_FILE is required');
 }
-if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/u.test(baseUrl)) {
-  throw new Error('K6_BASE_URL must be an explicit loopback HTTP endpoint');
+if (!baseUrl || !/^https:\/\/127\.0\.0\.1:\d+$/u.test(baseUrl)) {
+  throw new Error('K6_BASE_URL must be an explicit loopback HTTPS endpoint');
 }
 
 const authorities = new SharedArray('plugin-delivery-status-authority', () => {
