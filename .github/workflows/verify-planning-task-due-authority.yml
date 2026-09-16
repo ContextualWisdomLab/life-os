@@ -42,7 +42,7 @@ jobs:
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
       - name: Check focused formatting
-        run: pnpm exec prettier --check apps/planning-service/src/task-due-authority-postgres.integration.test.ts
+        run: pnpm exec prettier --single-quote --check apps/planning-service/src/task-due-authority-postgres.integration.test.ts
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
       - name: Prove durable UTC task deadline authority
