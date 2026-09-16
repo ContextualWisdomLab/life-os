@@ -163,17 +163,24 @@ describeWithPostgres('Planning task due authority', () => {
     );
   });
 
-  it('rejects non-UTC due input instead of silently changing deadline meaning', async () => {
+  it('rejects noncanonical due input instead of silently recanonicalizing deadline meaning', async () => {
     const workspaceId = randomUUID();
     const runtime = createRuntime();
     const project = await seedProject(runtime, workspaceId);
+    const noncanonicalDueInstants = [
+      '2026-09-18T18:00:00+09:00',
+      '2026-09-18T09:00:00Z',
+      '2026-09-18T09:00:00.000+00:00',
+    ];
 
-    await expect(
-      createTaskWithDueAuthority(runtime, workspaceId, {
-        projectId: project.id,
-        title: 'Ambiguous deadline',
-        dueAt: '2026-09-18T18:00:00+09:00',
-      }),
-    ).rejects.toThrow();
+    for (const dueAt of noncanonicalDueInstants) {
+      await expect(
+        createTaskWithDueAuthority(runtime, workspaceId, {
+          projectId: project.id,
+          title: 'Ambiguous deadline',
+          dueAt,
+        }),
+      ).rejects.toThrow();
+    }
   });
 });
