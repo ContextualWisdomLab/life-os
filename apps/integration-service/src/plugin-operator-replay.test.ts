@@ -135,4 +135,25 @@ describe('PostgresPluginOperatorReplayGuard', () => {
       expect(client.queries).toHaveLength(1);
     }
   });
+
+  it('observes hostile replay SQL rows once before granting consume authority', async () => {
+    let rowsReads = 0;
+    const result = {
+      rowCount: 1,
+      get rows(): readonly unknown[] {
+        rowsReads += 1;
+        return rowsReads === 1
+          ? [{ consumed: 'not-a-boolean' }]
+          : [{ consumed: true }];
+      },
+    } satisfies PluginOperatorReplaySqlResult<unknown>;
+    const client = new ScriptedSqlClient([result]);
+    const guard = new PostgresPluginOperatorReplayGuard(client);
+
+    await expect(guard.consume(evidence())).rejects.toBeInstanceOf(
+      PluginOperatorReplayValidationError,
+    );
+    expect(rowsReads).toBe(1);
+    expect(client.queries).toHaveLength(1);
+  });
 });
