@@ -107,13 +107,14 @@ export class PostgresPluginOperatorReplayGuard implements PluginOperatorReplayGu
        ) AS consumed`,
       [safe.evidenceId, safe.consumedAt, safe.expiresAt],
     );
-    if (
-      result.rowCount !== 1 ||
-      result.rows.length !== 1 ||
-      typeof result.rows[0]?.consumed !== 'boolean'
-    ) {
+    const rows = result.rows;
+    if (result.rowCount !== 1 || !Array.isArray(rows) || rows.length !== 1) {
       return invalid();
     }
-    return result.rows[0].consumed;
+    const consumed = rows[0]?.consumed;
+    if (typeof consumed !== 'boolean') {
+      return invalid();
+    }
+    return consumed;
   }
 }
