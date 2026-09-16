@@ -108,7 +108,7 @@ describeWithPostgres('Planning task due authority', () => {
     const workspaceId = randomUUID();
     const firstRuntime = createRuntime();
     const project = await seedProject(firstRuntime, workspaceId);
-    const dueAt = '2026-09-18T09:00:00.000Z';
+    const dueAt = '2026-09-18T09:00:00.123Z';
 
     const created = await createTaskWithDueAuthority(firstRuntime, workspaceId, {
       projectId: project.id,
@@ -168,9 +168,10 @@ describeWithPostgres('Planning task due authority', () => {
     const runtime = createRuntime();
     const project = await seedProject(runtime, workspaceId);
     const noncanonicalDueInstants = [
-      '2026-09-18T18:00:00+09:00',
+      '2026-09-18T18:00:00.123+09:00',
       '2026-09-18T09:00:00Z',
-      '2026-09-18T09:00:00.000+00:00',
+      '2026-09-18T09:00:00.123+00:00',
+      '2026-09-18T09:00:00.1230Z',
     ];
 
     for (const dueAt of noncanonicalDueInstants) {
