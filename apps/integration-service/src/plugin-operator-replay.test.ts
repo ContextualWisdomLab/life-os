@@ -116,6 +116,29 @@ describe('PostgresPluginOperatorReplayGuard', () => {
     }
   });
 
+  it('fails closed before SQL when replay request evidence access is hostile', async () => {
+    const revokedEvidence = Proxy.revocable(evidence(), {});
+    revokedEvidence.revoke();
+    const throwingEvidence = {
+      get evidenceId(): string {
+        throw new Error('password=must-not-escape-replay-request-evidence');
+      },
+      consumedAt: CONSUMED_AT,
+      expiresAt: EXPIRES_AT,
+    };
+
+    for (const candidate of [revokedEvidence.proxy, throwingEvidence]) {
+      const client = new ScriptedSqlClient([]);
+      const guard = new PostgresPluginOperatorReplayGuard(client);
+
+      await expect(guard.consume(candidate)).rejects.toMatchObject({
+        name: 'PluginOperatorReplayValidationError',
+        message: 'Plugin operator replay evidence is invalid',
+      });
+      expect(client.queries).toHaveLength(0);
+    }
+  });
+
   it('rejects ambiguous or corrupted consume evidence instead of granting authority', async () => {
     for (const result of [
       { rows: [{ consumed: true }], rowCount: null },
