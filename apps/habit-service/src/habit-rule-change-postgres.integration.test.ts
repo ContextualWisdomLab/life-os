@@ -200,12 +200,49 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
       '2026-09-07',
     );
 
-    // Mon-Wed retain the prior daily rule; the new rule contributes Friday only.
     expect(projection.scheduledOpportunityCount).toBe(4);
     expect(projection.habits).toHaveLength(1);
     expect(projection.habits[0]).toMatchObject({
       habitId,
       scheduledOpportunityCount: 4,
+    });
+  });
+
+  it('rejects a later rule change that backdates its effective boundary into prior history', async () => {
+    const workspaceId = randomUUID();
+    const habitId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    await seedDailyHabit(durableRepository, workspaceId, habitId);
+
+    const mutationService = new HabitService(
+      durableRepository,
+      () => '2026-09-14T00:00:00.000Z',
+    );
+    const ruleChangeService = requireRuleChangeAuthority(mutationService);
+
+    await expect(
+      ruleChangeService.reviseHabitDefinition(workspaceId, habitId, {
+        effectiveFromLocalDate: '2026-09-13',
+        title: 'Retroactive weekly walk',
+        timezone: 'Asia/Seoul',
+        recurrence: { kind: 'weekly', interval: 1, weekdays: [7] },
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toThrow();
+
+    const reviewService = new HabitService(
+      durableRepository,
+      () => '2026-09-20T00:00:00.000Z',
+    );
+    const historical = await reviewService.projectReviewWeek(
+      workspaceId,
+      '2026-09-07',
+    );
+    expect(historical.scheduledOpportunityCount).toBe(7);
+    expect(historical.habits[0]).toMatchObject({
+      habitId,
+      title: 'Daily walk',
+      scheduledOpportunityCount: 7,
     });
   });
 
