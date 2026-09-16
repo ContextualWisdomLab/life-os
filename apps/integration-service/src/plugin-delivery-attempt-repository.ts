@@ -148,7 +148,10 @@ function requireSmallInteger(
 function oneOrUndefined<Row>(
   result: PluginDeliveryAttemptSqlResult<Row>,
 ): Row | undefined {
-  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+  const resultIsRecord = boundedEvidenceRead(
+    () => result !== null && typeof result === 'object' && !Array.isArray(result),
+  );
+  if (!resultIsRecord) {
     return invalidEvidence();
   }
   const [rows, rowCount] = boundedEvidenceRead(
@@ -217,7 +220,10 @@ function validateCreate(
 
 /** Snapshots and validates one durable SQL row before it becomes application evidence. */
 function parseRow(row: unknown): PluginDeliveryAttemptRecord {
-  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+  const rowIsRecord = boundedEvidenceRead(
+    () => row !== null && typeof row === 'object' && !Array.isArray(row),
+  );
+  if (!rowIsRecord) {
     return invalidEvidence();
   }
   const candidate = row as PluginDeliveryAttemptRow;
