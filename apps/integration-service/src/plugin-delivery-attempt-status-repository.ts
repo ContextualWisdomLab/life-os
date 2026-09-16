@@ -195,15 +195,15 @@ function oneOrUndefined<Row>(
 function validateCommand(
   command: PluginDeliveryAttemptStatusCommand,
 ): PluginDeliveryAttemptStatusCommand {
-  if (
-    command === null ||
-    typeof command !== 'object' ||
-    Array.isArray(command)
-  ) {
-    return invalidInput();
-  }
   const snapshot = (() => {
     try {
+      if (
+        command === null ||
+        typeof command !== 'object' ||
+        Array.isArray(command)
+      ) {
+        return invalidInput();
+      }
       return {
         deliveryId: command.deliveryId,
         workspaceId: command.workspaceId,
