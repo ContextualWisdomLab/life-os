@@ -52,23 +52,25 @@ function hasExactStatusEvidenceKeys(result) {
   }
 }
 
-const iterations = boundedInteger('K6_ITERATIONS', 1000, 1, 10000);
-const vus = boundedInteger('K6_VUS', 10, 1, 100);
-const authorityFile = __ENV.K6_AUTHORITY_FILE;
-const baseUrl = __ENV.K6_BASE_URL;
+const iterations = boundedInteger('LIFEOS_PERF_ITERATIONS', 1000, 1, 10000);
+const vus = boundedInteger('LIFEOS_PERF_VUS', 10, 1, 100);
+const authorityFile = __ENV.LIFEOS_PERF_AUTHORITY_FILE;
+const baseUrl = __ENV.LIFEOS_PERF_BASE_URL;
 
 if (!authorityFile) {
-  throw new Error('K6_AUTHORITY_FILE is required');
+  throw new Error('LIFEOS_PERF_AUTHORITY_FILE is required');
 }
 if (!baseUrl || !/^https:\/\/127\.0\.0\.1:\d+$/u.test(baseUrl)) {
-  throw new Error('K6_BASE_URL must be an explicit loopback HTTPS endpoint');
+  throw new Error(
+    'LIFEOS_PERF_BASE_URL must be an explicit loopback HTTPS endpoint',
+  );
 }
 
 const authorities = new SharedArray('plugin-delivery-status-authority', () => {
   const parsed = JSON.parse(open(authorityFile));
   if (!Array.isArray(parsed) || parsed.length !== iterations) {
     throw new Error(
-      'authority bundle must contain exactly K6_ITERATIONS entries',
+      'authority bundle must contain exactly LIFEOS_PERF_ITERATIONS entries',
     );
   }
   return parsed;
