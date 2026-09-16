@@ -82,6 +82,29 @@ async function runConcurrent(count, concurrency, operation) {
   return samples;
 }
 
+async function runConcurrentDurations(count, concurrency, operation) {
+  const samples = new Array(count);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= count) {
+        return;
+      }
+      const durationMs = await operation(index);
+      if (!Number.isFinite(durationMs) || durationMs < 0) {
+        return fail('Direct Integration status profile returned invalid timing');
+      }
+      samples[index] = durationMs;
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return samples;
+}
+
 function signedHeaders(secret) {
   const evidenceId = randomUUID();
   const issuedAt = String(Math.floor(Date.now() / 1000));
@@ -101,7 +124,8 @@ function signedHeaders(secret) {
 }
 
 async function requestDirectStatus(port, headers, agent) {
-  await new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
+    const startedAt = performance.now();
     const outbound = request(
       {
         hostname: '127.0.0.1',
@@ -116,6 +140,7 @@ async function requestDirectStatus(port, headers, agent) {
         response.on('data', (chunk) => chunks.push(chunk));
         response.once('error', reject);
         response.on('end', () => {
+          const durationMs = performance.now() - startedAt;
           if (response.statusCode !== 200) {
             reject(new Error('Direct Integration status profile received non-200'));
             return;
@@ -130,7 +155,7 @@ async function requestDirectStatus(port, headers, agent) {
             reject(new Error('Direct Integration status profile received invalid JSON'));
             return;
           }
-          resolve();
+          resolve(durationMs);
         });
       },
     );
@@ -166,8 +191,10 @@ const directHeaders = Array.from({ length: iterations }, () =>
 const { Agent } = await import('node:http');
 const agent = new Agent({ keepAlive: true, maxSockets: vus });
 try {
-  const directHttpSamples = await runConcurrent(iterations, vus, (index) =>
-    requestDirectStatus(servicePort, directHeaders[index], agent),
+  const directHttpSamples = await runConcurrentDurations(
+    iterations,
+    vus,
+    (index) => requestDirectStatus(servicePort, directHeaders[index], agent),
   );
   report('direct_http_application', directHttpSamples);
 } finally {
