@@ -88,12 +88,13 @@ async function seedDailyHabit(
   durableRepository: PostgresHabitRepository,
   workspaceId: string,
   habitId: string,
+  timezone = 'Asia/Seoul',
 ): Promise<void> {
   const initialHabit: Habit = {
     id: habitId,
     workspaceId,
     title: 'Daily walk',
-    timezone: 'Asia/Seoul',
+    timezone,
     startsOn: '2026-09-01',
     recurrence: { kind: 'daily', interval: 1 },
     createdAt: '2026-09-01T00:00:00.000Z',
@@ -225,6 +226,49 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
         effectiveFromLocalDate: '2026-09-13',
         title: 'Retroactive weekly walk',
         timezone: 'Asia/Seoul',
+        recurrence: { kind: 'weekly', interval: 1, weekdays: [7] },
+        idempotencyKey: randomUUID(),
+      }),
+    ).rejects.toThrow();
+
+    const reviewService = new HabitService(
+      durableRepository,
+      () => '2026-09-20T00:00:00.000Z',
+    );
+    const historical = await reviewService.projectReviewWeek(
+      workspaceId,
+      '2026-09-07',
+    );
+    expect(historical.scheduledOpportunityCount).toBe(7);
+    expect(historical.habits[0]).toMatchObject({
+      habitId,
+      title: 'Daily walk',
+      scheduledOpportunityCount: 7,
+    });
+  });
+
+  it('uses the currently persisted Habit timezone to validate a timezone-changing boundary', async () => {
+    const workspaceId = randomUUID();
+    const habitId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    await seedDailyHabit(
+      durableRepository,
+      workspaceId,
+      habitId,
+      'Pacific/Kiritimati',
+    );
+
+    const mutationService = new HabitService(
+      durableRepository,
+      () => '2026-09-13T12:30:00.000Z',
+    );
+    const ruleChangeService = requireRuleChangeAuthority(mutationService);
+
+    await expect(
+      ruleChangeService.reviseHabitDefinition(workspaceId, habitId, {
+        effectiveFromLocalDate: '2026-09-13',
+        title: 'Honolulu weekly walk',
+        timezone: 'Pacific/Honolulu',
         recurrence: { kind: 'weekly', interval: 1, weekdays: [7] },
         idempotencyKey: randomUUID(),
       }),
