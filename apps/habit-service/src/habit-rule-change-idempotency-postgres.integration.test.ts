@@ -134,12 +134,11 @@ describeWithPostgres('Habit durable rule-change idempotency authority', () => {
       recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
       idempotencyKey,
     };
-    const firstService = requireRuleChangeAuthority(
-      new HabitService(
-        initialRepository,
-        () => '2026-09-14T00:00:00.000Z',
-      ),
+    const firstMutationService = new HabitService(
+      initialRepository,
+      () => '2026-09-14T00:00:00.000Z',
     );
+    const firstService = requireRuleChangeAuthority(firstMutationService);
     const first = await firstService.reviseHabitDefinition(
       workspaceId,
       habitId,
@@ -155,11 +154,12 @@ describeWithPostgres('Habit durable rule-change idempotency authority', () => {
     });
 
     const restartedRepository = repository(administrativePool);
+    const restartedMutationService = new HabitService(
+      restartedRepository,
+      () => '2026-09-15T00:00:00.000Z',
+    );
     const restartedService = requireRuleChangeAuthority(
-      new HabitService(
-        restartedRepository,
-        () => '2026-09-15T00:00:00.000Z',
-      ),
+      restartedMutationService,
     );
 
     const replay = await restartedService.reviseHabitDefinition(
