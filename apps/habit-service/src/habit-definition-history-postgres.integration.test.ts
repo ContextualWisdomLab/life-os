@@ -3,8 +3,12 @@ import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Habit, HabitSqlClient, HabitSqlQueryResult } from './postgres-habit-repository';
+import type { Habit } from './habit-domain';
 import { generateHabitOccurrences } from './habit-domain';
+import type {
+  HabitSqlClient,
+  HabitSqlQueryResult,
+} from './postgres-habit-repository';
 import { PostgresHabitRepository } from './postgres-habit-repository';
 
 const DATABASE_URL = process.env.HABIT_DATABASE_URL;
