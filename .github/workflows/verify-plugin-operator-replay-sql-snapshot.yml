@@ -25,9 +25,14 @@ jobs:
         run: corepack enable
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
+      - name: Build Integration workspace dependency
+        run: pnpm --filter @life-os/plugin-sdk build
       - name: Check focused formatting
         run: pnpm exec prettier --check apps/integration-service/src/plugin-operator-replay.ts apps/integration-service/src/plugin-operator-replay.test.ts
       - name: Run hostile replay SQL evidence regression
-        run: pnpm --filter @life-os/integration-service test -- plugin-operator-replay.test.ts
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          --no-file-parallelism
+          src/plugin-operator-replay.test.ts
       - name: Typecheck Integration
         run: pnpm --filter @life-os/integration-service typecheck
