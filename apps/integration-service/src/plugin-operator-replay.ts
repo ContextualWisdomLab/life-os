@@ -47,6 +47,15 @@ function invalid(): never {
   throw new PluginOperatorReplayValidationError();
 }
 
+/** Collapses hostile SQL-result access to the fixed credential-free evidence error. */
+function boundedReplaySqlRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalid();
+  }
+}
+
 /** Requires a canonical UUIDv4 evidence identity. */
 function evidenceId(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
@@ -107,11 +116,18 @@ export class PostgresPluginOperatorReplayGuard implements PluginOperatorReplayGu
        ) AS consumed`,
       [safe.evidenceId, safe.consumedAt, safe.expiresAt],
     );
-    const rows = result.rows;
-    if (result.rowCount !== 1 || !Array.isArray(rows) || rows.length !== 1) {
+    const rows = boundedReplaySqlRead(() => result.rows);
+    const rowCount = boundedReplaySqlRead(() => result.rowCount);
+    const rowsAreArray = boundedReplaySqlRead(() => Array.isArray(rows));
+    if (!rowsAreArray) {
       return invalid();
     }
-    const consumed = rows[0]?.consumed;
+    const rowsLength = boundedReplaySqlRead(() => rows.length);
+    if (rowCount !== 1 || rowsLength !== 1) {
+      return invalid();
+    }
+    const row = boundedReplaySqlRead(() => rows[0]);
+    const consumed = boundedReplaySqlRead(() => row?.consumed);
     if (typeof consumed !== 'boolean') {
       return invalid();
     }
