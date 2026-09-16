@@ -210,10 +210,11 @@ export class PostgresTaskCompletionRepository implements TaskCompletionRepositor
           transition.completedAt,
         ],
       );
-      if (!Array.isArray(result.rows) || result.rows.length > 1) {
+      const rows = result.rows;
+      if (!Array.isArray(rows) || rows.length > 1) {
         return invalidPersistenceEvidence();
       }
-      const row = result.rows[0];
+      const row = rows[0];
       return row
         ? parseCompletionEvidence(row, safeWorkspaceId, safeTaskId, transition)
         : undefined;

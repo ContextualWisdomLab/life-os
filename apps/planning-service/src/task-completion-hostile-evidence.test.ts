@@ -139,6 +139,37 @@ describe('task completion hostile persistence evidence', () => {
     );
   });
 
+  it('does not admit SQL rows that appear only after cardinality validation', async () => {
+    let rowsReads = 0;
+    const validRow = {
+      workspace_id: WORKSPACE_ID,
+      id: TASK_ID,
+      status: 'done',
+      completed_at: COMPLETED_AT,
+    };
+    const changingResult = Object.defineProperty({}, 'rows', {
+      enumerable: true,
+      get() {
+        rowsReads += 1;
+        return rowsReads >= 3 ? [validRow] : [];
+      },
+    }) as TaskCompletionSqlQueryResult<unknown>;
+    const client: TaskCompletionSqlClient = {
+      async query<Row>(): Promise<TaskCompletionSqlQueryResult<Row>> {
+        return changingResult as TaskCompletionSqlQueryResult<Row>;
+      },
+    };
+    const repository = new PostgresTaskCompletionRepository(client);
+
+    await expect(
+      repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    ).resolves.toBeUndefined();
+    expect(rowsReads).toBe(1);
+  });
+
   it('collapses revoked SQL rows before reading durable authority fields', async () => {
     const row = revokedProxy({
       workspace_id: WORKSPACE_ID,

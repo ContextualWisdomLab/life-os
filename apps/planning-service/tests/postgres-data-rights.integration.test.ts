@@ -23,7 +23,9 @@ const CONFLICTING_REQUEST_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 function requireDatabaseUrl(): string {
   if (!DATABASE_URL) {
-    throw new Error('PLANNING_DATABASE_URL is required for PostgreSQL integration tests');
+    throw new Error(
+      'PLANNING_DATABASE_URL is required for PostgreSQL integration tests',
+    );
   }
   return DATABASE_URL;
 }
@@ -62,6 +64,8 @@ async function applyPlanningMigrations(pool: Pool): Promise<void> {
     '0002_durable_repository_contract.sql',
     '0003_durable_today_sync.sql',
     '0004_data_rights_erasure_receipts.sql',
+    '0005_task_completion_chronology.sql',
+    '0006_validate_task_completion_chronology.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migrationFile),
