@@ -79,7 +79,8 @@ jobs:
             apps/integration-service/src/plugin-operator-replay.test.ts \
             apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
             apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
-            apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
+            apps/integration-service/perf/plugin-delivery-attempt-status.k6.js \
+            apps/integration-service/perf/profile-plugin-delivery-status.mjs
 
       - name: Configure verified-TLS PostgreSQL fixture
         shell: bash
@@ -301,5 +302,13 @@ jobs:
 
           node apps/integration-service/perf/generate-plugin-delivery-status-authority.mjs \
             "$LIFEOS_PERF_AUTHORITY_FILE"
+
+          acceptance_status=0
+          set +e
           SSL_CERT_FILE="$http_ca_cert" \
             k6 run apps/integration-service/perf/plugin-delivery-attempt-status.k6.js
+          acceptance_status=$?
+          set -e
+
+          node apps/integration-service/perf/profile-plugin-delivery-status.mjs
+          exit "$acceptance_status"
