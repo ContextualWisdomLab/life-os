@@ -32,6 +32,6 @@ jobs:
       - name: Check focused formatting
         run: pnpm exec prettier --check apps/planning-service/src/task-completion.ts apps/planning-service/src/task-completion-hostile-evidence.test.ts
       - name: Run hostile SQL evidence regression
-        run: pnpm --filter @life-os/planning-service test -- task-completion-hostile-evidence.test.ts
+        run: pnpm --filter @life-os/planning-service exec vitest run src/task-completion-hostile-evidence.test.ts
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
