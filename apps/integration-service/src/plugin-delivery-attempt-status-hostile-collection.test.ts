@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PluginDeliveryAttemptStatusPersistenceValidationError,
   PostgresPluginDeliveryAttemptStatusStore,
   type PluginDeliveryAttemptStatusSqlClient,
 } from './plugin-delivery-attempt-status-repository';
@@ -35,6 +36,32 @@ function durableRow(): Record<string, unknown> {
 }
 
 describe('PostgresPluginDeliveryAttemptStatusStore hostile row collection', () => {
+  it('rejects a revoked status command before issuing SQL', async () => {
+    let queries = 0;
+    const client: PluginDeliveryAttemptStatusSqlClient = {
+      async query<Row>() {
+        queries += 1;
+        return { rows: [] as readonly Row[], rowCount: 0 };
+      },
+    };
+    const revocable = Proxy.revocable(
+      {
+        deliveryId: DELIVERY_ID,
+        workspaceId: WORKSPACE_ID,
+        requestedByUserId: USER_ID,
+        checkedAt: CHECKED_AT,
+      },
+      {},
+    );
+    revocable.revoke();
+    const store = new PostgresPluginDeliveryAttemptStatusStore(client);
+
+    await expect(store.read(revocable.proxy)).rejects.toBeInstanceOf(
+      PluginDeliveryAttemptStatusPersistenceValidationError,
+    );
+    expect(queries).toBe(0);
+  });
+
   it('does not admit a row that appears after zero-row cardinality was observed', async () => {
     let lengthReads = 0;
     const changingRows = new Proxy([] as Record<string, unknown>[], {
