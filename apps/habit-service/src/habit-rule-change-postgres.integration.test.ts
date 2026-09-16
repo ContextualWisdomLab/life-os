@@ -20,6 +20,7 @@ interface HabitDefinitionRevisionCommand {
   title: string;
   timezone: string;
   recurrence: HabitRecurrence;
+  idempotencyKey: string;
 }
 
 interface HabitDefinitionRevisionEvidence {
@@ -28,6 +29,7 @@ interface HabitDefinitionRevisionEvidence {
   habitId: string;
   revisionNumber: number;
   effectiveFromLocalDate: string;
+  recordedAt: string;
 }
 
 type HabitRuleChangeService = HabitService & {
@@ -124,11 +126,12 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
     const durableRepository = repository(administrativePool);
     await seedDailyHabit(durableRepository, workspaceId, habitId);
 
-    const service = new HabitService(
+    const mutationService = new HabitService(
       durableRepository,
-      () => '2026-09-20T00:00:00.000Z',
+      () => '2026-09-14T00:00:00.000Z',
     );
-    const ruleChangeService = requireRuleChangeAuthority(service);
+    const ruleChangeService = requireRuleChangeAuthority(mutationService);
+    const idempotencyKey = randomUUID();
 
     const revision = await ruleChangeService.reviseHabitDefinition(
       workspaceId,
@@ -138,6 +141,7 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
         title: 'Weekly walk',
         timezone: 'Asia/Seoul',
         recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
+        idempotencyKey,
       },
     );
 
@@ -147,9 +151,14 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
       habitId,
       revisionNumber: 2,
       effectiveFromLocalDate: '2026-09-14',
+      recordedAt: '2026-09-14T00:00:00.000Z',
     });
 
-    const historical = await service.projectReviewWeek(
+    const reviewService = new HabitService(
+      durableRepository,
+      () => '2026-09-20T00:00:00.000Z',
+    );
+    const historical = await reviewService.projectReviewWeek(
       workspaceId,
       '2026-09-07',
     );
@@ -168,20 +177,25 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
     const durableRepository = repository(administrativePool);
     await seedDailyHabit(durableRepository, workspaceId, habitId);
 
-    const service = new HabitService(
+    const mutationService = new HabitService(
       durableRepository,
-      () => '2026-09-13T23:59:59.000Z',
+      () => '2026-09-10T00:00:00.000Z',
     );
-    const ruleChangeService = requireRuleChangeAuthority(service);
+    const ruleChangeService = requireRuleChangeAuthority(mutationService);
 
     await ruleChangeService.reviseHabitDefinition(workspaceId, habitId, {
       effectiveFromLocalDate: '2026-09-10',
       title: 'Daily walk',
       timezone: 'Asia/Seoul',
       recurrence: { kind: 'weekly', interval: 1, weekdays: [5] },
+      idempotencyKey: randomUUID(),
     });
 
-    const projection = await service.projectReviewWeek(
+    const reviewService = new HabitService(
+      durableRepository,
+      () => '2026-09-13T23:59:59.000Z',
+    );
+    const projection = await reviewService.projectReviewWeek(
       workspaceId,
       '2026-09-07',
     );
@@ -192,6 +206,63 @@ describeWithPostgres('Habit effective-dated rule change authority', () => {
     expect(projection.habits[0]).toMatchObject({
       habitId,
       scheduledOpportunityCount: 4,
+    });
+  });
+
+  it('replays the same rule-change command without creating another revision and rejects conflicting reuse', async () => {
+    const workspaceId = randomUUID();
+    const habitId = randomUUID();
+    const durableRepository = repository(administrativePool);
+    await seedDailyHabit(durableRepository, workspaceId, habitId);
+
+    const mutationService = new HabitService(
+      durableRepository,
+      () => '2026-09-14T00:00:00.000Z',
+    );
+    const ruleChangeService = requireRuleChangeAuthority(mutationService);
+    const idempotencyKey = randomUUID();
+    const command: HabitDefinitionRevisionCommand = {
+      effectiveFromLocalDate: '2026-09-14',
+      title: 'Weekly walk',
+      timezone: 'Asia/Seoul',
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
+      idempotencyKey,
+    };
+
+    const first = await ruleChangeService.reviseHabitDefinition(
+      workspaceId,
+      habitId,
+      command,
+    );
+    const replay = await ruleChangeService.reviseHabitDefinition(
+      workspaceId,
+      habitId,
+      command,
+    );
+
+    expect(replay).toEqual(first);
+    expect(first.revisionNumber).toBe(2);
+
+    await expect(
+      ruleChangeService.reviseHabitDefinition(workspaceId, habitId, {
+        ...command,
+        recurrence: { kind: 'daily', interval: 1 },
+      }),
+    ).rejects.toThrow();
+
+    const reviewService = new HabitService(
+      durableRepository,
+      () => '2026-09-20T00:00:00.000Z',
+    );
+    const projection = await reviewService.projectReviewWeek(
+      workspaceId,
+      '2026-09-14',
+    );
+    expect(projection.scheduledOpportunityCount).toBe(1);
+    expect(projection.habits[0]).toMatchObject({
+      habitId,
+      title: 'Weekly walk',
+      scheduledOpportunityCount: 1,
     });
   });
 });
