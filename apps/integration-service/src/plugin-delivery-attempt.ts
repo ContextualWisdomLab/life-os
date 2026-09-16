@@ -89,6 +89,13 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Safely classifies one object-shaped authority value, including revoked proxies. */
+function isObjectRecord(value: unknown): boolean {
+  return boundedRead(
+    () => value !== null && typeof value === 'object' && !Array.isArray(value),
+  );
+}
+
 /** Canonicalizes a caller-supplied UUIDv4 or fails before persistence. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
@@ -120,7 +127,7 @@ function currentInstant(now: () => Date): string {
 
 /** Snapshots the trusted installation context before any authority comparison. */
 function requireContext(value: unknown): PluginInstallationContext {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObjectRecord(value)) {
     return invalid();
   }
   const context = value as PluginInstallationContext;
@@ -135,7 +142,7 @@ function requireContext(value: unknown): PluginInstallationContext {
 
 /** Snapshots and validates one scheduling command before dependencies observe it. */
 function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObjectRecord(value)) {
     return invalid();
   }
   const input = value as SchedulePluginDeliveryAttemptInput;
@@ -166,7 +173,7 @@ function freezeRecord(
 
 /** Validates and snapshots durable attempt evidence returned by the persistence owner. */
 function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObjectRecord(value)) {
     return invalid();
   }
   const record = value as PluginDeliveryAttemptRecord;
