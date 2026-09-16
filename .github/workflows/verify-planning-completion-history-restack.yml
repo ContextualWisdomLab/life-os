@@ -1,0 +1,59 @@
+name: Verify Planning Completion History Restack
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-history-v1
+    paths:
+      - .github/workflows/verify-planning-completion-history-restack.yml
+      - apps/planning-service/**
+      - CHANGELOG.md
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          fetch-depth: 1
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Enable repository pnpm
+        run: corepack enable
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Check Planning formatting
+        run: pnpm exec prettier --check apps/planning-service CHANGELOG.md
+      - name: Typecheck Planning
+        run: pnpm --filter @life-os/planning-service typecheck
+      - name: Run complete Planning package
+        run: pnpm --filter @life-os/planning-service exec vitest run --passWithNoTests
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
