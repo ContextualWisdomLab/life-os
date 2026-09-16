@@ -75,7 +75,6 @@ jobs:
             pnpm --filter @life-os/integration-service test
           pnpm exec prettier --single-quote --check \
             .github/workflows/verify-plugin-delivery-status-k6.yml \
-            apps/integration-service/migrations/0012_plugin_operator_context_replay_consume.sql \
             apps/integration-service/src/plugin-operator-replay.ts \
             apps/integration-service/src/plugin-operator-replay.test.ts \
             apps/integration-service/src/plugin-operator-replay-postgres.integration.test.ts \
