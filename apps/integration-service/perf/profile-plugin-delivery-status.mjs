@@ -161,7 +161,9 @@ async function requestDirectStatus(port, headers, agent) {
             }
           } catch {
             reject(
-              new Error('Direct Integration status profile received invalid JSON'),
+              new Error(
+                'Direct Integration status profile received invalid JSON',
+              ),
             );
             return;
           }
@@ -263,7 +265,9 @@ try {
       [DELIVERY_ID, WORKSPACE_ID, USER_ID],
     );
     if (result.rowCount !== 1) {
-      return fail('Delivery status persistence profile did not find exact evidence');
+      return fail(
+        'Delivery status persistence profile did not find exact evidence',
+      );
     }
   });
   report('postgres_status_read', statusSamples);
