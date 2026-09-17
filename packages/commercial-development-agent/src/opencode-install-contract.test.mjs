@@ -39,10 +39,20 @@ function parseTopLevelYamlSequence(document, key) {
   return values;
 }
 
+function parseLockedPackageVersions(lockfileDocument, packageName) {
+  const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const packagePattern = new RegExp(`^  ${escapedName}@([^:]+):$`, 'gmu');
+  return [
+    ...new Set(
+      [...lockfileDocument.matchAll(packagePattern)].map((match) => match[1]),
+    ),
+  ];
+}
+
 describe('dependency installation boundary', () => {
   it('allows only reviewed exact dependencies to run install lifecycle scripts', () => {
     expect(packageJson.devDependencies['opencode-ai']).toBe('1.18.9');
-    expect(lockfile).toContain('\n  esbuild@0.28.1:\n');
+    expect(parseLockedPackageVersions(lockfile, 'esbuild')).toEqual(['0.28.1']);
     expect(
       parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies').sort(),
     ).toEqual(['esbuild', 'opencode-ai']);
