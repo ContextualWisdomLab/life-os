@@ -51,7 +51,9 @@ async function seedTodoTask(): Promise<void> {
 describeWithPostgres('Planning completion-fact source transition', () => {
   beforeAll(async () => {
     if (!DATABASE_URL) {
-      throw new Error('PLANNING_DATABASE_URL is required for integration tests');
+      throw new Error(
+        'PLANNING_DATABASE_URL is required for integration tests',
+      );
     }
     pool = new Pool({
       connectionString: DATABASE_URL,
