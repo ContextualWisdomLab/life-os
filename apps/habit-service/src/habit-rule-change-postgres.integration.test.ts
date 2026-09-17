@@ -75,7 +75,9 @@ function repository(pool: Pool): PostgresHabitRepository {
   return new PostgresHabitRepository(new PoolSqlClient(pool));
 }
 
-function requireRuleChangeAuthority(service: HabitService): HabitRuleChangeService {
+function requireRuleChangeAuthority(
+  service: HabitService,
+): HabitRuleChangeService {
   const candidate = Reflect.get(service, 'reviseHabitDefinition');
   expect(
     candidate,
