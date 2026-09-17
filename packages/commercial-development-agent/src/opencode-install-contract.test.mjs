@@ -9,7 +9,7 @@ const WORKSPACE_PATH = resolve(
 const LOCKFILE_PATH = resolve(import.meta.dirname, '../../../pnpm-lock.yaml');
 const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
 const AGENT_VITEST_IMPORTER_PATTERN =
-  /^  packages\/commercial-development-agent:\n(?: {4}.*\n| {6}.*\n| {8}.*\n)*? {6}vitest:\n {8}specifier: \^3\.2\.4\n {8}version: 3\.2\.7[^\n]*$/mu;
+  /^  packages\/commercial-development-agent:\n(?: {4}\S[^\n]*\n| {6}\S[^\n]*\n| {8}\S[^\n]*\n)*? {4}devDependencies:\n(?: {6}\S[^\n]*\n| {8}\S[^\n]*\n)*? {6}vitest:\n {8}specifier: \^3\.2\.4\n {8}version: 3\.2\.7[^\n]*$/mu;
 const VITEST_VITE_DEPENDENCY_PATTERN =
   /^  vitest@3\.2\.7[^:]*:\n(?: {4}.*\n)*? {4}dependencies:\n(?: {6}.*\n)*? {6}vite: 7\.3\.6[^\n]*$/mu;
 const VITE_ESBUILD_DEPENDENCY_PATTERN =
@@ -74,6 +74,20 @@ describe('dependency installation boundary', () => {
     expect(lockfile).toContain(
       'esbuild@0.28.1:\n    resolution: {integrity: sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==}',
     );
+  });
+
+  it('does not borrow Vitest importer evidence from a different dependency section', () => {
+    const hostileLockfile = [
+      'importers:',
+      '  packages/commercial-development-agent:',
+      '    dependencies:',
+      '      vitest:',
+      '        specifier: ^3.2.4',
+      '        version: 3.2.7',
+      '',
+    ].join('\n');
+
+    expect(hostileLockfile).not.toMatch(AGENT_VITEST_IMPORTER_PATTERN);
   });
 
   it('does not borrow esbuild dependency evidence from an adjacent package', () => {
