@@ -69,51 +69,54 @@ describeWithPostgres('Habit definition historical authority', () => {
     await administrativePool.end();
   });
 
-  it('keeps a historical Review denominator on the definition effective during that week', async () => {
-    const workspaceId = randomUUID();
-    const habitId = randomUUID();
-    const initialHabit: Habit = {
-      id: habitId,
-      workspaceId,
-      title: 'Daily walk',
-      timezone: 'Asia/Seoul',
-      startsOn: '2026-09-01',
-      recurrence: { kind: 'daily', interval: 1 },
-      createdAt: '2026-09-01T00:00:00.000Z',
-    };
-    const durableRepository = repository(administrativePool);
-    await durableRepository.saveHabit(initialHabit);
+  it(
+    'keeps a historical Review denominator on the definition effective during that week',
+    async () => {
+      const workspaceId = randomUUID();
+      const habitId = randomUUID();
+      const initialHabit: Habit = {
+        id: habitId,
+        workspaceId,
+        title: 'Daily walk',
+        timezone: 'Asia/Seoul',
+        startsOn: '2026-09-01',
+        recurrence: { kind: 'daily', interval: 1 },
+        createdAt: '2026-09-01T00:00:00.000Z',
+      };
+      const durableRepository = repository(administrativePool);
+      await durableRepository.saveHabit(initialHabit);
 
-    await administrativePool.query(
-      `UPDATE habit.habit_definitions
-       SET title = $1,
-           recurrence_kind = 'weekly',
-           recurrence_interval = 1,
-           weekday_mask = 1
-       WHERE workspace_id = $2 AND id = $3`,
-      ['Weekly walk', workspaceId, habitId],
-    );
+      await administrativePool.query(
+        `UPDATE habit.habit_definitions
+         SET title = $1,
+             recurrence_kind = 'weekly',
+             recurrence_interval = 1,
+             weekday_mask = 1
+         WHERE workspace_id = $2 AND id = $3`,
+        ['Weekly walk', workspaceId, habitId],
+      );
 
-    const evidence = await durableRepository.readReviewWeekEvidence(
-      workspaceId,
-      '2026-09-07',
-      '2026-09-13',
-      100,
-      '2026-09-13T23:59:59.000Z',
-    );
-
-    expect(evidence.habits).toHaveLength(1);
-    expect(evidence.habits[0]?.title).toBe('Daily walk');
-    expect(evidence.habits[0]?.recurrence).toEqual({
-      kind: 'daily',
-      interval: 1,
-    });
-    expect(
-      generateHabitOccurrences(
-        evidence.habits[0]!,
+      const evidence = await durableRepository.readReviewWeekEvidence(
+        workspaceId,
         '2026-09-07',
         '2026-09-13',
-      ),
-    ).toHaveLength(7);
-  });
+        100,
+        '2026-09-13T23:59:59.000Z',
+      );
+
+      expect(evidence.habits).toHaveLength(1);
+      expect(evidence.habits[0]?.title).toBe('Daily walk');
+      expect(evidence.habits[0]?.recurrence).toEqual({
+        kind: 'daily',
+        interval: 1,
+      });
+      expect(
+        generateHabitOccurrences(
+          evidence.habits[0]!,
+          '2026-09-07',
+          '2026-09-13',
+        ),
+      ).toHaveLength(7);
+    },
+  );
 });
