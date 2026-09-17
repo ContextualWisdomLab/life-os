@@ -61,19 +61,24 @@ class ScriptedSqlClient implements PluginDeliveryAttemptSqlClient {
 }
 
 describe('PostgresPluginDeliveryAttemptStore hostile row collections', () => {
-  it('rejects a revoked SQL result proxy as fixed persistence evidence failure', async () => {
-    const revocable = Proxy.revocable(
+  it('rejects a hostile SQL result proxy as fixed persistence evidence failure', async () => {
+    const hostileResult = new Proxy(
       { rows: [row()], rowCount: 1 } as PluginDeliveryAttemptSqlResult<
         Record<string, unknown>
       >,
-      {},
+      {
+        get(target, property, receiver) {
+          // Promise resolution probes `then`; permit only that probe so hostile evidence reaches the repository seam.
+          if (property === 'then') return undefined;
+          return property === 'rows' || property === 'rowCount'
+            ? (() => {
+                throw new TypeError('hostile persistence result accessor');
+              })()
+            : Reflect.get(target, property, receiver);
+        },
+      },
     );
-    revocable.revoke();
-    const client = new ScriptedSqlClient([
-      revocable.proxy as PluginDeliveryAttemptSqlResult<
-        Record<string, unknown>
-      >,
-    ]);
+    const client = new ScriptedSqlClient([hostileResult]);
     const store = new PostgresPluginDeliveryAttemptStore(client);
 
     await expect(store.createIfAbsent(RECORD)).rejects.toBeInstanceOf(
