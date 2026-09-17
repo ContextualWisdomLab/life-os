@@ -6,9 +6,11 @@ const WORKSPACE_PATH = resolve(
   import.meta.dirname,
   '../../../pnpm-workspace.yaml',
 );
+const LOCKFILE_PATH = resolve(import.meta.dirname, '../../../pnpm-lock.yaml');
 const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
 
 const workspace = readFileSync(WORKSPACE_PATH, 'utf8');
+const lockfile = readFileSync(LOCKFILE_PATH, 'utf8');
 const packageJson = JSON.parse(readFileSync(PACKAGE_PATH, 'utf8'));
 
 function parseTopLevelYamlSequence(document, key) {
@@ -37,12 +39,14 @@ function parseTopLevelYamlSequence(document, key) {
   return values;
 }
 
-describe('OpenCode installation boundary', () => {
-  it('allows only the reviewed exact OpenCode dependency to run install lifecycle scripts', () => {
+describe('dependency installation boundary', () => {
+  it('allows only reviewed exact dependencies to run install lifecycle scripts', () => {
     expect(packageJson.devDependencies['opencode-ai']).toBe('1.18.9');
+    expect(lockfile).toContain('\n  esbuild@0.28.1:\n');
     expect(
-      parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies'),
-    ).toEqual(['opencode-ai']);
+      parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies').sort(),
+    ).toEqual(['esbuild', 'opencode-ai']);
+    expect(workspace).not.toContain('ignoredBuiltDependencies');
     expect(workspace).not.toContain('dangerouslyAllowAllBuilds');
   });
 });
