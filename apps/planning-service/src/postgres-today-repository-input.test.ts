@@ -39,7 +39,9 @@ describe('PostgresTodayRepository lookup scope', () => {
     const client = new RejectingQueryClient();
     const repository = new PostgresTodayRepository(client);
 
-    await expect(repository.getToday(WORKSPACE_ID, '2026-02-30')).rejects.toThrow();
+    await expect(
+      repository.getToday(WORKSPACE_ID, '2026-02-30'),
+    ).rejects.toThrow();
     expect(client.queryCalls).toBe(0);
   });
 });
