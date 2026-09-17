@@ -1,7 +1,8 @@
-import type {
-  PluginDeliveryAttemptStatusCommand,
-  PluginDeliveryAttemptStatusEvidence,
-  PluginDeliveryAttemptStatusStore,
+import {
+  canonicalPluginDeliveryAttemptRetryAt,
+  type PluginDeliveryAttemptStatusCommand,
+  type PluginDeliveryAttemptStatusEvidence,
+  type PluginDeliveryAttemptStatusStore,
 } from './plugin-delivery-attempt-status';
 
 const ATTEMPT_AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt.v1' as const;
@@ -448,6 +449,23 @@ function parseRow(
     lastOutcomeCode,
     claim.claimed,
   );
+
+  const uncontrolledScheduledRetry =
+    deliveryStatus === 'pending' &&
+    attemptCount >= 1 &&
+    attemptCount < maxAttempts &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    lastOutcomeCode === 'retryable_failure' &&
+    !claim.claimed &&
+    controlSequence === 0;
+  if (
+    uncontrolledScheduledRetry &&
+    nextAttemptAt !==
+      canonicalPluginDeliveryAttemptRetryAt(updatedAt, attemptCount)
+  ) {
+    return invalidEvidence();
+  }
 
   return Object.freeze({
     authorityVersion: STATUS_AUTHORITY_VERSION,
