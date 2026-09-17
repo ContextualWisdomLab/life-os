@@ -1,0 +1,58 @@
+name: Diagnose Planning Formatting
+
+on:
+  push:
+    branches:
+      - feat/planning-task-completion-history-v1
+    paths:
+      - .github/workflows/diagnose-planning-formatting.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Enable repository pnpm
+        run: corepack enable
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Print canonical Planning formatting patch
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/planning-service/src/planning-data-rights-http-boundary.ts \
+            apps/planning-service/src/planning-data-rights.test.ts \
+            apps/planning-service/src/postgres-today-repository-input.test.ts \
+            apps/planning-service/src/postgres-today-repository.test.ts \
+            apps/planning-service/src/postgres-today-repository.ts \
+            apps/planning-service/src/task-completion-chronology-migration.test.ts \
+            apps/planning-service/src/task-completion-fact-chronology.integration.test.ts \
+            apps/planning-service/src/task-completion-fact-source-transition.integration.test.ts \
+            apps/planning-service/src/today-http.ts \
+            apps/planning-service/src/today-invariants.ts \
+            apps/planning-service/src/today-sync.test.ts \
+            apps/planning-service/tsconfig.json
+          git --no-pager diff --check
+          git --no-pager diff -- \
+            apps/planning-service/src/planning-data-rights-http-boundary.ts \
+            apps/planning-service/src/planning-data-rights.test.ts \
+            apps/planning-service/src/postgres-today-repository-input.test.ts \
+            apps/planning-service/src/postgres-today-repository.test.ts \
+            apps/planning-service/src/postgres-today-repository.ts \
+            apps/planning-service/src/task-completion-chronology-migration.test.ts \
+            apps/planning-service/src/task-completion-fact-chronology.integration.test.ts \
+            apps/planning-service/src/task-completion-fact-source-transition.integration.test.ts \
+            apps/planning-service/src/today-http.ts \
+            apps/planning-service/src/today-invariants.ts \
+            apps/planning-service/src/today-sync.test.ts \
+            apps/planning-service/tsconfig.json
