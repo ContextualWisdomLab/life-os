@@ -74,157 +74,178 @@ function parseTopLevelYamlSequence(document, key) {
 }
 
 describe('dependency installation boundary', () => {
-  it('allows only reviewed dependencies to run install lifecycle scripts', () => {
-    expect(packageJson.devDependencies['opencode-ai']).toBe('1.18.9');
-    expect(
-      parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies'),
-    ).toEqual(['opencode-ai', 'esbuild']);
-    expect(
-      [...workspace.matchAll(/^strictDepBuilds:\s+true$/gmu)],
-    ).toHaveLength(1);
-    expect(workspace).not.toContain('dangerouslyAllowAllBuilds');
-  });
+  it(
+    'allows only reviewed dependencies to run install lifecycle scripts',
+    () => {
+      expect(packageJson.devDependencies['opencode-ai']).toBe('1.18.9');
+      expect(
+        parseTopLevelYamlSequence(workspace, 'onlyBuiltDependencies'),
+      ).toEqual(['opencode-ai', 'esbuild']);
+      expect(
+        [...workspace.matchAll(/^strictDepBuilds:\s+true$/gmu)],
+      ).toHaveLength(1);
+      expect(workspace).not.toContain('dangerouslyAllowAllBuilds');
+    },
+  );
 
-  it('binds the reviewed esbuild script authority to the repository Vitest/Vite path', () => {
-    const lockedEsbuildVersions = [
-      ...new Set(
-        [...lockfile.matchAll(/^  esbuild@([^:\n]+):$/gmu)].map(
-          ([, version]) => version,
+  it(
+    'binds the reviewed esbuild script authority to the repository Vitest/Vite path',
+    () => {
+      const lockedEsbuildVersions = [
+        ...new Set(
+          [...lockfile.matchAll(/^  esbuild@([^:\n]+):$/gmu)].map(
+            ([, version]) => version,
+          ),
         ),
-      ),
-    ].sort();
-    const lockedVitestVersion = parseAgentVitestVersion(lockfile);
-    const lockedViteVersion = parseSnapshotDependency(
-      lockfile,
-      `vitest@${lockedVitestVersion}`,
-      'vite',
-    );
-
-    expect(packageJson.devDependencies.vitest).toBe('^3.2.4');
-    expect(lockedEsbuildVersions).toEqual(['0.28.1']);
-    expect(lockfile).toMatch(AGENT_VITEST_IMPORTER_PATTERN);
-    expect(lockfile).toMatch(VITEST_VITE_DEPENDENCY_PATTERN);
-    expect(lockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
-    expect(lockedViteVersion).toMatch(/^7\.3\.6(?:\([^\n]*\))?$/u);
-    expect(
-      parseSnapshotDependency(
+      ].sort();
+      const lockedVitestVersion = parseAgentVitestVersion(lockfile);
+      const lockedViteVersion = parseSnapshotDependency(
         lockfile,
-        `vite@${lockedViteVersion}`,
-        'esbuild',
-      ),
-    ).toBe('0.28.1');
-    expect(lockfile).toContain(
-      'esbuild@0.28.1:\n    resolution: {integrity: sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==}',
-    );
-  });
-
-  it('does not borrow Vitest importer evidence from a different dependency section', () => {
-    const hostileLockfile = [
-      'importers:',
-      '  packages/commercial-development-agent:',
-      '    dependencies:',
-      '      vitest:',
-      '        specifier: ^3.2.4',
-      '        version: 3.2.7',
-      '',
-    ].join('\n');
-
-    expect(hostileLockfile).not.toMatch(AGENT_VITEST_IMPORTER_PATTERN);
-  });
-
-  it('does not borrow esbuild dependency evidence from an adjacent package', () => {
-    const hostileLockfile = [
-      'snapshots:',
-      '  vite@7.3.6:',
-      '    resolution: {integrity: sha512-vite}',
-      '  unrelated-package@1.0.0:',
-      '    dependencies:',
-      '      esbuild: 0.28.1',
-      '',
-    ].join('\n');
-
-    expect(hostileLockfile).not.toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
-  });
-
-  it('does not accept an orphan reviewed Vite snapshot when Vitest resolves elsewhere', () => {
-    const hostileLockfile = [
-      'importers:',
-      '  packages/commercial-development-agent:',
-      '    devDependencies:',
-      '      vitest:',
-      '        specifier: ^3.2.4',
-      '        version: 3.2.7',
-      '',
-      'snapshots:',
-      '  vitest@3.2.7:',
-      '    dependencies:',
-      '      vite: 7.3.5',
-      '  vite@7.3.6:',
-      '    dependencies:',
-      '      esbuild: 0.28.1',
-      '',
-    ].join('\n');
-
-    expect(hostileLockfile).toMatch(AGENT_VITEST_IMPORTER_PATTERN);
-    expect(hostileLockfile).not.toMatch(VITEST_VITE_DEPENDENCY_PATTERN);
-    expect(hostileLockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
-  });
-
-  it('does not borrow Vite evidence from another Vitest peer resolution', () => {
-    const hostileLockfile = [
-      'importers:',
-      '  packages/commercial-development-agent:',
-      '    devDependencies:',
-      '      vitest:',
-      '        specifier: ^3.2.4',
-      '        version: 3.2.7(@types/node@24.13.3)',
-      '',
-      'snapshots:',
-      '  vitest@3.2.7(@types/node@99.0.0):',
-      '    dependencies:',
-      '      vite: 7.3.6(@types/node@99.0.0)',
-      '',
-    ].join('\n');
-    const vitestVersion = parseAgentVitestVersion(hostileLockfile);
-
-    expect(hostileLockfile).toMatch(VITEST_VITE_DEPENDENCY_PATTERN);
-    expect(() =>
-      parseSnapshotDependency(
-        hostileLockfile,
-        `vitest@${vitestVersion}`,
+        `vitest@${lockedVitestVersion}`,
         'vite',
-      ),
-    ).toThrow(
-      'Missing vite dependency for snapshot vitest@3.2.7(@types/node@24.13.3)',
-    );
-  });
+      );
 
-  it('does not borrow esbuild evidence from another Vite peer resolution', () => {
-    const hostileLockfile = [
-      'snapshots:',
-      '  vitest@3.2.7(@types/node@24.13.3):',
-      '    dependencies:',
-      '      vite: 7.3.6(@types/node@24.13.3)',
-      '  vite@7.3.6(@types/node@99.0.0):',
-      '    dependencies:',
-      '      esbuild: 0.28.1',
-      '',
-    ].join('\n');
-    const viteVersion = parseSnapshotDependency(
-      hostileLockfile,
-      'vitest@3.2.7(@types/node@24.13.3)',
-      'vite',
-    );
+      expect(packageJson.devDependencies.vitest).toBe('^3.2.4');
+      expect(lockedEsbuildVersions).toEqual(['0.28.1']);
+      expect(lockfile).toMatch(AGENT_VITEST_IMPORTER_PATTERN);
+      expect(lockfile).toMatch(VITEST_VITE_DEPENDENCY_PATTERN);
+      expect(lockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
+      expect(lockedViteVersion).toMatch(/^7\.3\.6(?:\([^\n]*\))?$/u);
+      expect(
+        parseSnapshotDependency(
+          lockfile,
+          `vite@${lockedViteVersion}`,
+          'esbuild',
+        ),
+      ).toBe('0.28.1');
+      expect(lockfile).toContain(
+        'esbuild@0.28.1:\n    resolution: {integrity: sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==}',
+      );
+    },
+  );
 
-    expect(hostileLockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
-    expect(() =>
-      parseSnapshotDependency(
+  it(
+    'does not borrow Vitest importer evidence from a different dependency section',
+    () => {
+      const hostileLockfile = [
+        'importers:',
+        '  packages/commercial-development-agent:',
+        '    dependencies:',
+        '      vitest:',
+        '        specifier: ^3.2.4',
+        '        version: 3.2.7',
+        '',
+      ].join('\n');
+
+      expect(hostileLockfile).not.toMatch(AGENT_VITEST_IMPORTER_PATTERN);
+    },
+  );
+
+  it(
+    'does not borrow esbuild dependency evidence from an adjacent package',
+    () => {
+      const hostileLockfile = [
+        'snapshots:',
+        '  vite@7.3.6:',
+        '    resolution: {integrity: sha512-vite}',
+        '  unrelated-package@1.0.0:',
+        '    dependencies:',
+        '      esbuild: 0.28.1',
+        '',
+      ].join('\n');
+
+      expect(hostileLockfile).not.toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
+    },
+  );
+
+  it(
+    'does not accept an orphan reviewed Vite snapshot when Vitest resolves elsewhere',
+    () => {
+      const hostileLockfile = [
+        'importers:',
+        '  packages/commercial-development-agent:',
+        '    devDependencies:',
+        '      vitest:',
+        '        specifier: ^3.2.4',
+        '        version: 3.2.7',
+        '',
+        'snapshots:',
+        '  vitest@3.2.7:',
+        '    dependencies:',
+        '      vite: 7.3.5',
+        '  vite@7.3.6:',
+        '    dependencies:',
+        '      esbuild: 0.28.1',
+        '',
+      ].join('\n');
+
+      expect(hostileLockfile).toMatch(AGENT_VITEST_IMPORTER_PATTERN);
+      expect(hostileLockfile).not.toMatch(VITEST_VITE_DEPENDENCY_PATTERN);
+      expect(hostileLockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
+    },
+  );
+
+  it(
+    'does not borrow Vite evidence from another Vitest peer resolution',
+    () => {
+      const hostileLockfile = [
+        'importers:',
+        '  packages/commercial-development-agent:',
+        '    devDependencies:',
+        '      vitest:',
+        '        specifier: ^3.2.4',
+        '        version: 3.2.7(@types/node@24.13.3)',
+        '',
+        'snapshots:',
+        '  vitest@3.2.7(@types/node@99.0.0):',
+        '    dependencies:',
+        '      vite: 7.3.6(@types/node@99.0.0)',
+        '',
+      ].join('\n');
+      const vitestVersion = parseAgentVitestVersion(hostileLockfile);
+
+      expect(hostileLockfile).toMatch(VITEST_VITE_DEPENDENCY_PATTERN);
+      expect(() =>
+        parseSnapshotDependency(
+          hostileLockfile,
+          `vitest@${vitestVersion}`,
+          'vite',
+        ),
+      ).toThrow(
+        'Missing vite dependency for snapshot vitest@3.2.7(@types/node@24.13.3)',
+      );
+    },
+  );
+
+  it(
+    'does not borrow esbuild evidence from another Vite peer resolution',
+    () => {
+      const hostileLockfile = [
+        'snapshots:',
+        '  vitest@3.2.7(@types/node@24.13.3):',
+        '    dependencies:',
+        '      vite: 7.3.6(@types/node@24.13.3)',
+        '  vite@7.3.6(@types/node@99.0.0):',
+        '    dependencies:',
+        '      esbuild: 0.28.1',
+        '',
+      ].join('\n');
+      const viteVersion = parseSnapshotDependency(
         hostileLockfile,
-        `vite@${viteVersion}`,
-        'esbuild',
-      ),
-    ).toThrow(
-      'Missing esbuild dependency for snapshot vite@7.3.6(@types/node@24.13.3)',
-    );
-  });
+        'vitest@3.2.7(@types/node@24.13.3)',
+        'vite',
+      );
+
+      expect(hostileLockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
+      expect(() =>
+        parseSnapshotDependency(
+          hostileLockfile,
+          `vite@${viteVersion}`,
+          'esbuild',
+        ),
+      ).toThrow(
+        'Missing esbuild dependency for snapshot vite@7.3.6(@types/node@24.13.3)',
+      );
+    },
+  );
 });
