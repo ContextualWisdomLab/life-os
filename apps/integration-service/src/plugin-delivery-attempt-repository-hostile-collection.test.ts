@@ -70,11 +70,10 @@ describe('PostgresPluginDeliveryAttemptStore hostile row collections', () => {
         get(target, property, receiver) {
           // Promise resolution probes `then`; permit only that probe so hostile evidence reaches the repository seam.
           if (property === 'then') return undefined;
-          return property === 'rows' || property === 'rowCount'
-            ? (() => {
-                throw new TypeError('hostile persistence result accessor');
-              })()
-            : Reflect.get(target, property, receiver);
+          if (property === 'rows' || property === 'rowCount') {
+            throw new TypeError('hostile persistence result accessor');
+          }
+          return Reflect.get(target, property, receiver);
         },
       },
     );
