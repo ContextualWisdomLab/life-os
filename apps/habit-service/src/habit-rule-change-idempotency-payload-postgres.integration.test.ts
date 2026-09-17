@@ -120,7 +120,7 @@ describeWithPostgres('Habit idempotency payload binding', () => {
     await administrativePool.end();
   });
 
-  it('rejects same-key reuse when any semantic rule field changes at the same effective boundary', async () => {
+  it('binds a key to the canonical semantic rule change and rejects actual semantic changes', async () => {
     const workspaceId = randomUUID();
     const habitId = randomUUID();
     const durableRepository = repository(administrativePool);
@@ -129,9 +129,9 @@ describeWithPostgres('Habit idempotency payload binding', () => {
     const idempotencyKey = randomUUID();
     const command: HabitDefinitionRevisionCommand = {
       effectiveFromLocalDate: '2026-09-14',
-      title: 'Weekly walk',
-      timezone: 'Asia/Seoul',
-      recurrence: { kind: 'weekly', interval: 1, weekdays: [1] },
+      title: ' Weekly walk ',
+      timezone: ' Asia/Seoul ',
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [5, 1, 5] },
       idempotencyKey,
     };
     const firstService = requireRuleChangeAuthority(
@@ -160,15 +160,25 @@ describeWithPostgres('Habit idempotency payload binding', () => {
         () => '2026-09-14T01:00:00.000Z',
       ),
     );
+    const canonicalEquivalentReplay: HabitDefinitionRevisionCommand = {
+      ...command,
+      title: 'Weekly walk',
+      timezone: 'Asia/Seoul',
+      recurrence: { kind: 'weekly', interval: 1, weekdays: [1, 5] },
+    };
     await expect(
-      restartedService.reviseHabitDefinition(workspaceId, habitId, command),
+      restartedService.reviseHabitDefinition(
+        workspaceId,
+        habitId,
+        canonicalEquivalentReplay,
+      ),
     ).resolves.toEqual(accepted);
 
     const conflicts: HabitDefinitionRevisionCommand[] = [
-      { ...command, title: 'Conflicting title' },
-      { ...command, timezone: 'Etc/UTC' },
+      { ...canonicalEquivalentReplay, title: 'Conflicting title' },
+      { ...canonicalEquivalentReplay, timezone: 'Etc/UTC' },
       {
-        ...command,
+        ...canonicalEquivalentReplay,
         recurrence: { kind: 'weekly', interval: 1, weekdays: [5] },
       },
     ];
