@@ -12,7 +12,10 @@ import {
   it,
 } from 'vitest';
 import type { Task } from './planning-domain';
-import { createPlanningRuntime, type PlanningRuntime } from './planning-runtime';
+import {
+  createPlanningRuntime,
+  type PlanningRuntime,
+} from './planning-runtime';
 
 const DATABASE_URL = process.env.PLANNING_DATABASE_URL;
 const describeWithPostgres = DATABASE_URL ? describe.sequential : describe.skip;
@@ -110,11 +113,15 @@ describeWithPostgres('Planning task due authority', () => {
     const project = await seedProject(firstRuntime, workspaceId);
     const dueAt = '2026-09-18T09:00:00.123Z';
 
-    const created = await createTaskWithDueAuthority(firstRuntime, workspaceId, {
-      projectId: project.id,
-      title: 'Submit release evidence',
-      dueAt,
-    });
+    const created = await createTaskWithDueAuthority(
+      firstRuntime,
+      workspaceId,
+      {
+        projectId: project.id,
+        title: 'Submit release evidence',
+        dueAt,
+      },
+    );
     expect(created.dueAt).toBe(dueAt);
     await firstRuntime.close();
 
@@ -139,11 +146,15 @@ describeWithPostgres('Planning task due authority', () => {
       projectId: project.id,
       title: 'Undated backlog item',
     });
-    const explicitNull = await createTaskWithDueAuthority(runtime, workspaceId, {
-      projectId: project.id,
-      title: 'Explicitly undated backlog item',
-      dueAt: null,
-    });
+    const explicitNull = await createTaskWithDueAuthority(
+      runtime,
+      workspaceId,
+      {
+        projectId: project.id,
+        title: 'Explicitly undated backlog item',
+        dueAt: null,
+      },
+    );
 
     expect(omitted).toHaveProperty('dueAt', null);
     expect(explicitNull).toHaveProperty('dueAt', null);
