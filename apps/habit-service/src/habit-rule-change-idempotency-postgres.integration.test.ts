@@ -75,7 +75,9 @@ function repository(pool: Pool): PostgresHabitRepository {
   return new PostgresHabitRepository(new PoolSqlClient(pool));
 }
 
-function requireRuleChangeAuthority(service: HabitService): HabitRuleChangeService {
+function requireRuleChangeAuthority(
+  service: HabitService,
+): HabitRuleChangeService {
   const candidate = Reflect.get(service, 'reviseHabitDefinition');
   expect(
     candidate,
@@ -158,7 +160,9 @@ describeWithPostgres('Habit durable rule-change idempotency authority', () => {
       restartedRepository,
       () => '2026-09-15T00:00:00.000Z',
     );
-    const restartedService = requireRuleChangeAuthority(restartedMutationService);
+    const restartedService = requireRuleChangeAuthority(
+      restartedMutationService,
+    );
 
     const replay = await restartedService.reviseHabitDefinition(
       workspaceId,
@@ -276,7 +280,9 @@ describeWithPostgres('Habit durable rule-change idempotency authority', () => {
       secondService.reviseHabitDefinition(workspaceId, habitId, secondCommand),
     ]);
     const accepted = results.filter(
-      (result): result is PromiseFulfilledResult<HabitDefinitionRevisionEvidence> =>
+      (
+        result,
+      ): result is PromiseFulfilledResult<HabitDefinitionRevisionEvidence> =>
         result.status === 'fulfilled',
     );
     const rejected = results.filter((result) => result.status === 'rejected');
