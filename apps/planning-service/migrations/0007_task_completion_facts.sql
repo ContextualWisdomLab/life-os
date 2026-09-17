@@ -46,6 +46,50 @@ ON planning.task_completion_facts
 FOR EACH ROW
 EXECUTE FUNCTION planning.enforce_task_completion_fact_chronology();
 
+CREATE FUNCTION planning.enforce_task_completion_fact_source_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  owning_task_status text;
+  owning_task_completed_at timestamptz;
+  matching_fact_count bigint;
+BEGIN
+  SELECT status, completed_at
+    INTO owning_task_status, owning_task_completed_at
+    FROM planning.tasks
+   WHERE id = NEW.task_id
+     AND workspace_id = NEW.workspace_id;
+
+  SELECT count(*)
+    INTO matching_fact_count
+    FROM planning.task_completion_facts
+   WHERE workspace_id = NEW.workspace_id
+     AND task_id = NEW.task_id
+     AND completed_at = NEW.completed_at;
+
+  IF owning_task_status IS DISTINCT FROM 'done'
+     OR owning_task_completed_at IS DISTINCT FROM NEW.completed_at
+     OR matching_fact_count <> 1 THEN
+    RAISE EXCEPTION 'Task completion fact has no unique durable source transition'
+      USING ERRCODE = '23514',
+            CONSTRAINT = 'task_completion_facts_source_transition_check';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION planning.enforce_task_completion_fact_source_transition() IS
+  'At transaction acceptance, requires each new fact to be the unique fact matching the owning task current durable done transition.';
+
+CREATE CONSTRAINT TRIGGER task_completion_facts_source_transition_guard
+AFTER INSERT
+ON planning.task_completion_facts
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION planning.enforce_task_completion_fact_source_transition();
+
 CREATE FUNCTION planning.reject_task_completion_fact_update()
 RETURNS trigger
 LANGUAGE plpgsql
