@@ -6,6 +6,8 @@ const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt-status.v1' as const;
 const MINIMUM_ATTEMPTS = 1;
 const MAXIMUM_ATTEMPTS = 10;
+const INITIAL_RETRY_BACKOFF_MILLISECONDS = 30_000;
+const MAXIMUM_RETRY_BACKOFF_MILLISECONDS = 900_000;
 
 /** Fixed fail-closed status-authority failure without request or backend reflection. */
 export class PluginDeliveryAttemptStatusAuthorityError extends Error {
@@ -57,6 +59,25 @@ export interface PluginDeliveryAttemptStatusStore {
   read(
     command: PluginDeliveryAttemptStatusCommand,
   ): Promise<PluginDeliveryAttemptStatusEvidence | undefined>;
+}
+
+/**
+ * Returns the deterministic next-attempt instant for already-validated retry evidence.
+ *
+ * The retry aggregate owns the same 30-second exponential schedule capped at
+ * 15 minutes. Status readers use this pure projection only to reject durable
+ * no-control evidence that the aggregate could not have produced.
+ */
+export function canonicalPluginDeliveryAttemptRetryAt(
+  updatedAt: string,
+  attemptCount: number,
+): string {
+  const exponent = Math.max(0, attemptCount - 1);
+  const delayMilliseconds = Math.min(
+    INITIAL_RETRY_BACKOFF_MILLISECONDS * 2 ** exponent,
+    MAXIMUM_RETRY_BACKOFF_MILLISECONDS,
+  );
+  return new Date(new Date(updatedAt).getTime() + delayMilliseconds).toISOString();
 }
 
 function invalid(): never {
@@ -332,6 +353,23 @@ function requireEvidence(
     lastOutcomeCode,
     claimState,
   );
+
+  const uncontrolledScheduledRetry =
+    deliveryStatus === 'pending' &&
+    attemptCount >= 1 &&
+    attemptCount < maxAttempts &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    lastOutcomeCode === 'retryable_failure' &&
+    claimState === 'unclaimed' &&
+    controlSequence === 0;
+  if (
+    uncontrolledScheduledRetry &&
+    nextAttemptAt !==
+      canonicalPluginDeliveryAttemptRetryAt(updatedAt, attemptCount)
+  ) {
+    return invalid();
+  }
 
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
