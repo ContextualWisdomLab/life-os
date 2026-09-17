@@ -186,7 +186,9 @@ const vus = boundedInteger(
   MAX_VUS,
   'LIFEOS_PERF_VUS',
 );
-const contextSecret = requireSecret(process.env.INTEGRATION_OPERATOR_CONTEXT_SECRET);
+const contextSecret = requireSecret(
+  process.env.INTEGRATION_OPERATOR_CONTEXT_SECRET,
+);
 const databaseUrl = requireDatabaseUrl(process.env.INTEGRATION_DATABASE_URL);
 const servicePort = boundedInteger(
   process.env.INTEGRATION_SERVICE_PORT,
