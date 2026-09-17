@@ -1,0 +1,42 @@
+name: Diagnose Dependency Install Authority Formatting
+
+on:
+  push:
+    branches:
+      - fix/pnpm-esbuild-build-script-policy-v1
+    paths:
+      - .github/workflows/diagnose-dependency-install-authority-formatting.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Install frozen workspace
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: Print canonical dependency authority formatting patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --single-quote --write \
+            packages/commercial-development-agent/src/opencode-install-contract.test.mjs
+          git --no-pager diff --check
+          git --no-pager diff -- \
+            packages/commercial-development-agent/src/opencode-install-contract.test.mjs
