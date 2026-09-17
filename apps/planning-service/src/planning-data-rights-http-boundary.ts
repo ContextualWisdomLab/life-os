@@ -159,9 +159,10 @@ function normalizeRequest(body: unknown): NormalizedRequest {
 }
 
 /** Requires the one exact POST resource that owns Planning contributor transport. */
-function requireRequestBinding(
-  binding: PlanningDataRightsRequestBinding,
-): { readonly method: 'POST'; readonly path: typeof CONTRIBUTOR_PATH } {
+function requireRequestBinding(binding: PlanningDataRightsRequestBinding): {
+  readonly method: 'POST';
+  readonly path: typeof CONTRIBUTOR_PATH;
+} {
   if (binding.method !== 'POST' || binding.path !== CONTRIBUTOR_PATH) {
     return invalidContext();
   }
@@ -251,7 +252,9 @@ export async function parseTrustedPlanningDataRightsRequest(
 }
 
 /** Maps contributor/runtime failures to one bounded credential-free transport error. */
-export function toPlanningDataRightsHttpException(error: unknown): HttpException {
+export function toPlanningDataRightsHttpException(
+  error: unknown,
+): HttpException {
   void error;
   return problemException(
     503,
