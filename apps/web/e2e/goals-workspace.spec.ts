@@ -61,6 +61,41 @@ test('keeps the newest Goals load when an older request finishes last', async ({
   await expect(page.getByText(staleGoal.title)).toHaveCount(0);
 });
 
+test('synchronous repeated submit cannot dispatch two Goal mutations', async ({
+  page,
+}) => {
+  let postCount = 0;
+  let releasePosts: (() => void) | undefined;
+  const postsReleased = new Promise<void>((resolve) => {
+    releasePosts = resolve;
+  });
+
+  await page.route('**/api/planning/goals', async (route) => {
+    if (route.request().method() === 'POST') {
+      postCount += 1;
+      await postsReleased;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(freshGoal),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/goals');
+  await page.getByLabel('Outcome').fill(freshGoal.title);
+  await page.locator('form').evaluate((element) => {
+    const goalForm = element as HTMLFormElement;
+    goalForm.requestSubmit();
+    goalForm.requestSubmit();
+  });
+
+  await expect.poll(() => postCount).toBe(1);
+  releasePosts?.();
+});
+
 test('fails closed when the Goal projection contains a normalized invalid UTC date', async ({
   page,
 }) => {
