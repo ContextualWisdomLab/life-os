@@ -28,6 +28,6 @@ jobs:
       - name: Check focused formatting
         run: pnpm exec prettier --check apps/integration-service/src/plugin-delivery-attempt-status-repository.ts apps/integration-service/src/plugin-delivery-attempt-status-hostile-collection.test.ts
       - name: Run hostile status row collection regression
-        run: pnpm --filter @life-os/integration-service test -- plugin-delivery-attempt-status-hostile-collection.test.ts
+        run: pnpm --filter @life-os/integration-service test plugin-delivery-attempt-status-hostile-collection.test.ts
       - name: Typecheck Integration
         run: pnpm --filter @life-os/integration-service typecheck
