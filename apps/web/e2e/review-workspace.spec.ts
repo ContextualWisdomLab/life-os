@@ -128,6 +128,38 @@ test('synchronous repeated submit cannot dispatch two Review mutations', async (
   expect(postCount).toBe(1);
 });
 
+test('history refresh cannot release an in-flight Review mutation claim', async ({ page }) => {
+  let postCount = 0;
+  let releasePost: (() => void) | undefined;
+  const postReleased = new Promise<void>((resolve) => {
+    releasePost = resolve;
+  });
+  await routeReviewHistory(page);
+  await page.route('**/api/reviews/weekly-review/completions', async (route) => {
+    postCount += 1;
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    await postReleased;
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...durableReview, completedAt: body.completedAt }),
+    });
+  });
+
+  await page.goto('/review');
+  await completeReviewForm(page);
+  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+  await expect.poll(() => postCount).toBe(1);
+  await expect(page.getByRole('button', { name: 'Recording Weekly Review…' })).toBeDisabled();
+
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByRole('button', { name: 'Record Weekly Review' })).toBeEnabled();
+  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+
+  await expect.poll(() => postCount).toBe(1);
+  releasePost?.();
+});
+
 test('409 conflict preserves prior durable history and exposes recovery', async ({ page }) => {
   await routeReviewHistory(page, [durableReview]);
   await page.route('**/api/reviews/weekly-review/completions', async (route) => {
