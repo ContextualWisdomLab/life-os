@@ -1,0 +1,41 @@
+name: Diagnose Plugin Delivery Status Formatting
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-status-v1
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Render canonical Prettier delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write \
+            apps/integration-service/src/plugin-delivery-attempt-status.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-retry-schedule.test.ts
+          git diff -- \
+            apps/integration-service/src/plugin-delivery-attempt-status.ts \
+            apps/integration-service/src/plugin-delivery-attempt-status-retry-schedule.test.ts
