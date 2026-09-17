@@ -117,6 +117,40 @@ test('synchronous repeated submit cannot dispatch two Habit mutations', async ({
   expect(postCount).toBe(1);
 });
 
+test('list refresh cannot release an in-flight Habit mutation claim', async ({ page }) => {
+  let postCount = 0;
+  let releasePost: (() => void) | undefined;
+  const postReleased = new Promise<void>((resolve) => {
+    releasePost = resolve;
+  });
+  await page.route('**/api/habits', async (route) => {
+    if (route.request().method() === 'POST') {
+      postCount += 1;
+      await postReleased;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(dailyHabit),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+  });
+
+  await page.goto('/habits');
+  await fillDailyHabit(page);
+  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+  await expect.poll(() => postCount).toBe(1);
+  await expect(page.getByRole('button', { name: 'Creating habit…' })).toBeDisabled();
+
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.getByRole('button', { name: 'Create habit' })).toBeEnabled();
+  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+
+  await expect.poll(() => postCount).toBe(1);
+  releasePost?.();
+});
+
 test('weekly recurrence preserves explicit sorted weekday evidence', async ({ page }) => {
   let postedBody: unknown;
   await page.route('**/api/habits', async (route) => {
