@@ -75,7 +75,9 @@ function repository(pool: Pool): PostgresHabitRepository {
   return new PostgresHabitRepository(new PoolSqlClient(pool));
 }
 
-function requireRuleChangeAuthority(service: HabitService): HabitRuleChangeService {
+function requireRuleChangeAuthority(
+  service: HabitService,
+): HabitRuleChangeService {
   const candidate = Reflect.get(service, 'reviseHabitDefinition');
   expect(
     candidate,
@@ -135,10 +137,7 @@ describeWithPostgres('Habit idempotency payload binding', () => {
       idempotencyKey,
     };
     const firstService = requireRuleChangeAuthority(
-      new HabitService(
-        durableRepository,
-        () => '2026-09-14T00:00:00.000Z',
-      ),
+      new HabitService(durableRepository, () => '2026-09-14T00:00:00.000Z'),
     );
     const accepted = await firstService.reviseHabitDefinition(
       workspaceId,
