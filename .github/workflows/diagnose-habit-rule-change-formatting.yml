@@ -1,0 +1,40 @@
+name: Diagnose Habit Rule Change Formatting
+
+on:
+  push:
+    branches:
+      - feat/habit-rule-change-authority-v1
+    paths:
+      - .github/workflows/diagnose-habit-rule-change-formatting.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Enable repository pnpm
+        run: corepack enable
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Print canonical Habit rule-change formatting patch
+        run: |
+          pnpm exec prettier --single-quote --write \
+            apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          git --no-pager diff --check
+          git --no-pager diff -- \
+            apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
