@@ -104,7 +104,10 @@ describeWithPostgres('Habit definition historical authority', () => {
 
     expect(evidence.habits).toHaveLength(1);
     expect(evidence.habits[0]?.title).toBe('Daily walk');
-    expect(evidence.habits[0]?.recurrence).toEqual({ kind: 'daily', interval: 1 });
+    expect(evidence.habits[0]?.recurrence).toEqual({
+      kind: 'daily',
+      interval: 1,
+    });
     expect(
       generateHabitOccurrences(
         evidence.habits[0]!,
