@@ -201,11 +201,7 @@ describe('plugin delivery attempt admission', () => {
       ),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
     await expect(
-      noDependencyCalls.schedule(
-        CONTEXT,
-        INSTALLATION_ID,
-        revokedInput.proxy,
-      ),
+      noDependencyCalls.schedule(CONTEXT, INSTALLATION_ID, revokedInput.proxy),
     ).rejects.toBeInstanceOf(PluginDeliveryAttemptAuthorityError);
 
     const revokedRecord = Proxy.revocable(
@@ -230,8 +226,8 @@ describe('plugin delivery attempt admission', () => {
     revokedRecord.revoke();
     const application = new PluginDeliveryAttemptApplication(
       {
-        createIfAbsent: vi.fn(async () =>
-          revokedRecord.proxy as PluginDeliveryAttemptRecord,
+        createIfAbsent: vi.fn(
+          async () => revokedRecord.proxy as PluginDeliveryAttemptRecord,
         ),
       },
       { getGrant: vi.fn(async () => activeGrant()) },
