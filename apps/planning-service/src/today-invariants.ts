@@ -135,7 +135,8 @@ function canonicalTodayAction(
   value: unknown,
   fail: TodayInvariantFailure,
 ): DurableTodayAction {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fail();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return fail();
   const action = value as Record<string, unknown>;
   const exactKeys = [
     'id',
@@ -241,7 +242,8 @@ export function canonicalTodayDraft(
   fail: TodayInvariantFailure,
   expectedDate?: string,
 ): DurableTodayDraft {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fail();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return fail();
   const draft = value as Record<string, unknown>;
   if (
     Object.keys(draft).length !== 3 ||
