@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - feat/plugin-delivery-attempt-lifecycle-v1
-    paths:
-      - .github/workflows/diagnose-plugin-delivery-attempt-formatting.yml
 
 permissions:
   contents: read
