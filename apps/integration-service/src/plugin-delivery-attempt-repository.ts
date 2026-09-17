@@ -149,7 +149,8 @@ function oneOrUndefined<Row>(
   result: PluginDeliveryAttemptSqlResult<Row>,
 ): Row | undefined {
   const resultIsRecord = boundedEvidenceRead(
-    () => result !== null && typeof result === 'object' && !Array.isArray(result),
+    () =>
+      result !== null && typeof result === 'object' && !Array.isArray(result),
   );
   if (!resultIsRecord) {
     return invalidEvidence();
