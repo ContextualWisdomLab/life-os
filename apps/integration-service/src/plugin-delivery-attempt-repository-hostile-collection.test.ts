@@ -70,7 +70,9 @@ describe('PostgresPluginDeliveryAttemptStore hostile row collections', () => {
     );
     revocable.revoke();
     const client = new ScriptedSqlClient([
-      revocable.proxy as PluginDeliveryAttemptSqlResult<Record<string, unknown>>,
+      revocable.proxy as PluginDeliveryAttemptSqlResult<
+        Record<string, unknown>
+      >,
     ]);
     const store = new PostgresPluginDeliveryAttemptStore(client);
 
