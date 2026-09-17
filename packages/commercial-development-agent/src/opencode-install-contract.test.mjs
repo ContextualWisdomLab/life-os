@@ -9,7 +9,7 @@ const WORKSPACE_PATH = resolve(
 const LOCKFILE_PATH = resolve(import.meta.dirname, '../../../pnpm-lock.yaml');
 const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
 const VITE_ESBUILD_DEPENDENCY_PATTERN =
-  /vite@7\.3\.6[^:]*:\n(?:[ \t].*\n)*?[ \t]+dependencies:\n(?:[ \t].*\n)*?[ \t]+esbuild: 0\.28\.1/u;
+  /^  vite@7\.3\.6[^:]*:\n(?: {4}.*\n)*? {4}dependencies:\n(?: {6}.*\n)*? {6}esbuild: 0\.28\.1$/mu;
 
 const workspace = readFileSync(WORKSPACE_PATH, 'utf8');
 const lockfile = readFileSync(LOCKFILE_PATH, 'utf8');
