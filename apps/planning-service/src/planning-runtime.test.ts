@@ -17,15 +17,30 @@ const DATABASE_URL = [
 class FakePlanningConnection implements PlanningPoolConnection {
   readonly calls: string[] = [];
   released: boolean | undefined;
+  maximumConcurrentQueries = 0;
+  private activeQueries = 0;
 
   constructor(private readonly failCommit = false) {}
 
   async query<Row>(text: string): Promise<{ rows: Row[] }> {
     this.calls.push(text);
-    if (this.failCommit && text === 'COMMIT') {
-      throw new Error('commit failed');
+    this.activeQueries += 1;
+    this.maximumConcurrentQueries = Math.max(
+      this.maximumConcurrentQueries,
+      this.activeQueries,
+    );
+    try {
+      await Promise.resolve();
+      if (this.activeQueries > 1) {
+        throw new Error('transaction connection query overlap');
+      }
+      if (this.failCommit && text === 'COMMIT') {
+        throw new Error('commit failed');
+      }
+      return { rows: [] };
+    } finally {
+      this.activeQueries -= 1;
     }
-    return { rows: [] };
   }
 
   release(destroy = false): void {
@@ -139,6 +154,34 @@ describe('Planning runtime', () => {
     expect(pool.connections).toHaveLength(1);
     expect(pool.connections[0]?.calls[0]).toBe('BEGIN');
     expect(pool.connections[0]?.calls.at(-1)).toBe('ROLLBACK');
+    expect(pool.connections[0]?.released).toBe(false);
+    await runtime.close();
+  });
+
+  it('serializes concurrent contributor reads on one transaction connection', async () => {
+    const pool = new FakePlanningPool();
+    const runtime = createPlanningRuntime(
+      { PLANNING_DATABASE_URL: DATABASE_URL },
+      () => pool,
+    );
+
+    await expect(
+      runtime.dataRightsContributor.handle({
+        contractVersion: 'life-os.data-rights-contributor.v1',
+        operation: 'export',
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        requestedByUserId: '22222222-2222-4222-8222-222222222222',
+        requestId: '33333333-3333-4333-8333-333333333333',
+      }),
+    ).resolves.toMatchObject({
+      operation: 'export',
+      recordCount: 0,
+    });
+
+    expect(pool.connections).toHaveLength(1);
+    expect(pool.connections[0]?.calls[0]).toBe('BEGIN');
+    expect(pool.connections[0]?.calls.at(-1)).toBe('COMMIT');
+    expect(pool.connections[0]?.maximumConcurrentQueries).toBe(1);
     expect(pool.connections[0]?.released).toBe(false);
     await runtime.close();
   });
