@@ -144,17 +144,25 @@ async function requestDirectStatus(port, headers, agent) {
         response.on('end', () => {
           const durationMs = performance.now() - startedAt;
           if (response.statusCode !== 200) {
-            reject(new Error('Direct Integration status profile received non-200'));
+            reject(
+              new Error('Direct Integration status profile received non-200'),
+            );
             return;
           }
           try {
             const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             if (body.deliveryId !== DELIVERY_ID) {
-              reject(new Error('Direct Integration status profile received wrong delivery'));
+              reject(
+                new Error(
+                  'Direct Integration status profile received wrong delivery',
+                ),
+              );
               return;
             }
           } catch {
-            reject(new Error('Direct Integration status profile received invalid JSON'));
+            reject(
+              new Error('Direct Integration status profile received invalid JSON'),
+            );
             return;
           }
           resolve(durationMs);
