@@ -8,6 +8,8 @@ const WORKSPACE_PATH = resolve(
 );
 const LOCKFILE_PATH = resolve(import.meta.dirname, '../../../pnpm-lock.yaml');
 const PACKAGE_PATH = resolve(import.meta.dirname, '../package.json');
+const VITE_ESBUILD_DEPENDENCY_PATTERN =
+  /vite@7\.3\.6[^:]*:\n(?:[ \t].*\n)*?[ \t]+dependencies:\n(?:[ \t].*\n)*?[ \t]+esbuild: 0\.28\.1/u;
 
 const workspace = readFileSync(WORKSPACE_PATH, 'utf8');
 const lockfile = readFileSync(LOCKFILE_PATH, 'utf8');
@@ -62,11 +64,23 @@ describe('dependency installation boundary', () => {
 
     expect(lockedEsbuildVersions).toEqual(['0.28.1']);
     expect(lockfile).toContain('vite@7.3.6');
-    expect(lockfile).toMatch(
-      /vite@7\.3\.6[^:]*:\n(?:[ \t].*\n)*?[ \t]+dependencies:\n(?:[ \t].*\n)*?[ \t]+esbuild: 0\.28\.1/u,
-    );
+    expect(lockfile).toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
     expect(lockfile).toContain(
       'esbuild@0.28.1:\n    resolution: {integrity: sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==}',
     );
+  });
+
+  it('does not borrow esbuild dependency evidence from an adjacent package', () => {
+    const hostileLockfile = [
+      'snapshots:',
+      '  vite@7.3.6:',
+      '    resolution: {integrity: sha512-vite}',
+      '  unrelated-package@1.0.0:',
+      '    dependencies:',
+      '      esbuild: 0.28.1',
+      '',
+    ].join('\n');
+
+    expect(hostileLockfile).not.toMatch(VITE_ESBUILD_DEPENDENCY_PATTERN);
   });
 });
