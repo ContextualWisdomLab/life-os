@@ -33,8 +33,8 @@ jobs:
           apps/integration-service/src/plugin-delivery-attempt.ts
           apps/integration-service/src/plugin-delivery-attempt.test.ts
       - name: Run hostile row collection regression
-        run: pnpm --filter @life-os/integration-service test -- plugin-delivery-attempt-repository-hostile-collection.test.ts
+        run: pnpm --filter @life-os/integration-service test plugin-delivery-attempt-repository-hostile-collection.test.ts
       - name: Run hostile application authority regression
-        run: pnpm --filter @life-os/integration-service test -- plugin-delivery-attempt.test.ts
+        run: pnpm --filter @life-os/integration-service test plugin-delivery-attempt.test.ts
       - name: Typecheck Integration
         run: pnpm --filter @life-os/integration-service typecheck
