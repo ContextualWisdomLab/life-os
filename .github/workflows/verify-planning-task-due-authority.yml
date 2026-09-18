@@ -33,6 +33,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Set up Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -42,8 +43,18 @@ jobs:
       - name: Install frozen workspace
         run: pnpm install --frozen-lockfile
       - name: Check focused formatting
-        run: pnpm exec prettier --single-quote --check apps/planning-service/src/task-due-authority-postgres.integration.test.ts
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/planning-service/src/planning-domain.ts
+          apps/planning-service/src/planning-runtime.ts
+          apps/planning-service/src/task-due-authority.ts
+          apps/planning-service/src/task-due-authority-postgres.integration.test.ts
+          apps/planning-service/migrations/README.md
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
       - name: Prove durable UTC task deadline authority
         run: pnpm --filter @life-os/planning-service exec vitest run --no-file-parallelism src/task-due-authority-postgres.integration.test.ts
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service test
+      - name: Build Planning
+        run: pnpm --filter @life-os/planning-service build
