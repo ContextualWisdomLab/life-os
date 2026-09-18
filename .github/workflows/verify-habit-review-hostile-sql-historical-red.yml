@@ -1,0 +1,63 @@
+name: Verify Habit Review Hostile SQL Historical RED
+
+on:
+  push:
+    branches:
+      - feat/habit-review-period-projection-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout historical regression-only head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: 94dfb860efbc372a6235a6a99ac7d53b8c3a20f5
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Enable repository pnpm
+        run: corepack enable
+      - name: Install historical frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Prove historical hostile-evidence RED
+        shell: bash
+        run: |
+          set +e
+          pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-hostile-sql.test.ts --reporter=verbose 2>&1 | tee /tmp/habit-review-historical-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F "collapses a revoked query-result envelope before reading rows" /tmp/habit-review-historical-red.log
+          grep -F "collapses a revoked row collection before reading cardinality" /tmp/habit-review-historical-red.log
+          grep -F "collapses a revoked durable row before reading Habit authority fields" /tmp/habit-review-historical-red.log
+          grep -E "Tests[[:space:]]+3 failed" /tmp/habit-review-historical-red.log
+      - name: Checkout exact current head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install current frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Check current focused formatting
+        run: pnpm exec prettier --check apps/habit-service/src/postgres-habit-repository.ts apps/habit-service/src/habit-review-projection-hostile-sql.test.ts apps/habit-service/src/habit-review-projection-postgres.test.ts
+      - name: Prove current hostile-evidence GREEN
+        run: pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-hostile-sql.test.ts src/habit-review-projection-postgres.test.ts
+      - name: Typecheck Habit
+        run: pnpm --filter @life-os/habit-service typecheck
