@@ -43,6 +43,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Frozen pnpm installs now authorize dependency lifecycle scripts only for the reviewed `opencode-ai` and locked Vite dependency `esbuild`; `strictDepBuilds` makes any newly requested unreviewed dependency script fail installation instead of remaining a warning.
 - Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
 - Calendar local disconnect never accepts client-selected ownership as authority, never reads provider secret handles, revalidates durable revocation evidence against the signed workspace+user context, and maps absent or differently owned connections to the same public not-found result.
