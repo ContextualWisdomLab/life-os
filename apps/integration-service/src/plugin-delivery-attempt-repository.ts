@@ -57,14 +57,17 @@ interface PluginDeliveryAttemptRow {
   last_outcome_code: unknown;
 }
 
+/** Fails closed on malformed command data without reflecting the rejected value. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptPersistenceValidationError();
 }
 
+/** Fails closed on malformed durable evidence without reflecting backend data. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptPersistenceEvidenceError();
 }
 
+/** Reads one hostile persistence value while collapsing accessor failures. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -73,6 +76,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Canonicalizes a caller-owned UUIDv4 before persistence. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -80,6 +84,7 @@ function requireInputUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires canonical lowercase UUIDv4 evidence from persistence. */
 function requireStoredUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -91,6 +96,7 @@ function requireStoredUuid(value: unknown): string {
   return canonical;
 }
 
+/** Requires one canonical caller-owned millisecond UTC instant. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -102,6 +108,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes one stored Date/string instant through the bounded evidence seam. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -119,6 +126,7 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Requires one bounded integer and maps failure to the owning input/evidence boundary. */
 function requireSmallInteger(
   value: unknown,
   minimum: number,
@@ -136,31 +144,39 @@ function requireSmallInteger(
   return value;
 }
 
+/** Accepts only a coherent zero-or-one-row SQL result using single-observation evidence. */
 function oneOrUndefined<Row>(
   result: PluginDeliveryAttemptSqlResult<Row>,
 ): Row | undefined {
-  if (result === null || typeof result !== 'object' || Array.isArray(result)) {
+  const resultIsRecord = boundedEvidenceRead(
+    () =>
+      result !== null && typeof result === 'object' && !Array.isArray(result),
+  );
+  if (!resultIsRecord) {
     return invalidEvidence();
   }
   const [rows, rowCount] = boundedEvidenceRead(
     () => [result.rows, result.rowCount] as const,
   );
+  const rowCountSnapshot = boundedEvidenceRead(() => {
+    if (!Array.isArray(rows)) return invalidEvidence();
+    return rows.length;
+  });
   if (
-    !Array.isArray(rows) ||
     typeof rowCount !== 'number' ||
     !Number.isInteger(rowCount) ||
     rowCount < 0 ||
-    rowCount !== rows.length ||
-    rows.length > 1
+    rowCount !== rowCountSnapshot ||
+    rowCountSnapshot > 1
   ) {
     return invalidEvidence();
   }
-  if (rows.length === 1 && rows[0] === undefined) {
-    return invalidEvidence();
-  }
-  return rows[0];
+  if (rowCountSnapshot === 0) return undefined;
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
+/** Validates and freezes the pending admission candidate before issuing SQL. */
 function validateCreate(
   record: PluginDeliveryAttemptRecord,
 ): PluginDeliveryAttemptRecord {
@@ -203,8 +219,12 @@ function validateCreate(
   });
 }
 
+/** Snapshots and validates one durable SQL row before it becomes application evidence. */
 function parseRow(row: unknown): PluginDeliveryAttemptRecord {
-  if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+  const rowIsRecord = boundedEvidenceRead(
+    () => row !== null && typeof row === 'object' && !Array.isArray(row),
+  );
+  if (!rowIsRecord) {
     return invalidEvidence();
   }
   const candidate = row as PluginDeliveryAttemptRow;
