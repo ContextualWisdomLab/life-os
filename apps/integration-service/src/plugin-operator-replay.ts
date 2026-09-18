@@ -48,6 +48,15 @@ function invalid(): never {
   throw new PluginOperatorReplayValidationError();
 }
 
+/** Collapses hostile caller or SQL evidence access to the fixed credential-free error. */
+function boundedReplayEvidenceRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    return invalid();
+  }
+}
+
 /** Requires a canonical UUIDv4 evidence identity. */
 function evidenceId(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
@@ -72,13 +81,16 @@ function instant(value: unknown): string {
 function replayEvidence(
   value: PluginOperatorReplayEvidence,
 ): PluginOperatorReplayEvidence {
-  const consumedAt = instant(value.consumedAt);
-  const expiresAt = instant(value.expiresAt);
+  const rawEvidenceId = boundedReplayEvidenceRead(() => value.evidenceId);
+  const rawConsumedAt = boundedReplayEvidenceRead(() => value.consumedAt);
+  const rawExpiresAt = boundedReplayEvidenceRead(() => value.expiresAt);
+  const consumedAt = instant(rawConsumedAt);
+  const expiresAt = instant(rawExpiresAt);
   if (new Date(expiresAt).getTime() < new Date(consumedAt).getTime()) {
     return invalid();
   }
   return Object.freeze({
-    evidenceId: evidenceId(value.evidenceId),
+    evidenceId: evidenceId(rawEvidenceId),
     consumedAt,
     expiresAt,
   });
@@ -108,13 +120,21 @@ export class PostgresPluginOperatorReplayGuard implements PluginOperatorReplayGu
        ) AS consumed`,
       [safe.evidenceId, safe.consumedAt, safe.expiresAt],
     );
-    if (
-      result.rowCount !== 1 ||
-      result.rows.length !== 1 ||
-      typeof result.rows[0]?.consumed !== 'boolean'
-    ) {
+    const rows = boundedReplayEvidenceRead(() => result.rows);
+    const rowCount = boundedReplayEvidenceRead(() => result.rowCount);
+    const rowsAreArray = boundedReplayEvidenceRead(() => Array.isArray(rows));
+    if (!rowsAreArray) {
       return invalid();
     }
-    return result.rows[0].consumed;
+    const rowsLength = boundedReplayEvidenceRead(() => rows.length);
+    if (rowCount !== 1 || rowsLength !== 1) {
+      return invalid();
+    }
+    const row = boundedReplayEvidenceRead(() => rows[0]);
+    const consumed = boundedReplayEvidenceRead(() => row?.consumed);
+    if (typeof consumed !== 'boolean') {
+      return invalid();
+    }
+    return consumed;
   }
 }

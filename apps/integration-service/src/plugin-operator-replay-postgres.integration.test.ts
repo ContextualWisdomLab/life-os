@@ -102,6 +102,35 @@ describeWithPostgres(
       }
     });
 
+    it('rejects evidence that is already expired at the PostgreSQL authority boundary', async () => {
+      const evidenceId = randomUUID();
+      try {
+        const consumeExpired = async () => {
+          const result = await pool.query<ConsumedRow>(
+            `SELECT plugin_integration.consume_plugin_operator_context_replay(
+               $1::uuid,
+               now() - interval '2 seconds',
+               now() - interval '1 second'
+             ) AS consumed`,
+            [evidenceId],
+          );
+          return result.rows[0]?.consumed === true;
+        };
+
+        await expect(consumeExpired()).resolves.toBe(false);
+        await expect(consumeExpired()).resolves.toBe(false);
+        const persisted = await pool.query<{ count: string }>(
+          `SELECT count(*)::text AS count
+           FROM plugin_integration.plugin_operator_context_replay_record
+           WHERE evidence_id = $1::uuid`,
+          [evidenceId],
+        );
+        expect(persisted.rows[0]?.count).toBe('0');
+      } finally {
+        await deleteEvidence([evidenceId]);
+      }
+    });
+
     it('replaces expired evidence once without allowing a second current winner', async () => {
       const evidenceId = randomUUID();
       try {
@@ -123,6 +152,10 @@ describeWithPostgres(
       const winnerId = randomUUID();
       const expiredIds = Array.from({ length: 40 }, () => randomUUID());
       try {
+        await pool.query(
+          `DELETE FROM plugin_integration.plugin_operator_context_replay_record
+           WHERE expires_at < now()`,
+        );
         await pool.query(
           `INSERT INTO plugin_integration.plugin_operator_context_replay_record (
              evidence_id, consumed_at, expires_at

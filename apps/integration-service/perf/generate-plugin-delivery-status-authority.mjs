@@ -15,7 +15,9 @@ function fail(message) {
 function iterations(value) {
   const parsed = value === undefined ? DEFAULT_ITERATIONS : Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_ITERATIONS) {
-    return fail('K6_ITERATIONS must be an integer between 1 and 10000');
+    return fail(
+      'LIFEOS_PERF_ITERATIONS must be an integer between 1 and 10000',
+    );
   }
   return parsed;
 }
@@ -34,7 +36,7 @@ if (!outputPath) {
   fail('authority output path is required');
 }
 
-const count = iterations(process.env.K6_ITERATIONS);
+const count = iterations(process.env.LIFEOS_PERF_ITERATIONS);
 const contextSecret = secret(process.env.INTEGRATION_OPERATOR_CONTEXT_SECRET);
 const issuedAt = String(Math.floor(Date.now() / 1000));
 const authorities = Array.from({ length: count }, () => {
@@ -61,5 +63,6 @@ const authorities = Array.from({ length: count }, () => {
 
 await writeFile(outputPath, `${JSON.stringify(authorities)}\n`, {
   encoding: 'utf8',
+  flag: 'wx',
   mode: 0o600,
 });

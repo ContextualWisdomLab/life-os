@@ -116,6 +116,29 @@ describe('PostgresPluginOperatorReplayGuard', () => {
     }
   });
 
+  it('fails closed before SQL when replay request evidence access is hostile', async () => {
+    const revokedEvidence = Proxy.revocable(evidence(), {});
+    revokedEvidence.revoke();
+    const throwingEvidence = {
+      get evidenceId(): string {
+        throw new Error('password=must-not-escape-replay-request-evidence');
+      },
+      consumedAt: CONSUMED_AT,
+      expiresAt: EXPIRES_AT,
+    };
+
+    for (const candidate of [revokedEvidence.proxy, throwingEvidence]) {
+      const client = new ScriptedSqlClient([]);
+      const guard = new PostgresPluginOperatorReplayGuard(client);
+
+      await expect(guard.consume(candidate)).rejects.toMatchObject({
+        name: 'PluginOperatorReplayValidationError',
+        message: 'Plugin operator replay evidence is invalid',
+      });
+      expect(client.queries).toHaveLength(0);
+    }
+  });
+
   it('rejects ambiguous or corrupted consume evidence instead of granting authority', async () => {
     for (const result of [
       { rows: [{ consumed: true }], rowCount: null },
@@ -132,6 +155,60 @@ describe('PostgresPluginOperatorReplayGuard', () => {
       await expect(guard.consume(evidence())).rejects.toBeInstanceOf(
         PluginOperatorReplayValidationError,
       );
+      expect(client.queries).toHaveLength(1);
+    }
+  });
+
+  it('observes hostile replay SQL rows once before granting consume authority', async () => {
+    let rowsReads = 0;
+    const result = {
+      rowCount: 1,
+      get rows(): readonly unknown[] {
+        rowsReads += 1;
+        return rowsReads === 1
+          ? [{ consumed: 'not-a-boolean' }]
+          : [{ consumed: true }];
+      },
+    } satisfies PluginOperatorReplaySqlResult<unknown>;
+    const client = new ScriptedSqlClient([result]);
+    const guard = new PostgresPluginOperatorReplayGuard(client);
+
+    await expect(guard.consume(evidence())).rejects.toBeInstanceOf(
+      PluginOperatorReplayValidationError,
+    );
+    expect(rowsReads).toBe(1);
+    expect(client.queries).toHaveLength(1);
+  });
+
+  it('fails closed when replay SQL collection or row access is revoked', async () => {
+    const revokedRows = Proxy.revocable([{ consumed: true }], {});
+    revokedRows.revoke();
+    const revokedRow = Proxy.revocable({ consumed: true }, {});
+    revokedRow.revoke();
+
+    for (const result of [
+      {
+        rows: revokedRows.proxy as unknown as readonly unknown[],
+        rowCount: 1,
+      },
+      {
+        rows: [revokedRow.proxy],
+        rowCount: 1,
+      },
+      {
+        rowCount: 1,
+        get rows(): readonly unknown[] {
+          throw new Error('password=must-not-escape-replay-sql-evidence');
+        },
+      },
+    ] satisfies readonly PluginOperatorReplaySqlResult<unknown>[]) {
+      const client = new ScriptedSqlClient([result]);
+      const guard = new PostgresPluginOperatorReplayGuard(client);
+
+      await expect(guard.consume(evidence())).rejects.toMatchObject({
+        name: 'PluginOperatorReplayValidationError',
+        message: 'Plugin operator replay evidence is invalid',
+      });
       expect(client.queries).toHaveLength(1);
     }
   });
