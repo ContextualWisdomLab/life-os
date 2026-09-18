@@ -77,7 +77,9 @@ export function canonicalPluginDeliveryAttemptRetryAt(
     INITIAL_RETRY_BACKOFF_MILLISECONDS * 2 ** exponent,
     MAXIMUM_RETRY_BACKOFF_MILLISECONDS,
   );
-  return new Date(new Date(updatedAt).getTime() + delayMilliseconds).toISOString();
+  return new Date(
+    new Date(updatedAt).getTime() + delayMilliseconds,
+  ).toISOString();
 }
 
 function invalid(): never {
