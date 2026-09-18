@@ -9,6 +9,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { HabitDataRightsResponse } from './habit-data-rights';
@@ -20,9 +21,16 @@ import type {
   Habit,
   HabitCompletionEvent,
   HabitOccurrence,
+  HabitReviewWeekProjection,
   HabitTodayStatus,
 } from './habit-domain';
 import { HabitService } from './habit-domain';
+import {
+  type HabitReviewProjectionHttpRequest,
+  requireExactReviewProjectionHttpBinding,
+  requireReviewPeriodStartDate,
+  requireTrustedReviewProjectionContext,
+} from './habit-request-bound-context';
 import { createHabitRuntime, HabitRuntime } from './habit-runtime';
 import {
   parseCompleteHabitRequest,
@@ -101,6 +109,29 @@ export class HabitController {
           process.env.HABIT_GATEWAY_CONTEXT_SECRET,
         ),
         localDate ?? '',
+      );
+    } catch (error) {
+      throw toHabitHttpException(error);
+    }
+  }
+
+  /** Returns bounded Habit-owned Weekly Review evidence to trusted server callers. */
+  @Get('habits/review-projection')
+  async projectReviewWeek(
+    @Req() request: HabitReviewProjectionHttpRequest,
+    @Headers('x-life-os-workspace-id') workspaceId: string | undefined,
+    @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
+    @Headers('x-life-os-context-signature') signature: string | undefined,
+    @Query('periodStartDate') periodStartDate: string | undefined,
+  ): Promise<HabitReviewWeekProjection> {
+    try {
+      return await this.habitService.projectReviewWeek(
+        requireTrustedReviewProjectionContext(
+          { workspaceId, issuedAt, signature },
+          process.env.HABIT_GATEWAY_CONTEXT_SECRET,
+          requireExactReviewProjectionHttpBinding(request),
+        ),
+        requireReviewPeriodStartDate(periodStartDate),
       );
     } catch (error) {
       throw toHabitHttpException(error);

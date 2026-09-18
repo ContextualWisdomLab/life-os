@@ -3,6 +3,8 @@ import type {
   HabitCompletionEvent,
   HabitRecurrence,
   HabitRepository,
+  HabitReviewCompletionEvidence,
+  HabitReviewWeekEvidence,
   IsoWeekday,
 } from './habit-domain';
 
@@ -41,6 +43,12 @@ interface CompletionRow {
   recorded_at: unknown;
 }
 
+interface ReviewProjectionRow extends HabitRow {
+  completion_workspace_id: unknown;
+  completion_habit_id: unknown;
+  completion_scheduled_local_date: unknown;
+}
+
 interface PostgreSqlErrorShape {
   code?: unknown;
   constraint?: unknown;
@@ -52,6 +60,8 @@ const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const IDEMPOTENCY_CONSTRAINT = 'completion_events_idempotency_unique';
+const MILLISECONDS_PER_DAY = 86_400_000;
+const REVIEW_WEEK_DAYS = 7;
 
 /** Safe public failure for malformed rows and database transport errors. */
 export class HabitPersistenceError extends Error {
@@ -71,6 +81,59 @@ export class HabitIdempotencyConflictError extends Error {
 
 function invalidRow(): never {
   throw new HabitPersistenceError();
+}
+
+/** Bounds hostile Weekly Review persistence evidence to the stable repository error contract. */
+function boundedReviewEvidenceRead<T>(read: () => T): T {
+  try {
+    return read();
+  } catch {
+    throw new HabitPersistenceError();
+  }
+}
+
+/** Snapshots one bounded Weekly Review SQL result before semantic validation. */
+function snapshotReviewProjectionRows(
+  result: HabitSqlQueryResult<ReviewProjectionRow>,
+  maximumRows: number,
+): ReviewProjectionRow[] {
+  return boundedReviewEvidenceRead(() => {
+    const rows = result.rows;
+    if (!Array.isArray(rows)) {
+      return invalidRow();
+    }
+    const rowCount = rows.length;
+    if (
+      !Number.isSafeInteger(rowCount) ||
+      rowCount < 0 ||
+      rowCount > maximumRows
+    ) {
+      return invalidRow();
+    }
+
+    const snapshot: ReviewProjectionRow[] = [];
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = rows[index];
+      if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+        return invalidRow();
+      }
+      snapshot.push({
+        id: row.id,
+        workspace_id: row.workspace_id,
+        title: row.title,
+        timezone_name: row.timezone_name,
+        recurrence_kind: row.recurrence_kind,
+        recurrence_interval: row.recurrence_interval,
+        weekday_mask: row.weekday_mask,
+        starts_on: row.starts_on,
+        created_at: row.created_at,
+        completion_workspace_id: row.completion_workspace_id,
+        completion_habit_id: row.completion_habit_id,
+        completion_scheduled_local_date: row.completion_scheduled_local_date,
+      });
+    }
+    return snapshot;
+  });
 }
 
 function requireUuidV4(value: unknown): string {
@@ -412,6 +475,122 @@ export class PostgresHabitRepository implements HabitRepository {
       [safeWorkspaceId],
     );
     return result.rows.map((row) => parseHabit(row, safeWorkspaceId));
+  }
+
+  /** Reads one tenant week in a single bounded statement to avoid N+1 history scans. */
+  async readReviewWeekEvidence(
+    workspaceId: string,
+    periodStartDate: string,
+    periodEndDate: string,
+    maximumHabits: number,
+    asOf: string,
+  ): Promise<HabitReviewWeekEvidence> {
+    const safeWorkspaceId = requireUuidV4(workspaceId);
+    const safePeriodStartDate = requireLocalDate(periodStartDate);
+    const safePeriodEndDate = requireLocalDate(periodEndDate);
+    const safeAsOf = requireTimestamp(asOf);
+    const periodStartWeekday = new Date(
+      `${safePeriodStartDate}T00:00:00.000Z`,
+    ).getUTCDay();
+    const daySpan =
+      (Date.parse(`${safePeriodEndDate}T00:00:00.000Z`) -
+        Date.parse(`${safePeriodStartDate}T00:00:00.000Z`)) /
+      MILLISECONDS_PER_DAY;
+    const safeMaximumHabits = requireInteger(maximumHabits, 1, 100);
+    if (periodStartWeekday !== 1 || daySpan !== REVIEW_WEEK_DAYS - 1) {
+      return invalidRow();
+    }
+    const queryLimit = safeMaximumHabits + 1;
+    const result = await this.query<ReviewProjectionRow>(
+      `WITH bounded_habits AS (
+         SELECT id, workspace_id, title, timezone_name, recurrence_kind,
+                recurrence_interval, weekday_mask, starts_on, created_at
+         FROM habit.habit_definitions
+         WHERE workspace_id = $1
+           AND created_at <= $4::timestamptz
+         ORDER BY created_at ASC, id ASC
+         LIMIT $5
+       )
+       SELECT h.id, h.workspace_id, h.title, h.timezone_name,
+              h.recurrence_kind, h.recurrence_interval, h.weekday_mask,
+              h.starts_on, h.created_at,
+              completion.workspace_id AS completion_workspace_id,
+              completion.habit_id AS completion_habit_id,
+              completion.scheduled_local_date AS completion_scheduled_local_date
+       FROM bounded_habits AS h
+       LEFT JOIN LATERAL (
+         SELECT DISTINCT ON (scheduled_local_date)
+                workspace_id, habit_id, scheduled_local_date
+         FROM habit.completion_events
+         WHERE workspace_id = h.workspace_id
+           AND habit_id = h.id
+           AND scheduled_local_date BETWEEN $2::date AND $3::date
+           AND recorded_at <= $4::timestamptz
+         ORDER BY scheduled_local_date ASC, recorded_at ASC, id ASC
+       ) AS completion ON TRUE
+       ORDER BY h.created_at ASC, h.id ASC,
+                completion.scheduled_local_date ASC`,
+      [
+        safeWorkspaceId,
+        safePeriodStartDate,
+        safePeriodEndDate,
+        safeAsOf,
+        queryLimit,
+      ],
+    );
+    const rows = snapshotReviewProjectionRows(
+      result,
+      queryLimit * REVIEW_WEEK_DAYS,
+    );
+
+    return boundedReviewEvidenceRead(() => {
+      const habitsById = new Map<string, Habit>();
+      const completions: HabitReviewCompletionEvidence[] = [];
+      for (const row of rows) {
+        const habit = parseHabit(row, safeWorkspaceId);
+        const existing = habitsById.get(habit.id);
+        if (existing && JSON.stringify(existing) !== JSON.stringify(habit)) {
+          return invalidRow();
+        }
+        habitsById.set(habit.id, habit);
+        if (habitsById.size > safeMaximumHabits) {
+          return invalidRow();
+        }
+
+        const completionFields = [
+          row.completion_workspace_id,
+          row.completion_habit_id,
+          row.completion_scheduled_local_date,
+        ];
+        if (completionFields.every((value) => value === null)) {
+          continue;
+        }
+        if (completionFields.some((value) => value === null)) {
+          return invalidRow();
+        }
+        const completionWorkspaceId = requireUuidV4(
+          row.completion_workspace_id,
+        );
+        const completionHabitId = requireUuidV4(row.completion_habit_id);
+        const scheduledLocalDate = requireLocalDate(
+          row.completion_scheduled_local_date,
+        );
+        requireExpected(completionWorkspaceId, safeWorkspaceId);
+        requireExpected(completionHabitId, habit.id);
+        if (
+          scheduledLocalDate < safePeriodStartDate ||
+          scheduledLocalDate > safePeriodEndDate
+        ) {
+          return invalidRow();
+        }
+        completions.push({
+          workspaceId: completionWorkspaceId,
+          habitId: completionHabitId,
+          scheduledLocalDate,
+        });
+      }
+      return { habits: [...habitsById.values()], completions };
+    });
   }
 
   async appendCompletion(
