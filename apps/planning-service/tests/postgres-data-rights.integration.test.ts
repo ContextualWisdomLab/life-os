@@ -106,10 +106,19 @@ async function seedWorkspace(pool: Pool): Promise<void> {
     [taskId, WORKSPACE_ID, projectId],
   );
   await pool.query(
-    `INSERT INTO planning.task_completion_facts
+    `WITH transitioned_task AS (
+       UPDATE planning.tasks
+          SET status = 'done',
+              completed_at = TIMESTAMPTZ '2026-08-10T12:00:00.000Z'
+        WHERE id = $1
+          AND workspace_id = $2
+        RETURNING id, workspace_id, completed_at
+     )
+     INSERT INTO planning.task_completion_facts
        (completion_fact_id, workspace_id, task_id, completed_at)
-     VALUES ($1, $2, $3, TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
-    [completionFactId, WORKSPACE_ID, taskId],
+     SELECT $3, workspace_id, id, completed_at
+       FROM transitioned_task`,
+    [taskId, WORKSPACE_ID, completionFactId],
   );
   await pool.query(
     `INSERT INTO planning.today_aggregates
