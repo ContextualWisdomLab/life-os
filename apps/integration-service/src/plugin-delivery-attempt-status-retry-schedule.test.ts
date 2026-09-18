@@ -149,7 +149,9 @@ describe('plugin delivery-attempt status retry-schedule authority', () => {
   it('rejects persisted unclaimed retry evidence whose schedule cannot be produced by the retry aggregate', async () => {
     await expect(
       postgresStore(IMPOSSIBLE_NEXT_ATTEMPT_AT).read(command()),
-    ).rejects.toEqual(new PluginDeliveryAttemptStatusPersistenceEvidenceError());
+    ).rejects.toEqual(
+      new PluginDeliveryAttemptStatusPersistenceEvidenceError(),
+    );
   });
 
   it('accepts persisted no-control retry evidence with the canonical deterministic instant', async () => {
@@ -161,12 +163,12 @@ describe('plugin delivery-attempt status retry-schedule authority', () => {
   });
 
   it('preserves persisted control-transition timing without requiring aggregate backoff', async () => {
-    await expect(postgresStore(UPDATED_AT, 1).read(command())).resolves.toMatchObject(
-      {
-        nextAttemptAt: UPDATED_AT,
-        controlSequence: 1,
-        claimState: 'unclaimed',
-      },
-    );
+    await expect(
+      postgresStore(UPDATED_AT, 1).read(command()),
+    ).resolves.toMatchObject({
+      nextAttemptAt: UPDATED_AT,
+      controlSequence: 1,
+      claimState: 'unclaimed',
+    });
   });
 });
