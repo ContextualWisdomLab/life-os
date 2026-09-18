@@ -7,6 +7,39 @@
 
 This baseline separates protected shipped truth from active or work-in-progress evidence. A branch, mergeable PR, test source, queued check, successful predecessor run, or documentation claim is not shipped capability. Exact unchanged-head evidence must integrate through the live protected-branch policy before promotion.
 
+<!-- life-os-live-currentness:start -->
+> **Live currentness override — 2026-09-18T15:56:56Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
+>
+> Protected `main`: `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`.
+>
+> PR #211: head `24ddb0ca9f6e695e11341629fdf5929abfe2fbed`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Commercial Readiness `35328843323` queued.
+>
+> PR #252: head `e67fa3de97cde2331e2ea771b6150b84c0d986b1`, base `39ebec99d907356a99a1a15528a3a1df713472ed`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
+>
+> PR #253: head `23d74a1f15b082f9be3daca35f5991e34f124dc7`, base `e67fa3de97cde2331e2ea771b6150b84c0d986b1`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
+>
+> PR #254: head `553d0a0a007777eb7c236b494fd623f95071bad3`, base `23d74a1f15b082f9be3daca35f5991e34f124dc7`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Plugin Delivery Retry Restack `35328188148` success.
+>
+> PR #258: head `1af826cdf4a7cc1f5c9e524676da1f849040ff16`, base `5ac3d2fcdf30e97be006405cf599f3d666cf5946`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Plugin Delivery Status Row Collection `35328491447` queued.
+>
+> PR #260: head `840c9c2bcaa2de9a1655e7be639d91dbaa4636fe`, base `097267ddf583b6d4d93047ff8bcfba089b1e979e`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
+>
+> PR #261: head `ccf63c5fbcdce3b172647034b99ef25e11366e0b`, base `840c9c2bcaa2de9a1655e7be639d91dbaa4636fe`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Integration coverage `35323084996` success.
+>
+> PR #264: head `b6911eb765e624ae9a9841426ef42a0ec1fd9414`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CodeQL PR `35348119784` queued.
+>
+> PR #269: head `3a08b6792988cf5bd9d89e1f100b67a6e114fe41`, base `1599d17623641650661a44b15187c9a0e4b474b4`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
+>
+> PR #273: head `d4464892f13d7682948d3e6af372d26ab3eda067`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Commercial Readiness `35313577217` failure.
+>
+> PR #281: head `56d5d0e0a978610da502ccdd4ca49d577b89d6f4`, base `24ad8bf87404452f66baf66d3d3a99e2632b419e`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Habit Definition History `35280618667` failure.
+>
+> PR #282: head `1afce042374080b6f3cbeb4b9d80ec65984a0d83`, base `7334fe218bf82f7192a8f5e2dc0bcfcf5fd8a327`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Habit Rule Change Authority `35254098184` failure.
+>
+> PR #283: head `c88cf760f2946c4e1a5426734f3e80bd46e9a093`, base `3a08b6792988cf5bd9d89e1f100b67a6e114fe41`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Planning Task Due Authority `35340826214` queued.
+>
+> Mutable sibling heads and unreleased external owner contracts remain non-consumable; predecessor GREEN remains ancestry evidence only after any head/base movement.
+<!-- life-os-live-currentness:end -->
 > **Currentness override — 2026-09-17 active buyer-gap and foundation stacks.** This override supersedes conflicting active-currentness claims below while preserving every older paragraph as dated audit evidence. Protected `main` remains `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`; none of the active heads named here are shipped truth.
 >
 > Integration performance #260 is exact `4794e341b34f0bce068f04821fd636960302df17` on #259 `097267ddf583b6d4d93047ff8bcfba089b1e979e`. Exact k6 run `35169071429` and replay-SQL snapshot run `35169071450` are queued/non-terminal. The latest valid buyer-path performance evidence on this lineage remains predecessor `ad75adc421a8df46575f9f0442dc3dcb7acf4f39` at p95 **189.78 ms** with 1,000/1,000 signed HTTPS requests, 3,000/3,000 checks and zero HTTP failures. Later predecessor `a149cc8908690ac0095fec636a0daf7f475b22e2` / run `35150650087` reached a hosted runner but failed only on focused profiler Prettier before PostgreSQL/TLS/k6; current `4794e341...` is the formatting-only ordinary repair. No current-head p95/GREEN, verifier retirement, merge or release is claimed.
