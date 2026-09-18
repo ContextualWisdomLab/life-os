@@ -35,7 +35,6 @@ import {
 import type {
   Goal,
   Project,
-  Task,
   TaskWithDueAuthority,
 } from './planning-domain';
 import { PlanningService } from './planning-domain';
@@ -340,7 +339,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
-  ): Promise<Task[]> {
+  ): Promise<TaskWithDueAuthority[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
