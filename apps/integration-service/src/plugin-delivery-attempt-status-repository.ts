@@ -1,7 +1,8 @@
-import type {
-  PluginDeliveryAttemptStatusCommand,
-  PluginDeliveryAttemptStatusEvidence,
-  PluginDeliveryAttemptStatusStore,
+import {
+  canonicalPluginDeliveryAttemptRetryAt,
+  type PluginDeliveryAttemptStatusCommand,
+  type PluginDeliveryAttemptStatusEvidence,
+  type PluginDeliveryAttemptStatusStore,
 } from './plugin-delivery-attempt-status';
 
 const ATTEMPT_AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt.v1' as const;
@@ -171,35 +172,39 @@ function oneOrUndefined<Row>(
     () => [envelope.rows, envelope.rowCount] as const,
   );
   return boundedEvidenceRead(() => {
+    if (!Array.isArray(rows)) {
+      return invalidEvidence();
+    }
+    const rowsLength = rows.length;
     if (
-      !Array.isArray(rows) ||
       typeof rowCount !== 'number' ||
       !Number.isInteger(rowCount) ||
       rowCount < 0 ||
-      rowCount !== rows.length ||
-      rows.length > 1
+      rowCount !== rowsLength ||
+      rowsLength > 1
     ) {
       return invalidEvidence();
     }
-    if (rows.length === 1 && rows[0] === undefined) {
-      return invalidEvidence();
+    if (rowsLength === 0) {
+      return undefined;
     }
-    return rows[0] as Row | undefined;
+    const row = rows[0];
+    return row === undefined ? invalidEvidence() : (row as Row);
   });
 }
 
 function validateCommand(
   command: PluginDeliveryAttemptStatusCommand,
 ): PluginDeliveryAttemptStatusCommand {
-  if (
-    command === null ||
-    typeof command !== 'object' ||
-    Array.isArray(command)
-  ) {
-    return invalidInput();
-  }
   const snapshot = (() => {
     try {
+      if (
+        command === null ||
+        typeof command !== 'object' ||
+        Array.isArray(command)
+      ) {
+        return invalidInput();
+      }
       return {
         deliveryId: command.deliveryId,
         workspaceId: command.workspaceId,
@@ -444,6 +449,23 @@ function parseRow(
     lastOutcomeCode,
     claim.claimed,
   );
+
+  const uncontrolledScheduledRetry =
+    deliveryStatus === 'pending' &&
+    attemptCount >= 1 &&
+    attemptCount < maxAttempts &&
+    nextAttemptAt !== null &&
+    terminalAt === null &&
+    lastOutcomeCode === 'retryable_failure' &&
+    !claim.claimed &&
+    controlSequence === 0;
+  if (
+    uncontrolledScheduledRetry &&
+    nextAttemptAt !==
+      canonicalPluginDeliveryAttemptRetryAt(updatedAt, attemptCount)
+  ) {
+    return invalidEvidence();
+  }
 
   return Object.freeze({
     authorityVersion: STATUS_AUTHORITY_VERSION,
