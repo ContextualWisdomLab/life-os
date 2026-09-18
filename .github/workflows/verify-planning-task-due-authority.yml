@@ -45,6 +45,7 @@ jobs:
       - name: Check focused formatting
         run: >-
           pnpm exec prettier --single-quote --check
+          apps/planning-service/src/main.ts
           apps/planning-service/src/planning-domain.ts
           apps/planning-service/src/planning-runtime.ts
           apps/planning-service/src/task-due-authority.ts
