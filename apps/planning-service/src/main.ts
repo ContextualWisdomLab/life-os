@@ -32,11 +32,7 @@ import {
   parseTrustedPlanningDataRightsRequest,
   toPlanningDataRightsHttpException,
 } from './planning-data-rights-http-boundary';
-import type {
-  Goal,
-  Project,
-  TaskWithDueAuthority,
-} from './planning-domain';
+import type { Goal, Project, TaskWithDueAuthority } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 import type { PlanningSearchResult } from './search';
