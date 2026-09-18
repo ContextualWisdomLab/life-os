@@ -5,7 +5,6 @@ import type {
 import {
   PlanningPersistenceError,
   PostgresPlanningRepository,
-  type PlanningSqlClient,
 } from './postgres-planning-repository';
 import type { TodayTransactionalSqlClient } from './postgres-today-repository';
 
@@ -24,7 +23,12 @@ function parsePersistedDueAt(value: unknown): string | null {
   if (value === null) {
     return null;
   }
-  const parsed = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
+  const parsed =
+    value instanceof Date
+      ? value
+      : typeof value === 'string'
+        ? new Date(value)
+        : null;
   if (!parsed || Number.isNaN(parsed.getTime())) {
     return invalidDueAuthority();
   }
