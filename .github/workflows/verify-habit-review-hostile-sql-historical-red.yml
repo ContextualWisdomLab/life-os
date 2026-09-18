@@ -31,18 +31,30 @@ jobs:
         run: corepack enable
       - name: Install historical frozen workspace
         run: pnpm install --frozen-lockfile
-      - name: Prove historical hostile-evidence RED
+      - name: Prove historical hostile-evidence boundary
         shell: bash
         run: |
           set +e
-          pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-hostile-sql.test.ts --reporter=verbose 2>&1 | tee /tmp/habit-review-historical-red.log
-          status=${PIPESTATUS[0]}
+          pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-hostile-sql.test.ts -t "collapses a revoked query-result envelope before reading rows" --reporter=verbose 2>&1 | tee /tmp/habit-review-envelope.log
+          envelope_status=${PIPESTATUS[0]}
+          pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-hostile-sql.test.ts -t "collapses a revoked row collection before reading cardinality" --reporter=verbose 2>&1 | tee /tmp/habit-review-rows.log
+          rows_status=${PIPESTATUS[0]}
+          pnpm --filter @life-os/habit-service exec vitest run src/habit-review-projection-hostile-sql.test.ts -t "collapses a revoked durable row before reading Habit authority fields" --reporter=verbose 2>&1 | tee /tmp/habit-review-row.log
+          row_status=${PIPESTATUS[0]}
           set -e
-          test "$status" -ne 0
-          grep -F "collapses a revoked query-result envelope before reading rows" /tmp/habit-review-historical-red.log
-          grep -F "collapses a revoked row collection before reading cardinality" /tmp/habit-review-historical-red.log
-          grep -F "collapses a revoked durable row before reading Habit authority fields" /tmp/habit-review-historical-red.log
-          grep -E "Tests[[:space:]]+3 failed" /tmp/habit-review-historical-red.log
+
+          # Promise resolution probes `then` before the repository receives a
+          # resolved object. A revoked top-level envelope is therefore already
+          # converted by the existing query-rejection boundary on this historical
+          # head; it is retained as a GREEN boundary control, not mislabelled RED.
+          test "$envelope_status" -eq 0
+
+          # The two post-resolution evidence shapes really reached repository
+          # property access and escaped native revoked-Proxy detail pre-repair.
+          test "$rows_status" -ne 0
+          test "$row_status" -ne 0
+          grep -F "proxy that has been revoked" /tmp/habit-review-rows.log
+          grep -F "proxy that has been revoked" /tmp/habit-review-row.log
       - name: Checkout exact current head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         env:
