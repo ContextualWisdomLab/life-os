@@ -50,11 +50,15 @@ jobs:
           test "$envelope_status" -eq 0
 
           # The two post-resolution evidence shapes really reached repository
-          # property access and escaped native revoked-Proxy detail pre-repair.
+          # property access and escaped a native TypeError pre-repair. Vitest 3
+          # abbreviates the native revoked-Proxy message in verbose output, so
+          # assert the stable reporter facts instead of grepping truncated text.
           test "$rows_status" -ne 0
           test "$row_status" -ne 0
-          grep -F "proxy that has been revoked" /tmp/habit-review-rows.log
-          grep -F "proxy that has been revoked" /tmp/habit-review-row.log
+          grep -F "expected TypeError:" /tmp/habit-review-rows.log
+          grep -F "to be an instance of HabitPersistenceError" /tmp/habit-review-rows.log
+          grep -F "expected TypeError:" /tmp/habit-review-row.log
+          grep -F "to be an instance of HabitPersistenceError" /tmp/habit-review-row.log
       - name: Checkout exact current head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         env:
