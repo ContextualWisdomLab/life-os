@@ -66,10 +66,12 @@ export interface SchedulePluginDeliveryAttemptInput {
   readonly maxAttempts: number;
 }
 
+/** Fails closed without reflecting caller-controlled authority input. */
 function invalid(): never {
   throw new PluginDeliveryAttemptAuthorityError();
 }
 
+/** Reads one hostile JavaScript value while collapsing accessor failures to authority denial. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -78,6 +80,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Executes one dependency call without exposing backend rejection details. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -86,6 +89,14 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Safely classifies one object-shaped authority value, including revoked proxies. */
+function isObjectRecord(value: unknown): boolean {
+  return boundedRead(
+    () => value !== null && typeof value === 'object' && !Array.isArray(value),
+  );
+}
+
+/** Canonicalizes a caller-supplied UUIDv4 or fails before persistence. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -93,6 +104,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Accepts only canonical millisecond UTC instants used by the delivery-attempt contract. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -104,6 +116,7 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Captures the application clock as one canonical authority instant. */
 function currentInstant(now: () => Date): string {
   try {
     return requireInstant(now().toISOString());
@@ -112,8 +125,9 @@ function currentInstant(now: () => Date): string {
   }
 }
 
+/** Snapshots the trusted installation context before any authority comparison. */
 function requireContext(value: unknown): PluginInstallationContext {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObjectRecord(value)) {
     return invalid();
   }
   const context = value as PluginInstallationContext;
@@ -126,8 +140,9 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Snapshots and validates one scheduling command before dependencies observe it. */
 function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObjectRecord(value)) {
     return invalid();
   }
   const input = value as SchedulePluginDeliveryAttemptInput;
@@ -149,14 +164,16 @@ function requireInput(value: unknown): SchedulePluginDeliveryAttemptInput {
   });
 }
 
+/** Freezes the validated durable aggregate before it crosses the application boundary. */
 function freezeRecord(
   record: PluginDeliveryAttemptRecord,
 ): PluginDeliveryAttemptRecord {
   return Object.freeze({ ...record });
 }
 
+/** Validates and snapshots durable attempt evidence returned by the persistence owner. */
 function requireRecord(value: unknown): PluginDeliveryAttemptRecord {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObjectRecord(value)) {
     return invalid();
   }
   const record = value as PluginDeliveryAttemptRecord;
@@ -226,6 +243,7 @@ interface PluginDeliveryAttemptGrantEvidence {
   readonly revokedAt: null;
 }
 
+/** Proves that one grant is active for the exact installation, workspace and actor now. */
 function requireActiveGrant(
   grant: PluginDeliveryOriginGrantRecord | undefined,
   context: PluginInstallationContext,
@@ -268,6 +286,7 @@ function requireActiveGrant(
   });
 }
 
+/** Confirms replay evidence represents the same immutable admission request. */
 function sameAdmission(
   durable: PluginDeliveryAttemptRecord,
   candidate: PluginDeliveryAttemptRecord,
