@@ -190,18 +190,17 @@ export class PostgresTodayRepository implements TodayRepository {
       );
       const currentRow = oneOrUndefined(currentResult.rows);
       const current = currentRow
-        ? parseAggregateRow(
-            currentRow,
-            command.workspaceId,
-            command.draft.date,
-          )
+        ? parseAggregateRow(currentRow, command.workspaceId, command.draft.date)
         : undefined;
 
       if (command.precondition.kind === 'absent') {
         if (current) {
           throw new TodayRevisionConflictError(current.revision);
         }
-      } else if (!current || current.revision !== command.precondition.revision) {
+      } else if (
+        !current ||
+        current.revision !== command.precondition.revision
+      ) {
         throw new TodayRevisionConflictError(current?.revision ?? null);
       }
 
@@ -273,7 +272,10 @@ export class PostgresTodayRepository implements TodayRepository {
           JSON.stringify(command.draft),
         ],
       );
-      if (replayInsert.rows.length !== 1 || replayInsert.rows[0]?.stored !== true) {
+      if (
+        replayInsert.rows.length !== 1 ||
+        replayInsert.rows[0]?.stored !== true
+      ) {
         return invalidPersistence();
       }
 

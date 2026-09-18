@@ -196,6 +196,8 @@ describe('PostgresTaskCompletionRepository', () => {
         id: TASK_ID,
         status: 'done',
         completed_at: COMPLETED_AT,
+        previous_status: 'todo',
+        completion_fact_count: 1,
       },
     ]);
     const repository = new PostgresTaskCompletionRepository(client);
@@ -222,12 +224,26 @@ describe('PostgresTaskCompletionRepository', () => {
     expect(client.calls[0]?.text).toContain(
       'RETURNING workspace_id, id, status, completed_at',
     );
-    expect(client.calls[0]?.values).toEqual([
+    expect(client.calls[0]?.text).toContain(
+      'previous.previous_status AS previous_status',
+    );
+    expect(client.calls[0]?.text).toContain('AS completion_fact_count');
+    expect(client.calls[0]?.text).toContain(
+      'INSERT INTO planning.task_completion_facts',
+    );
+    const boundValues = client.calls[0]?.values;
+    expect(boundValues?.slice(0, 4)).toEqual([
       WORKSPACE_ID,
       TASK_ID,
       'done',
       COMPLETED_AT,
     ]);
+    expect(boundValues).toHaveLength(5);
+    expect(boundValues?.[4]).toEqual(
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+    );
   });
 
   it('preserves the first completion instant when a completed request is retried', async () => {
@@ -237,6 +253,8 @@ describe('PostgresTaskCompletionRepository', () => {
         id: TASK_ID,
         status: 'done',
         completed_at: FIRST_COMPLETED_AT,
+        previous_status: 'done',
+        completion_fact_count: 0,
       },
     ]);
     const repository = new PostgresTaskCompletionRepository(client);
@@ -365,6 +383,85 @@ describe('PostgresTaskCompletionRepository', () => {
     ).rejects.toBeInstanceOf(TaskCompletionPersistenceError);
   });
 
+  it('fails closed when atomic acceptance evidence columns are missing', async () => {
+    const repository = new PostgresTaskCompletionRepository(
+      new RecordingSqlClient([
+        {
+          workspace_id: WORKSPACE_ID,
+          id: TASK_ID,
+          status: 'done',
+          completed_at: COMPLETED_AT,
+        },
+      ]),
+    );
+
+    await expect(
+      repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    ).rejects.toBeInstanceOf(TaskCompletionPersistenceError);
+  });
+
+  it('fails closed when persistence reports no fact for a new completion', async () => {
+    const repository = new PostgresTaskCompletionRepository(
+      new RecordingSqlClient([
+        {
+          workspace_id: WORKSPACE_ID,
+          id: TASK_ID,
+          status: 'done',
+          completed_at: COMPLETED_AT,
+          previous_status: 'todo',
+          completion_fact_count: 0,
+        },
+      ]),
+    );
+
+    await expect(
+      repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, {
+        status: 'done',
+        completedAt: COMPLETED_AT,
+      }),
+    ).rejects.toBeInstanceOf(TaskCompletionPersistenceError);
+  });
+
+  it.each([
+    [
+      'a completed retry that appends a fact',
+      'done',
+      FIRST_COMPLETED_AT,
+      'done',
+      1,
+    ],
+    ['a reopen that appends a fact', 'todo', null, 'done', 1],
+    ['an unknown prior state', 'done', COMPLETED_AT, 'archived', 1],
+    ['an invalid completion fact count', 'done', COMPLETED_AT, 'todo', 2],
+  ] as const)(
+    'fails closed on %s',
+    async (_name, status, completedAt, previousStatus, completionFactCount) => {
+      const repository = new PostgresTaskCompletionRepository(
+        new RecordingSqlClient([
+          {
+            workspace_id: WORKSPACE_ID,
+            id: TASK_ID,
+            status,
+            completed_at: completedAt,
+            previous_status: previousStatus,
+            completion_fact_count: completionFactCount,
+          },
+        ]),
+      );
+      const transition: TaskCompletionTransition =
+        status === 'done'
+          ? { status: 'done', completedAt: COMPLETED_AT }
+          : { status: 'todo', completedAt: null };
+
+      await expect(
+        repository.transitionTaskCompletion(WORKSPACE_ID, TASK_ID, transition),
+      ).rejects.toBeInstanceOf(TaskCompletionPersistenceError);
+    },
+  );
+
   it('canonicalizes a valid Date returned by the PostgreSQL driver', async () => {
     const repository = new PostgresTaskCompletionRepository(
       new RecordingSqlClient([
@@ -373,6 +470,8 @@ describe('PostgresTaskCompletionRepository', () => {
           id: TASK_ID,
           status: 'done',
           completed_at: new Date(COMPLETED_AT),
+          previous_status: 'todo',
+          completion_fact_count: 1,
         },
       ]),
     );

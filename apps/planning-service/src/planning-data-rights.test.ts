@@ -10,9 +10,12 @@ import {
 } from './planning-runtime';
 import type { TodayTransactionalSqlClient } from './postgres-today-repository';
 
-const TEST_DATABASE_URL = ['postgresql:', '', '127.0.0.1', 'planning_test'].join(
-  '/',
-);
+const TEST_DATABASE_URL = [
+  'postgresql:',
+  '',
+  '127.0.0.1',
+  'planning_test',
+].join('/');
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const REQUEST_ID = '33333333-3333-4333-8333-333333333333';
@@ -37,7 +40,9 @@ function inertPool(): PlanningPool {
 }
 
 /** SQL double that reports whether the service-owned erasure receipt store exists. */
-function preflightClient(erasureReceiptsReady: boolean): TodayTransactionalSqlClient {
+function preflightClient(
+  erasureReceiptsReady: boolean,
+): TodayTransactionalSqlClient {
   const client: TodayTransactionalSqlClient = {
     async query<Row>(): Promise<{ rows: Row[] }> {
       return {
@@ -115,7 +120,9 @@ describe('Planning data-rights runtime composition', () => {
       const contributor = runtime.dataRightsContributor;
       expect(contributor).toBeDefined();
       if (!contributor) {
-        throw new Error('Planning runtime did not compose its data-rights contributor');
+        throw new Error(
+          'Planning runtime did not compose its data-rights contributor',
+        );
       }
 
       const response = await contributor.handle({
@@ -197,7 +204,9 @@ describe('Planning data-rights export scale', () => {
 
 describe('Planning data-rights erasure preflight', () => {
   it('does not claim ready when erasure receipt persistence is unavailable', async () => {
-    const contributor = new PlanningDataRightsContributor(preflightClient(false));
+    const contributor = new PlanningDataRightsContributor(
+      preflightClient(false),
+    );
 
     const response = await contributor.handle({
       contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,

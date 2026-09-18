@@ -33,7 +33,9 @@ describe('Planning task completion chronology migration', () => {
   });
 
   it('validates the staged constraint in a later migration boundary', async () => {
-    const migration = normalizeSql(await readMigration(validationMigrationPath));
+    const migration = normalizeSql(
+      await readMigration(validationMigrationPath),
+    );
 
     expect(migration).toContain(
       'VALIDATE CONSTRAINT tasks_completion_state_check',

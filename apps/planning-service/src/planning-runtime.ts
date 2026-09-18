@@ -77,13 +77,27 @@ class NodePostgresPlanningPool implements PlanningPool {
 }
 
 class ConnectionSqlClient implements PlanningSqlClient {
+  private queryTail: Promise<void> = Promise.resolve();
+
   constructor(private readonly connection: PlanningPoolConnection) {}
 
-  async query<Row>(
+  /**
+   * Serializes statements on the one transaction-owned PostgreSQL connection.
+   * Callers may compose independent reads concurrently, but node-postgres must
+   * not receive a second client.query() while the prior query is still active.
+   */
+  query<Row>(
     text: string,
     values: readonly unknown[],
   ): Promise<PlanningSqlQueryResult<Row>> {
-    return await this.connection.query<Row>(text, values);
+    const query = this.queryTail.then(() =>
+      this.connection.query<Row>(text, values),
+    );
+    this.queryTail = query.then(
+      () => undefined,
+      () => undefined,
+    );
+    return query;
   }
 }
 
