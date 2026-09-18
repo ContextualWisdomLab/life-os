@@ -178,9 +178,9 @@ describe('PostgresTodayRepository', () => {
     expect(client.calls[5]?.text).toContain(
       'INSERT INTO planning.today_idempotency_records',
     );
-    expect(client.calls.every((call) => !call.text.includes('Durable Today'))).toBe(
-      true,
-    );
+    expect(
+      client.calls.every((call) => !call.text.includes('Durable Today')),
+    ).toBe(true);
   });
 
   it('creates an absent aggregate after the same ordered locks', async () => {
@@ -197,7 +197,9 @@ describe('PostgresTodayRepository', () => {
     await expect(
       repository.writeToday(command({ kind: 'absent' })),
     ).resolves.toMatchObject({ kind: 'created' });
-    expect(client.calls[4]?.text).toContain('INSERT INTO planning.today_aggregates');
+    expect(client.calls[4]?.text).toContain(
+      'INSERT INTO planning.today_aggregates',
+    );
   });
 
   it('returns the original response for an exact idempotent replay', async () => {
@@ -216,11 +218,7 @@ describe('PostgresTodayRepository', () => {
   });
 
   it('fails closed when an idempotency key is reused for a different request', async () => {
-    const client = new RecordingClient([
-      [],
-      [],
-      [replayRow('b'.repeat(64))],
-    ]);
+    const client = new RecordingClient([[], [], [replayRow('b'.repeat(64))]]);
     const repository = new PostgresTodayRepository(client);
 
     await expect(repository.writeToday(command())).rejects.toBeInstanceOf(
@@ -272,9 +270,9 @@ describe('PostgresTodayRepository', () => {
     await expect(missingMutation.writeToday(command())).rejects.toEqual(
       new TodayRevisionConflictError(REVISION),
     );
-    await expect(missingReplayReceipt.writeToday(command())).rejects.toBeInstanceOf(
-      TodayPersistenceError,
-    );
+    await expect(
+      missingReplayReceipt.writeToday(command()),
+    ).rejects.toBeInstanceOf(TodayPersistenceError);
   });
 
   it('rejects malformed replay kinds and malformed or duplicate durable rows', async () => {

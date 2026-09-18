@@ -57,7 +57,9 @@ describe('TodaySyncService', () => {
     await expect(service.getToday(WORKSPACE_ID, DATE)).resolves.toEqual(
       result.aggregate,
     );
-    await expect(service.getToday(OTHER_WORKSPACE_ID, DATE)).resolves.toBeUndefined();
+    await expect(
+      service.getToday(OTHER_WORKSPACE_ID, DATE),
+    ).resolves.toBeUndefined();
   });
 
   it('updates only when the exact opaque revision matches and rotates the token', async () => {
@@ -79,7 +81,9 @@ describe('TodaySyncService', () => {
     expect(updated.kind).toBe('updated');
     expect(updated.aggregate.aggregateId).toBe(created.aggregate.aggregateId);
     expect(updated.aggregate.revision).not.toBe(created.aggregate.revision);
-    expect(updated.aggregate.actions[0]?.title).toBe('Ship Today across devices');
+    expect(updated.aggregate.actions[0]?.title).toBe(
+      'Ship Today across devices',
+    );
   });
 
   it('returns only the current opaque revision on stale-write conflicts', async () => {
@@ -98,7 +102,9 @@ describe('TodaySyncService', () => {
         { kind: 'match', revision: '66666666-6666-4666-8666-666666666666' },
         SECOND_IDEMPOTENCY_KEY,
       ),
-    ).rejects.toEqual(new TodayRevisionConflictError(created.aggregate.revision));
+    ).rejects.toEqual(
+      new TodayRevisionConflictError(created.aggregate.revision),
+    );
   });
 
   it('replays an exact idempotency key without rotating revision and rejects conflicting reuse', async () => {
@@ -179,12 +185,7 @@ describe('TodaySyncService', () => {
       ),
     ).rejects.toBeInstanceOf(TodayValidationError);
     await expect(
-      service.putToday(
-        '12345',
-        draft(),
-        { kind: 'absent' },
-        IDEMPOTENCY_KEY,
-      ),
+      service.putToday('12345', draft(), { kind: 'absent' }, IDEMPOTENCY_KEY),
     ).rejects.toBeInstanceOf(TodayValidationError);
   });
 });

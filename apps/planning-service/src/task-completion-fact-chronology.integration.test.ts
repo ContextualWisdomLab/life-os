@@ -25,7 +25,9 @@ function isolatedSql(text: string): string {
 describeWithPostgres('Planning completion-fact chronology', () => {
   beforeAll(async () => {
     if (!DATABASE_URL) {
-      throw new Error('PLANNING_DATABASE_URL is required for integration tests');
+      throw new Error(
+        'PLANNING_DATABASE_URL is required for integration tests',
+      );
     }
     pool = new Pool({
       connectionString: DATABASE_URL,
