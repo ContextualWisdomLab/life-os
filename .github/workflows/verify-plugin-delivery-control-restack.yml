@@ -49,11 +49,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build Plugin SDK runtime entry
         run: pnpm --filter @life-os/plugin-sdk build
-      - name: Check adopted outcome and control formatting
+      - name: Check adopted TypeScript formatting
         run: >-
           pnpm exec prettier --check
-          apps/integration-service/migrations/0010_plugin_delivery_attempt_control_lifecycle.sql
-          apps/integration-service/migrations/0011_plugin_delivery_attempt_control_chronology_guard.sql
           apps/integration-service/src/plugin-delivery-attempt-outcome.integration.test.ts
           apps/integration-service/src/plugin-delivery-attempt-outcome-forgery.integration.test.ts
           apps/integration-service/src/plugin-delivery-attempt-control.ts
