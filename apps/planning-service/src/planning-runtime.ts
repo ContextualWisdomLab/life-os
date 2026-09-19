@@ -245,8 +245,9 @@ export function createPlanningRuntime(
   const pool = poolFactory(createPlanningPoolConfiguration(environment));
   const client = new NodePostgresPlanningSqlClient(pool);
   const repository = new PostgresPlanningRepository(client);
-  const taskDueAuthorityRepository =
-    new PostgresTaskDueAuthorityRepository(client);
+  const taskDueAuthorityRepository = new PostgresTaskDueAuthorityRepository(
+    client,
+  );
   const todayRepository = new PostgresTodayRepository(client);
   return new PlanningRuntime(
     pool,

@@ -52,9 +52,7 @@ function requireDueRow(
  * column is mutated in the same short transaction as task creation and joined
  * fail-closed to validated base rows on reads.
  */
-export class PostgresTaskDueAuthorityRepository
-  implements TaskDueAuthorityRepository
-{
+export class PostgresTaskDueAuthorityRepository implements TaskDueAuthorityRepository {
   /** Creates the adapter over the Planning-owned transaction-capable SQL client. */
   constructor(private readonly client: TodayTransactionalSqlClient) {}
 

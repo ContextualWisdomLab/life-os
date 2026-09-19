@@ -319,9 +319,9 @@ export class PlanningService {
         safeProjectId,
       );
     }
-    return (await this.repository.listTasks(safeWorkspaceId, safeProjectId)).map(
-      taskWithDueAuthority,
-    );
+    return (
+      await this.repository.listTasks(safeWorkspaceId, safeProjectId)
+    ).map(taskWithDueAuthority);
   }
 
   /** Searches goals, projects, and tasks without returning workspace ownership. */
