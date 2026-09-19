@@ -33,6 +33,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Commercial Readiness now rejects malformed UTF-8 in bounded GitHub response bodies before JSON parsing, preventing decoder replacement characters from normalizing untrusted merge-authoritative evidence.
+
 - Commercial Readiness now requests merge-freshness evidence through a file-free paginated GitHub Compare response (`?per_page=1&page=2`), preserving exact base/merge-base/behind provenance without downloading changed-file payloads that can exceed the bounded response envelope.
 
 - Commercial Readiness now best-effort cancels GitHub response bodies rejected from an oversized declared `Content-Length`, while preserving the established bounded response-size error even when cleanup itself fails.

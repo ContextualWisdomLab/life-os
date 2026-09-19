@@ -112,7 +112,11 @@ async function readBoundedText(response, maxBytes) {
     merged.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return new TextDecoder().decode(merged);
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(merged);
+  } catch {
+    throw new Error('GitHub API response was invalid');
+  }
 }
 
 /**
