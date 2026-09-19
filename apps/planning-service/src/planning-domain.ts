@@ -285,6 +285,9 @@ export class PlanningService {
       createdAt: new Date().toISOString(),
       dueAt: requireCanonicalTaskDueAt(input.dueAt),
     };
+    if (task.dueAt !== null && !this.taskDueAuthorityRepository) {
+      throw new Error('Task deadline persistence authority is unavailable');
+    }
     if (this.taskDueAuthorityRepository) {
       await this.taskDueAuthorityRepository.saveTask(task);
     } else {
