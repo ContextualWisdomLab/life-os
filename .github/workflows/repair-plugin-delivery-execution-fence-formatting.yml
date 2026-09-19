@@ -1,0 +1,83 @@
+name: Repair Plugin Delivery Execution Fence Formatting
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-execution-fence-v1
+    paths:
+      - .github/workflows/repair-plugin-delivery-execution-fence-formatting.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout triggering exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Enable repository pnpm
+        run: corepack enable
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Guard single-writer exact head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin "$GITHUB_REF_NAME" --depth=1
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+      - name: Apply canonical focused formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.ts
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.integration.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts
+          )
+          pnpm exec prettier --write "${files[@]}"
+          pnpm exec prettier --check "${files[@]}"
+          git diff --check
+
+          mapfile -t changed < <(git diff --name-only)
+          test "${#changed[@]}" -gt 0
+          for path in "${changed[@]}"; do
+            allowed=false
+            for file in "${files[@]}"; do
+              if test "$path" = "$file"; then
+                allowed=true
+                break
+              fi
+            done
+            test "$allowed" = true
+          done
+      - name: Publish formatting repair and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/repair-plugin-delivery-execution-fence-formatting.yml
+          rm "$workflow"
+
+          git fetch origin "$GITHUB_REF_NAME" --depth=1
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence-repository.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.integration.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.test.ts \
+            apps/integration-service/src/plugin-delivery-attempt-execution-fence.ts \
+            "$workflow"
+          git diff --cached --check
+          git commit -m 'style(integration): apply repository-pinned execution-fence formatting'
+          git push origin "HEAD:$GITHUB_REF_NAME"
