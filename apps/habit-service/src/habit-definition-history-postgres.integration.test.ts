@@ -81,133 +81,146 @@ describeWithPostgres('Habit definition historical authority', () => {
     await administrativePool.end();
   });
 
-  it('keeps a historical Review denominator while current reads use the revised definition', async () => {
-    const workspaceId = randomUUID();
-    const habitId = randomUUID();
-    const durableRepository = repository(administrativePool);
-    await durableRepository.saveHabit(initialHabit(workspaceId, habitId));
+  it(
+    'keeps a historical Review denominator while current reads use the revised definition',
+    async () => {
+      const workspaceId = randomUUID();
+      const habitId = randomUUID();
+      const durableRepository = repository(administrativePool);
+      await durableRepository.saveHabit(initialHabit(workspaceId, habitId));
 
-    await administrativePool.query(
-      `UPDATE habit.habit_definitions
+      await administrativePool.query(
+        `UPDATE habit.habit_definitions
          SET title = $1,
              recurrence_kind = 'weekly',
              recurrence_interval = 1,
              weekday_mask = 1
          WHERE workspace_id = $2 AND id = $3`,
-      ['Weekly walk', workspaceId, habitId],
-    );
+        ['Weekly walk', workspaceId, habitId],
+      );
 
-    const historicalEvidence = await durableRepository.readReviewWeekEvidence(
-      workspaceId,
-      '2026-09-07',
-      '2026-09-13',
-      100,
-      '2026-09-13T23:59:59.000Z',
-    );
-
-    expect(historicalEvidence.habits).toHaveLength(1);
-    expect(historicalEvidence.habits[0]?.title).toBe('Daily walk');
-    expect(historicalEvidence.habits[0]?.recurrence).toEqual({
-      kind: 'daily',
-      interval: 1,
-    });
-    expect(
-      generateHabitOccurrences(
-        historicalEvidence.habits[0]!,
+      const historicalEvidence = await durableRepository.readReviewWeekEvidence(
+        workspaceId,
         '2026-09-07',
         '2026-09-13',
-      ),
-    ).toHaveLength(7);
+        100,
+        '2026-09-13T23:59:59.000Z',
+      );
 
-    const currentEvidence = await durableRepository.readReviewWeekEvidence(
-      workspaceId,
-      '2026-09-07',
-      '2026-09-13',
-      100,
-      '9999-12-31T23:59:59.000Z',
-    );
+      expect(historicalEvidence.habits).toHaveLength(1);
+      expect(historicalEvidence.habits[0]?.title).toBe('Daily walk');
+      expect(historicalEvidence.habits[0]?.recurrence).toEqual({
+        kind: 'daily',
+        interval: 1,
+      });
+      expect(
+        generateHabitOccurrences(
+          historicalEvidence.habits[0]!,
+          '2026-09-07',
+          '2026-09-13',
+        ),
+      ).toHaveLength(7);
 
-    expect(currentEvidence.habits).toHaveLength(1);
-    expect(currentEvidence.habits[0]?.title).toBe('Weekly walk');
-    expect(currentEvidence.habits[0]?.recurrence).toEqual({
-      kind: 'weekly',
-      interval: 1,
-      weekdays: [1],
-    });
-    expect(
-      generateHabitOccurrences(
-        currentEvidence.habits[0]!,
+      const currentEvidence = await durableRepository.readReviewWeekEvidence(
+        workspaceId,
         '2026-09-07',
         '2026-09-13',
-      ),
-    ).toHaveLength(1);
-  });
+        100,
+        '9999-12-31T23:59:59.000Z',
+      );
 
-  it('does not manufacture history for no-op updates and rejects identity evidence rewrites', async () => {
-    const workspaceId = randomUUID();
-    const habitId = randomUUID();
-    const durableRepository = repository(administrativePool);
-    await durableRepository.saveHabit(initialHabit(workspaceId, habitId));
+      expect(currentEvidence.habits).toHaveLength(1);
+      expect(currentEvidence.habits[0]?.title).toBe('Weekly walk');
+      expect(currentEvidence.habits[0]?.recurrence).toEqual({
+        kind: 'weekly',
+        interval: 1,
+        weekdays: [1],
+      });
+      expect(
+        generateHabitOccurrences(
+          currentEvidence.habits[0]!,
+          '2026-09-07',
+          '2026-09-13',
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
-    await administrativePool.query(
-      `UPDATE habit.habit_definitions
+  it(
+    'does not manufacture history for no-op updates and rejects identity evidence rewrites',
+    async () => {
+      const workspaceId = randomUUID();
+      const habitId = randomUUID();
+      const durableRepository = repository(administrativePool);
+      await durableRepository.saveHabit(initialHabit(workspaceId, habitId));
+
+      await administrativePool.query(
+        `UPDATE habit.habit_definitions
        SET title = title
        WHERE workspace_id = $1 AND id = $2`,
-      [workspaceId, habitId],
-    );
+        [workspaceId, habitId],
+      );
 
-    const historyAfterNoop = await administrativePool.query<{ count: string }>(
-      `SELECT count(*)::text AS count
+      const historyAfterNoop = await administrativePool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
        FROM habit.habit_definition_history
        WHERE workspace_id = $1 AND id = $2`,
-      [workspaceId, habitId],
-    );
-    expect(historyAfterNoop.rows[0]?.count).toBe('0');
+        [workspaceId, habitId],
+      );
+      expect(historyAfterNoop.rows[0]?.count).toBe('0');
 
-    await expect(
-      administrativePool.query(
-        `UPDATE habit.habit_definitions
+      await expect(
+        administrativePool.query(
+          `UPDATE habit.habit_definitions
          SET created_at = created_at + interval '1 day'
          WHERE workspace_id = $1 AND id = $2`,
-        [workspaceId, habitId],
-      ),
-    ).rejects.toThrow('Habit definition identity and creation evidence are immutable');
-  });
+          [workspaceId, habitId],
+        ),
+      ).rejects.toThrow(
+        'Habit definition identity and creation evidence are immutable',
+      );
+    },
+  );
 
-  it('erases superseded definition history through the existing owner-authorized path', async () => {
-    const workspaceId = randomUUID();
-    const habitId = randomUUID();
-    const durableRepository = repository(administrativePool);
-    await durableRepository.saveHabit(initialHabit(workspaceId, habitId));
+  it(
+    'erases superseded definition history through the existing owner-authorized path',
+    async () => {
+      const workspaceId = randomUUID();
+      const habitId = randomUUID();
+      const durableRepository = repository(administrativePool);
+      await durableRepository.saveHabit(initialHabit(workspaceId, habitId));
 
-    await administrativePool.query(
-      `UPDATE habit.habit_definitions
+      await administrativePool.query(
+        `UPDATE habit.habit_definitions
        SET title = $1
        WHERE workspace_id = $2 AND id = $3`,
-      ['Revised walk', workspaceId, habitId],
-    );
+        ['Revised walk', workspaceId, habitId],
+      );
 
-    const beforeErasure = await administrativePool.query<{ count: string }>(
-      `SELECT count(*)::text AS count
+      const beforeErasure = await administrativePool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
        FROM habit.habit_definition_history
        WHERE workspace_id = $1`,
-      [workspaceId],
-    );
-    expect(beforeErasure.rows[0]?.count).toBe('1');
+        [workspaceId],
+      );
+      expect(beforeErasure.rows[0]?.count).toBe('1');
 
-    const erasure = await administrativePool.query<{ erased_records: number }>(
-      'SELECT habit.erase_workspace_data($1::uuid) AS erased_records',
-      [workspaceId],
-    );
-    expect(erasure.rows[0]?.erased_records).toBe(2);
+      const erasure = await administrativePool.query<{ erased_records: number }>(
+        'SELECT habit.erase_workspace_data($1::uuid) AS erased_records',
+        [workspaceId],
+      );
+      expect(erasure.rows[0]?.erased_records).toBe(2);
 
-    const afterErasure = await administrativePool.query<{ count: string }>(
-      `SELECT count(*)::text AS count
+      const afterErasure = await administrativePool.query<{ count: string }>(
+        `SELECT count(*)::text AS count
        FROM habit.habit_definition_history
        WHERE workspace_id = $1`,
-      [workspaceId],
-    );
-    expect(afterErasure.rows[0]?.count).toBe('0');
-    expect(await durableRepository.findHabit(workspaceId, habitId)).toBeUndefined();
-  });
+        [workspaceId],
+      );
+      expect(afterErasure.rows[0]?.count).toBe('0');
+      expect(
+        await durableRepository.findHabit(workspaceId, habitId),
+      ).toBeUndefined();
+    },
+  );
 });
