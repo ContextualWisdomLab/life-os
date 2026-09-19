@@ -7,7 +7,7 @@ import {
 } from './planning-search-client';
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
@@ -213,19 +213,19 @@ function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new Error('Goal response is invalid');
   }
-  return value.toLowerCase();
+  return value;
 }
 
-/** Requires a valid RFC 3339 timestamp and emits one canonical UTC instant. */
+/** Requires Planning timestamp evidence to already be canonical UTC ISO-8601 text. */
 function requireTimestamp(value: unknown): string {
   if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
     throw new Error('Goal response is invalid');
   }
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     throw new Error('Goal response is invalid');
   }
-  return new Date(parsed).toISOString();
+  return value;
 }
 
 /** Validates one exact Goal record and strips workspace authority from browser output. */
