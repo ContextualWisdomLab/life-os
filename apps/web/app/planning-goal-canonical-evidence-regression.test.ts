@@ -54,9 +54,7 @@ function goalResponse(
   );
 }
 
-async function createThrough(
-  planningResponse: Response,
-): Promise<Response> {
+async function createThrough(planningResponse: Response): Promise<Response> {
   let calls = 0;
   const fetcher: PlanningGoalFetch = async () => {
     calls += 1;
