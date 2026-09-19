@@ -88,11 +88,7 @@ describe('PluginDeliveryAttemptExecutionFenceApplication', () => {
     );
 
     await expect(
-      app.check(
-        context(),
-        DELIVERY_ID,
-        'ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF',
-      ),
+      app.check(context(), DELIVERY_ID, 'ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF'),
     ).rejects.toEqual(new PluginDeliveryAttemptExecutionFenceAuthorityError());
     expect(store.commands).toEqual([]);
   });
