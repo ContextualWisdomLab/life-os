@@ -61,3 +61,34 @@ test('cancels a declared-oversized response without replacing the size classific
   );
   assert.equal(cancelCalls, 1);
 });
+
+test('rejects malformed UTF-8 instead of normalizing untrusted GitHub evidence', async () => {
+  const malformedJson = new Uint8Array([
+    0x7b,
+    0x22,
+    0x6e,
+    0x61,
+    0x6d,
+    0x65,
+    0x22,
+    0x3a,
+    0x22,
+    0xc3,
+    0x28,
+    0x22,
+    0x7d,
+  ]);
+  const client = new GitHubApiClient({
+    token: 'token',
+    fetchImpl: async () =>
+      new Response(malformedJson, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+  });
+
+  await assert.rejects(
+    () => client.requestJson('/repos/o/r/pulls/1'),
+    new Error('GitHub API response was invalid'),
+  );
+});
