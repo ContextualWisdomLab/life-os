@@ -32,7 +32,7 @@ import {
   parseTrustedPlanningDataRightsRequest,
   toPlanningDataRightsHttpException,
 } from './planning-data-rights-http-boundary';
-import type { Goal, Project, Task } from './planning-domain';
+import type { Goal, Project, TaskWithDueAuthority } from './planning-domain';
 import { PlanningService } from './planning-domain';
 import { createPlanningRuntime, PlanningRuntime } from './planning-runtime';
 import type { PlanningSearchResult } from './search';
@@ -310,8 +310,8 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
-    @Body() body: { title?: unknown },
-  ): Promise<Task> {
+    @Body() body: { title?: unknown; dueAt?: unknown },
+  ): Promise<TaskWithDueAuthority> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
@@ -321,6 +321,7 @@ export class PlanningController {
       return await this.planningService.createTask(trustedWorkspaceId, {
         projectId,
         title: requireTitle(body),
+        dueAt: body.dueAt,
       });
     } catch (error) {
       throw toHttpException(error);
@@ -334,7 +335,7 @@ export class PlanningController {
     @Headers('x-life-os-context-issued-at') issuedAt: string | undefined,
     @Headers('x-life-os-context-signature') signature: string | undefined,
     @Param('projectId') projectId: string,
-  ): Promise<Task[]> {
+  ): Promise<TaskWithDueAuthority[]> {
     try {
       const trustedWorkspaceId = requireTrustedWorkspaceContext(
         { workspaceId, issuedAt, signature },
