@@ -5,8 +5,8 @@ import {
   type PlanningGoalFetch,
 } from './planning-goal-client';
 
-const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const GOAL_ID = '22222222-2222-4222-8222-222222222222';
+const WORKSPACE_ID = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+const GOAL_ID = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
 const TITLE = 'Publish the first LifeOS release candidate';
 const NOW_SECONDS = 1_788_220_800;
 
