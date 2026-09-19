@@ -272,4 +272,47 @@ describe('validateGitHubSnapshot', () => {
       /Invalid GitHub snapshot/,
     );
   });
+
+  it('preserves v1 snapshots written before review commit binding as fail-closed evidence', async () => {
+    const { validateGitHubSnapshot } = await import('./schema.mjs');
+    const legacy = {
+      schema: 'life-os.github-snapshot.v1',
+      repository: 'ContextualWisdomLab/life-os',
+      commit_sha: 'c'.repeat(40),
+      generated_at: '2026-08-03T06:00:00.000Z',
+      truncated: false,
+      pull_requests: [
+        {
+          number: 7,
+          title: 'Legacy v1 snapshot',
+          state: 'open',
+          draft: false,
+          mergeable: true,
+          mergeable_state: 'clean',
+          base_ref: 'main',
+          head_sha: 'a'.repeat(40),
+          head_repo: 'ContextualWisdomLab/life-os',
+          repository: 'ContextualWisdomLab/life-os',
+          author_association: 'OWNER',
+          behind_by: 0,
+          reviews: [
+            {
+              actor: 'reviewer-a',
+              state: 'APPROVED',
+              submitted_at: '2026-08-03T05:59:00Z',
+            },
+          ],
+          unresolved_threads: 0,
+          workflows: [],
+          statuses: [],
+          eligible: false,
+          blockers: ['missing-approval'],
+        },
+      ],
+      issues: [],
+    };
+
+    const validated = validateGitHubSnapshot(legacy);
+    assert.equal(validated.pull_requests[0].reviews[0].commit_id, '');
+  });
 });

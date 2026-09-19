@@ -8,6 +8,7 @@ const SECRET_PATTERNS = [
   /(?:javascript|data):[^\s)]+/gi,
 ];
 
+/** Redacts credential-shaped data, neutralizes control characters and Markdown syntax, and bounds untrusted text before issue rendering. */
 export function sanitizeUntrustedText(value, maxLength = 240) {
   let text = String(value ?? '')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
@@ -25,6 +26,7 @@ export function sanitizeUntrustedText(value, maxLength = 240) {
   return text || '(empty)';
 }
 
+/** Creates an issue reference only for a positive safe-integer identity so malformed external values cannot become Markdown links. */
 function issueLink(number) {
   return Number.isSafeInteger(number) && number > 0
     ? `#${number}`
