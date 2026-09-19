@@ -11,6 +11,7 @@ import {
   expect,
   it,
 } from 'vitest';
+import { DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION } from './planning-data-rights';
 import type { Task } from './planning-domain';
 import {
   createPlanningRuntime,
@@ -194,5 +195,37 @@ describeWithPostgres('Planning task due authority', () => {
         }),
       ).rejects.toThrow();
     }
+  });
+
+  it('exports the durable deadline through Planning-owned data-rights evidence', async () => {
+    const workspaceId = randomUUID();
+    const runtime = createRuntime();
+    const project = await seedProject(runtime, workspaceId);
+    const dueAt = '2026-09-18T09:00:00.123Z';
+    const created = await createTaskWithDueAuthority(runtime, workspaceId, {
+      projectId: project.id,
+      title: 'Deadline retained for export',
+      dueAt,
+    });
+
+    const response = await runtime.dataRightsContributor.handle({
+      contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
+      operation: 'export',
+      workspaceId,
+      requestedByUserId: randomUUID(),
+      requestId: randomUUID(),
+    });
+
+    expect(response).toMatchObject({
+      operation: 'export',
+      data: {
+        tasks: [
+          {
+            id: created.id,
+            dueAt,
+          },
+        ],
+      },
+    });
   });
 });
