@@ -59,10 +59,12 @@ export interface PluginDeliveryAttemptStatusStore {
   ): Promise<PluginDeliveryAttemptStatusEvidence | undefined>;
 }
 
+/** Terminates malformed or absent status authority with the fixed public error. */
 function invalid(): never {
   throw new PluginDeliveryAttemptStatusAuthorityError();
 }
 
+/** Collapses hostile synchronous evidence reads into the fixed status-authority failure. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -71,6 +73,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses persistence rejection into the fixed status-authority failure. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -79,6 +82,7 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Requires an object-shaped authority envelope without trusting accessors or arrays. */
 function requireObject(value: unknown): Record<string, unknown> {
   const candidate = boundedRead(() => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
@@ -92,6 +96,7 @@ function requireObject(value: unknown): Record<string, unknown> {
   return candidate;
 }
 
+/** Canonicalizes one status-scope UUIDv4 before comparison or persistence use. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -99,6 +104,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires one exact millisecond UTC instant for deterministic lifecycle ordering. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -110,14 +116,17 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Preserves an absent lifecycle instant while validating every present timestamp. */
 function requireNullableInstant(value: unknown): string | null {
   return value === null ? null : requireInstant(value);
 }
 
+/** Reads the trusted clock through the same bounded status-authority boundary. */
 function currentInstant(now: () => Date): string {
   return boundedRead(() => requireInstant(now().toISOString()));
 }
 
+/** Snapshots authenticated workspace and actor scope before querying durable status. */
 function requireContext(value: unknown): PluginInstallationContext {
   const context = requireObject(value);
   const [workspaceId, actorUserId] = boundedRead(
@@ -129,6 +138,7 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Requires an integer inside an explicit lifecycle bound. */
 function requireSmallInteger(
   value: unknown,
   minimum: number,
@@ -145,6 +155,7 @@ function requireSmallInteger(
   return value;
 }
 
+/** Admits only delivery lifecycle states represented by the public status contract. */
 function requireStatus(
   value: unknown,
 ): PluginDeliveryAttemptStatusEvidence['deliveryStatus'] {
@@ -159,6 +170,7 @@ function requireStatus(
   return value;
 }
 
+/** Admits only the bounded retry outcomes safe to expose in status evidence. */
 function requireOutcome(
   value: unknown,
 ): PluginDeliveryAttemptStatusEvidence['lastOutcomeCode'] {
@@ -172,6 +184,7 @@ function requireOutcome(
   return value;
 }
 
+/** Reduces claim persistence to the three non-secret operator-visible claim states. */
 function requireClaimState(
   value: unknown,
 ): PluginDeliveryAttemptStatusEvidence['claimState'] {
@@ -181,6 +194,7 @@ function requireClaimState(
   return value;
 }
 
+/** Rejects impossible combinations of status, attempts, retry schedule, terminal state, outcome, and claim state. */
 function validateLifecycle(
   status: PluginDeliveryAttemptStatusEvidence['deliveryStatus'],
   attemptCount: number,
@@ -250,6 +264,7 @@ function validateLifecycle(
   }
 }
 
+/** Revalidates one durable status snapshot against its exact request scope and lifecycle invariants. */
 function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptStatusCommand,

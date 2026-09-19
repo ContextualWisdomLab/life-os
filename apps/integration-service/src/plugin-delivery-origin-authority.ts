@@ -109,10 +109,12 @@ export interface GrantPluginDeliveryOriginInput {
   readonly origin: string;
 }
 
+/** Terminates malformed delivery-origin authority with the fixed public error. */
 function invalid(): never {
   throw new PluginDeliveryOriginAuthorityError();
 }
 
+/** Canonicalizes one scoped UUIDv4 before it can become delivery-origin authority. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -120,6 +122,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires one exact millisecond UTC instant for durable grant ordering. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -131,6 +134,7 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Reads the trusted clock and collapses hostile clock behavior into the fixed authority error. */
 function currentInstant(now: () => Date): string {
   try {
     return requireInstant(now().toISOString());
@@ -139,6 +143,7 @@ function currentInstant(now: () => Date): string {
   }
 }
 
+/** Snapshots authenticated workspace and actor identity before grant persistence is exercised. */
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return invalid();
@@ -163,6 +168,7 @@ function requireGrantInput(value: unknown): GrantPluginDeliveryOriginInput {
   return value as GrantPluginDeliveryOriginInput;
 }
 
+/** Canonicalizes one host-approved HTTPS authority without granting DNS or transport permission. */
 function normalizeOrigin(value: unknown): string {
   if (
     typeof value !== 'string' ||
@@ -200,12 +206,14 @@ function normalizeOrigin(value: unknown): string {
   return parsed.origin;
 }
 
+/** Freezes one verified durable grant before it crosses the application boundary. */
 function freezeRecord(
   record: PluginDeliveryOriginGrantRecord,
 ): PluginDeliveryOriginGrantRecord {
   return Object.freeze({ ...record });
 }
 
+/** Revalidates one durable grant record before any stored field becomes authority. */
 function requireRecord(record: unknown): PluginDeliveryOriginGrantRecord {
   if (record === null || typeof record !== 'object') {
     return invalid();
@@ -253,6 +261,7 @@ function requireRecord(record: unknown): PluginDeliveryOriginGrantRecord {
   });
 }
 
+/** Verifies that a durable installation is active, scoped to the caller, and existed by the authority instant. */
 function requireActiveInstallation(
   context: PluginInstallationContext,
   installationId: string,
@@ -275,6 +284,7 @@ function requireActiveInstallation(
   return installation;
 }
 
+/** Accepts create replay only when the durable active grant preserves every authority-bearing field and valid time order. */
 function sameActiveGrant(
   durable: PluginDeliveryOriginGrantRecord,
   candidate: PluginDeliveryOriginGrantRecord,

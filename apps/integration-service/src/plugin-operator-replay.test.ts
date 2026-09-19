@@ -147,6 +147,10 @@ describe('PostgresPluginOperatorReplayGuard', () => {
         rows: [{ consumed: true }, { consumed: true }],
         rowCount: 2,
       },
+      {
+        rows: { consumed: true } as unknown as readonly unknown[],
+        rowCount: 1,
+      },
       { rows: [{ consumed: 'true' }], rowCount: 1 },
     ] satisfies readonly PluginOperatorReplaySqlResult<unknown>[]) {
       const client = new ScriptedSqlClient([result]);

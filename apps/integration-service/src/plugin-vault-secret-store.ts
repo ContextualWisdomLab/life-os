@@ -172,12 +172,7 @@ function parseReference(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith(SECRET_REFERENCE_PREFIX)) {
     return unavailable();
   }
-  const bindingId = requireUuidV4(value.slice(SECRET_REFERENCE_PREFIX.length));
-  const canonical = `${SECRET_REFERENCE_PREFIX}${bindingId}`;
-  if (value !== canonical) {
-    return unavailable();
-  }
-  return bindingId;
+  return requireUuidV4(value.slice(SECRET_REFERENCE_PREFIX.length));
 }
 
 /** Compares secret UTF-8 bytes without early content comparison and zeroizes temporary buffers. */
@@ -217,11 +212,19 @@ function requireVaultReadPayload(value: unknown): PluginVaultSecretPayload {
     return unavailable();
   }
   const outer = value as { readonly data?: unknown };
-  if (outer.data === null || typeof outer.data !== 'object' || Array.isArray(outer.data)) {
+  if (
+    outer.data === null ||
+    typeof outer.data !== 'object' ||
+    Array.isArray(outer.data)
+  ) {
     return unavailable();
   }
   const data = outer.data as { readonly data?: unknown };
-  if (data.data === null || typeof data.data !== 'object' || Array.isArray(data.data)) {
+  if (
+    data.data === null ||
+    typeof data.data !== 'object' ||
+    Array.isArray(data.data)
+  ) {
     return unavailable();
   }
   const payload = data.data as Partial<PluginVaultSecretPayload>;
@@ -296,7 +299,12 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     }
     let result: PluginVaultHttpResult;
     try {
-      result = await this.request(this.dataUrl(bindingId), 'GET', undefined, true);
+      result = await this.request(
+        this.dataUrl(bindingId),
+        'GET',
+        undefined,
+        true,
+      );
     } catch {
       return unavailable();
     }
@@ -344,8 +352,15 @@ export class PluginVaultSecretStore implements PluginSecretStore {
   /** Deletes all Vault KV versions for one exact opaque binding reference; missing is replay-safe. */
   async deleteSecret(secretReference: string): Promise<void> {
     const bindingId = parseReference(secretReference);
-    const { response } = await this.request(this.metadataUrl(bindingId), 'DELETE');
-    if (response.status === 200 || response.status === 204 || response.status === 404) {
+    const { response } = await this.request(
+      this.metadataUrl(bindingId),
+      'DELETE',
+    );
+    if (
+      response.status === 200 ||
+      response.status === 204 ||
+      response.status === 404
+    ) {
       return;
     }
     return unavailable();
@@ -406,7 +421,10 @@ export class PluginVaultSecretStore implements PluginSecretStore {
     consumeSuccessfulBody = false,
   ): Promise<PluginVaultHttpResult> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MILLISECONDS);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT_MILLISECONDS,
+    );
     try {
       const response = await this.settleWithinDeadline(
         this.http(url, {
@@ -432,20 +450,20 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         typeof response.headers !== 'object' ||
         typeof response.headers.get !== 'function'
       ) {
+        clearTimeout(timeout);
         return unavailable();
       }
       if (consumeSuccessfulBody && response.status === 200) {
-        return {
-          response,
-          body: await this.boundedBody(response, controller.signal),
-        };
+        const body = await this.boundedBody(response, controller.signal);
+        clearTimeout(timeout);
+        return { response, body };
       }
       await this.cancelUnusedBody(response, controller.signal);
+      clearTimeout(timeout);
       return { response };
     } catch {
-      return unavailable();
-    } finally {
       clearTimeout(timeout);
+      return unavailable();
     }
   }
 
@@ -513,7 +531,10 @@ export class PluginVaultSecretStore implements PluginSecretStore {
         }
         chunks.push(result.value);
         totalBytes += result.value.byteLength;
-        if (!Number.isSafeInteger(totalBytes) || totalBytes > MAXIMUM_RESPONSE_BYTES) {
+        if (
+          !Number.isSafeInteger(totalBytes) ||
+          totalBytes > MAXIMUM_RESPONSE_BYTES
+        ) {
           return unavailable();
         }
       }
@@ -539,14 +560,18 @@ export class PluginVaultSecretStore implements PluginSecretStore {
 
     const bytes = Buffer.concat(chunks, totalBytes);
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    } catch {
-      return unavailable();
-    } finally {
+      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
       bytes.fill(0);
       for (const chunk of chunks) {
         chunk.fill(0);
       }
+      return decoded;
+    } catch {
+      bytes.fill(0);
+      for (const chunk of chunks) {
+        chunk.fill(0);
+      }
+      return unavailable();
     }
   }
 

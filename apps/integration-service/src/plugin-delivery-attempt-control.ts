@@ -52,10 +52,12 @@ export interface PluginDeliveryAttemptControlStore {
   ): Promise<PluginDeliveryAttemptControlEvidence | undefined>;
 }
 
+/** Terminates the application boundary with the fixed credential- and persistence-free control error. */
 function invalid(): never {
   throw new PluginDeliveryAttemptControlAuthorityError();
 }
 
+/** Collapses hostile synchronous authority reads into the fixed control error. */
 function boundedRead<T>(read: () => T): T {
   try {
     return read();
@@ -64,6 +66,7 @@ function boundedRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses persistence rejection into the fixed control error without reflecting dependency detail. */
 async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   try {
     return await read();
@@ -72,6 +75,7 @@ async function boundedDependency<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
+/** Canonicalizes one control-scope UUIDv4 before it can reach persistence. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
@@ -79,14 +83,7 @@ function requireUuidV4(value: unknown): string {
   return value.toLowerCase();
 }
 
-function requireCanonicalUuidV4(value: unknown): string {
-  const canonical = requireUuidV4(value);
-  if (value !== canonical) {
-    return invalid();
-  }
-  return canonical;
-}
-
+/** Requires one exact millisecond UTC instant so durable replay equality remains byte-stable. */
 function requireInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalid();
@@ -98,10 +95,12 @@ function requireInstant(value: unknown): string {
   return value;
 }
 
+/** Preserves an absent lifecycle instant while validating any present timestamp exactly. */
 function requireNullableInstant(value: unknown): string | null {
   return value === null ? null : requireInstant(value);
 }
 
+/** Snapshots only workspace and actor authority from the trusted Integration context. */
 function requireContext(value: unknown): PluginInstallationContext {
   if (value === null || typeof value !== 'object') {
     return invalid();
@@ -119,10 +118,12 @@ function requireContext(value: unknown): PluginInstallationContext {
   });
 }
 
+/** Reads the injected clock through the same bounded authority boundary as request evidence. */
 function currentInstant(now: () => Date): string {
   return boundedRead(() => requireInstant(now().toISOString()));
 }
 
+/** Revalidates durable control evidence against the exact command and requested transition. */
 function requireEvidence(
   value: unknown,
   command: PluginDeliveryAttemptControlCommand,
@@ -193,9 +194,9 @@ function requireEvidence(
 
   return Object.freeze({
     authorityVersion: AUTHORITY_VERSION,
-    deliveryId: requireCanonicalUuidV4(snapshot.deliveryId),
-    workspaceId: requireCanonicalUuidV4(snapshot.workspaceId),
-    requestedByUserId: requireCanonicalUuidV4(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     controlSequence: snapshot.controlSequence,
     controlCode: expectedCode,
     deliveryStatus: snapshot.deliveryStatus,
@@ -242,6 +243,7 @@ export class PluginDeliveryAttemptControlApplication {
     return this.apply('dead_letter', trustedContext, deliveryIdInput);
   }
 
+  /** Builds one scoped command, invokes only the selected control operation, and rejects absent or mismatched durable evidence. */
   private async apply(
     controlCode: PluginDeliveryAttemptControlEvidence['controlCode'],
     trustedContext: PluginInstallationContext,

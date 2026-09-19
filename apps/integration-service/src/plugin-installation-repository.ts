@@ -91,12 +91,17 @@ function storedUuid(value: unknown): string {
 
 /** Parses one canonical UTC instant using the caller-selected fail-closed path. */
 function parseInstant(value: unknown, invalid: () => never): string {
-  const candidate =
-    value instanceof Date
-      ? value.toISOString()
-      : typeof value === 'string'
-        ? value
-        : '';
+  let candidate: string;
+  try {
+    candidate =
+      value instanceof Date
+        ? value.toISOString()
+        : typeof value === 'string'
+          ? value
+          : '';
+  } catch {
+    return invalid();
+  }
   if (!ISO_INSTANT_PATTERN.test(candidate)) {
     return invalid();
   }

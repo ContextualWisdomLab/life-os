@@ -19,7 +19,7 @@ import {
   type DynamicModule,
   type ExceptionFilter,
 } from '@nestjs/common';
-import { APP_FILTER, NestFactory } from '@nestjs/core';
+import { APP_FILTER } from '@nestjs/core';
 import {
   getPluginContractDiscovery,
   type PluginContractDiscovery,
@@ -50,6 +50,7 @@ import {
 } from './plugin-credential';
 import type { PluginDeliveryAttemptStatusEvidence } from './plugin-delivery-attempt-status';
 
+/** Stable RFC 7807-style problem codes exposed by the Integration HTTP boundary. */
 type IntegrationProblemCode =
   | 'invalid_plugin_contract'
   | 'invalid_gateway_context'
@@ -63,6 +64,7 @@ type IntegrationProblemCode =
   | 'plugin_delivery_status_capability_unavailable'
   | 'plugin_operator_failure';
 
+/** Credential-free problem envelope returned for bounded Integration transport failures. */
 interface IntegrationProblemDetails {
   readonly type: 'about:blank';
   readonly title: string;
@@ -70,12 +72,14 @@ interface IntegrationProblemDetails {
   readonly code: IntegrationProblemCode;
 }
 
+/** Minimal server-observed request identity used for raw-route authority checks. */
 interface IntegrationHttpRequest {
   readonly method?: string;
   readonly originalUrl?: string;
   readonly url?: string;
 }
 
+/** Minimal response surface required by the global bad-request normalization filter. */
 interface IntegrationHttpResponse {
   status(statusCode: number): IntegrationHttpResponse;
   json(body: unknown): void;
@@ -111,6 +115,7 @@ const EVENT_PREPARE_BINDING = Object.freeze({
   path: '/v1/events/prepare',
 });
 
+/** Constructs one bounded HTTP problem without reflecting request, secret, or backend detail. */
 function problemException(
   status: number,
   title: string,
@@ -125,6 +130,7 @@ function problemException(
   return new HttpException(problem, status);
 }
 
+/** Maps plugin-contract validation failure to the fixed public 400 problem. */
 function invalidContract(): HttpException {
   return problemException(
     400,
@@ -133,6 +139,7 @@ function invalidContract(): HttpException {
   );
 }
 
+/** Rejects invalid signed gateway evidence with the fixed 401 problem. */
 function invalidGatewayContext(): never {
   throw problemException(
     401,
@@ -141,6 +148,7 @@ function invalidGatewayContext(): never {
   );
 }
 
+/** Rejects unavailable gateway verification authority with the fixed 503 problem. */
 function unavailableGatewayContext(): never {
   throw problemException(
     503,
@@ -149,6 +157,7 @@ function unavailableGatewayContext(): never {
   );
 }
 
+/** Rejects operator routes when no durable plugin-operator runtime was composed. */
 function unavailablePluginOperator(): never {
   throw problemException(
     503,
@@ -157,6 +166,7 @@ function unavailablePluginOperator(): never {
   );
 }
 
+/** Rejects malformed or replay-invalid plugin-operator context with the fixed 401 problem. */
 function invalidPluginOperatorContext(): never {
   throw problemException(
     401,
@@ -165,6 +175,7 @@ function invalidPluginOperatorContext(): never {
   );
 }
 
+/** Rejects unavailable operator-context verification/replay persistence with the fixed 503 problem. */
 function unavailablePluginOperatorContext(): never {
   throw problemException(
     503,
@@ -173,6 +184,7 @@ function unavailablePluginOperatorContext(): never {
   );
 }
 
+/** Rejects malformed operator request bodies or domain commands with the fixed 400 problem. */
 function invalidPluginOperatorRequest(): never {
   throw problemException(
     400,
@@ -181,6 +193,7 @@ function invalidPluginOperatorRequest(): never {
   );
 }
 
+/** Maps an exact scoped absent operator resource to the fixed 404 problem. */
 function missingPluginOperatorRecord(): never {
   throw problemException(
     404,
@@ -189,6 +202,7 @@ function missingPluginOperatorRecord(): never {
   );
 }
 
+/** Maps unavailable credential composition to a fixed 503 without secret-store detail. */
 function unavailablePluginCredentialCapability(): never {
   throw problemException(
     503,
@@ -197,6 +211,7 @@ function unavailablePluginCredentialCapability(): never {
   );
 }
 
+/** Maps unavailable delivery-status composition to a fixed 503 without persistence detail. */
 function unavailablePluginDeliveryStatusCapability(): never {
   throw problemException(
     503,
@@ -205,6 +220,7 @@ function unavailablePluginDeliveryStatusCapability(): never {
   );
 }
 
+/** Collapses all remaining unexpected operator failures into one credential-free 503. */
 function pluginOperatorFailure(): never {
   throw problemException(
     503,
@@ -213,6 +229,7 @@ function pluginOperatorFailure(): never {
   );
 }
 
+/** Requires one non-array object request envelope before selecting operator-owned fields. */
 function requireObject(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return invalidPluginOperatorRequest();
@@ -231,14 +248,22 @@ function isPluginOperatorPath(path: string): boolean {
   );
 }
 
+/** Selects the framework-observed raw path once without inventing a route when both URL fields are absent. */
+function integrationRequestPath(request: IntegrationHttpRequest): string {
+  const rawUrl = request.originalUrl ?? request.url;
+  if (rawUrl === undefined) {
+    return '';
+  }
+  return rawUrl.split('?', 1)[0]!;
+}
+
 /** Requires the server-observed raw route to match the signed canonical route byte-for-byte. */
 function requireExactPluginOperatorRoute(
   request: IntegrationHttpRequest,
   method: 'GET' | 'POST',
   canonicalPath: string,
 ): void {
-  const rawPath =
-    (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+  const rawPath = integrationRequestPath(request);
   if (request.method !== method || rawPath !== canonicalPath) {
     return invalidPluginOperatorContext();
   }
@@ -250,12 +275,12 @@ function requireExactPluginOperatorRoute(
  */
 @Catch(BadRequestException)
 class IntegrationBadRequestFilter implements ExceptionFilter {
+  /** Rewrites operator-route parser errors while preserving non-operator Nest responses. */
   catch(exception: BadRequestException, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const request = http.getRequest<IntegrationHttpRequest>();
     const response = http.getResponse<IntegrationHttpResponse>();
-    const path =
-      (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+    const path = integrationRequestPath(request);
 
     if (isPluginOperatorPath(path)) {
       response.status(400).json({
@@ -352,18 +377,22 @@ export function requireTrustedEventWorkspaceContext(
   return workspaceId;
 }
 
+/** Public Integration contract/validation/event-preparation transport that never owns operator persistence. */
 @Controller()
 export class IntegrationController {
+  /** Returns the liveness identity without touching domain or persistence dependencies. */
   @Get('health')
   health(): { readonly status: 'ok'; readonly service: 'integration-service' } {
     return { status: 'ok', service: 'integration-service' };
   }
 
+  /** Returns the immutable plugin-contract discovery surface owned by the SDK. */
   @Get('v1/plugin-contract')
   contract(): PluginContractDiscovery {
     return getPluginContractDiscovery();
   }
 
+  /** Validates one untrusted plugin manifest and maps contract failures to the fixed HTTP problem. */
   @Post('v1/plugins/validate-manifest')
   @HttpCode(200)
   validateManifest(@Body() body: unknown): PluginManifest {
@@ -377,6 +406,7 @@ export class IntegrationController {
     }
   }
 
+  /** Verifies signed workspace context before preparing one canonical plugin event. */
   @Post('v1/events/prepare')
   @HttpCode(200)
   prepareEvent(
@@ -603,6 +633,7 @@ export class PluginOperatorHttpController {
   }
 }
 
+/** Root Nest module for Integration HTTP surfaces and the global bounded bad-request filter. */
 @Module({
   controllers: [IntegrationController, PluginOperatorHttpController],
   providers: [{ provide: APP_FILTER, useClass: IntegrationBadRequestFilter }],
@@ -617,17 +648,4 @@ export class IntegrationAppModule {
       providers: [{ provide: PLUGIN_OPERATOR_APPLICATION, useValue: operator }],
     };
   }
-}
-
-async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(IntegrationAppModule);
-  app.enableShutdownHooks();
-  await app.listen(
-    Number(process.env.INTEGRATION_SERVICE_PORT ?? 4107),
-    '0.0.0.0',
-  );
-}
-
-if (require.main === module) {
-  void bootstrap();
 }
