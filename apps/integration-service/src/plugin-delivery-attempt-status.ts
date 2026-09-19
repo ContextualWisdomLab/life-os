@@ -82,6 +82,13 @@ export function canonicalPluginDeliveryAttemptRetryAt(
   ).toISOString();
 }
 
+/** Returns whether the current lifecycle can exist only after an accepted operator control. */
+export function pluginDeliveryAttemptStatusRequiresControlHistory(
+  status: PluginDeliveryAttemptStatusEvidence['deliveryStatus'],
+): boolean {
+  return status === 'paused' || status === 'dead_lettered';
+}
+
 function invalid(): never {
   throw new PluginDeliveryAttemptStatusAuthorityError();
 }
@@ -355,6 +362,13 @@ function requireEvidence(
     lastOutcomeCode,
     claimState,
   );
+
+  if (
+    pluginDeliveryAttemptStatusRequiresControlHistory(deliveryStatus) &&
+    controlSequence === 0
+  ) {
+    return invalid();
+  }
 
   const uncontrolledScheduledRetry =
     deliveryStatus === 'pending' &&
