@@ -43,6 +43,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const GITHUB_STATUS_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
+/** Restricts repository identifiers to owner/name syntax before they are interpolated into GitHub API paths. */
 function assertRepository(repository) {
   if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
     throw new Error('Repository identifier is invalid');
@@ -74,6 +75,7 @@ function parseCanonicalGitHubStatusTimestamp(value) {
     : null;
 }
 
+/** Streams GitHub responses through a hard byte ceiling and cancels overflow before untrusted payloads are fully buffered. */
 async function readBoundedText(response, maxBytes) {
   const declared = Number(response.headers.get('content-length') ?? 0);
   if (Number.isFinite(declared) && declared > maxBytes) {
@@ -124,7 +126,9 @@ function waitForReadRetry(attempt) {
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
+/** Owns the bounded GitHub transport: fixed HTTPS origin, explicit timeout, response-size ceiling, and credential-bearing headers. */
 export class GitHubApiClient {
+  /** Validates credential, transport, timeout, and byte-limit configuration before any network authority is retained. */
   constructor({
     token,
     fetchImpl = globalThis.fetch,
@@ -231,6 +235,7 @@ export class GitHubApiClient {
   }
 }
 
+/** Selects only open non-PR issues carrying the exact readiness marker so unrelated issue text cannot become canonical state. */
 export function findReadinessIssues(issues, marker) {
   return (Array.isArray(issues) ? issues : [])
     .filter(
@@ -244,6 +249,7 @@ export function findReadinessIssues(issues, marker) {
     .sort((left, right) => left.number - right.number);
 }
 
+/** Maintains one marker-owned readiness issue and retires only duplicate automation issues after the canonical update succeeds. */
 export async function syncReadinessIssue(
   client,
   repository,
@@ -257,6 +263,7 @@ export async function syncReadinessIssue(
   ) {
     throw new Error('Readiness issue body is invalid');
   }
+  /** Collects bounded REST array pages completely and fails when shape or page count exceeds the evidence contract. */
   const issues = await collectPaginatedArray(
     client,
     `/repos/${repository}/issues?state=open`,
@@ -691,6 +698,7 @@ async function unresolvedThreadCount(client, repository, number) {
   return initial.count;
 }
 
+/** Chooses workflow evidence deterministically by run identity, attempt, and update time when duplicate names exist. */
 function runIsNewer(candidate, current) {
   if (candidate.id !== current.id) return candidate.id > current.id;
   if (candidate.run_attempt !== current.run_attempt) {
@@ -787,6 +795,7 @@ function latestWorkflowRuns(runs, headSha) {
     .sort((left, right) => compareStableEvidenceIdentity(left.name, right.name));
 }
 
+/** Orders duplicate commit-status evidence by immutable status identity and creation time. */
 function statusIsNewer(candidate, current) {
   if (candidate.id !== current.id) return candidate.id > current.id;
   const candidateTime = Date.parse(candidate.created_at);
@@ -945,6 +954,7 @@ function compareBehindAuthority(payload, repository, baseSha, headSha) {
   return behindBy;
 }
 
+/** Builds merge evidence from fresh PR detail, reviews, workflows, statuses, threads, and a file-free base/head comparison. */
 async function collectOnePullRequest(client, repository, summary, policy) {
   const number = summary.number;
   const detail = await client.requestJson(
@@ -1013,6 +1023,7 @@ async function collectOnePullRequest(client, repository, summary, policy) {
   return { ...pull, ...evaluatePullRequestForMerge(pull, policy) };
 }
 
+/** Collects a read-only exact-commit view of open pull requests and issues using bounded GitHub evidence paths. */
 export async function collectRepositorySnapshot(
   client,
   repositoryValue,
@@ -1064,6 +1075,7 @@ export async function collectRepositorySnapshot(
   };
 }
 
+/** Re-collects candidate state and exact head immediately before each merge so earlier eligibility cannot survive branch movement. */
 export async function mergeEligiblePullRequests({
   repository,
   policy,
@@ -1141,6 +1153,7 @@ export async function mergeEligiblePullRequests({
   return results;
 }
 
+/** Submits only an exact-head squash merge, binding GitHub execution to the SHA already admitted by policy. */
 export async function mergePullRequestThroughApi(
   client,
   repositoryValue,

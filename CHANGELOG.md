@@ -10,6 +10,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Added
 
+- Commercial Readiness now has an AST-backed 100% production-docstring contract covering top-level callable/class declarations and class members, with adjacent substantive JSDoc required across every production `.mjs` module; empty and generic filler blocks are rejected by deterministic hostile fixtures rather than counted as documentation.
+
 - Durable PostgreSQL plugin-installation authority with opaque UUIDv4 installation/workspace/installer identity, exact manifest digests, normalized explicit grants, bounded conflict replay, and atomic revocation evidence in the service-owned `plugin_integration` schema.
 - An authenticated calendar-connection disconnect application and optional hosted HTTP composition boundary that derives workspace and requesting-user authority only from the signed `life-os.calendar-user.v1` context and returns credential-free local revocation evidence.
 - A durable PostgreSQL data-rights request ledger with workspace-scoped idempotency, immutable request and terminal receipt digests, one-way completion state, and real integration evidence that erasure receipts survive removal of the source workspace and user.
@@ -30,6 +32,8 @@ All notable changes to LifeOS are documented in this file.
 - An authenticated same-origin AI proposal boundary that derives workspace and actor identity from the active session, signs the exact upstream method and path, and never forwards browser credentials to AI service.
 
 ### Fixed
+
+- Commercial Readiness now requests merge-freshness evidence through a file-free paginated GitHub Compare response (`?per_page=1&page=2`), preserving exact base/merge-base/behind provenance without downloading changed-file payloads that can exceed the bounded response envelope.
 
 - Commercial Readiness now best-effort cancels GitHub response bodies rejected from an oversized declared `Content-Length`, while preserving the established bounded response-size error even when cleanup itself fails.
 - Commercial Readiness mutating merge drains now reject duplicate positive pull-request numbers in every initial or refreshed snapshot before candidate selection, preventing ambiguous identity evidence from scheduling the same mutation twice or leaving a successful merge without its durable drain receipt after protected `main` advances.
@@ -94,6 +98,8 @@ All notable changes to LifeOS are documented in this file.
 - Notification batches now isolate delivery-count persistence failures, issue a distinct token for each claim attempt, share concurrent shutdown work, and emit bounded credential-free PostgreSQL failure classifications.
 
 ### Security
+
+- Root package-manager authority now enforces `qs` `6.16.0`, `multer` `2.3.0`, a Next.js 15.5 minimum of `15.5.24` (currently locked to `15.5.25`), and `sharp` `0.35.4`, removing the shared vulnerable resolutions identified by the current security scan without scanner suppression or leaf-package overrides.
 
 - Habit create/list/occurrence/completion routes now reject a bare client-selected `x-workspace-id` authority and require the short-lived signed `life-os.workspace.v1` gateway context before domain access.
 - Plugin installation lookup, conflict replay, and revocation now carry authenticated workspace and installing-user authority through the PostgreSQL boundary; the durable record contains no plaintext plugin secret, token, credential, or password material.
