@@ -502,7 +502,7 @@ export class PostgresHabitRepository implements HabitRepository {
     }
     const queryLimit = safeMaximumHabits + 1;
     const result = await this.query<ReviewProjectionRow>(
-      `WITH bounded_habits AS (
+      `WITH bounded_current_habits AS (
          SELECT id, workspace_id, title, timezone_name, recurrence_kind,
                 recurrence_interval, weekday_mask, starts_on, created_at
          FROM habit.habit_definitions
@@ -510,6 +510,29 @@ export class PostgresHabitRepository implements HabitRepository {
            AND created_at <= $4::timestamptz
          ORDER BY created_at ASC, id ASC
          LIMIT $5
+       ),
+       bounded_habits AS (
+         SELECT COALESCE(history.id, current.id) AS id,
+                COALESCE(history.workspace_id, current.workspace_id) AS workspace_id,
+                COALESCE(history.title, current.title) AS title,
+                COALESCE(history.timezone_name, current.timezone_name) AS timezone_name,
+                COALESCE(history.recurrence_kind, current.recurrence_kind) AS recurrence_kind,
+                COALESCE(history.recurrence_interval, current.recurrence_interval)
+                  AS recurrence_interval,
+                COALESCE(history.weekday_mask, current.weekday_mask) AS weekday_mask,
+                COALESCE(history.starts_on, current.starts_on) AS starts_on,
+                COALESCE(history.created_at, current.created_at) AS created_at
+         FROM bounded_current_habits AS current
+         LEFT JOIN LATERAL (
+           SELECT id, workspace_id, title, timezone_name, recurrence_kind,
+                  recurrence_interval, weekday_mask, starts_on, created_at
+           FROM habit.habit_definition_history
+           WHERE workspace_id = current.workspace_id
+             AND id = current.id
+             AND superseded_at > $4::timestamptz
+           ORDER BY superseded_at ASC, history_sequence ASC
+           LIMIT 1
+         ) AS history ON TRUE
        )
        SELECT h.id, h.workspace_id, h.title, h.timezone_name,
               h.recurrence_kind, h.recurrence_interval, h.weekday_mask,
