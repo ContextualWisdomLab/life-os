@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: repair-habit-rule-change-authority-v2-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "b5ba454f486d01dc4def3aa44546e08ee4c2dceb"
+          test "$(git rev-parse HEAD^)" = "b4882ac8b0fb3f71c0377a341ad8a4ea23ea5aca"
           remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
           test "$remote_head" = "$GITHUB_SHA"
           test -f .github/workflows/repair-habit-rule-change-authority.yml
