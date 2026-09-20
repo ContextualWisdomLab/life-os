@@ -20,6 +20,20 @@ describe('parsePluginDeliveryAttemptTestDatabaseTarget', () => {
     }
   });
 
+  it('uses the PostgreSQL default port when an explicit port is absent', () => {
+    expect(
+      parsePluginDeliveryAttemptTestDatabaseTarget(
+        'postgresql://life_os:secret@localhost/life_os_integration?sslmode=disable',
+      ),
+    ).toMatchObject({
+      hostname: 'localhost',
+      port: '5432',
+      username: 'life_os',
+      database: 'life_os_integration',
+      sslMode: 'disable',
+    });
+  });
+
   it('rejects malformed or non-PostgreSQL URLs', () => {
     for (const databaseUrl of [
       'not a URL',

@@ -3,6 +3,10 @@ import type {
   PluginDeliveryAttemptRetryEvidence,
   PluginDeliveryAttemptRetryStore,
 } from './plugin-delivery-attempt-retry';
+import {
+  PLUGIN_DELIVERY_ATTEMPT_RETRY_BACKOFF_SQL,
+  pluginDeliveryAttemptRetryBackoffSeconds,
+} from './plugin-delivery-attempt-retry-policy';
 
 const ATTEMPT_AUTHORITY_VERSION = 'life-os.plugin-delivery-attempt.v1' as const;
 const RETRY_AUTHORITY_VERSION =
@@ -11,8 +15,6 @@ const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const INITIAL_BACKOFF_SECONDS = 30;
-const MAXIMUM_BACKOFF_SECONDS = 900;
 
 /** Result returned by the bounded delivery-retry SQL client. */
 export interface PluginDeliveryAttemptRetrySqlResult<Row> {
@@ -47,6 +49,7 @@ export class PluginDeliveryAttemptRetryPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw retry-transition row before exact scope, chronology, and claim-consumption validation. */
 interface RetryRow {
   authority_version: unknown;
   delivery_id: unknown;
@@ -64,14 +67,17 @@ interface RetryRow {
   claim_expires_at: unknown;
 }
 
+/** Terminates malformed retry commands before SQL authority is exercised. */
 function invalidInput(): never {
   throw new PluginDeliveryAttemptRetryPersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt durable retry evidence without reflecting database detail. */
 function invalidEvidence(): never {
   throw new PluginDeliveryAttemptRetryPersistenceEvidenceError();
 }
 
+/** Collapses hostile synchronous command reads into the fixed persistence-input failure. */
 function boundedInputRead<T>(read: () => T): T {
   try {
     return read();
@@ -80,6 +86,7 @@ function boundedInputRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses hostile synchronous durable-evidence reads into the fixed persistence-evidence failure. */
 function boundedEvidenceRead<T>(read: () => T): T {
   try {
     return read();
@@ -88,6 +95,7 @@ function boundedEvidenceRead<T>(read: () => T): T {
   }
 }
 
+/** Collapses rejected SQL dependency calls into the fixed durable-evidence failure. */
 async function boundedEvidenceDependency<T>(
   read: () => Promise<T>,
 ): Promise<T> {
@@ -98,6 +106,7 @@ async function boundedEvidenceDependency<T>(
   }
 }
 
+/** Requires one canonical UUIDv4 retry-scope identifier before it can become a SQL parameter. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -105,13 +114,7 @@ function requireInputUuid(value: unknown): string {
   return value;
 }
 
-function requireStoredUuid(value: unknown): string {
-  if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
-    return invalidEvidence();
-  }
-  return value;
-}
-
+/** Requires one exact command-side millisecond UTC instant before retry persistence. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -123,6 +126,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes PostgreSQL Date/string timestamps into exact durable retry evidence. */
 function requireStoredInstant(value: unknown): string {
   const candidate = boundedEvidenceRead(() =>
     value instanceof Date ? value.toISOString() : value,
@@ -140,10 +144,12 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Preserves absent retry/terminal instants while validating any present timestamp. */
 function requireNullableStoredInstant(value: unknown): string | null {
   return value === null ? null : requireStoredInstant(value);
 }
 
+/** Snapshots exact retry command scope and digest before issuing the conditional UPDATE. */
 function validateCommand(
   value: PluginDeliveryAttemptRetryCommand,
 ): PluginDeliveryAttemptRetryCommand {
@@ -179,6 +185,7 @@ function validateCommand(
   });
 }
 
+/** Admits zero or one unambiguous row from the retry UPDATE result envelope. */
 function singleRow<Row>(
   result: PluginDeliveryAttemptRetrySqlResult<Row>,
 ): Row | undefined {
@@ -204,19 +211,22 @@ function singleRow<Row>(
   ) {
     return invalidEvidence();
   }
-  return rowsLength === 0 ? undefined : boundedEvidenceRead(() => rows[0]);
+  if (rowsLength === 0) {
+    return undefined;
+  }
+  const row = boundedEvidenceRead(() => rows[0]);
+  return row === undefined ? invalidEvidence() : row;
 }
 
+/** Mirrors the shared retry policy in application time for exact SQL/result parity checks. */
 function retryInstant(occurredAt: string, attemptNumber: number): string {
-  const delaySeconds = Math.min(
-    INITIAL_BACKOFF_SECONDS * 2 ** Math.max(0, attemptNumber - 1),
-    MAXIMUM_BACKOFF_SECONDS,
-  );
+  const delaySeconds = pluginDeliveryAttemptRetryBackoffSeconds(attemptNumber);
   return new Date(
     new Date(occurredAt).getTime() + delaySeconds * 1_000,
   ).toISOString();
 }
 
+/** Parses one consumed-claim row into bounded retry or terminal-exhaustion evidence. */
 function parseEvidence(
   row: unknown,
   command: PluginDeliveryAttemptRetryCommand,
@@ -281,9 +291,9 @@ function parseEvidence(
     }
     return Object.freeze({
       authorityVersion: RETRY_AUTHORITY_VERSION,
-      deliveryId: requireStoredUuid(snapshot.deliveryId),
-      workspaceId: requireStoredUuid(snapshot.workspaceId),
-      requestedByUserId: requireStoredUuid(snapshot.requestedByUserId),
+      deliveryId: command.deliveryId,
+      workspaceId: command.workspaceId,
+      requestedByUserId: command.requestedByUserId,
       attemptNumber: snapshot.attemptNumber,
       maxAttempts: snapshot.maxAttempts,
       deliveryStatus: 'failed',
@@ -304,9 +314,9 @@ function parseEvidence(
   }
   return Object.freeze({
     authorityVersion: RETRY_AUTHORITY_VERSION,
-    deliveryId: requireStoredUuid(snapshot.deliveryId),
-    workspaceId: requireStoredUuid(snapshot.workspaceId),
-    requestedByUserId: requireStoredUuid(snapshot.requestedByUserId),
+    deliveryId: command.deliveryId,
+    workspaceId: command.workspaceId,
+    requestedByUserId: command.requestedByUserId,
     attemptNumber: snapshot.attemptNumber,
     maxAttempts: snapshot.maxAttempts,
     deliveryStatus: 'pending',
@@ -338,10 +348,7 @@ export class PostgresPluginDeliveryAttemptRetryStore implements PluginDeliveryAt
            next_attempt_at = CASE
              WHEN attempt_count >= max_attempts THEN NULL
              ELSE $2::timestamptz + make_interval(
-               secs => LEAST(
-                 900,
-                 30 * power(2, GREATEST(attempt_count - 1, 0))
-               )::double precision
+               secs => ${PLUGIN_DELIVERY_ATTEMPT_RETRY_BACKOFF_SQL}::double precision
              )
            END,
            terminal_at = CASE

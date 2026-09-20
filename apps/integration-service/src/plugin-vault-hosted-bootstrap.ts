@@ -24,6 +24,7 @@ export type PluginVaultHostedNestApplicationFactory = (
   module: DynamicModule,
 ) => Promise<PluginVaultHostedNestApplication>;
 
+/** Captured lifecycle methods bound to the same accepted Nest application receiver. */
 interface AcceptedNestApplication {
   readonly application: PluginVaultHostedNestApplication;
   enableShutdownHooks(): void;

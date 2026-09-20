@@ -46,6 +46,7 @@ export class PluginDeliveryOriginPersistenceEvidenceError extends Error {
   }
 }
 
+/** Raw delivery-origin row before exact scope, origin, and lifecycle validation. */
 interface PluginDeliveryOriginRow {
   authority_version: unknown;
   grant_id: unknown;
@@ -58,14 +59,17 @@ interface PluginDeliveryOriginRow {
   revoked_at: unknown;
 }
 
+/** Terminates malformed grant/revocation input before SQL authority is exercised. */
 function invalidInput(): never {
   throw new PluginDeliveryOriginPersistenceValidationError();
 }
 
+/** Terminates ambiguous or corrupt durable origin evidence without reflecting backend data. */
 function invalidEvidence(): never {
   throw new PluginDeliveryOriginPersistenceEvidenceError();
 }
 
+/** Canonicalizes one input UUIDv4 before it can become a SQL parameter. */
 function requireInputUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidInput();
@@ -73,6 +77,7 @@ function requireInputUuid(value: unknown): string {
   return value.toLowerCase();
 }
 
+/** Requires stored UUIDv4 evidence to already be canonical lowercase. */
 function requireStoredUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidEvidence();
@@ -84,6 +89,7 @@ function requireStoredUuid(value: unknown): string {
   return canonical;
 }
 
+/** Requires one exact input-side millisecond UTC instant before persistence access. */
 function requireInputInstant(value: unknown): string {
   if (typeof value !== 'string' || !ISO_INSTANT_PATTERN.test(value)) {
     return invalidInput();
@@ -95,6 +101,7 @@ function requireInputInstant(value: unknown): string {
   return value;
 }
 
+/** Canonicalizes PostgreSQL Date/string timestamps into exact durable grant evidence. */
 function requireStoredInstant(value: unknown): string {
   let candidate: string;
   if (value instanceof Date) {
@@ -117,6 +124,7 @@ function requireStoredInstant(value: unknown): string {
   return candidate;
 }
 
+/** Canonicalizes an exact HTTPS origin while choosing input- or evidence-specific failure semantics. */
 function normalizedOrigin(value: unknown, evidence: boolean): string {
   const reject = evidence ? invalidEvidence : invalidInput;
   if (
@@ -156,6 +164,7 @@ function normalizedOrigin(value: unknown, evidence: boolean): string {
   return parsed.origin;
 }
 
+/** Admits zero or one unambiguous row from a bounded origin SQL result envelope. */
 function oneOrUndefined<Row>(
   result: PluginDeliveryOriginSqlResult<Row>,
 ): Row | undefined {
@@ -180,6 +189,7 @@ function oneOrUndefined<Row>(
   return rows[0];
 }
 
+/** Validates an active grant candidate before it can become durable origin authority. */
 function validateCreate(
   record: PluginDeliveryOriginGrantRecord,
 ): PluginDeliveryOriginGrantRecord {
@@ -206,6 +216,7 @@ function validateCreate(
   });
 }
 
+/** Validates exact revocation scope and lifecycle time before the conditional UPDATE. */
 function validateRevocation(
   input: RevokePluginDeliveryOriginGrant,
 ): RevokePluginDeliveryOriginGrant {
@@ -221,6 +232,7 @@ function validateRevocation(
   });
 }
 
+/** Parses one SQL row into exact canonical grant evidence after lifecycle ordering checks. */
 function parseRow(row: unknown): PluginDeliveryOriginGrantRecord {
   if (row === null || typeof row !== 'object' || Array.isArray(row)) {
     return invalidEvidence();

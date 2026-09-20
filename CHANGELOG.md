@@ -6,6 +6,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Changed
 
+- Integration now owns a permanent V8 production-quality gate over `src/**/*.ts` with 100% statement, branch, function, and line thresholds plus an AST-backed production-docstring contract; test-only coverage work does not change service persistence or network authority.
 - Production contextual-orchestrator proposal requests now explicitly use adaptive `auto` mode and avoid provider-native structured-output passthrough, allowing the orchestration plane to meet the quality requirement and then minimize known cost while LifeOS retains strict fail-closed proposal validation.
 
 ### Added
@@ -39,6 +40,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- Concurrent Plugin credential bind winners now re-read active installation identity and the exact durable binding after asynchronous provider verification, so revocation, replacement, or installation-identity drift during provider I/O cannot regain stale application authority.
+- Hostile durable Plugin claim and execution-fence values now stay inside plain async result envelopes until bounded synchronous validation; revoked Proxy values cannot escape fixed credential-free authority errors through Promise `then` assimilation.
 - Plugin delivery-attempt PostgreSQL persistence now treats returned result envelopes, durable row fields, and stored timestamp conversion as untrusted evidence, collapsing throwing accessors into the fixed credential-free `PluginDeliveryAttemptPersistenceEvidenceError` instead of allowing native dependency detail to escape.
 - Plugin credential replay now revalidates the exact durable credential binding after provider-backed secret verification and installation revalidation, so a concurrent credential revocation cannot be returned as stale active replay authority.
 - Plugin credential replay now revalidates the owning installation after provider-backed secret verification; a concurrent installation revocation cannot leave stale active replay metadata accepted after secret-store I/O.
@@ -67,6 +70,7 @@ All notable changes to LifeOS are documented in this file.
 
 ### Security
 
+- Integration coverage verification retains only a bounded approved summary plus coverage JSON; raw Vitest stdout/stderr and the full JSON test report are deleted before artifact upload so credentials or unexpected tenant/provider material cannot persist in retained diagnostics.
 - Plugin PostgreSQL transport is fail-closed to verified TLS using Node's configured trust store; the canonical `INTEGRATION_DATABASE_URL` cannot carry SSL/query options that weaken or replace this policy and accepts DNS hostname authority only. IPv4/IPv6 literal authorities are rejected before node-postgres acquisition until upstream transport can prove certificate identity for IP literals. Protected-lineage PostgreSQL 17.10 acceptance proves encrypted DNS-host operation, hostname mismatch rejection, non-TLS rejection, server-side timeout/cancellation recovery, and the migration/driver suite; real Vault-backed composed-runtime acceptance remains separate.
 - Plugin Vault secret creation is create-only per credential binding and reconciles an ambiguous/CAS-losing write only against canonical matching durable evidence; caller and Vault-returned binding/installation/workspace/user UUIDs must already be canonical lowercase and are never normalized into authority, a different secret winner cannot be overwritten or treated as replay, malformed Vault evidence fails closed, and the opaque reference contains no Vault token, address, or provider plaintext.
 - Plugin credential persistence now treats exact `undefined` as the only normal application-level absence sentinel, rejects malformed SQL/result/row evidence with bounded errors, requires canonical durable UUIDv4/timestamps, and prevents installation revocation from racing a new durable credential admission.

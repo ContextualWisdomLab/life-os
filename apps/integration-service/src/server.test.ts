@@ -3,6 +3,7 @@ import type { PluginVaultHostedNestApplication } from './plugin-vault-hosted-boo
 import { createNodePostgresPluginPool } from './plugin-vault-postgres-driver';
 import {
   runIntegrationServiceEntrypoint,
+  runIntegrationServiceEntrypointIfMain,
   startIntegrationService,
 } from './server';
 
@@ -98,5 +99,17 @@ describe('Integration service production entrypoint', () => {
       runIntegrationServiceEntrypoint(environment, startHosted, runtime),
     ).resolves.toBeUndefined();
     expect(runtime.exitCode).toBe(1);
+  });
+
+  it('invokes the hosted process boundary only for the owning Node module', () => {
+    const owner = {} as NodeModule;
+    const other = {} as NodeModule;
+    const run = vi.fn(async () => undefined);
+
+    runIntegrationServiceEntrypointIfMain(owner, other, run);
+    expect(run).not.toHaveBeenCalled();
+
+    runIntegrationServiceEntrypointIfMain(owner, owner, run);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });
