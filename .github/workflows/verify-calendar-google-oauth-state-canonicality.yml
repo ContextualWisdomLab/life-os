@@ -1,0 +1,53 @@
+name: Verify Calendar Google OAuth State Canonicality
+
+on:
+  push:
+    branches:
+      - feat/calendar-google-oauth-state-v1
+    paths:
+      - apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts
+      - apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts
+      - .github/workflows/verify-calendar-google-oauth-state-canonicality.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-calendar-google-oauth-state-canonicality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts
+          apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts
+
+      - name: Typecheck Calendar service
+        run: pnpm --filter @life-os/integration-calendar-service typecheck
+
+      - name: Reproduce callback-state canonicality regression
+        run: >-
+          pnpm --filter @life-os/integration-calendar-service exec vitest run
+          src/calendar-google-oauth-state-canonicality.test.ts
