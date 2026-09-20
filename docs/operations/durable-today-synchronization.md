@@ -1,6 +1,6 @@
 # Durable Today synchronization runbook
 
-**Status:** Implemented on active PR #127  
+**Status:** Implemented on protected `main` via merged PR #127  
 **Owner:** Planning bounded context with web BFF mediation
 
 ## Purpose
@@ -91,12 +91,13 @@ Before merge or release, require exact-current-head evidence for:
 - planning domain/unit tests;
 - real PostgreSQL restart, tenant-isolation, concurrent-update, replay, and conflicting-key tests;
 - BFF authentication/credential-separation tests;
+- RFC 9110 strong `ETag` / `If-Match` comparison, preserving opaque entity-tag octets character-for-character;
 - browser explicit-migration and stale-conflict journeys;
 - CI browser acceptance in Chromium;
 - formatting, lint, typecheck, build, Compose validation;
 - AppGuardrail, Semgrep, Security Scan, Commercial Readiness, CodeRabbit, and all actionable human/automated review findings.
 
-A predecessor-head pass does not transfer after any source or base change.
+A predecessor-head pass does not transfer after any source, documentation, or base change.
 
 ## Diagnosis guide
 
