@@ -1,0 +1,66 @@
+name: Verify Tasks Workspace Canonical Evidence
+
+on:
+  push:
+    branches:
+      - feat/web-tasks-workspace-v1
+    paths:
+      - apps/web/app/tasks/tasks-client.tsx
+      - apps/web/e2e/tasks-workspace-canonical-evidence.spec.ts
+      - .github/workflows/verify-tasks-workspace-canonical-evidence.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-tasks-workspace-canonical-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require current branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          test -n "$remote_head"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/web/app/tasks/tasks-client.tsx
+          apps/web/e2e/tasks-workspace-canonical-evidence.spec.ts
+
+      - name: Typecheck Web
+        run: pnpm --filter @life-os/web typecheck
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @life-os/web exec playwright install --with-deps chromium
+
+      - name: Reproduce canonical-evidence regression
+        run: >-
+          pnpm --filter @life-os/web exec playwright test
+          e2e/tasks-workspace-canonical-evidence.spec.ts
+          --project=chromium
+          --grep "rejects non-canonical durable UUID evidence"
