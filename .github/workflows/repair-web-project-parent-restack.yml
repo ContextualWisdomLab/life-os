@@ -90,7 +90,12 @@ jobs:
           );
           ensureReplacement(
             '  if (!Number.isFinite(parsed)) {',
-            '  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {',
+            [
+              '  if (',
+              '    !Number.isFinite(parsed) ||',
+              '    new Date(parsed).toISOString() !== value',
+              '  ) {',
+            ].join('\n'),
           );
           ensureReplacement('  return new Date(parsed).toISOString();', '  return value;');
           fs.writeFileSync(clientPath, client);
