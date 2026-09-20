@@ -1,0 +1,185 @@
+name: Repair Planning due data-rights export
+
+on:
+  push:
+    branches:
+      - feat/planning-task-due-authority-v1
+    paths:
+      - .github/workflows/repair-planning-due-data-rights-export.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: planning-task-due-authority-writer
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PLANNING_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      TARGET_BRANCH: feat/planning-task-due-authority-v1
+      EXPECTED_RED_PARENT: c706f91533e826d3d09642e7aa8c21c57a3aa96a
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout exact writer input
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact RED ancestry and remote ownership
+        run: |
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_RED_PARENT"
+          test "$(git ls-remote origin refs/heads/${TARGET_BRANCH} | cut -f1)" = "$GITHUB_SHA"
+
+      - name: Reproduce hosted missing-deadline RED
+        run: |
+          set +e
+          pnpm --filter @life-os/planning-service exec vitest run --no-file-parallelism src/task-due-authority-postgres.integration.test.ts > /tmp/due-export-red.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/due-export-red.log
+          test "$status" -ne 0
+          grep -q 'exports the durable deadline through Planning-owned data-rights evidence' /tmp/due-export-red.log
+          grep -q '"dueAt"' /tmp/due-export-red.log
+
+      - name: Apply minimal Planning-owned export repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          production = Path('apps/planning-service/src/planning-data-rights.ts')
+          text = production.read_text()
+
+          replacements = [
+              (
+                  "const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v2' as const;",
+                  "const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v3' as const;",
+                  'export schema version',
+              ),
+              (
+                  "interface PlanningTaskExportRow extends PlanningGoalExportRow {\n  project_id: unknown;\n  status: unknown;\n  completed_at: unknown;\n}",
+                  "interface PlanningTaskExportRow extends PlanningGoalExportRow {\n  project_id: unknown;\n  status: unknown;\n  completed_at: unknown;\n  due_at: unknown;\n}",
+                  'task export row',
+              ),
+              (
+                  "`SELECT id, project_id, title, status, completed_at, created_at\n             FROM planning.tasks",
+                  "`SELECT id, project_id, title, status, completed_at, due_at, created_at\n             FROM planning.tasks",
+                  'task export query',
+              ),
+              (
+                  "          completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),\n          createdAt: requireTimestamp(row.created_at, 'task.created_at'),",
+                  "          completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),\n          dueAt: requireTimestamp(row.due_at, 'task.due_at'),\n          createdAt: requireTimestamp(row.created_at, 'task.created_at'),",
+                  'task export mapping',
+              ),
+          ]
+          for old, new, label in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'{label} anchor mismatch')
+              text = text.replace(old, new)
+          production.write_text(text)
+
+          controller = Path('apps/planning-service/src/planning-data-rights-controller-authority.test.ts')
+          controller_text = controller.read_text()
+          old = "schemaVersion: 'planning.data-rights.v2',"
+          if controller_text.count(old) != 1:
+              raise SystemExit('controller schema fixture anchor mismatch')
+          controller.write_text(controller_text.replace(old, "schemaVersion: 'planning.data-rights.v3',"))
+
+          integration = Path('apps/planning-service/tests/postgres-data-rights.integration.test.ts')
+          integration_text = integration.read_text()
+          migration_anchor = "    '0007_task_completion_facts.sql',\n"
+          if integration_text.count(migration_anchor) != 1 or '0008_task_due_authority.sql' in integration_text:
+              raise SystemExit('data-rights migration fixture anchor mismatch')
+          integration_text = integration_text.replace(
+              migration_anchor,
+              migration_anchor + "    '0008_task_due_authority.sql',\n",
+          )
+          task_insert = "    `INSERT INTO planning.tasks (id, workspace_id, project_id, title, created_at)\n     VALUES ($1, $2, $3, 'Task', TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,"
+          task_insert_due = "    `INSERT INTO planning.tasks (id, workspace_id, project_id, title, due_at, created_at)\n     VALUES ($1, $2, $3, 'Task', TIMESTAMPTZ '2026-08-11T09:30:00.123Z', TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,"
+          if integration_text.count(task_insert) != 1:
+              raise SystemExit('data-rights task seed anchor mismatch')
+          integration_text = integration_text.replace(task_insert, task_insert_due)
+          if integration_text.count("schemaVersion: 'planning.data-rights.v2',") != 1:
+              raise SystemExit('data-rights schema assertion anchor mismatch')
+          integration_text = integration_text.replace(
+              "schemaVersion: 'planning.data-rights.v2',",
+              "schemaVersion: 'planning.data-rights.v3',",
+          )
+          assertion_anchor = "      expect(exported.data).toHaveProperty('taskCompletionFacts', [\n"
+          if integration_text.count(assertion_anchor) != 1 or "'tasks.0.dueAt'" in integration_text:
+              raise SystemExit('data-rights deadline assertion anchor mismatch')
+          integration_text = integration_text.replace(
+              assertion_anchor,
+              "      expect(exported.data).toHaveProperty(\n        'tasks.0.dueAt',\n        '2026-08-11T09:30:00.123Z',\n      );\n" + assertion_anchor,
+          )
+          integration.write_text(integration_text)
+          PY
+          pnpm exec prettier --write \
+            apps/planning-service/src/planning-data-rights.ts \
+            apps/planning-service/src/planning-data-rights-controller-authority.test.ts \
+            apps/planning-service/tests/postgres-data-rights.integration.test.ts
+
+      - name: Prove focused deadline export GREEN
+        run: pnpm --filter @life-os/planning-service exec vitest run --no-file-parallelism src/task-due-authority-postgres.integration.test.ts
+
+      - name: Prove versioned data-rights GREEN
+        run: pnpm --filter @life-os/planning-service exec vitest run --no-file-parallelism tests/postgres-data-rights.integration.test.ts src/planning-data-rights-controller-authority.test.ts
+
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service exec vitest run --passWithNoTests
+
+      - name: Typecheck and build Planning
+        run: |
+          pnpm --filter @life-os/planning-service typecheck
+          pnpm --filter @life-os/planning-service build
+
+      - name: Retire writer and verify bounded diff
+        run: |
+          rm .github/workflows/repair-planning-due-data-rights-export.yml
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' \
+            '.github/workflows/repair-planning-due-data-rights-export.yml' \
+            'apps/planning-service/src/planning-data-rights.ts' \
+            'apps/planning-service/src/planning-data-rights-controller-authority.test.ts' \
+            'apps/planning-service/tests/postgres-data-rights.integration.test.ts' | sort)"
+
+      - name: Verify remote exact head before publication
+        run: test "$(git ls-remote origin refs/heads/${TARGET_BRANCH} | cut -f1)" = "$GITHUB_SHA"
+
+      - name: Publish ordinary descendant
+        run: |
+          git config user.name 'LifeOS Hourly Maintainer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(planning): include due authority in data rights'
+          git push origin "HEAD:${TARGET_BRANCH}"
