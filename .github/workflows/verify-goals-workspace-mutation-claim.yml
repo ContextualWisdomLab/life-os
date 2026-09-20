@@ -47,9 +47,9 @@ jobs:
       - name: Install Chromium for Playwright
         run: pnpm --filter @life-os/web exec playwright install --with-deps chromium
 
-      - name: Reproduce mutation-claim regression
+      - name: Reproduce durable-acceptance regressions
         run: >-
           pnpm --filter @life-os/web exec playwright test
           e2e/goals-workspace.spec.ts
           --project=chromium
-          --grep "synchronous repeated submit cannot dispatch two Goal mutations"
+          --grep "synchronous repeated submit cannot dispatch two Goal mutations|fails closed when the Goal projection contains a noncanonical UUID"
