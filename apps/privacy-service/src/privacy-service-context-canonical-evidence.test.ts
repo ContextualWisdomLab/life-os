@@ -11,6 +11,8 @@ const ACTOR_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const ISSUED_AT = new Date('2026-08-07T05:00:00.000Z');
 const NOW = new Date('2026-08-07T05:00:30.000Z');
 const ACTIVE_SECRET = Buffer.alloc(32, 0x61).toString('base64url');
+const BASE64URL_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 function keyRing() {
   return parsePrivacyServiceContextKeyRing({
@@ -30,6 +32,18 @@ function signedHeaders() {
     },
     keyRing(),
   );
+}
+
+function nonCanonicalSignatureAlias(value: string): string {
+  const finalCharacter = value.at(-1);
+  if (finalCharacter === undefined) {
+    throw new Error('Expected a non-empty signature');
+  }
+  const canonicalIndex = BASE64URL_ALPHABET.indexOf(finalCharacter);
+  if (canonicalIndex < 0 || canonicalIndex % 4 !== 0) {
+    throw new Error('Expected canonical unpadded SHA-256 base64url evidence');
+  }
+  return `${value.slice(0, -1)}${BASE64URL_ALPHABET[canonicalIndex + 1]}`;
 }
 
 describe('privacy signed-context canonical evidence', () => {
@@ -61,6 +75,30 @@ describe('privacy signed-context canonical evidence', () => {
     expect(() =>
       verifyPrivacyServiceContext(
         changed,
+        keyRing(),
+        'POST',
+        '/v1/privacy/access-decisions',
+        NOW,
+      ),
+    ).toThrow(PrivacyServiceContextError);
+  });
+
+  it('rejects a byte-equivalent noncanonical base64url signature alias', () => {
+    const headers = signedHeaders();
+    const signature = headers['x-life-os-context-signature'];
+    const aliasedSignature = nonCanonicalSignatureAlias(signature);
+
+    expect(aliasedSignature).not.toBe(signature);
+    expect(Buffer.from(aliasedSignature, 'base64url')).toEqual(
+      Buffer.from(signature, 'base64url'),
+    );
+
+    expect(() =>
+      verifyPrivacyServiceContext(
+        {
+          ...headers,
+          'x-life-os-context-signature': aliasedSignature,
+        },
         keyRing(),
         'POST',
         '/v1/privacy/access-decisions',
