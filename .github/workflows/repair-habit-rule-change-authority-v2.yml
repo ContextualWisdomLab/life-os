@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "STAGED_PARENT_SHA"
+          test "$(git rev-parse HEAD^)" = "b5ba454f486d01dc4def3aa44546e08ee4c2dceb"
           remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
           test "$remote_head" = "$GITHUB_SHA"
           test -f .github/workflows/repair-habit-rule-change-authority.yml
