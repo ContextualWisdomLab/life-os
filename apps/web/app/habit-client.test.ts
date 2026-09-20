@@ -37,7 +37,13 @@ function sessionResponse(status = 200): Response {
 function habitRecord(
   overrides: Partial<
     Record<
-      'id' | 'workspaceId' | 'title' | 'timezone' | 'startsOn' | 'recurrence' | 'createdAt',
+      | 'id'
+      | 'workspaceId'
+      | 'title'
+      | 'timezone'
+      | 'startsOn'
+      | 'recurrence'
+      | 'createdAt',
       unknown
     >
   > = {},
@@ -65,6 +71,15 @@ function createRequest(body: unknown): Request {
   });
 }
 
+function validCreateRequest(): Request {
+  return createRequest({
+    title: 'Write one evidence note',
+    timezone: 'Asia/Seoul',
+    startsOn: '2026-09-01',
+    recurrence: { kind: 'daily', interval: 1 },
+  });
+}
+
 function listRequest(): Request {
   return new Request('https://life-os.example/api/habits', {
     method: 'GET',
@@ -83,12 +98,7 @@ describe('authenticated Habit create BFF', () => {
     };
 
     const response = await handleHabitCreateRequest(
-      createRequest({
-        title: 'Write one evidence note',
-        timezone: 'Asia/Seoul',
-        startsOn: '2026-09-01',
-        recurrence: { kind: 'daily', interval: 1 },
-      }),
+      validCreateRequest(),
       environment,
       fetcher,
       NOW_SECONDS,
@@ -142,11 +152,37 @@ describe('authenticated Habit create BFF', () => {
       null,
       [],
       {},
-      { title: '', timezone: 'Asia/Seoul', startsOn: '2026-09-01', recurrence: { kind: 'daily', interval: 1 } },
-      { title: 'Habit', workspaceId: WORKSPACE_ID, timezone: 'Asia/Seoul', startsOn: '2026-09-01', recurrence: { kind: 'daily', interval: 1 } },
-      { title: 'Habit', timezone: 'Not/AZone', startsOn: '2026-09-01', recurrence: { kind: 'daily', interval: 1 } },
-      { title: 'Habit', timezone: 'Asia/Seoul', startsOn: '2026-02-30', recurrence: { kind: 'daily', interval: 1 } },
-      { title: 'Habit', timezone: 'Asia/Seoul', startsOn: '2026-09-01', recurrence: { kind: 'weekly', interval: 1, weekdays: [] } },
+      {
+        title: '',
+        timezone: 'Asia/Seoul',
+        startsOn: '2026-09-01',
+        recurrence: { kind: 'daily', interval: 1 },
+      },
+      {
+        title: 'Habit',
+        workspaceId: WORKSPACE_ID,
+        timezone: 'Asia/Seoul',
+        startsOn: '2026-09-01',
+        recurrence: { kind: 'daily', interval: 1 },
+      },
+      {
+        title: 'Habit',
+        timezone: 'Not/AZone',
+        startsOn: '2026-09-01',
+        recurrence: { kind: 'daily', interval: 1 },
+      },
+      {
+        title: 'Habit',
+        timezone: 'Asia/Seoul',
+        startsOn: '2026-02-30',
+        recurrence: { kind: 'daily', interval: 1 },
+      },
+      {
+        title: 'Habit',
+        timezone: 'Asia/Seoul',
+        startsOn: '2026-09-01',
+        recurrence: { kind: 'weekly', interval: 1, weekdays: [] },
+      },
     ];
 
     for (const body of invalidBodies) {
@@ -213,6 +249,51 @@ describe('authenticated Habit create BFF', () => {
     assert.equal(malformed.status, 503);
     assert.equal(calls, 2);
   });
+
+  it('rejects noncanonical Identity workspace UUID before Habit dependency access', async () => {
+    let calls = 0;
+    const response = await handleHabitCreateRequest(
+      validCreateRequest(),
+      environment,
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          return Response.json({
+            sessionId: SESSION_ID,
+            userId: USER_ID,
+            workspaceId: WORKSPACE_ID.toUpperCase(),
+            createdAt: '2026-09-01T01:00:00.000Z',
+            expiresAt: '2026-09-02T01:00:00.000Z',
+          });
+        }
+        return Response.json(habitRecord(), { status: 201 });
+      },
+      NOW_SECONDS,
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(calls, 1);
+  });
+
+  it('rejects noncanonical Habit identity instead of normalizing durable evidence', async () => {
+    let calls = 0;
+    const response = await handleHabitCreateRequest(
+      validCreateRequest(),
+      environment,
+      async () => {
+        calls += 1;
+        return calls === 1
+          ? sessionResponse()
+          : Response.json(habitRecord({ id: HABIT_ID.toUpperCase() }), {
+              status: 201,
+            });
+      },
+      NOW_SECONDS,
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(calls, 2);
+  });
 });
 
 describe('authenticated Habit list BFF', () => {
@@ -230,7 +311,11 @@ describe('authenticated Habit list BFF', () => {
               habitRecord({
                 id: SECOND_HABIT_ID,
                 title: 'Review weekly priorities',
-                recurrence: { kind: 'weekly', interval: 1, weekdays: [1, 5] },
+                recurrence: {
+                  kind: 'weekly',
+                  interval: 1,
+                  weekdays: [1, 5],
+                },
               }),
             ]);
       },
@@ -293,5 +378,25 @@ describe('authenticated Habit list BFF', () => {
         code: 'habit_listing_unavailable',
       });
     }
+  });
+
+  it('rejects noncanonical Habit ownership UUID instead of aliasing workspace authority', async () => {
+    let calls = 0;
+    const response = await handleHabitListRequest(
+      listRequest(),
+      environment,
+      async () => {
+        calls += 1;
+        return calls === 1
+          ? sessionResponse()
+          : Response.json([
+              habitRecord({ workspaceId: WORKSPACE_ID.toUpperCase() }),
+            ]);
+      },
+      NOW_SECONDS,
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(calls, 2);
   });
 });
