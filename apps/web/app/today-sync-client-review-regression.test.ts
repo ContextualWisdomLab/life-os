@@ -120,4 +120,131 @@ describe('Today synchronization review regressions', () => {
       currentRevision: REVISION,
     });
   });
+
+  it('rejects noncanonical durable Today aggregate identity from Planning', async () => {
+    const request = new Request(
+      `https://life.example.test/api/planning/today/${DATE}`,
+      {
+        method: 'GET',
+        headers: { cookie: 'session=opaque' },
+      },
+    );
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) return identityResponse();
+      return new Response(
+        JSON.stringify({
+          ...aggregate(),
+          aggregateId: aggregate().aggregateId.toUpperCase(),
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            etag: `\"${REVISION}\"`,
+          },
+        },
+      );
+    };
+
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(
+      (await response.json() as { code: string }).code,
+      'today_sync_unavailable',
+    );
+  });
+
+  it('rejects noncanonical durable Today revision and matching ETag from Planning', async () => {
+    const request = new Request(
+      `https://life.example.test/api/planning/today/${DATE}`,
+      {
+        method: 'GET',
+        headers: { cookie: 'session=opaque' },
+      },
+    );
+    const uppercaseRevision = REVISION.toUpperCase();
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) return identityResponse();
+      return new Response(
+        JSON.stringify({ ...aggregate(), revision: uppercaseRevision }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            etag: `\"${uppercaseRevision}\"`,
+          },
+        },
+      );
+    };
+
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(
+      (await response.json() as { code: string }).code,
+      'today_sync_unavailable',
+    );
+  });
+
+  it('does not recanonicalize noncanonical conflict revision evidence from Planning', async () => {
+    const request = new Request(
+      `https://life.example.test/api/planning/today/${DATE}`,
+      {
+        method: 'PUT',
+        headers: {
+          cookie: 'session=opaque',
+          'content-type': 'application/json',
+          'if-match': `\"${REVISION}\"`,
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({
+          version: 'life-os.today.v1',
+          date: DATE,
+          actions: [],
+        }),
+      },
+    );
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) return identityResponse();
+      return new Response(
+        JSON.stringify({
+          type: 'about:blank',
+          title: 'The durable Today changed while you were editing',
+          status: 409,
+          code: 'today_revision_conflict',
+          currentRevision: REVISION.toUpperCase(),
+        }),
+        {
+          status: 409,
+          headers: { 'content-type': 'application/problem+json' },
+        },
+      );
+    };
+
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      type: 'about:blank',
+      title: 'Today write conflicts with an earlier request',
+      status: 409,
+      code: 'today_write_conflict',
+    });
+  });
 });
