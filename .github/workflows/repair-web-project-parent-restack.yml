@@ -54,8 +54,12 @@ jobs:
             while IFS= read -r path; do
               [ -z "$path" ] && continue
               case "$path" in
-                apps/web/app/planning-goal-client.ts|apps/web/package.json)
+                apps/web/package.json)
                   git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                apps/web/app/planning-goal-client.ts|apps/web/app/planning-goal-canonical-evidence-regression.test.ts)
+                  git checkout "$PARENT_SHA" -- "$path"
                   git add "$path"
                   ;;
                 *)
@@ -66,39 +70,14 @@ jobs:
             done <<< "$conflicts"
           fi
 
+          # Goal boundary truth belongs to the settled parent. Adopt those owner files
+          # byte-for-byte rather than replaying formatter-sensitive source rewrites.
+          git checkout "$PARENT_SHA" -- \
+            apps/web/app/planning-goal-client.ts \
+            apps/web/app/planning-goal-canonical-evidence-regression.test.ts
+
           node <<'NODE'
           const fs = require('node:fs');
-
-          const clientPath = 'apps/web/app/planning-goal-client.ts';
-          let client = fs.readFileSync(clientPath, 'utf8');
-          function ensureReplacement(oldText, newText) {
-            if (client.includes(newText)) return;
-            const count = client.split(oldText).length - 1;
-            if (count !== 1) {
-              throw new Error(`Expected exactly one canonical-restack target, found ${count}: ${oldText}`);
-            }
-            client = client.replace(oldText, newText);
-          }
-          ensureReplacement(
-            '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;',
-            '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;',
-          );
-          ensureReplacement('  return value.toLowerCase();', '  return value;');
-          ensureReplacement(
-            '/** Requires a valid RFC 3339 timestamp and emits one canonical UTC instant. */',
-            '/** Requires Planning timestamp evidence to already be canonical UTC ISO-8601 text. */',
-          );
-          ensureReplacement(
-            '  if (!Number.isFinite(parsed)) {',
-            [
-              '  if (',
-              '    !Number.isFinite(parsed) ||',
-              '    new Date(parsed).toISOString() !== value',
-              '  ) {',
-            ].join('\n'),
-          );
-          ensureReplacement('  return new Date(parsed).toISOString();', '  return value;');
-          fs.writeFileSync(clientPath, client);
 
           const packagePath = 'apps/web/package.json';
           let pkg = fs.readFileSync(packagePath, 'utf8');
