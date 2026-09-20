@@ -96,6 +96,31 @@ test('synchronous repeated submit cannot dispatch two Goal mutations', async ({
   releasePosts?.();
 });
 
+test('fails closed when the Goal projection contains a noncanonical UUID', async ({
+  page,
+}) => {
+  await page.route('**/api/planning/goals', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          ...freshGoal,
+          id: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+          title: 'Noncanonical identity evidence',
+        },
+      ]),
+    });
+  });
+
+  await page.goto('/goals');
+
+  await expect(
+    page.getByText('The Goals workspace is temporarily unavailable.'),
+  ).toBeVisible();
+  await expect(page.getByText('Noncanonical identity evidence')).toHaveCount(0);
+});
+
 test('fails closed when the Goal projection contains a normalized invalid UTC date', async ({
   page,
 }) => {
