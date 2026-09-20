@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { handleTodaySyncRequest } from './today-sync-client';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const REVISION = '22222222-2222-4222-8222-222222222222';
+const REVISION = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DATE = '2026-08-09';
 const ENVIRONMENT = {
   IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
@@ -19,7 +19,7 @@ function identityResponse(): Response {
 function aggregate() {
   return {
     version: 'life-os.today.v1',
-    aggregateId: '44444444-4444-4444-8444-444444444444',
+    aggregateId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     revision: REVISION,
     date: DATE,
     actions: [],
