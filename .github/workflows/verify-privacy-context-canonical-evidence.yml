@@ -1,4 +1,4 @@
-name: Verify Privacy Context Canonical Evidence
+name: Verify Privacy Canonical Signed Evidence
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - apps/privacy-service/src/privacy-service-context.ts
       - apps/privacy-service/src/privacy-service-context-canonical-evidence.test.ts
+      - apps/privacy-service/src/privacy-access-token.ts
+      - apps/privacy-service/src/privacy-access-token-canonical-evidence.test.ts
       - .github/workflows/verify-privacy-context-canonical-evidence.yml
 
 permissions:
@@ -47,11 +49,14 @@ jobs:
           pnpm exec prettier --single-quote --check
           apps/privacy-service/src/privacy-service-context.ts
           apps/privacy-service/src/privacy-service-context-canonical-evidence.test.ts
+          apps/privacy-service/src/privacy-access-token.ts
+          apps/privacy-service/src/privacy-access-token-canonical-evidence.test.ts
 
-      - name: Reproduce signed-context canonical-evidence regressions
+      - name: Reproduce Privacy canonical signed-evidence regressions
         run: >-
           pnpm --filter @life-os/privacy-service exec vitest run
           src/privacy-service-context-canonical-evidence.test.ts
+          src/privacy-access-token-canonical-evidence.test.ts
 
       - name: Typecheck Privacy package
         run: pnpm --filter @life-os/privacy-service typecheck
