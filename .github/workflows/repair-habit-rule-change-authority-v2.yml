@@ -46,20 +46,21 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "b4882ac8b0fb3f71c0377a341ad8a4ea23ea5aca"
+          test "$(git rev-parse HEAD^)" = "e7e6c68db1e1e243dcff48220e81819b7ed83762"
           remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
           test "$remote_head" = "$GITHUB_SHA"
-          test -f .github/workflows/repair-habit-rule-change-authority.yml
+          test ! -e .github/workflows/repair-habit-rule-change-authority.yml
           test -f .github/workflows/repair-habit-rule-change-authority-v2.yml
 
-      - name: Materialize bounded repair from retained writer specification
+      - name: Materialize bounded repair from retained parent specification
         shell: bash
         run: |
           set -euo pipefail
+          git show HEAD^:.github/workflows/repair-habit-rule-change-authority.yml > /tmp/habit-rule-change-source.yml
           python <<'PY'
           from pathlib import Path
 
-          source = Path('.github/workflows/repair-habit-rule-change-authority.yml')
+          source = Path('/tmp/habit-rule-change-source.yml')
           lines = source.read_text().splitlines()
 
           def block(start_text: str, end_text: str) -> str:
@@ -117,20 +118,17 @@ jobs:
       - name: Run complete Habit suite
         run: pnpm --filter @life-os/habit-service test
 
-      - name: Guard exact product delta and retire both repair writers
+      - name: Guard exact product delta and retire repair writer
         shell: bash
         run: |
           set -euo pipefail
-          git rm \
-            .github/workflows/repair-habit-rule-change-authority.yml \
-            .github/workflows/repair-habit-rule-change-authority-v2.yml
+          git rm .github/workflows/repair-habit-rule-change-authority-v2.yml
           git add \
             apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
             apps/habit-service/src/habit-domain.ts \
             apps/habit-service/src/postgres-habit-repository.ts
           allowed="$(printf '%s\n' \
             .github/workflows/repair-habit-rule-change-authority-v2.yml \
-            .github/workflows/repair-habit-rule-change-authority.yml \
             apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
             apps/habit-service/src/habit-domain.ts \
             apps/habit-service/src/postgres-habit-repository.ts | sort)"
