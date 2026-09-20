@@ -1,0 +1,77 @@
+name: Repair Workflow Registry Formatting
+
+on:
+  push:
+    branches:
+      - fix/workflow-registry-state-validation-v1
+    paths:
+      - .github/workflows/repair-workflow-registry-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-workflow-registry-formatting-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact formatting-repair head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Guard exact remote head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply repository formatter to proven failing path
+        run: >-
+          pnpm exec prettier --write
+          packages/commercial-readiness/src/workflow-registry.mjs
+
+      - name: Guard formatting-only delta and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --check \
+            packages/commercial-readiness/src/workflow-registry.mjs \
+            packages/commercial-readiness/src/workflow-registry-sha-canonicality.test.mjs
+          git rm .github/workflows/repair-workflow-registry-formatting.yml
+          git add packages/commercial-readiness/src/workflow-registry.mjs
+          allowed="$(printf '%s\n' \
+            .github/workflows/repair-workflow-registry-formatting.yml \
+            packages/commercial-readiness/src/workflow-registry.mjs | sort)"
+          changed="$(git diff --cached --name-only "$GITHUB_SHA" | sort)"
+          test "$changed" = "$allowed"
+          git diff --check --cached
+
+      - name: Publish ordinary formatting repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(commercial): format workflow registry"
+          remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+          git push origin "HEAD:$GITHUB_REF_NAME"
