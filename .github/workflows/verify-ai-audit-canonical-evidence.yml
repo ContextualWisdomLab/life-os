@@ -6,6 +6,7 @@ on:
       - test/ai-audit-canonical-durable-evidence-v1
     paths:
       - apps/ai-service/src/proposal-audit-canonical-evidence.test.ts
+      - apps/ai-service/src/postgres-proposal-audit-canonical-evidence.test.ts
       - apps/ai-service/src/proposal-audit-domain.ts
       - apps/ai-service/src/postgres-proposal-audit-repository.ts
       - .github/workflows/verify-ai-audit-canonical-evidence.yml
@@ -47,6 +48,7 @@ jobs:
         run: >-
           pnpm exec prettier --single-quote --check
           apps/ai-service/src/proposal-audit-canonical-evidence.test.ts
+          apps/ai-service/src/postgres-proposal-audit-canonical-evidence.test.ts
           apps/ai-service/src/proposal-audit-domain.ts
           apps/ai-service/src/postgres-proposal-audit-repository.ts
 
@@ -54,6 +56,7 @@ jobs:
         run: >-
           pnpm --filter @life-os/ai-service exec vitest run
           src/proposal-audit-canonical-evidence.test.ts
+          src/postgres-proposal-audit-canonical-evidence.test.ts
 
       - name: Typecheck AI service
         run: pnpm --filter @life-os/ai-service typecheck
