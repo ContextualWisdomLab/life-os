@@ -152,12 +152,10 @@ describe('Today synchronization review regressions', () => {
       ENVIRONMENT,
       fetcher,
     );
+    const body = (await response.json()) as { code: string };
 
     assert.equal(response.status, 503);
-    assert.equal(
-      (await response.json() as { code: string }).code,
-      'today_sync_unavailable',
-    );
+    assert.equal(body.code, 'today_sync_unavailable');
   });
 
   it('rejects noncanonical durable Today revision and matching ETag from Planning', async () => {
@@ -189,12 +187,10 @@ describe('Today synchronization review regressions', () => {
       ENVIRONMENT,
       fetcher,
     );
+    const body = (await response.json()) as { code: string };
 
     assert.equal(response.status, 503);
-    assert.equal(
-      (await response.json() as { code: string }).code,
-      'today_sync_unavailable',
-    );
+    assert.equal(body.code, 'today_sync_unavailable');
   });
 
   it('does not recanonicalize noncanonical conflict revision evidence from Planning', async () => {
