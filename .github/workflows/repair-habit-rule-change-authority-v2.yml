@@ -63,21 +63,47 @@ jobs:
           source = Path('/tmp/habit-rule-change-source.yml')
           lines = source.read_text().splitlines()
 
-          def block(start_text: str, end_text: str) -> str:
+          def bounds(start_text: str, end_text: str) -> tuple[int, int]:
               start = next(i for i, line in enumerate(lines) if line.strip() == start_text)
               end = next(
                   i
                   for i in range(start + 1, len(lines))
                   if lines[i].strip() == end_text
               )
+              return start, end
+
+          def python_heredoc(start_text: str, end_text: str) -> str:
+              start, end = bounds(start_text, end_text)
+              base_indent = len(lines[start]) - len(lines[start].lstrip())
+              prefix = ' ' * base_indent
+              rendered: list[str] = []
+              triple: str | None = None
+              for raw in lines[start + 1 : end]:
+                  if triple is not None:
+                      rendered.append(raw)
+                      if raw.count(triple) % 2 == 1:
+                          triple = None
+                      continue
+                  line = raw[len(prefix) :] if raw.startswith(prefix) else raw
+                  rendered.append(line)
+                  for delimiter in ('"""', "'''"):
+                      if line.count(delimiter) % 2 == 1:
+                          triple = delimiter
+                          break
+              return '\n'.join(rendered) + '\n'
+
+          def indented_block(start_text: str, end_text: str) -> str:
+              start, end = bounds(start_text, end_text)
               selected = lines[start + 1 : end]
               nonblank = [line for line in selected if line.strip()]
               indent = min(len(line) - len(line.lstrip()) for line in nonblank)
               return '\n'.join(line[indent:] if line.strip() else '' for line in selected) + '\n'
 
-          Path('/tmp/habit-rule-change-repair.py').write_text(block("python <<'PY'", 'PY'))
+          Path('/tmp/habit-rule-change-repair.py').write_text(
+              python_heredoc("python <<'PY'", 'PY')
+          )
           Path('apps/habit-service/migrations/0005_habit_rule_change_authority.sql').write_text(
-              block("cat > apps/habit-service/migrations/0005_habit_rule_change_authority.sql <<'SQL'", 'SQL')
+              indented_block("cat > apps/habit-service/migrations/0005_habit_rule_change_authority.sql <<'SQL'", 'SQL')
           )
           PY
           python /tmp/habit-rule-change-repair.py
