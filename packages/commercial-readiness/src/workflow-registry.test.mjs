@@ -37,11 +37,7 @@ function inventoryClient(overrides = {}) {
 test('classifies repository workflows by exact path without trusting names', () => {
   const snapshot = classifyWorkflowRegistry({
     commitSha: SHA,
-    treePaths: [
-      '.github/dependabot.yml',
-      '.github/workflows/ci.yml',
-      '.github/workflows/live-repair.yml',
-    ],
+    treePaths: ['.github/dependabot.yml', '.github/workflows/ci.yml'],
     workflows: [
       workflow(1, '.github/workflows/ci.yml', 'active', 'Repair-looking production name'),
       workflow(2, '.github/workflows/deleted-repair.yml', 'active', 'CI'),
