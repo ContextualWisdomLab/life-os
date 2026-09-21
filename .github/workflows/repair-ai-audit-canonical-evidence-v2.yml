@@ -42,6 +42,8 @@ jobs:
           test -n "${remote_head}"
           test "${remote_head}" = "$GITHUB_SHA"
           git merge-base --is-ancestor 0637449b637c7be07ef27a6c47e7f65419f3196d "$GITHUB_SHA"
+          intervening="$(git diff --name-only 0637449b637c7be07ef27a6c47e7f65419f3196d "$GITHUB_SHA" | LC_ALL=C sort)"
+          test "$intervening" = ".github/workflows/repair-ai-audit-canonical-evidence-v2.yml"
           test -f .github/workflows/verify-ai-audit-canonical-evidence.yml
           test -f .github/workflows/repair-ai-audit-canonical-evidence-v2.yml
 
@@ -69,25 +71,8 @@ jobs:
           path = Path('apps/ai-service/src/proposal-audit-domain.ts')
           text = path.read_text()
 
-          timestamp_block = """function requireTimestamp(value: unknown): string {
-            if (value instanceof Date) {
-              if (Number.isNaN(value.getTime())) {
-                return invalid();
-              }
-              return value.toISOString();
-            }
-            if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
-              return invalid();
-            }
-            const parsed = new Date(value);
-            if (Number.isNaN(parsed.getTime())) {
-              return invalid();
-            }
-            return parsed.toISOString();
-          }
-          """
-          canonical_helpers = timestamp_block + """
-          /** Requires persisted UUID evidence to already use canonical lowercase spelling. */
+          request_marker = '/** Revalidates one proposal request and maps generator failures to audit validation. */'
+          helpers = '''/** Requires persisted UUID evidence to already use canonical lowercase spelling. */
           function requireCanonicalUuidV4(value: unknown): string {
             const canonical = requireUuidV4(value);
             if (value !== canonical) {
@@ -105,7 +90,7 @@ jobs:
             return canonical;
           }
 
-          /** Requires string timestamp evidence to already equal its canonical UTC spelling. */
+          /** Requires persisted string timestamps to already equal canonical UTC spelling. */
           function requireCanonicalTimestamp(value: unknown): string {
             const canonical = requireTimestamp(value);
             if (typeof value === 'string' && value !== canonical) {
@@ -113,26 +98,14 @@ jobs:
             }
             return canonical;
           }
-          """
-          if text.count(timestamp_block) != 1:
-            raise SystemExit('expected one timestamp validator block')
-          text = text.replace(timestamp_block, canonical_helpers, 1)
 
-          proposal_end = """  return Object.freeze({
-              proposalId: requireUuidV4(record.proposalId),
-              workspaceId: requireUuidV4(record.workspaceId),
-              summary: requireString(record.summary, MAXIMUM_TEXT_LENGTH),
-              rationale: Object.freeze(
-                record.rationale.map((item) => requireString(item, MAXIMUM_TEXT_LENGTH)),
-              ),
-              operations: Object.freeze(record.operations.map(validateOperation)),
-              requiresConfirmation: true,
-              createdAt: requireTimestamp(record.createdAt),
-            });
-          }
-          """
-          proposal_with_persisted = proposal_end + """
-          /** Revalidates immutable proposal evidence without accepting recanonicalizable aliases. */
+          '''
+          if text.count(request_marker) != 1:
+            raise SystemExit('expected one request-validation marker')
+          text = text.replace(request_marker, helpers + request_marker, 1)
+
+          operation_marker = '/** Projects one validated operation into deterministic digest field order. */'
+          persisted_proposal = '''/** Revalidates immutable proposal evidence without accepting representation aliases. */
           function validatePersistedProposal(value: unknown): AuditableProposal {
             const record = requireRecord(value);
             const proposal = validateProposal(value);
@@ -149,53 +122,57 @@ jobs:
             }
             return proposal;
           }
-          """
-          if text.count(proposal_end) != 1:
-            raise SystemExit('expected one proposal validator tail')
-          text = text.replace(proposal_end, proposal_with_persisted, 1)
 
-          old_audit = """  const verified = createProposalAuditRecord({
-              proposal: validateProposal(record.proposal),
-              request: validateRequest(record.request),
-              modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
-              recordedAt: requireTimestamp(record.recordedAt),
-            });
-            if (
-              verified.requestDigest !== requireDigest(record.requestDigest) ||
-              verified.contentDigest !== requireDigest(record.contentDigest)
-            ) {
-          """
-          new_audit = """  const verified = createProposalAuditRecord({
-              proposal: validatePersistedProposal(record.proposal),
-              request: validateRequest(record.request),
-              modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
-              recordedAt: requireCanonicalTimestamp(record.recordedAt),
-            });
-            if (
-              verified.requestDigest !== requireCanonicalDigest(record.requestDigest) ||
-              verified.contentDigest !== requireCanonicalDigest(record.contentDigest)
-            ) {
-          """
+          '''
+          if text.count(operation_marker) != 1:
+            raise SystemExit('expected one operation-projection marker')
+          text = text.replace(operation_marker, persisted_proposal + operation_marker, 1)
+
+          old_audit = '''  const verified = createProposalAuditRecord({
+            proposal: validateProposal(record.proposal),
+            request: validateRequest(record.request),
+            modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
+            recordedAt: requireTimestamp(record.recordedAt),
+          });
+          if (
+            verified.requestDigest !== requireDigest(record.requestDigest) ||
+            verified.contentDigest !== requireDigest(record.contentDigest)
+          ) {
+          '''
+          new_audit = '''  const verified = createProposalAuditRecord({
+            proposal: validatePersistedProposal(record.proposal),
+            request: validateRequest(record.request),
+            modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
+            recordedAt: requireCanonicalTimestamp(record.recordedAt),
+          });
+          if (
+            verified.requestDigest !== requireCanonicalDigest(record.requestDigest) ||
+            verified.contentDigest !== requireCanonicalDigest(record.contentDigest)
+          ) {
+          '''
           if text.count(old_audit) != 1:
-            raise SystemExit('expected one audit-record validator block')
+            raise SystemExit('expected one audit-record validation block')
           text = text.replace(old_audit, new_audit, 1)
 
-          decision_replacements = {
-            'id: requireUuidV4(record.id),': 'id: requireCanonicalUuidV4(record.id),',
-            'workspaceId: requireUuidV4(record.workspaceId),': 'workspaceId: requireCanonicalUuidV4(record.workspaceId),',
-            'proposalId: requireUuidV4(record.proposalId),': 'proposalId: requireCanonicalUuidV4(record.proposalId),',
-            'proposalContentDigest: requireDigest(record.proposalContentDigest),': 'proposalContentDigest: requireCanonicalDigest(record.proposalContentDigest),',
-            'actorId: requireUuidV4(record.actorId),': 'actorId: requireCanonicalUuidV4(record.actorId),',
-            'idempotencyKey: requireUuidV4(record.idempotencyKey),': 'idempotencyKey: requireCanonicalUuidV4(record.idempotencyKey),',
-            'decidedAt: requireTimestamp(record.decidedAt),': 'decidedAt: requireCanonicalTimestamp(record.decidedAt),',
-            'recordedAt: requireTimestamp(record.recordedAt),': 'recordedAt: requireCanonicalTimestamp(record.recordedAt),',
+          decision_marker = '/** Validates an untrusted or persisted decision event. */'
+          decision_index = text.index(decision_marker)
+          prefix = text[:decision_index]
+          suffix = text[decision_index:]
+          replacements = {
+              'id: requireUuidV4(record.id),': 'id: requireCanonicalUuidV4(record.id),',
+              'workspaceId: requireUuidV4(record.workspaceId),': 'workspaceId: requireCanonicalUuidV4(record.workspaceId),',
+              'proposalId: requireUuidV4(record.proposalId),': 'proposalId: requireCanonicalUuidV4(record.proposalId),',
+              'proposalContentDigest: requireDigest(record.proposalContentDigest),': 'proposalContentDigest: requireCanonicalDigest(record.proposalContentDigest),',
+              'actorId: requireUuidV4(record.actorId),': 'actorId: requireCanonicalUuidV4(record.actorId),',
+              'idempotencyKey: requireUuidV4(record.idempotencyKey),': 'idempotencyKey: requireCanonicalUuidV4(record.idempotencyKey),',
+              'decidedAt: requireTimestamp(record.decidedAt),': 'decidedAt: requireCanonicalTimestamp(record.decidedAt),',
+              'recordedAt: requireTimestamp(record.recordedAt),': 'recordedAt: requireCanonicalTimestamp(record.recordedAt),',
           }
-          for old, new in decision_replacements.items():
-            if text.count(old) != 1:
-              raise SystemExit(f'expected one decision validator occurrence: {old}')
-            text = text.replace(old, new, 1)
-
-          path.write_text(text)
+          for old, new in replacements.items():
+            if suffix.count(old) != 1:
+              raise SystemExit(f'expected one persisted-decision validator occurrence: {old}')
+            suffix = suffix.replace(old, new, 1)
+          path.write_text(prefix + suffix)
           PY
           pnpm exec prettier --write apps/ai-service/src/proposal-audit-domain.ts
 
