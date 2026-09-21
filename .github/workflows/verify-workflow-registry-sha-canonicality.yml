@@ -23,13 +23,14 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
-      - name: Guard current exact publication
+      - name: Guard current workflow-free exact publication
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           read -r remote_head _ < <(git ls-remote --refs origin "refs/heads/$GITHUB_REF_NAME")
           test "$remote_head" = "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-workflow-registry-formatting.yml
       - name: Set up Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
