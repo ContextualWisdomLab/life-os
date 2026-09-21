@@ -38,7 +38,7 @@ jobs:
       - name: Checkout exact repair head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 4
+          fetch-depth: 0
           persist-credentials: true
 
       - name: Guard exact staged writer lineage
@@ -46,9 +46,12 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "0a13190d79ab1cdc39020232496457bb885f3fc2"
           remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
           test "$remote_head" = "$GITHUB_SHA"
+          git cat-file -e 231805850891f4fdf0ac829c69c9e541b8701c6e^{commit}
+          git merge-base --is-ancestor 231805850891f4fdf0ac829c69c9e541b8701c6e "$GITHUB_SHA"
+          intervening="$(git diff --name-only 231805850891f4fdf0ac829c69c9e541b8701c6e "$GITHUB_SHA" | LC_ALL=C sort)"
+          test "$intervening" = ".github/workflows/repair-habit-rule-change-authority-v2.yml"
           git cat-file -e e7e6c68db1e1e243dcff48220e81819b7ed83762^{commit}
           git merge-base --is-ancestor e7e6c68db1e1e243dcff48220e81819b7ed83762 "$GITHUB_SHA"
           test ! -e .github/workflows/repair-habit-rule-change-authority.yml
