@@ -18,7 +18,10 @@ const weeklyHabit = Object.freeze({
   createdAt: '2026-09-02T11:31:00.000Z',
 });
 
-async function routeHabitList(page: Page, habits: readonly unknown[] = []): Promise<void> {
+async function routeHabitList(
+  page: Page,
+  habits: readonly unknown[] = [],
+): Promise<void> {
   await page.route('**/api/habits', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
@@ -32,7 +35,10 @@ async function routeHabitList(page: Page, habits: readonly unknown[] = []): Prom
   });
 }
 
-async function fillDailyHabit(page: Page, title = dailyHabit.title): Promise<void> {
+async function fillDailyHabit(
+  page: Page,
+  title = dailyHabit.title,
+): Promise<void> {
   await page.getByLabel('Habit title').fill(title);
   await page.getByLabel('Timezone').fill(dailyHabit.timezone);
   await page.getByLabel('Start date').fill(dailyHabit.startsOn);
@@ -40,17 +46,23 @@ async function fillDailyHabit(page: Page, title = dailyHabit.title): Promise<voi
   await page.getByLabel('Repeat every day(s)').fill('1');
 }
 
-test('renders only validated durable Habit evidence returned by the BFF', async ({ page }) => {
+test('renders only validated durable Habit evidence returned by the BFF', async ({
+  page,
+}) => {
   await routeHabitList(page, [dailyHabit]);
 
   await page.goto('/habits');
 
   await expect(page.getByText(dailyHabit.title)).toBeVisible();
   await expect(page.getByText('Every day')).toBeVisible();
-  await expect(page.getByText(`Starts ${dailyHabit.startsOn} · ${dailyHabit.timezone}`)).toBeVisible();
+  await expect(
+    page.getByText(`Starts ${dailyHabit.startsOn} · ${dailyHabit.timezone}`),
+  ).toBeVisible();
 });
 
-test('creates a Habit only after explicit submit and displays returned durable evidence', async ({ page }) => {
+test('creates a Habit only after explicit submit and displays returned durable evidence', async ({
+  page,
+}) => {
   let postCount = 0;
   let postedBody: unknown;
   await page.route('**/api/habits', async (route) => {
@@ -64,7 +76,11 @@ test('creates a Habit only after explicit submit and displays returned durable e
       });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
   });
 
   await page.goto('/habits');
@@ -83,7 +99,9 @@ test('creates a Habit only after explicit submit and displays returned durable e
   });
 });
 
-test('synchronous repeated submit cannot dispatch two Habit mutations', async ({ page }) => {
+test('synchronous repeated submit cannot dispatch two Habit mutations', async ({
+  page,
+}) => {
   let postCount = 0;
   let releasePost: (() => void) | undefined;
   const postReleased = new Promise<void>((resolve) => {
@@ -100,7 +118,11 @@ test('synchronous repeated submit cannot dispatch two Habit mutations', async ({
       });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
   });
 
   await page.goto('/habits');
@@ -117,7 +139,9 @@ test('synchronous repeated submit cannot dispatch two Habit mutations', async ({
   expect(postCount).toBe(1);
 });
 
-test('list refresh cannot release an in-flight Habit mutation claim', async ({ page }) => {
+test('list refresh cannot release an in-flight Habit mutation claim', async ({
+  page,
+}) => {
   let postCount = 0;
   let releasePost: (() => void) | undefined;
   const postReleased = new Promise<void>((resolve) => {
@@ -134,24 +158,38 @@ test('list refresh cannot release an in-flight Habit mutation claim', async ({ p
       });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
   });
 
   await page.goto('/habits');
   await fillDailyHabit(page);
-  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+  await page
+    .locator('form')
+    .evaluate((element) => (element as HTMLFormElement).requestSubmit());
   await expect.poll(() => postCount).toBe(1);
-  await expect(page.getByRole('button', { name: 'Creating habit…' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Creating habit…' }),
+  ).toBeDisabled();
 
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(page.getByRole('button', { name: 'Create habit' })).toBeEnabled();
-  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+  await expect(
+    page.getByRole('button', { name: 'Create habit' }),
+  ).toBeEnabled();
+  await page
+    .locator('form')
+    .evaluate((element) => (element as HTMLFormElement).requestSubmit());
 
   await expect.poll(() => postCount).toBe(1);
   releasePost?.();
 });
 
-test('weekly recurrence preserves explicit sorted weekday evidence', async ({ page }) => {
+test('weekly recurrence preserves explicit sorted weekday evidence', async ({
+  page,
+}) => {
   let postedBody: unknown;
   await page.route('**/api/habits', async (route) => {
     if (route.request().method() === 'POST') {
@@ -163,7 +201,11 @@ test('weekly recurrence preserves explicit sorted weekday evidence', async ({ pa
       });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: '[]',
+    });
   });
 
   await page.goto('/habits');
@@ -185,7 +227,9 @@ test('weekly recurrence preserves explicit sorted weekday evidence', async ({ pa
   });
 });
 
-test('counts and limits Habit titles by Unicode code point', async ({ page }) => {
+test('counts and limits Habit titles by Unicode code point', async ({
+  page,
+}) => {
   await routeHabitList(page);
 
   await page.goto('/habits');
@@ -196,7 +240,9 @@ test('counts and limits Habit titles by Unicode code point', async ({ page }) =>
   await expect(page.getByText('160/160')).toBeVisible();
 });
 
-test('fails closed when authenticated Habit authority is unavailable', async ({ page }) => {
+test('fails closed when authenticated Habit authority is unavailable', async ({
+  page,
+}) => {
   await page.route('**/api/habits', async (route) => {
     await route.fulfill({
       status: 401,
@@ -212,12 +258,18 @@ test('fails closed when authenticated Habit authority is unavailable', async ({ 
 
   await page.goto('/habits');
 
-  await expect(page.getByText('Sign in before changing the durable Habits workspace.')).toBeVisible();
+  await expect(
+    page.getByText('Sign in before changing the durable Habits workspace.'),
+  ).toBeVisible();
   await expect(page.getByLabel('Habit title')).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Create habit' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Create habit' }),
+  ).toBeDisabled();
 });
 
-test('keeps the Habits workspace usable without horizontal overflow on phone width', async ({ page }) => {
+test('keeps the Habits workspace usable without horizontal overflow on phone width', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await routeHabitList(page);
 
@@ -225,8 +277,12 @@ test('keeps the Habits workspace usable without horizontal overflow on phone wid
 
   const brand = page.getByRole('link', { name: 'LifeOS Today' });
   await expect(brand).toBeVisible();
-  expect(await brand.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    await brand.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(44);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
   ).toBe(true);
 });

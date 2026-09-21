@@ -82,7 +82,9 @@ function isCanonicalUtcTimestamp(value: unknown): value is string {
     return false;
   }
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+  return (
+    Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
+  );
 }
 
 function parseInterval(value: unknown): number | null {
@@ -237,7 +239,9 @@ export function HabitsClient() {
   const [title, setTitle] = useState('');
   const [timezone, setTimezone] = useState('UTC');
   const [startsOn, setStartsOn] = useState('');
-  const [recurrenceKind, setRecurrenceKind] = useState<'daily' | 'weekly'>('daily');
+  const [recurrenceKind, setRecurrenceKind] = useState<'daily' | 'weekly'>(
+    'daily',
+  );
   const [interval, setInterval] = useState('1');
   const [weekdays, setWeekdays] = useState<readonly number[]>([1]);
   const loadGeneration = useRef(0);
@@ -280,7 +284,9 @@ export function HabitsClient() {
       dispatch({ type: 'habits-loaded', habits });
     } catch {
       if (generation !== loadGeneration.current) return;
-      dispatch(navigator.onLine ? { type: 'unavailable' } : { type: 'offline' });
+      dispatch(
+        navigator.onLine ? { type: 'unavailable' } : { type: 'offline' },
+      );
     }
   }
 
@@ -374,7 +380,9 @@ export function HabitsClient() {
     } catch {
       if (generation !== loadGeneration.current) return;
       releaseSubmission();
-      dispatch(navigator.onLine ? { type: 'unavailable' } : { type: 'offline' });
+      dispatch(
+        navigator.onLine ? { type: 'unavailable' } : { type: 'offline' },
+      );
     }
   }
 
@@ -423,8 +431,8 @@ export function HabitsClient() {
           <p className={styles.eyebrow}>Practice</p>
           <h1>Habits</h1>
           <p className={styles.lede}>
-            Define repeatable behavior with an explicit schedule. LifeOS records the
-            durable rule; it does not infer a universal formation deadline.
+            Define repeatable behavior with an explicit schedule. LifeOS records
+            the durable rule; it does not infer a universal formation deadline.
           </p>
         </header>
 
@@ -444,7 +452,9 @@ export function HabitsClient() {
             </div>
 
             <div className={styles.status} aria-live="polite">
-              {state.status === 'loading' ? <p>Loading durable habits…</p> : null}
+              {state.status === 'loading' ? (
+                <p>Loading durable habits…</p>
+              ) : null}
               {state.status === 'offline' ? (
                 <p>You are offline. Existing habits are read-only.</p>
               ) : null}
@@ -453,8 +463,8 @@ export function HabitsClient() {
               ) : null}
               {state.status === 'unavailable' ? (
                 <p>
-                  Habit evidence is temporarily unavailable. Retry without replacing
-                  existing records.
+                  Habit evidence is temporarily unavailable. Retry without
+                  replacing existing records.
                 </p>
               ) : null}
               {state.message ? <p>{state.message}</p> : null}
@@ -463,7 +473,9 @@ export function HabitsClient() {
             {state.status === 'ready' && state.habits.length === 0 ? (
               <div className={styles.emptyState}>
                 <h3>No durable habits yet</h3>
-                <p>Create a rule only for behavior you actually want to repeat.</p>
+                <p>
+                  Create a rule only for behavior you actually want to repeat.
+                </p>
               </div>
             ) : null}
 
