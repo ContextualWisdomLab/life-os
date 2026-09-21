@@ -31,6 +31,7 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
+          fetch-depth: 0
           ref: ${{ github.sha }}
 
       - name: Guard workflow-free exact candidate
@@ -40,6 +41,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           read -r remote_head _ < <(git ls-remote --refs origin "refs/heads/$GITHUB_REF_NAME")
           test "$remote_head" = "$GITHUB_SHA"
+          git merge-base --is-ancestor \
+            5ad1a97bb9090d644bfc822ad7a38cb9954addf1 \
+            HEAD
           test ! -e .github/workflows/repair-ai-audit-canonical-evidence-formatting.yml
 
       - name: Set up Node.js
