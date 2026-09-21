@@ -47,8 +47,12 @@ it('rejects every noncanonical base64url spelling of an otherwise valid plugin d
   expect(finalIndex % 16).toBe(0);
 
   for (let aliasOffset = 1; aliasOffset < 16; aliasOffset += 1) {
-    const alternateFinalCharacter = BASE64URL_ALPHABET[finalIndex + aliasOffset]!;
-    const noncanonicalSignature = `${proof.signature.slice(0, -1)}${alternateFinalCharacter}`;
+    const alternateFinalCharacter =
+      BASE64URL_ALPHABET[finalIndex + aliasOffset]!;
+    const noncanonicalSignature = `${proof.signature.slice(
+      0,
+      -1,
+    )}${alternateFinalCharacter}`;
 
     expect(noncanonicalSignature).not.toBe(proof.signature);
     expect(Buffer.from(noncanonicalSignature, 'base64url')).toEqual(
