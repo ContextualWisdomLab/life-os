@@ -38,25 +38,27 @@ jobs:
       - name: Checkout exact repair head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 2
+          fetch-depth: 4
           persist-credentials: true
 
-      - name: Guard exact staged writer parent
+      - name: Guard exact staged writer lineage
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "e7e6c68db1e1e243dcff48220e81819b7ed83762"
+          test "$(git rev-parse HEAD^)" = "5eb6f87f1e578d844ffb4a5d18ae506587ec6548"
           remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
           test "$remote_head" = "$GITHUB_SHA"
+          git cat-file -e e7e6c68db1e1e243dcff48220e81819b7ed83762^{commit}
+          git merge-base --is-ancestor e7e6c68db1e1e243dcff48220e81819b7ed83762 "$GITHUB_SHA"
           test ! -e .github/workflows/repair-habit-rule-change-authority.yml
           test -f .github/workflows/repair-habit-rule-change-authority-v2.yml
 
-      - name: Materialize bounded repair from retained parent specification
+      - name: Materialize bounded repair from retained specification commit
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^:.github/workflows/repair-habit-rule-change-authority.yml > /tmp/habit-rule-change-source.yml
+          git show e7e6c68db1e1e243dcff48220e81819b7ed83762:.github/workflows/repair-habit-rule-change-authority.yml > /tmp/habit-rule-change-source.yml
           python <<'PY'
           from pathlib import Path
 
