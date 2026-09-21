@@ -106,7 +106,9 @@ describe('authenticated planning project creation BFF', () => {
     };
 
     const response = await handlePlanningProjectCreateRequest(
-      createRequest(GOAL_ID, { title: 'Ship authenticated planning workspace' }),
+      createRequest(GOAL_ID, {
+        title: 'Ship authenticated planning workspace',
+      }),
       GOAL_ID,
       environment,
       fetcher,

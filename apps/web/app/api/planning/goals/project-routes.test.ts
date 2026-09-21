@@ -17,7 +17,9 @@ function request(method: 'GET' | 'POST', body?: unknown): Request {
       method,
       headers: {
         cookie: 'life_os_session=opaque',
-        ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(payload === undefined
+          ? {}
+          : { 'content-type': 'application/json' }),
       },
       ...(payload === undefined ? {} : { body: payload }),
     },
