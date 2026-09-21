@@ -1,0 +1,98 @@
+name: Repair Habit BFF Verifier Harness
+
+on:
+  push:
+    branches:
+      - feat/web-habit-bff-v1
+    paths:
+      - .github/workflows/repair-habit-bff-verifier-harness.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-habit-bff-verifier-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact harness-repair head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Guard exact remote head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Repair proven formatting failure and deprecated action runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          verifier=.github/workflows/verify-habit-bff-canonical-evidence.yml
+          old_checkout=11d5960a326750d5838078e36cf38b85af677262
+          new_checkout=3d3c42e5aac5ba805825da76410c181273ba90b1
+          old_setup=49933ea5288caeca8642d1e84afbd3f7d6820020
+          new_setup=820762786026740c76f36085b0efc47a31fe5020
+          test "$(grep -Fc "$old_checkout" "$verifier")" -eq 1
+          test "$(grep -Fc "$old_setup" "$verifier")" -eq 1
+          sed -i "s/$old_checkout/$new_checkout/" "$verifier"
+          sed -i "s/$old_setup/$new_setup/" "$verifier"
+          pnpm exec prettier --single-quote --write \
+            apps/web/app/habit-client.ts \
+            apps/web/app/habit-client.test.ts
+
+      - name: Guard repaired harness and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --check \
+            apps/web/app/habit-client.ts \
+            apps/web/app/habit-client.test.ts
+          grep -Fq 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \
+            .github/workflows/verify-habit-bff-canonical-evidence.yml
+          grep -Fq 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020' \
+            .github/workflows/verify-habit-bff-canonical-evidence.yml
+          git rm .github/workflows/repair-habit-bff-verifier-harness.yml
+          git add \
+            .github/workflows/verify-habit-bff-canonical-evidence.yml \
+            apps/web/app/habit-client.ts \
+            apps/web/app/habit-client.test.ts
+          allowed="$(printf '%s\n' \
+            .github/workflows/repair-habit-bff-verifier-harness.yml \
+            .github/workflows/verify-habit-bff-canonical-evidence.yml \
+            apps/web/app/habit-client.ts \
+            apps/web/app/habit-client.test.ts | sort)"
+          changed="$(git diff --cached --name-only "$GITHUB_SHA" | sort)"
+          test "$changed" = "$allowed"
+          git diff --check --cached
+
+      - name: Publish ordinary harness repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci(web): repair Habit BFF verifier harness"
+          remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+          git push origin "HEAD:$GITHUB_REF_NAME"
