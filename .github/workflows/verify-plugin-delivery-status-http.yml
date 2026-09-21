@@ -1,0 +1,70 @@
+name: Verify Plugin Delivery Status HTTP
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-status-http-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-delivery-status-http-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require exact current-parent adoption
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 5bc6cc6e98a161058a6a6437f30dd7b255628228 HEAD
+          test ! -e .github/workflows/verify-plugin-delivery-status-retry-schedule.yml
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Plugin SDK
+        run: pnpm --filter @life-os/plugin-sdk build
+
+      - name: Run focused status acceptance
+        run: >-
+          pnpm --filter @life-os/integration-service exec vitest run
+          src/plugin-delivery-attempt-status-http.integration.test.ts
+          src/plugin-vault-hosted-runtime.test.ts
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --check
+          apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts
+          apps/integration-service/src/plugin-operator-context.ts
+          apps/integration-service/src/plugin-operator-application.ts
+          apps/integration-service/src/main.ts
+          apps/integration-service/src/plugin-vault-operator-composition.ts
+          apps/integration-service/src/plugin-vault-hosted-runtime.ts
+          .github/workflows/verify-plugin-delivery-status-http.yml
+
+      - name: Typecheck Integration
+        run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration suite
+        run: pnpm --filter @life-os/integration-service test
