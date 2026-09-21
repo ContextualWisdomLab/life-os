@@ -34,6 +34,15 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Require workflow-free exact head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/repair-planning-due-data-rights-export.yml
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
       - name: Set up Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -50,11 +59,16 @@ jobs:
           apps/planning-service/src/planning-runtime.ts
           apps/planning-service/src/task-due-authority.ts
           apps/planning-service/src/task-due-authority-postgres.integration.test.ts
+          apps/planning-service/src/planning-data-rights.ts
+          apps/planning-service/src/planning-data-rights-controller-authority.test.ts
+          apps/planning-service/tests/postgres-data-rights.integration.test.ts
           apps/planning-service/migrations/README.md
       - name: Typecheck Planning
         run: pnpm --filter @life-os/planning-service typecheck
       - name: Prove durable UTC task deadline authority
         run: pnpm --filter @life-os/planning-service exec vitest run --no-file-parallelism src/task-due-authority-postgres.integration.test.ts
+      - name: Prove versioned deadline data-rights evidence
+        run: pnpm --filter @life-os/planning-service exec vitest run --no-file-parallelism tests/postgres-data-rights.integration.test.ts src/planning-data-rights-controller-authority.test.ts
       - name: Run complete Planning suite
         run: pnpm --filter @life-os/planning-service test
       - name: Build Planning
