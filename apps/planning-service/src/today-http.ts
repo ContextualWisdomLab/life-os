@@ -1,8 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import {
-  canonicalTodayDate,
-  canonicalTodayUuidV4,
-} from './today-invariants';
+import { canonicalTodayDate, canonicalTodayUuidV4 } from './today-invariants';
 import {
   TodayIdempotencyConflictError,
   TodayPersistenceError,
