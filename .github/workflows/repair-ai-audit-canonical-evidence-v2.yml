@@ -1,0 +1,237 @@
+name: Repair AI Audit Canonical Evidence V2
+
+on:
+  push:
+    branches:
+      - test/ai-audit-canonical-durable-evidence-v1
+    paths:
+      - .github/workflows/repair-ai-audit-canonical-evidence-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-ai-audit-canonical-evidence-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact RED head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Guard exact hosted RED ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 0637449b637c7be07ef27a6c47e7f65419f3196d "$GITHUB_SHA"
+          test -f .github/workflows/verify-ai-audit-canonical-evidence.yml
+          test -f .github/workflows/repair-ai-audit-canonical-evidence-v2.yml
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Reconfirm focused assertion RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm --filter @life-os/ai-service exec vitest run \
+            src/proposal-audit-canonical-evidence.test.ts \
+            src/postgres-proposal-audit-canonical-evidence.test.ts; then
+            echo 'Expected immutable audit-evidence regressions to remain RED before repair.' >&2
+            exit 1
+          fi
+
+      - name: Apply minimum persisted-evidence canonicality repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ai-service/src/proposal-audit-domain.ts')
+          text = path.read_text()
+
+          timestamp_block = """function requireTimestamp(value: unknown): string {
+            if (value instanceof Date) {
+              if (Number.isNaN(value.getTime())) {
+                return invalid();
+              }
+              return value.toISOString();
+            }
+            if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
+              return invalid();
+            }
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) {
+              return invalid();
+            }
+            return parsed.toISOString();
+          }
+          """
+          canonical_helpers = timestamp_block + """
+          /** Requires persisted UUID evidence to already use canonical lowercase spelling. */
+          function requireCanonicalUuidV4(value: unknown): string {
+            const canonical = requireUuidV4(value);
+            if (value !== canonical) {
+              return invalid();
+            }
+            return canonical;
+          }
+
+          /** Requires persisted digest evidence to already use lowercase hexadecimal spelling. */
+          function requireCanonicalDigest(value: unknown): string {
+            const canonical = requireDigest(value);
+            if (value !== canonical) {
+              return invalid();
+            }
+            return canonical;
+          }
+
+          /** Requires string timestamp evidence to already equal its canonical UTC spelling. */
+          function requireCanonicalTimestamp(value: unknown): string {
+            const canonical = requireTimestamp(value);
+            if (typeof value === 'string' && value !== canonical) {
+              return invalid();
+            }
+            return canonical;
+          }
+          """
+          if text.count(timestamp_block) != 1:
+            raise SystemExit('expected one timestamp validator block')
+          text = text.replace(timestamp_block, canonical_helpers, 1)
+
+          proposal_end = """  return Object.freeze({
+              proposalId: requireUuidV4(record.proposalId),
+              workspaceId: requireUuidV4(record.workspaceId),
+              summary: requireString(record.summary, MAXIMUM_TEXT_LENGTH),
+              rationale: Object.freeze(
+                record.rationale.map((item) => requireString(item, MAXIMUM_TEXT_LENGTH)),
+              ),
+              operations: Object.freeze(record.operations.map(validateOperation)),
+              requiresConfirmation: true,
+              createdAt: requireTimestamp(record.createdAt),
+            });
+          }
+          """
+          proposal_with_persisted = proposal_end + """
+          /** Revalidates immutable proposal evidence without accepting recanonicalizable aliases. */
+          function validatePersistedProposal(value: unknown): AuditableProposal {
+            const record = requireRecord(value);
+            const proposal = validateProposal(value);
+            requireCanonicalUuidV4(record.proposalId);
+            requireCanonicalUuidV4(record.workspaceId);
+            requireCanonicalTimestamp(record.createdAt);
+            if (Array.isArray(record.operations)) {
+              for (const operation of record.operations) {
+                const operationRecord = requireRecord(operation);
+                if (Object.hasOwn(operationRecord, 'targetId')) {
+                  requireCanonicalUuidV4(operationRecord.targetId);
+                }
+              }
+            }
+            return proposal;
+          }
+          """
+          if text.count(proposal_end) != 1:
+            raise SystemExit('expected one proposal validator tail')
+          text = text.replace(proposal_end, proposal_with_persisted, 1)
+
+          old_audit = """  const verified = createProposalAuditRecord({
+              proposal: validateProposal(record.proposal),
+              request: validateRequest(record.request),
+              modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
+              recordedAt: requireTimestamp(record.recordedAt),
+            });
+            if (
+              verified.requestDigest !== requireDigest(record.requestDigest) ||
+              verified.contentDigest !== requireDigest(record.contentDigest)
+            ) {
+          """
+          new_audit = """  const verified = createProposalAuditRecord({
+              proposal: validatePersistedProposal(record.proposal),
+              request: validateRequest(record.request),
+              modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
+              recordedAt: requireCanonicalTimestamp(record.recordedAt),
+            });
+            if (
+              verified.requestDigest !== requireCanonicalDigest(record.requestDigest) ||
+              verified.contentDigest !== requireCanonicalDigest(record.contentDigest)
+            ) {
+          """
+          if text.count(old_audit) != 1:
+            raise SystemExit('expected one audit-record validator block')
+          text = text.replace(old_audit, new_audit, 1)
+
+          decision_replacements = {
+            'id: requireUuidV4(record.id),': 'id: requireCanonicalUuidV4(record.id),',
+            'workspaceId: requireUuidV4(record.workspaceId),': 'workspaceId: requireCanonicalUuidV4(record.workspaceId),',
+            'proposalId: requireUuidV4(record.proposalId),': 'proposalId: requireCanonicalUuidV4(record.proposalId),',
+            'proposalContentDigest: requireDigest(record.proposalContentDigest),': 'proposalContentDigest: requireCanonicalDigest(record.proposalContentDigest),',
+            'actorId: requireUuidV4(record.actorId),': 'actorId: requireCanonicalUuidV4(record.actorId),',
+            'idempotencyKey: requireUuidV4(record.idempotencyKey),': 'idempotencyKey: requireCanonicalUuidV4(record.idempotencyKey),',
+            'decidedAt: requireTimestamp(record.decidedAt),': 'decidedAt: requireCanonicalTimestamp(record.decidedAt),',
+            'recordedAt: requireTimestamp(record.recordedAt),': 'recordedAt: requireCanonicalTimestamp(record.recordedAt),',
+          }
+          for old, new in decision_replacements.items():
+            if text.count(old) != 1:
+              raise SystemExit(f'expected one decision validator occurrence: {old}')
+            text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+          pnpm exec prettier --write apps/ai-service/src/proposal-audit-domain.ts
+
+      - name: Prove focused GREEN
+        run: >-
+          pnpm --filter @life-os/ai-service exec vitest run
+          src/proposal-audit-canonical-evidence.test.ts
+          src/postgres-proposal-audit-canonical-evidence.test.ts
+
+      - name: Typecheck AI service
+        run: pnpm --filter @life-os/ai-service typecheck
+
+      - name: Run complete AI service suite
+        run: pnpm --filter @life-os/ai-service test
+
+      - name: Guard bounded product delta and retire writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/repair-ai-audit-canonical-evidence-v2.yml
+          git add apps/ai-service/src/proposal-audit-domain.ts
+          changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            '.github/workflows/repair-ai-audit-canonical-evidence-v2.yml' \
+            'apps/ai-service/src/proposal-audit-domain.ts' | LC_ALL=C sort)"
+          test "${changed}" = "${expected}"
+          git diff --check --cached
+
+      - name: Publish ordinary GREEN descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai): preserve canonical audit evidence'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
