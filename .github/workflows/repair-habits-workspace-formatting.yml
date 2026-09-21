@@ -77,7 +77,7 @@ jobs:
             apps/web/app/habits/habits-client.tsx \
             apps/web/e2e/habits-workspace.spec.ts
           git diff --check
-          actual="$(git diff --name-only | LC_ALL=C sort)"
+          actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
             '.github/workflows/repair-habits-workspace-formatting.yml' \
             'apps/web/app/habits/habits-client.tsx' \
