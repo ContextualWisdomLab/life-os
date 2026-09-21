@@ -4,8 +4,10 @@ const UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
-const DYNAMIC_WORKFLOW_PATH_PATTERN = /^dynamic\/dependabot\/dependabot-updates$/u;
-const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN = /^\.github\/workflows\/[^/]*\.ya?ml$/u;
+const DYNAMIC_WORKFLOW_PATH_PATTERN =
+  /^dynamic\/dependabot\/dependabot-updates$/u;
+const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN =
+  /^\.github\/workflows\/[^/]*\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
 const DEFAULT_BRANCH_INVALID_PATTERN = /[\\\u0000-\u001f\u007f]/u;
 const WORKFLOW_STATES = new Set([
@@ -28,7 +30,12 @@ function requireRepository(value) {
     return invalid('Workflow registry repository is invalid');
   }
   const [owner, repository] = value.split('/');
-  if (owner === '.' || owner === '..' || repository === '.' || repository === '..') {
+  if (
+    owner === '.' ||
+    owner === '..' ||
+    repository === '.' ||
+    repository === '..'
+  ) {
     return invalid('Workflow registry repository is invalid');
   }
   return value;
@@ -67,7 +74,10 @@ function requireWorkflowPath(value) {
   ) {
     return invalid('Workflow registry path is invalid');
   }
-  if (value.startsWith('.github/') && !REPOSITORY_WORKFLOW_PATH_PATTERN.test(value)) {
+  if (
+    value.startsWith('.github/') &&
+    !REPOSITORY_WORKFLOW_PATH_PATTERN.test(value)
+  ) {
     return invalid('Workflow registry path is invalid');
   }
   return value;
@@ -119,7 +129,8 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
 
   const presentPaths = new Set();
   for (const value of treePaths) {
-    if (typeof value !== 'string') return invalid('Workflow registry path is invalid');
+    if (typeof value !== 'string')
+      return invalid('Workflow registry path is invalid');
     if (!value.startsWith('.github/workflows/')) continue;
     const path = requireWorkflowPath(value);
     if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(path)) presentPaths.add(path);
@@ -147,14 +158,18 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
       }
       const previousId = registeredDynamicPaths.get(record.path);
       if (previousId !== undefined) {
-        return invalid('Workflow registry dynamic workflow path identity is ambiguous');
+        return invalid(
+          'Workflow registry dynamic workflow path identity is ambiguous',
+        );
       }
       registeredDynamicPaths.set(record.path, record.id);
       dynamic.push(record);
     } else {
       const previousId = registeredRepositoryPaths.get(record.path);
       if (previousId !== undefined) {
-        return invalid('Workflow registry repository path identity is ambiguous');
+        return invalid(
+          'Workflow registry repository path identity is ambiguous',
+        );
       }
       registeredRepositoryPaths.set(record.path, record.id);
       if (presentPaths.has(record.path)) {
@@ -172,7 +187,9 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
 
   for (const path of presentPaths) {
     if (!registeredRepositoryPaths.has(path)) {
-      return invalid('Workflow registry protected-tree workflow is missing from registry');
+      return invalid(
+        'Workflow registry protected-tree workflow is missing from registry',
+      );
     }
   }
 
@@ -348,7 +365,11 @@ export async function collectWorkflowRegistrySnapshot(
     return invalid('GitHub default branch is invalid');
   }
 
-  const initialHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const initialHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (initialHead !== expected) {
     return invalid('Protected default branch moved before workflow inventory');
   }
@@ -367,7 +388,11 @@ export async function collectWorkflowRegistrySnapshot(
     return invalid('GitHub workflow registry changed during inventory');
   }
 
-  const finalHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const finalHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (finalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
   }
@@ -382,7 +407,11 @@ export async function collectWorkflowRegistrySnapshot(
     return invalid('GitHub workflow registry changed after branch validation');
   }
 
-  const confirmedFinalHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const confirmedFinalHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (confirmedFinalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
   }
