@@ -15,7 +15,7 @@ const TEST_SIGNING_MATERIAL = new TextEncoder().encode(
 const BASE64URL_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
-it('rejects a noncanonical base64url spelling of an otherwise valid plugin delivery HMAC', () => {
+function signedDelivery() {
   const serializedEvent = preparePluginEvent(WORKSPACE_ID, {
     eventId: EVENT_ID,
     eventType: 'lifeos.planning.task-changed.v1',
@@ -31,6 +31,11 @@ it('rejects a noncanonical base64url spelling of an otherwise valid plugin deliv
     timestamp,
     TEST_SIGNING_MATERIAL,
   );
+  return { serializedEvent, timestamp, proof };
+}
+
+it('rejects a noncanonical base64url spelling of an otherwise valid plugin delivery HMAC', () => {
+  const { serializedEvent, timestamp, proof } = signedDelivery();
 
   const finalIndex = BASE64URL_ALPHABET.indexOf(
     proof.signature[proof.signature.length - 1]!,
@@ -48,6 +53,21 @@ it('rejects a noncanonical base64url spelling of an otherwise valid plugin deliv
     verifyPluginDelivery(
       serializedEvent,
       { ...proof, signature: noncanonicalSignature },
+      TEST_SIGNING_MATERIAL,
+      timestamp * 1_000,
+    ),
+  ).toBe(false);
+});
+
+it('rejects a byte-different casing alias of the signed delivery identifier', () => {
+  const { serializedEvent, timestamp, proof } = signedDelivery();
+  const noncanonicalDeliveryId = proof.deliveryId.toUpperCase();
+
+  expect(noncanonicalDeliveryId).not.toBe(proof.deliveryId);
+  expect(
+    verifyPluginDelivery(
+      serializedEvent,
+      { ...proof, deliveryId: noncanonicalDeliveryId },
       TEST_SIGNING_MATERIAL,
       timestamp * 1_000,
     ),
