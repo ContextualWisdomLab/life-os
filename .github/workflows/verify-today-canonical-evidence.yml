@@ -39,6 +39,13 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
+      - name: Require workflow-free acceptance head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e .github/workflows/repair-today-canonical-evidence-formatting.yml
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
