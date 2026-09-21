@@ -1,4 +1,4 @@
-name: Verify Integration Operator Context Canonical Evidence
+name: Verify Integration Canonical Signed Evidence
 
 on:
   push:
@@ -6,14 +6,16 @@ on:
       - test/integration-operator-context-canonical-evidence-v1
     paths:
       - apps/integration-service/src/plugin-operator-context-canonical-evidence.test.ts
+      - apps/integration-service/src/integration-event-context-canonical-evidence.test.ts
       - apps/integration-service/src/plugin-operator-context.ts
+      - apps/integration-service/src/main.ts
       - .github/workflows/verify-integration-operator-context-canonical-evidence.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-integration-operator-context-canonical-evidence-${{ github.ref }}
+  group: verify-integration-canonical-signed-evidence-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,6 +33,9 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -46,12 +51,15 @@ jobs:
         run: >-
           pnpm exec prettier --single-quote --check
           apps/integration-service/src/plugin-operator-context-canonical-evidence.test.ts
+          apps/integration-service/src/integration-event-context-canonical-evidence.test.ts
           apps/integration-service/src/plugin-operator-context.ts
+          apps/integration-service/src/main.ts
 
-      - name: Reproduce signed operator identity evidence regression
+      - name: Reproduce Integration canonical signed-evidence regressions
         run: >-
           pnpm --filter @life-os/integration-service exec vitest run
           src/plugin-operator-context-canonical-evidence.test.ts
+          src/integration-event-context-canonical-evidence.test.ts
 
       - name: Typecheck Integration service
         run: pnpm --filter @life-os/integration-service typecheck
