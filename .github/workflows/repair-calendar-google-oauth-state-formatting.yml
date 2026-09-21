@@ -65,6 +65,19 @@ jobs:
             apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts
           git rm .github/workflows/repair-calendar-google-oauth-state-formatting.yml
 
+      - name: Diagnose Calendar typecheck after formatting
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @life-os/integration-calendar-service exec tsc --noEmit --pretty false 2>&1 | tee /tmp/calendar-typecheck.log
+          status=${PIPESTATUS[0]}
+          if [ "${status}" -ne 0 ]; then
+            echo 'Calendar typecheck failed after the bounded formatting repair.' >&2
+            echo 'Compiler output bytes:' >&2
+            wc -c /tmp/calendar-typecheck.log >&2
+            exit "${status}"
+          fi
+
       - name: Verify bounded repair
         shell: bash
         run: |
@@ -72,7 +85,6 @@ jobs:
           pnpm exec prettier --single-quote --check \
             apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts \
             apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts
-          pnpm --filter @life-os/integration-calendar-service typecheck
           git diff --check
           actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
