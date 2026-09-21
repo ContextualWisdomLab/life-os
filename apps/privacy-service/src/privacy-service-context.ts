@@ -137,6 +137,18 @@ function requireUuid(value: unknown): string {
   return UUID_V4_PATTERN.test(normalized) ? normalized : invalid();
 }
 
+function requireCanonicalUuid(value: unknown): string {
+  if (
+    typeof value !== 'string' ||
+    value.trim() !== value ||
+    value.toLowerCase() !== value ||
+    !UUID_V4_PATTERN.test(value)
+  ) {
+    return invalid();
+  }
+  return value;
+}
+
 function requireMethod(value: unknown): string {
   if (typeof value !== 'string' || /[\r\n\u0000]/u.test(value)) {
     return invalid();
@@ -275,7 +287,11 @@ function verifySignature(
   }
   const expected = Buffer.from(signature(payload, secret), 'base64url');
   const actual = Buffer.from(provided, 'base64url');
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+  if (
+    actual.toString('base64url') !== provided ||
+    actual.length !== expected.length ||
+    !timingSafeEqual(actual, expected)
+  ) {
     invalid();
   }
 }
@@ -293,8 +309,10 @@ export function verifyPrivacyServiceContext(
 ): VerifiedPrivacyServiceContext {
   const headers = exactHeaderRecord(headersValue);
   const keyId = requireKeyId(header(headers, 'x-life-os-context-key-id'));
-  const workspaceId = requireUuid(header(headers, 'x-life-os-workspace-id'));
-  const actorId = requireUuid(header(headers, 'x-life-os-actor-id'));
+  const workspaceId = requireCanonicalUuid(
+    header(headers, 'x-life-os-workspace-id'),
+  );
+  const actorId = requireCanonicalUuid(header(headers, 'x-life-os-actor-id'));
   const issuedAtText = header(headers, 'x-life-os-context-issued-at');
   if (!/^\d{10}$/u.test(issuedAtText)) {
     return invalid();
