@@ -7,6 +7,8 @@ on:
     paths:
       - apps/planning-service/src/http-boundary.ts
       - apps/planning-service/src/planning-context-canonical-evidence.test.ts
+      - apps/planning-service/src/planning-data-rights-http-boundary.ts
+      - apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts
       - .github/workflows/verify-planning-context-canonical-evidence.yml
 
 permissions:
@@ -46,11 +48,14 @@ jobs:
           pnpm exec prettier --single-quote --check
           apps/planning-service/src/http-boundary.ts
           apps/planning-service/src/planning-context-canonical-evidence.test.ts
+          apps/planning-service/src/planning-data-rights-http-boundary.ts
+          apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts
 
-      - name: Reproduce Planning canonical signed-workspace regression
+      - name: Reproduce Planning canonical signed-evidence regressions
         run: >-
           pnpm --filter @life-os/planning-service exec vitest run
           src/planning-context-canonical-evidence.test.ts
+          src/planning-data-rights-canonical-evidence.test.ts
 
       - name: Typecheck Planning package
         run: pnpm --filter @life-os/planning-service typecheck
