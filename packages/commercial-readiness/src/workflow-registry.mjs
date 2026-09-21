@@ -1,8 +1,23 @@
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
-const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
+const SHA_PATTERN = /^[0-9a-f]{40}$/u;
+const UTC_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
   /^\.github\/workflows\/[^/%\\\u0000-\u001f\u007f]+\.ya?ml$/u;
+const DYNAMIC_WORKFLOW_PATH_PATTERN =
+  /^dynamic\/dependabot\/dependabot-updates$/u;
+const WORKFLOW_TREE_CANDIDATE_PATH_PATTERN =
+  /^\.github\/workflows\/[^/]*\.ya?ml$/u;
 const CONTROL_OR_ESCAPE_PATTERN = /[\\%\u0000-\u001f\u007f]/u;
+const DEFAULT_BRANCH_INVALID_PATTERN = /[\\\u0000-\u001f\u007f]/u;
+const WORKFLOW_STATES = new Set([
+  'active',
+  'deleted',
+  'disabled_fork',
+  'disabled_inactivity',
+  'disabled_manually',
+]);
+const WORKFLOW_FILE_MODES = new Set(['100644', '100755']);
 const PAGE_SIZE = 100;
 const MAXIMUM_PAGES = 10;
 
@@ -15,7 +30,12 @@ function requireRepository(value) {
     return invalid('Workflow registry repository is invalid');
   }
   const [owner, repository] = value.split('/');
-  if (owner === '.' || owner === '..' || repository === '.' || repository === '..') {
+  if (
+    owner === '.' ||
+    owner === '..' ||
+    repository === '.' ||
+    repository === '..'
+  ) {
     return invalid('Workflow registry repository is invalid');
   }
   return value;
@@ -25,18 +45,23 @@ function requireSha(value) {
   if (typeof value !== 'string' || !SHA_PATTERN.test(value)) {
     return invalid('Workflow registry commit SHA is invalid');
   }
-  return value.toLowerCase();
+  return value;
 }
 
 function requireGeneratedAt(value) {
-  if (typeof value !== 'string') {
+  if (typeof value !== 'string' || !UTC_TIMESTAMP_PATTERN.test(value)) {
     return invalid('Workflow registry timestamp is invalid');
   }
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime()) || date.toISOString() !== value) {
+  if (!Number.isFinite(date.getTime())) {
     return invalid('Workflow registry timestamp is invalid');
   }
-  return value;
+  const canonical = date.toISOString();
+  const expected = value.includes('.') ? value : value.replace(/Z$/u, '.000Z');
+  if (canonical !== expected) {
+    return invalid('Workflow registry timestamp is invalid');
+  }
+  return canonical;
 }
 
 function requireWorkflowPath(value) {
@@ -49,8 +74,18 @@ function requireWorkflowPath(value) {
   ) {
     return invalid('Workflow registry path is invalid');
   }
-  if (value.startsWith('.github/') && !REPOSITORY_WORKFLOW_PATH_PATTERN.test(value)) {
+  if (
+    value.startsWith('.github/') &&
+    !REPOSITORY_WORKFLOW_PATH_PATTERN.test(value)
+  ) {
     return invalid('Workflow registry path is invalid');
+  }
+  return value;
+}
+
+function requireWorkflowState(value) {
+  if (typeof value !== 'string' || !WORKFLOW_STATES.has(value)) {
+    return invalid('Workflow registry state is invalid');
   }
   return value;
 }
@@ -63,10 +98,7 @@ function requireWorkflowRecord(value) {
     value.id <= 0 ||
     typeof value.name !== 'string' ||
     value.name.length === 0 ||
-    value.name.length > 512 ||
-    typeof value.state !== 'string' ||
-    value.state.length === 0 ||
-    value.state.length > 64
+    value.name.length > 512
   ) {
     return invalid('Workflow registry identity is invalid');
   }
@@ -74,7 +106,7 @@ function requireWorkflowRecord(value) {
     id: value.id,
     name: value.name,
     path: requireWorkflowPath(value.path),
-    state: value.state,
+    state: requireWorkflowState(value.state),
   });
 }
 
@@ -97,13 +129,16 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
 
   const presentPaths = new Set();
   for (const value of treePaths) {
-    if (typeof value !== 'string') return invalid('Workflow registry path is invalid');
+    if (typeof value !== 'string')
+      return invalid('Workflow registry path is invalid');
     if (!value.startsWith('.github/workflows/')) continue;
     const path = requireWorkflowPath(value);
     if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(path)) presentPaths.add(path);
   }
 
   const seenIds = new Map();
+  const registeredRepositoryPaths = new Map();
+  const registeredDynamicPaths = new Map();
   const present = [];
   const activeOrphans = [];
   const disabledOrphans = [];
@@ -118,13 +153,43 @@ export function classifyWorkflowRegistry({ commitSha, treePaths, workflows }) {
     seenIds.set(record.id, record.path);
 
     if (!REPOSITORY_WORKFLOW_PATH_PATTERN.test(record.path)) {
+      if (!DYNAMIC_WORKFLOW_PATH_PATTERN.test(record.path)) {
+        return invalid('Workflow registry dynamic workflow path is invalid');
+      }
+      const previousId = registeredDynamicPaths.get(record.path);
+      if (previousId !== undefined) {
+        return invalid(
+          'Workflow registry dynamic workflow path identity is ambiguous',
+        );
+      }
+      registeredDynamicPaths.set(record.path, record.id);
       dynamic.push(record);
-    } else if (presentPaths.has(record.path)) {
-      present.push(record);
-    } else if (record.state === 'active') {
-      activeOrphans.push(record);
     } else {
-      disabledOrphans.push(record);
+      const previousId = registeredRepositoryPaths.get(record.path);
+      if (previousId !== undefined) {
+        return invalid(
+          'Workflow registry repository path identity is ambiguous',
+        );
+      }
+      registeredRepositoryPaths.set(record.path, record.id);
+      if (presentPaths.has(record.path)) {
+        if (record.state !== 'active') {
+          return invalid('Workflow registry present workflow is disabled');
+        }
+        present.push(record);
+      } else if (record.state === 'active') {
+        activeOrphans.push(record);
+      } else {
+        disabledOrphans.push(record);
+      }
+    }
+  }
+
+  for (const path of presentPaths) {
+    if (!registeredRepositoryPaths.has(path)) {
+      return invalid(
+        'Workflow registry protected-tree workflow is missing from registry',
+      );
     }
   }
 
@@ -180,24 +245,62 @@ async function collectWorkflowRegistry(client, repository) {
   return invalid('GitHub workflow registry pagination exceeded the page limit');
 }
 
+function workflowRegistriesMatch(left, right) {
+  if (
+    left.total_count !== right.total_count ||
+    left.workflows.length !== right.workflows.length
+  ) {
+    return false;
+  }
+
+  const leftRecords = sortById(left.workflows.map(requireWorkflowRecord));
+  const rightRecords = sortById(right.workflows.map(requireWorkflowRecord));
+  for (let index = 0; index < leftRecords.length; index += 1) {
+    const leftRecord = leftRecords[index];
+    const rightRecord = rightRecords[index];
+    if (
+      leftRecord.id !== rightRecord.id ||
+      leftRecord.name !== rightRecord.name ||
+      leftRecord.path !== rightRecord.path ||
+      leftRecord.state !== rightRecord.state
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Extracts validated repository-owned workflow YAML paths from one complete Git tree.
  *
- * Returns exact case-sensitive `.github/workflows/*.yml|yaml` blob paths. Malformed,
- * truncated, or unsafe workflow-shaped tree evidence fails closed; unrelated tree
- * entries are ignored.
+ * Returns exact case-sensitive `.github/workflows/*.yml|yaml` regular-file paths.
+ * Malformed, truncated, symlinked, non-blob, duplicate, or unsafe workflow-shaped
+ * tree evidence fails closed; unrelated tree entries are ignored.
  */
 function workflowPathsFromTree(payload) {
   if (!payload || payload.truncated !== false || !Array.isArray(payload.tree)) {
     return invalid('GitHub workflow tree was truncated or invalid');
   }
   const paths = [];
+  const seenPaths = new Set();
   for (const entry of payload.tree) {
-    if (!entry || entry.type !== 'blob' || typeof entry.path !== 'string') continue;
-    if (entry.path.startsWith('.github/workflows/')) {
-      requireWorkflowPath(entry.path);
+    if (!entry || typeof entry.path !== 'string') continue;
+    if (!WORKFLOW_TREE_CANDIDATE_PATH_PATTERN.test(entry.path)) continue;
+    requireWorkflowPath(entry.path);
+    if (entry.type !== 'blob') {
+      return invalid('GitHub workflow tree entry is invalid');
     }
-    if (REPOSITORY_WORKFLOW_PATH_PATTERN.test(entry.path)) paths.push(entry.path);
+    if (!WORKFLOW_FILE_MODES.has(entry.mode)) {
+      return invalid('GitHub workflow tree entry mode is invalid');
+    }
+    if (typeof entry.sha !== 'string' || !SHA_PATTERN.test(entry.sha)) {
+      return invalid('GitHub workflow tree entry blob SHA is invalid');
+    }
+    if (seenPaths.has(entry.path)) {
+      return invalid('GitHub workflow tree path is ambiguous');
+    }
+    seenPaths.add(entry.path);
+    paths.push(entry.path);
   }
   return paths;
 }
@@ -257,13 +360,16 @@ export async function collectWorkflowRegistrySnapshot(
     defaultBranch.length > 255 ||
     defaultBranch === '.' ||
     defaultBranch === '..' ||
-    defaultBranch.includes('/') ||
-    CONTROL_OR_ESCAPE_PATTERN.test(defaultBranch)
+    DEFAULT_BRANCH_INVALID_PATTERN.test(defaultBranch)
   ) {
     return invalid('GitHub default branch is invalid');
   }
 
-  const initialHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const initialHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (initialHead !== expected) {
     return invalid('Protected default branch moved before workflow inventory');
   }
@@ -272,11 +378,41 @@ export async function collectWorkflowRegistrySnapshot(
   const treePayload = await client.requestJson(
     `/repos/${repository}/git/trees/${treeSha}?recursive=1`,
   );
+  if (requireSha(treePayload?.sha) !== treeSha) {
+    return invalid('GitHub workflow tree evidence is inconsistent');
+  }
   const treePaths = workflowPathsFromTree(treePayload);
   const registry = await collectWorkflowRegistry(client, repository);
+  const confirmedRegistry = await collectWorkflowRegistry(client, repository);
+  if (!workflowRegistriesMatch(registry, confirmedRegistry)) {
+    return invalid('GitHub workflow registry changed during inventory');
+  }
 
-  const finalHead = await readDefaultBranchHead(client, repository, defaultBranch);
+  const finalHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
   if (finalHead !== expected) {
+    return invalid('Protected default branch moved during workflow inventory');
+  }
+
+  const finalMetadata = await client.requestJson(`/repos/${repository}`);
+  if (finalMetadata?.default_branch !== defaultBranch) {
+    return invalid('GitHub default branch changed during workflow inventory');
+  }
+
+  const finalRegistry = await collectWorkflowRegistry(client, repository);
+  if (!workflowRegistriesMatch(registry, finalRegistry)) {
+    return invalid('GitHub workflow registry changed after branch validation');
+  }
+
+  const confirmedFinalHead = await readDefaultBranchHead(
+    client,
+    repository,
+    defaultBranch,
+  );
+  if (confirmedFinalHead !== expected) {
     return invalid('Protected default branch moved during workflow inventory');
   }
 

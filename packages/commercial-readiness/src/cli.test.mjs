@@ -11,6 +11,7 @@ import {
 
 const workflowCommit = 'b'.repeat(40);
 const workflowTree = 'c'.repeat(40);
+const workflowBlob = 'd'.repeat(40);
 const workflowPath = '.github/workflows/commercial-readiness.yml';
 
 function createWorkflowRegistryClient({
@@ -44,10 +45,13 @@ function createWorkflowRegistryClient({
         `/repos/ContextualWisdomLab/life-os/git/trees/${workflowTree}?recursive=1`
       ) {
         return {
+          sha: workflowTree,
           truncated: false,
           tree: treePaths.map((entryPath) => ({
             path: entryPath,
             type: 'blob',
+            mode: '100644',
+            sha: workflowBlob,
           })),
         };
       }

@@ -26,7 +26,7 @@ function inventoryClient(overrides = {}) {
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
-        return { truncated: false, tree: [] };
+        return { sha: TREE_SHA, truncated: false, tree: [] };
       }
       if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
       throw new Error(`unexpected ${path}`);
@@ -37,11 +37,7 @@ function inventoryClient(overrides = {}) {
 test('classifies repository workflows by exact path without trusting names', () => {
   const snapshot = classifyWorkflowRegistry({
     commitSha: SHA,
-    treePaths: [
-      '.github/dependabot.yml',
-      '.github/workflows/ci.yml',
-      '.github/workflows/live-repair.yml',
-    ],
+    treePaths: ['.github/dependabot.yml', '.github/workflows/ci.yml'],
     workflows: [
       workflow(1, '.github/workflows/ci.yml', 'active', 'Repair-looking production name'),
       workflow(2, '.github/workflows/deleted-repair.yml', 'active', 'CI'),
@@ -108,7 +104,7 @@ test('rejects relative repository and default-branch API path segments', async (
     );
   }
 
-  for (const defaultBranch of ['.', '..', 'feature/unsafe']) {
+  for (const defaultBranch of ['.', '..']) {
     const client = {
       async requestJson(path) {
         if (path === `/repos/${REPOSITORY}`) return { default_branch: defaultBranch };
@@ -136,10 +132,16 @@ test('paginates the complete registry and binds receipts to an unchanged default
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
         return {
+          sha: TREE_SHA,
           truncated: false,
           tree: [
             { type: 'blob', path: '.github/dependabot.yml' },
-            { type: 'blob', path: '.github/workflows/ci.yml' },
+            {
+              type: 'blob',
+              mode: '100644',
+              path: '.github/workflows/ci.yml',
+              sha: 'b'.repeat(40),
+            },
           ],
         };
       }
@@ -169,8 +171,14 @@ test('paginates the complete registry and binds receipts to an unchanged default
   assert.equal(result.workflow_count, 101);
   assert.equal(result.active_orphans.length, 100);
   assert.deepEqual(result.present.map((entry) => entry.id), [101]);
-  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 2);
-  assert.equal(calls.at(-1), `/repos/${REPOSITORY}/branches/main`);
+  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 6);
+  assert.deepEqual(calls.slice(-5), [
+    `/repos/${REPOSITORY}/branches/main`,
+    `/repos/${REPOSITORY}`,
+    `/repos/${REPOSITORY}/actions/workflows?per_page=100&page=1`,
+    `/repos/${REPOSITORY}/actions/workflows?per_page=100&page=2`,
+    `/repos/${REPOSITORY}/branches/main`,
+  ]);
 });
 
 test('fails closed on incomplete or inconsistent workflow pagination', async () => {
@@ -243,7 +251,7 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
-        return { truncated: false, tree: [] };
+        return { sha: TREE_SHA, truncated: false, tree: [] };
       }
       if (path.includes('/actions/workflows?')) {
         return {
@@ -265,6 +273,7 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
 test('fails closed on tree, commit, branch, timestamp, and client evidence defects', async () => {
   const treeTruncatedClient = inventoryClient({
     [`/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`]: () => ({
+      sha: TREE_SHA,
       truncated: true,
       tree: [],
     }),
@@ -305,7 +314,7 @@ test('fails closed on tree, commit, branch, timestamp, and client evidence defec
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
-        return { truncated: false, tree: [] };
+        return { sha: TREE_SHA, truncated: false, tree: [] };
       }
       if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
       throw new Error(`unexpected ${path}`);
