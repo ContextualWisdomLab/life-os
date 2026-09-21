@@ -26,7 +26,7 @@ jobs:
           GIT_CONFIG_KEY_0: init.defaultBranch
           GIT_CONFIG_VALUE_0: main
         with:
-          fetch-depth: 1
+          fetch-depth: 2
           ref: ${{ github.sha }}
 
       - name: Set up Node 24
