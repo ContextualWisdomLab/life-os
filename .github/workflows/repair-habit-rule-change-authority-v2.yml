@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "5eb6f87f1e578d844ffb4a5d18ae506587ec6548"
+          test "$(git rev-parse HEAD^)" = "0a13190d79ab1cdc39020232496457bb885f3fc2"
           remote_head="$(git ls-remote origin "refs/heads/$GITHUB_REF_NAME" | awk '{print $1}')"
           test "$remote_head" = "$GITHUB_SHA"
           git cat-file -e e7e6c68db1e1e243dcff48220e81819b7ed83762^{commit}
@@ -104,8 +104,21 @@ jobs:
           Path('/tmp/habit-rule-change-repair.py').write_text(
               python_heredoc("python <<'PY'", 'PY')
           )
+          migration = indented_block(
+              "cat > apps/habit-service/migrations/0005_habit_rule_change_authority.sql <<'SQL'",
+              'SQL',
+          )
+          ambiguous = 'SELECT max(effective_from_local_date)'
+          qualified = (
+              'SELECT max('
+              'habit_definition_revisions.effective_from_local_date)'
+          )
+          if migration.count(ambiguous) != 1:
+              raise SystemExit(
+                  'retained migration: expected one ambiguous effective-date aggregate'
+              )
           Path('apps/habit-service/migrations/0005_habit_rule_change_authority.sql').write_text(
-              indented_block("cat > apps/habit-service/migrations/0005_habit_rule_change_authority.sql <<'SQL'", 'SQL')
+              migration.replace(ambiguous, qualified, 1)
           )
           PY
           python /tmp/habit-rule-change-repair.py
