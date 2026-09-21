@@ -24,8 +24,20 @@ jobs:
       - name: Checkout exact head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
+
+      - name: Guard exact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          git merge-base --is-ancestor bfaf0b7d9fa3b2bfa3d09f9e36424cfa2fadc748 "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-habit-bff-verifier-harness.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
