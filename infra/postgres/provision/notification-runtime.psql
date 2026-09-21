@@ -1,0 +1,61 @@
+\set ON_ERROR_STOP on
+\getenv runtime_role NOTIFICATION_DATABASE_RUNTIME_ROLE
+\getenv runtime_password NOTIFICATION_RUNTIME_DATABASE_PASSWORD
+
+SELECT
+  octet_length(:'runtime_role') >= 1
+  AND octet_length(:'runtime_role') <= 63
+  AND :'runtime_role' !~ '[[:cntrl:]]'
+  AS runtime_role_valid
+\gset
+\if :runtime_role_valid
+\else
+  \echo provision_error=notification_runtime_role_invalid
+  \quit 1
+\endif
+
+SELECT current_user = :'runtime_role' AS runtime_role_matches_admin
+\gset
+\if :runtime_role_matches_admin
+  \echo provision_error=notification_runtime_role_matches_admin
+  \quit 1
+\endif
+
+SELECT
+  octet_length(:'runtime_password') >= 16
+  AND octet_length(:'runtime_password') <= 1024
+  AND :'runtime_password' !~ '[[:cntrl:]]'
+  AS runtime_password_valid
+\gset
+\if :runtime_password_valid
+\else
+  \echo provision_error=notification_runtime_password_invalid
+  \quit 1
+\endif
+
+SELECT format(
+  'CREATE ROLE %I WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT',
+  :'runtime_role',
+  :'runtime_password'
+)
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM pg_catalog.pg_roles
+  WHERE rolname = :'runtime_role'
+)
+\gexec
+
+ALTER ROLE :"runtime_role"
+  WITH LOGIN PASSWORD :'runtime_password'
+  NOSUPERUSER
+  NOCREATEDB
+  NOCREATEROLE
+  NOREPLICATION
+  NOINHERIT;
+
+SELECT current_database() AS runtime_database
+\gset
+GRANT CONNECT ON DATABASE :"runtime_database" TO :"runtime_role";
+
+COMMENT ON ROLE :"runtime_role" IS
+  'Local Compose Notification runtime identity. Forward-only migrations use a distinct database owner and grant only the Notification privileges required at runtime.';

@@ -1,6 +1,7 @@
 import {
   DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
   type DataRightsContributorEraseRequest,
+  type DataRightsContributorExportRequest,
   type DataRightsContributorExportResponse,
   type DataRightsContributorRequest,
   type DataRightsContributorResponse,
@@ -10,6 +11,7 @@ const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
 const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
 const IDEMPOTENCY_KEY = '44444444-4444-4444-8444-444444444444';
+const EXPORT_CURSOR = 'opaque-contributor-cursor';
 
 /** Compile-time proof that erase authority cannot omit its replay identity. */
 const eraseRequest: DataRightsContributorEraseRequest = {
@@ -19,6 +21,16 @@ const eraseRequest: DataRightsContributorEraseRequest = {
   requestedByUserId: USER_ID,
   requestId: REQUEST_ID,
   idempotencyKey: IDEMPOTENCY_KEY,
+};
+
+/** Compile-time proof that export continuation stays contributor-owned and opaque. */
+const exportRequest: DataRightsContributorExportRequest = {
+  contractVersion: DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION,
+  operation: 'export',
+  workspaceId: WORKSPACE_ID,
+  requestedByUserId: USER_ID,
+  requestId: REQUEST_ID,
+  cursor: EXPORT_CURSOR,
 };
 
 /** Compile-time proof that every operation belongs to the versioned request union. */
@@ -41,10 +53,12 @@ const exportResponse: DataRightsContributorExportResponse = {
       }),
     ]),
   }),
+  nextCursor: EXPORT_CURSOR,
 };
 
 /** Compile-time proof that concrete evidence remains assignable to the response union. */
 const responseUnion: DataRightsContributorResponse = exportResponse;
 
+void exportRequest;
 void requestUnion;
 void responseUnion;

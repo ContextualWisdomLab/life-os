@@ -105,6 +105,24 @@ describe('commercial readiness workflow contract', () => {
     );
   });
 
+  it('runs one-shot Notification provisioning outside the Compose health wait', async () => {
+    const workflow = await repositoryFile('.github/workflows/ci.yml');
+    const composeJob = yamlJobBlock(workflow, 'compose_runtime');
+
+    assert.match(
+      composeJob,
+      /docker compose up --detach --wait --wait-timeout 90 postgres nats/u,
+    );
+    assert.match(
+      composeJob,
+      /docker compose run --rm --no-deps notification-db-provision/u,
+    );
+    assert.doesNotMatch(
+      composeJob,
+      /docker compose up --detach --wait --wait-timeout 90\s*$/mu,
+    );
+  });
+
   it('pins every LifeOS-owned hosted-runner workflow to the explicit supported Ubuntu image', async () => {
     const ciWorkflow = await repositoryFile('.github/workflows/ci.yml');
     const ciJobs = [
