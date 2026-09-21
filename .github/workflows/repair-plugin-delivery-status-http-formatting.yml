@@ -1,0 +1,126 @@
+name: Repair Plugin Delivery Status HTTP Formatting
+
+on:
+  push:
+    branches:
+      - feat/plugin-delivery-attempt-status-http-v1
+    paths:
+      - .github/workflows/repair-plugin-delivery-status-http-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-plugin-delivery-status-http-formatting-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Require retained HTTP acceptance ancestry and exact remote input
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor 90b25f586f592e79cfe07c6be4d3d644759faae3 HEAD
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prove focused formatting RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm exec prettier --check \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            .github/workflows/verify-plugin-delivery-status-http.yml; then
+            echo 'Expected retained Plugin delivery status HTTP files to be noncanonical before repair.' >&2
+            exit 1
+          fi
+
+      - name: Apply bounded formatter repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            .github/workflows/verify-plugin-delivery-status-http.yml
+          git rm .github/workflows/repair-plugin-delivery-status-http-formatting.yml
+
+      - name: Verify bounded repair and retained behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --check \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
+            .github/workflows/verify-plugin-delivery-status-http.yml
+          pnpm --filter @life-os/plugin-sdk build
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-delivery-attempt-status-http.integration.test.ts \
+            src/plugin-vault-hosted-runtime.test.ts
+          pnpm --filter @life-os/integration-service typecheck
+          git diff --check
+          actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
+          test -n "${actual}"
+          while IFS= read -r path; do
+            case "${path}" in
+              .github/workflows/repair-plugin-delivery-status-http-formatting.yml|.github/workflows/verify-plugin-delivery-status-http.yml|apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts|apps/integration-service/src/plugin-operator-context.ts|apps/integration-service/src/plugin-operator-application.ts|apps/integration-service/src/main.ts|apps/integration-service/src/plugin-vault-operator-composition.ts|apps/integration-service/src/plugin-vault-hosted-runtime.ts) ;;
+              *) echo "Unexpected formatter delta: ${path}" >&2; exit 1 ;;
+            esac
+          done <<< "${actual}"
+          printf '%s\n' "${actual}" | grep -Fx '.github/workflows/repair-plugin-delivery-status-http-formatting.yml'
+          source_delta="$(printf '%s\n' "${actual}" | grep -Ev '^\.github/workflows/repair-plugin-delivery-status-http-formatting\.yml$' || true)"
+          test -n "${source_delta}"
+
+      - name: Publish ordinary descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/verify-plugin-delivery-status-http.yml \
+            apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
+            apps/integration-service/src/plugin-operator-context.ts \
+            apps/integration-service/src/plugin-operator-application.ts \
+            apps/integration-service/src/main.ts \
+            apps/integration-service/src/plugin-vault-operator-composition.ts \
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts
+          git commit -m 'style(integration): format delivery status HTTP evidence'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
