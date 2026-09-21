@@ -1,5 +1,5 @@
 const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
-const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
+const SHA_PATTERN = /^[0-9a-f]{40}$/u;
 const UTC_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const REPOSITORY_WORKFLOW_PATH_PATTERN =
@@ -45,7 +45,7 @@ function requireSha(value) {
   if (typeof value !== 'string' || !SHA_PATTERN.test(value)) {
     return invalid('Workflow registry commit SHA is invalid');
   }
-  return value.toLowerCase();
+  return value;
 }
 
 function requireGeneratedAt(value) {
