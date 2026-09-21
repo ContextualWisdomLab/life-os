@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ConsumedOAuthTransaction } from './auth-security';
-import { parseOAuthCallbackQuery } from './oauth-http-boundary';
+import {
+  OAUTH_BROWSER_COOKIE_NAME,
+  parseOAuthCallbackQuery,
+  readOpaqueCookie,
+} from './oauth-http-boundary';
 import { buildTokenExchangeRequest } from './oauth-token-exchange';
 
 const REDIRECT_URI = 'https://identity.example.com/v1/auth/google/callback';
@@ -54,6 +58,15 @@ describe('OAuth callback canonical evidence', () => {
         code: 'provider-owned-code',
         state: ' opaque_state ',
       }),
+    ).toThrow();
+  });
+
+  it('rejects a byte-different browser binding cookie instead of trimming it into transaction authority', () => {
+    expect(() =>
+      readOpaqueCookie(
+        `${OAUTH_BROWSER_COOKIE_NAME}= opaque_browser_binding `,
+        OAUTH_BROWSER_COOKIE_NAME,
+      ),
     ).toThrow();
   });
 
