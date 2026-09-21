@@ -1,0 +1,103 @@
+name: Repair Release Signature Envelope Formatting
+
+on:
+  push:
+    branches:
+      - feat/release-signature-verification-v2
+    paths:
+      - .github/workflows/repair-release-signature-envelope-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-release-signature-envelope-formatting-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Require retained regression ancestry and exact remote input
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "d478684f07533706262e9ff5d626b50784d344f7" HEAD
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prove focused formatting RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm exec prettier --check \
+            packages/commercial-readiness/src/release-signature-verification.mjs \
+            packages/commercial-readiness/src/release-signature-verification.test.mjs \
+            packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs; then
+            echo 'Expected retained release-signature evidence files to be noncanonical before repair.' >&2
+            exit 1
+          fi
+
+      - name: Apply bounded formatter repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write \
+            packages/commercial-readiness/src/release-signature-verification.mjs \
+            packages/commercial-readiness/src/release-signature-verification.test.mjs \
+            packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs
+          git rm .github/workflows/repair-release-signature-envelope-formatting.yml
+
+      - name: Verify bounded repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --check \
+            packages/commercial-readiness/src/release-signature-verification.mjs \
+            packages/commercial-readiness/src/release-signature-verification.test.mjs \
+            packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs
+          node --test packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs || true
+          git diff --check
+          actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
+          test -n "${actual}"
+          while IFS= read -r path; do
+            case "${path}" in
+              .github/workflows/repair-release-signature-envelope-formatting.yml|packages/commercial-readiness/src/release-signature-verification.mjs|packages/commercial-readiness/src/release-signature-verification.test.mjs|packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs) ;;
+              *) echo "Unexpected formatter delta: ${path}" >&2; exit 1 ;;
+            esac
+          done <<< "${actual}"
+          printf '%s\n' "${actual}" | grep -Fx '.github/workflows/repair-release-signature-envelope-formatting.yml'
+          source_delta="$(printf '%s\n' "${actual}" | grep -Ev '^\.github/workflows/repair-release-signature-envelope-formatting\.yml$' || true)"
+          test -n "${source_delta}"
+
+      - name: Publish ordinary descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/commercial-readiness/src/release-signature-verification.mjs packages/commercial-readiness/src/release-signature-verification.test.mjs packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs
+          git commit -m 'style(release): format signature envelope evidence'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
