@@ -34,29 +34,35 @@ function signedDelivery() {
   return { serializedEvent, timestamp, proof };
 }
 
-it('rejects a noncanonical base64url spelling of an otherwise valid plugin delivery HMAC', () => {
+it('rejects every noncanonical base64url spelling of an otherwise valid plugin delivery HMAC', () => {
   const { serializedEvent, timestamp, proof } = signedDelivery();
 
   const finalIndex = BASE64URL_ALPHABET.indexOf(
     proof.signature[proof.signature.length - 1]!,
   );
   expect(finalIndex).toBeGreaterThanOrEqual(0);
-  expect(finalIndex % 4).toBe(0);
-  const alternateFinalCharacter = BASE64URL_ALPHABET[finalIndex + 1]!;
-  const noncanonicalSignature = `${proof.signature.slice(0, -1)}${alternateFinalCharacter}`;
+  // A 32-byte HMAC leaves only the high two bits of the final base64url sextet
+  // as data. Canonical unpadded encoding therefore requires the low four bits
+  // to be zero; all 15 other lower-nibble spellings decode to the same bytes.
+  expect(finalIndex % 16).toBe(0);
 
-  expect(noncanonicalSignature).not.toBe(proof.signature);
-  expect(Buffer.from(noncanonicalSignature, 'base64url')).toEqual(
-    Buffer.from(proof.signature, 'base64url'),
-  );
-  expect(
-    verifyPluginDelivery(
-      serializedEvent,
-      { ...proof, signature: noncanonicalSignature },
-      TEST_SIGNING_MATERIAL,
-      timestamp * 1_000,
-    ),
-  ).toBe(false);
+  for (let aliasOffset = 1; aliasOffset < 16; aliasOffset += 1) {
+    const alternateFinalCharacter = BASE64URL_ALPHABET[finalIndex + aliasOffset]!;
+    const noncanonicalSignature = `${proof.signature.slice(0, -1)}${alternateFinalCharacter}`;
+
+    expect(noncanonicalSignature).not.toBe(proof.signature);
+    expect(Buffer.from(noncanonicalSignature, 'base64url')).toEqual(
+      Buffer.from(proof.signature, 'base64url'),
+    );
+    expect(
+      verifyPluginDelivery(
+        serializedEvent,
+        { ...proof, signature: noncanonicalSignature },
+        TEST_SIGNING_MATERIAL,
+        timestamp * 1_000,
+      ),
+    ).toBe(false);
+  }
 });
 
 it('rejects a byte-different casing alias of the signed delivery identifier', () => {
