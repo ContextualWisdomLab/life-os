@@ -76,7 +76,7 @@ jobs:
             apps/web/app/review/review-client.tsx \
             apps/web/e2e/review-workspace.spec.ts
           git diff --check
-          actual="$(git diff --name-only | LC_ALL=C sort)"
+          actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
             '.github/workflows/repair-review-workspace-formatting.yml' \
             'apps/web/app/review/review-client.tsx' \
