@@ -75,7 +75,6 @@ jobs:
             packages/commercial-readiness/src/release-signature-verification.mjs \
             packages/commercial-readiness/src/release-signature-verification.test.mjs \
             packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs
-          node --test packages/commercial-readiness/src/release-signature-envelope-canonicality.test.mjs || true
           git diff --check
           actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           test -n "${actual}"
