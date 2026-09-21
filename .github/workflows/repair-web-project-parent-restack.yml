@@ -55,11 +55,9 @@ jobs:
               [ -z "$path" ] && continue
               case "$path" in
                 apps/web/package.json)
+                  # The child owns the combined Web test command. Preserve it, then add
+                  # the parent-owned Goal regression below if it is not present yet.
                   git checkout --ours -- "$path"
-                  git add "$path"
-                  ;;
-                apps/web/app/planning-goal-client.ts|apps/web/app/planning-goal-canonical-evidence-regression.test.ts)
-                  git checkout "$PARENT_SHA" -- "$path"
                   git add "$path"
                   ;;
                 *)
@@ -70,12 +68,10 @@ jobs:
             done <<< "$conflicts"
           fi
 
-          # Goal boundary truth belongs to the settled parent. Adopt those owner files
-          # byte-for-byte rather than replaying formatter-sensitive source rewrites.
-          git checkout "$PARENT_SHA" -- \
-            apps/web/app/planning-goal-client.ts \
-            apps/web/app/planning-goal-canonical-evidence-regression.test.ts
-
+          # Keep Git's three-way merge for the shared planning-goal-client.ts. The
+          # parent owns the Goal boundary while this child owns the Project functions
+          # appended to the same module; replacing the whole file with either side
+          # would silently discard one bounded-context contract.
           node <<'NODE'
           const fs = require('node:fs');
 
