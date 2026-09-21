@@ -47,32 +47,41 @@ async function completeReviewForm(page: Page): Promise<void> {
   await page.getByLabel(/Reflection/).fill(durableReview.reflection);
 }
 
-test('renders only validated immutable Review history returned by the BFF', async ({ page }) => {
+test('renders only validated immutable Review history returned by the BFF', async ({
+  page,
+}) => {
   await routeReviewHistory(page, [durableReview]);
 
   await page.goto('/review');
 
-  await expect(page.getByRole('heading', { name: `Week of ${PERIOD_START}` })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: `Week of ${PERIOD_START}` }),
+  ).toBeVisible();
   await expect(page.getByText('6 / 8')).toBeVisible();
   await expect(page.getByText(durableReview.reflection)).toBeVisible();
 });
 
-test('records Weekly Review only after explicit completion and accepts returned durable evidence', async ({ page }) => {
+test('records Weekly Review only after explicit completion and accepts returned durable evidence', async ({
+  page,
+}) => {
   let postCount = 0;
   let postedBody: Record<string, unknown> | undefined;
   await routeReviewHistory(page);
-  await page.route('**/api/reviews/weekly-review/completions', async (route) => {
-    postCount += 1;
-    postedBody = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ...durableReview,
-        completedAt: postedBody.completedAt,
-      }),
-    });
-  });
+  await page.route(
+    '**/api/reviews/weekly-review/completions',
+    async (route) => {
+      postCount += 1;
+      postedBody = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...durableReview,
+          completedAt: postedBody.completedAt,
+        }),
+      });
+    },
+  );
 
   await page.goto('/review');
   await completeReviewForm(page);
@@ -80,7 +89,9 @@ test('records Weekly Review only after explicit completion and accepts returned 
 
   await page.getByRole('button', { name: 'Record Weekly Review' }).click();
 
-  await expect(page.getByRole('heading', { name: `Week of ${PERIOD_START}` })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: `Week of ${PERIOD_START}` }),
+  ).toBeVisible();
   expect(postCount).toBe(1);
   expect(postedBody?.periodStartDate).toBe(PERIOD_START);
   expect(postedBody?.completedStepCount).toBe(5);
@@ -96,23 +107,31 @@ test('records Weekly Review only after explicit completion and accepts returned 
   expect(postedBody?.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/u);
 });
 
-test('synchronous repeated submit cannot dispatch two Review mutations', async ({ page }) => {
+test('synchronous repeated submit cannot dispatch two Review mutations', async ({
+  page,
+}) => {
   let postCount = 0;
   let releasePost: (() => void) | undefined;
   const postReleased = new Promise<void>((resolve) => {
     releasePost = resolve;
   });
   await routeReviewHistory(page);
-  await page.route('**/api/reviews/weekly-review/completions', async (route) => {
-    postCount += 1;
-    const body = route.request().postDataJSON() as Record<string, unknown>;
-    await postReleased;
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({ ...durableReview, completedAt: body.completedAt }),
-    });
-  });
+  await page.route(
+    '**/api/reviews/weekly-review/completions',
+    async (route) => {
+      postCount += 1;
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      await postReleased;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...durableReview,
+          completedAt: body.completedAt,
+        }),
+      });
+    },
+  );
 
   await page.goto('/review');
   await completeReviewForm(page);
@@ -124,67 +143,98 @@ test('synchronous repeated submit cannot dispatch two Review mutations', async (
 
   await expect.poll(() => postCount).toBe(1);
   releasePost?.();
-  await expect(page.getByRole('heading', { name: `Week of ${PERIOD_START}` })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: `Week of ${PERIOD_START}` }),
+  ).toBeVisible();
   expect(postCount).toBe(1);
 });
 
-test('history refresh cannot release an in-flight Review mutation claim', async ({ page }) => {
+test('history refresh cannot release an in-flight Review mutation claim', async ({
+  page,
+}) => {
   let postCount = 0;
   let releasePost: (() => void) | undefined;
   const postReleased = new Promise<void>((resolve) => {
     releasePost = resolve;
   });
   await routeReviewHistory(page);
-  await page.route('**/api/reviews/weekly-review/completions', async (route) => {
-    postCount += 1;
-    const body = route.request().postDataJSON() as Record<string, unknown>;
-    await postReleased;
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({ ...durableReview, completedAt: body.completedAt }),
-    });
-  });
+  await page.route(
+    '**/api/reviews/weekly-review/completions',
+    async (route) => {
+      postCount += 1;
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      await postReleased;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...durableReview,
+          completedAt: body.completedAt,
+        }),
+      });
+    },
+  );
 
   await page.goto('/review');
   await completeReviewForm(page);
-  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+  await page
+    .locator('form')
+    .evaluate((element) => (element as HTMLFormElement).requestSubmit());
   await expect.poll(() => postCount).toBe(1);
-  await expect(page.getByRole('button', { name: 'Recording Weekly Review…' })).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Recording Weekly Review…' }),
+  ).toBeDisabled();
 
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(page.getByRole('button', { name: 'Record Weekly Review' })).toBeEnabled();
-  await page.locator('form').evaluate((element) => (element as HTMLFormElement).requestSubmit());
+  await expect(
+    page.getByRole('button', { name: 'Record Weekly Review' }),
+  ).toBeEnabled();
+  await page
+    .locator('form')
+    .evaluate((element) => (element as HTMLFormElement).requestSubmit());
 
   await expect.poll(() => postCount).toBe(1);
   releasePost?.();
 });
 
-test('409 conflict preserves prior durable history and exposes recovery', async ({ page }) => {
+test('409 conflict preserves prior durable history and exposes recovery', async ({
+  page,
+}) => {
   await routeReviewHistory(page, [durableReview]);
-  await page.route('**/api/reviews/weekly-review/completions', async (route) => {
-    await route.fulfill({
-      status: 409,
-      contentType: 'application/problem+json',
-      body: JSON.stringify({
-        type: 'about:blank',
-        title: 'Weekly Review completion conflicts with existing evidence',
+  await page.route(
+    '**/api/reviews/weekly-review/completions',
+    async (route) => {
+      await route.fulfill({
         status: 409,
-        code: 'review_completion_conflict',
-      }),
-    });
-  });
+        contentType: 'application/problem+json',
+        body: JSON.stringify({
+          type: 'about:blank',
+          title: 'Weekly Review completion conflicts with existing evidence',
+          status: 409,
+          code: 'review_completion_conflict',
+        }),
+      });
+    },
+  );
 
   await page.goto('/review');
   await completeReviewForm(page);
   await page.getByRole('button', { name: 'Record Weekly Review' }).click();
 
-  await expect(page.getByText('This Weekly Review already has conflicting durable evidence. Reload before retrying.')).toBeVisible();
+  await expect(
+    page.getByText(
+      'This Weekly Review already has conflicting durable evidence. Reload before retrying.',
+    ),
+  ).toBeVisible();
   await expect(page.getByText(durableReview.reflection)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Reload durable history' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Reload durable history' }),
+  ).toBeVisible();
 });
 
-test('fails closed when authenticated Review authority is unavailable', async ({ page }) => {
+test('fails closed when authenticated Review authority is unavailable', async ({
+  page,
+}) => {
   await page.route('**/api/reviews/completions?limit=50', async (route) => {
     await route.fulfill({
       status: 401,
@@ -200,11 +250,17 @@ test('fails closed when authenticated Review authority is unavailable', async ({
 
   await page.goto('/review');
 
-  await expect(page.getByText('Sign in to read or record durable Review history.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Record Weekly Review' })).toBeDisabled();
+  await expect(
+    page.getByText('Sign in to read or record durable Review history.'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Record Weekly Review' }),
+  ).toBeDisabled();
 });
 
-test('keeps Review usable without horizontal overflow at phone width', async ({ page }) => {
+test('keeps Review usable without horizontal overflow at phone width', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await routeReviewHistory(page);
 
@@ -212,8 +268,12 @@ test('keeps Review usable without horizontal overflow at phone width', async ({ 
 
   const brand = page.getByRole('link', { name: 'LifeOS Today' });
   await expect(brand).toBeVisible();
-  expect(await brand.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    await brand.evaluate((element) => element.getBoundingClientRect().height),
+  ).toBeGreaterThanOrEqual(44);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
   ).toBe(true);
 });

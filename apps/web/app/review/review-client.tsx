@@ -52,7 +52,9 @@ function isCanonicalUtcTimestamp(value: unknown): value is string {
     return false;
   }
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+  return (
+    Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value
+  );
 }
 
 function parseCount(value: unknown, maximum: number): number | null {
@@ -106,13 +108,19 @@ function parseReviewRecord(value: unknown): ReviewWorkspaceRecord | null {
     return null;
   }
   const requiredKeys = allowedKeys.filter((key) => key !== 'reflection');
-  if (requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(value, key))) {
+  if (
+    requiredKeys.some(
+      (key) => !Object.prototype.hasOwnProperty.call(value, key),
+    )
+  ) {
     return null;
   }
-  if (typeof value.id !== 'string' || !UUID_V4_PATTERN.test(value.id)) return null;
+  if (typeof value.id !== 'string' || !UUID_V4_PATTERN.test(value.id))
+    return null;
   const ritualKind = parseRitualKind(value.ritualKind);
   if (ritualKind === null) return null;
-  if (!isLocalDate(value.periodStartDate, ritualKind === 'weekly-review')) return null;
+  if (!isLocalDate(value.periodStartDate, ritualKind === 'weekly-review'))
+    return null;
   const completedStepCount = parseCount(value.completedStepCount, 64);
   const totalStepCount = parseCount(value.totalStepCount, 64);
   const plannedItemCount = parseCount(value.plannedItemCount, 10_000);
@@ -150,7 +158,8 @@ function parseReviewRecord(value: unknown): ReviewWorkspaceRecord | null {
 }
 
 function parseHistory(value: unknown): ReviewWorkspaceRecord[] | null {
-  if (!Array.isArray(value) || value.length > MAXIMUM_HISTORY_RECORDS) return null;
+  if (!Array.isArray(value) || value.length > MAXIMUM_HISTORY_RECORDS)
+    return null;
   const records: ReviewWorkspaceRecord[] = [];
   for (const candidate of value) {
     const record = parseReviewRecord(candidate);
@@ -262,7 +271,9 @@ export function ReviewClient() {
       dispatch({ type: 'history-loaded', records: history });
     } catch {
       if (generation !== loadGeneration.current) return;
-      dispatch(navigator.onLine ? { type: 'unavailable' } : { type: 'offline' });
+      dispatch(
+        navigator.onLine ? { type: 'unavailable' } : { type: 'offline' },
+      );
     }
   }
 
@@ -274,7 +285,9 @@ export function ReviewClient() {
     );
   }
 
-  async function recordWeeklyReview(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function recordWeeklyReview(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
     event.preventDefault();
     if (submissionClaim.current || state.submitting) return;
 
@@ -290,7 +303,9 @@ export function ReviewClient() {
       habits === null ||
       checkedSteps.some((checked) => !checked) ||
       [...canonicalReflection].length > MAXIMUM_REFLECTION_CHARACTERS ||
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(canonicalReflection)
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(
+        canonicalReflection,
+      )
     ) {
       dispatch({ type: 'invalid-input' });
       return;
@@ -312,7 +327,9 @@ export function ReviewClient() {
       plannedItemCount: planned,
       completedItemCount: completed,
       habitCompletionCount: habits,
-      ...(canonicalReflection.length === 0 ? {} : { reflection: canonicalReflection }),
+      ...(canonicalReflection.length === 0
+        ? {}
+        : { reflection: canonicalReflection }),
       completedAt,
     };
 
@@ -373,7 +390,9 @@ export function ReviewClient() {
     } catch {
       if (generation !== loadGeneration.current) return;
       releaseSubmission();
-      dispatch(navigator.onLine ? { type: 'unavailable' } : { type: 'offline' });
+      dispatch(
+        navigator.onLine ? { type: 'unavailable' } : { type: 'offline' },
+      );
     }
   }
 
@@ -422,13 +441,16 @@ export function ReviewClient() {
           <p className={styles.eyebrow}>Weekly reset</p>
           <h1>Review</h1>
           <p className={styles.lede}>
-            Close the week deliberately, record the outcome once, and use immutable
-            history to see what changed over time.
+            Close the week deliberately, record the outcome once, and use
+            immutable history to see what changed over time.
           </p>
         </header>
 
         <div className={styles.workspaceGrid}>
-          <section className={styles.historyPane} aria-labelledby="review-history-heading">
+          <section
+            className={styles.historyPane}
+            aria-labelledby="review-history-heading"
+          >
             <div className={styles.sectionHeading}>
               <div>
                 <p className={styles.eyebrow}>Durable evidence</p>
@@ -440,7 +462,9 @@ export function ReviewClient() {
             </div>
 
             <div className={styles.status} aria-live="polite">
-              {state.status === 'loading' ? <p>Loading Review history…</p> : null}
+              {state.status === 'loading' ? (
+                <p>Loading Review history…</p>
+              ) : null}
               {state.message ? <p>{state.message}</p> : null}
               {state.status !== 'ready' && state.status !== 'loading' ? (
                 <button type="button" onClick={() => void loadHistory()}>
@@ -452,11 +476,17 @@ export function ReviewClient() {
             {state.status === 'ready' && state.records.length === 0 ? (
               <div className={styles.emptyState}>
                 <h3>No completed Reviews yet</h3>
-                <p>Finish the checklist when you are ready to create the first immutable record.</p>
+                <p>
+                  Finish the checklist when you are ready to create the first
+                  immutable record.
+                </p>
               </div>
             ) : null}
 
-            <ol className={styles.historyList} aria-label="Completed Review history">
+            <ol
+              className={styles.historyList}
+              aria-label="Completed Review history"
+            >
               {state.records.map((record) => (
                 <li key={record.id}>
                   <div className={styles.historyHeading}>
@@ -471,20 +501,27 @@ export function ReviewClient() {
                   <dl className={styles.metrics}>
                     <div>
                       <dt>Completed items</dt>
-                      <dd>{record.completedItemCount} / {record.plannedItemCount}</dd>
+                      <dd>
+                        {record.completedItemCount} / {record.plannedItemCount}
+                      </dd>
                     </div>
                     <div>
                       <dt>Habit completions</dt>
                       <dd>{record.habitCompletionCount}</dd>
                     </div>
                   </dl>
-                  {record.reflection ? <p className={styles.reflection}>{record.reflection}</p> : null}
+                  {record.reflection ? (
+                    <p className={styles.reflection}>{record.reflection}</p>
+                  ) : null}
                 </li>
               ))}
             </ol>
           </section>
 
-          <section className={styles.ritualPane} aria-labelledby="weekly-review-heading">
+          <section
+            className={styles.ritualPane}
+            aria-labelledby="weekly-review-heading"
+          >
             <div className={styles.sectionHeading}>
               <div>
                 <p className={styles.eyebrow}>Explicit completion</p>
@@ -492,7 +529,10 @@ export function ReviewClient() {
               </div>
             </div>
 
-            <form className={styles.form} onSubmit={(event) => void recordWeeklyReview(event)}>
+            <form
+              className={styles.form}
+              onSubmit={(event) => void recordWeeklyReview(event)}
+            >
               <label>
                 Week starting Monday
                 <input
@@ -524,7 +564,9 @@ export function ReviewClient() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={plannedItemCount}
-                    onChange={(event) => setPlannedItemCount(event.target.value)}
+                    onChange={(event) =>
+                      setPlannedItemCount(event.target.value)
+                    }
                   />
                 </label>
                 <label>
@@ -533,7 +575,9 @@ export function ReviewClient() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={completedItemCount}
-                    onChange={(event) => setCompletedItemCount(event.target.value)}
+                    onChange={(event) =>
+                      setCompletedItemCount(event.target.value)
+                    }
                   />
                 </label>
                 <label>
@@ -542,7 +586,9 @@ export function ReviewClient() {
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={habitCompletionCount}
-                    onChange={(event) => setHabitCompletionCount(event.target.value)}
+                    onChange={(event) =>
+                      setHabitCompletionCount(event.target.value)
+                    }
                   />
                 </label>
               </div>
@@ -552,19 +598,29 @@ export function ReviewClient() {
                 <textarea
                   rows={5}
                   value={reflection}
-                  onChange={(event) => setReflection(clampReflection(event.target.value))}
+                  onChange={(event) =>
+                    setReflection(clampReflection(event.target.value))
+                  }
                   aria-describedby="reflection-limit"
                 />
               </label>
               <p id="reflection-limit" className={styles.fieldHint}>
-                {MAXIMUM_REFLECTION_CHARACTERS - [...reflection].length} characters available
+                {MAXIMUM_REFLECTION_CHARACTERS - [...reflection].length}{' '}
+                characters available
               </p>
 
-              <button className={styles.primaryAction} type="submit" disabled={!canSubmit}>
-                {state.submitting ? 'Recording Weekly Review…' : 'Record Weekly Review'}
+              <button
+                className={styles.primaryAction}
+                type="submit"
+                disabled={!canSubmit}
+              >
+                {state.submitting
+                  ? 'Recording Weekly Review…'
+                  : 'Record Weekly Review'}
               </button>
               <p className={styles.formNote}>
-                This action records immutable Review evidence. It does not rewrite Planning or Habit records.
+                This action records immutable Review evidence. It does not
+                rewrite Planning or Habit records.
               </p>
             </form>
           </section>
