@@ -37,7 +37,7 @@ jobs:
           stale=pathlib.Path('.github/workflows/refresh-product-gap-baseline-currentness.yml')
           workflow=pathlib.Path('.github/workflows/refresh-product-gap-baseline-currentness-v2.yml')
           start='<!-- life-os-live-currentness:start -->'; end='<!-- life-os-live-currentness:end -->'
-          tracked=(211,214,228,229,231,232,233,234,237,247,249,252,253,254,255,256,257,258,260,261,264,269,273,275,276,281,282,283,292,293,294,295,296,297,298,299,300,301,302,303,304,305)
+          tracked=(211,214,228,229,231,232,233,234,237,247,249,252,253,254,255,256,257,258,260,261,264,269,273,275,276,281,282,283,292,293,294,295,296,297,298,299,300,301,302,303,304,305,306)
           def api(path):
               r=urllib.request.Request(f'https://api.github.com/repos/{repo}{path}',headers={'Accept':'application/vnd.github+json','Authorization':f'Bearer {token}','X-GitHub-Api-Version':'2022-11-28','User-Agent':'life-os-product-gap-currentness-writer-v2'})
               with urllib.request.urlopen(r,timeout=20) as response: return json.load(response)
