@@ -34,7 +34,9 @@ function proposal(): AuditableProposal {
     proposalId: PROPOSAL_ID,
     workspaceId: WORKSPACE_ID,
     summary: 'Verify canonical audit evidence.',
-    rationale: ['Persisted audit evidence must not be recanonicalized on read.'],
+    rationale: [
+      'Persisted audit evidence must not be recanonicalized on read.',
+    ],
     operations: [
       {
         kind: 'prioritize_item',
@@ -50,7 +52,9 @@ function proposal(): AuditableProposal {
 function uppercaseOneHexLetter(value: string): string {
   const index = value.search(/[a-f]/);
   if (index < 0) {
-    throw new Error('fixture requires at least one lowercase hexadecimal letter');
+    throw new Error(
+      'fixture requires at least one lowercase hexadecimal letter',
+    );
   }
   return `${value.slice(0, index)}${value[index]!.toUpperCase()}${value.slice(index + 1)}`;
 }
@@ -126,7 +130,10 @@ describe('proposal audit canonical durable evidence', () => {
       { ...event, proposalId: event.proposalId.toUpperCase() },
       { ...event, actorId: event.actorId.toUpperCase() },
       { ...event, idempotencyKey: event.idempotencyKey.toUpperCase() },
-      { ...event, proposalContentDigest: event.proposalContentDigest.toUpperCase() },
+      {
+        ...event,
+        proposalContentDigest: event.proposalContentDigest.toUpperCase(),
+      },
       { ...event, decidedAt: '2026-08-04T09:00:00+09:00' },
       { ...event, recordedAt: '2026-08-04T09:00:01+09:00' },
     ];

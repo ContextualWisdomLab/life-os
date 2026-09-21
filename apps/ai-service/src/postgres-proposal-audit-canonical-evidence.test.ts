@@ -43,7 +43,9 @@ function request(): ProposalRequest {
 function uppercaseOneHexLetter(value: string): string {
   const index = value.search(/[a-f]/);
   if (index < 0) {
-    throw new Error('fixture requires at least one lowercase hexadecimal letter');
+    throw new Error(
+      'fixture requires at least one lowercase hexadecimal letter',
+    );
   }
   return `${value.slice(0, index)}${value[index]!.toUpperCase()}${value.slice(index + 1)}`;
 }
@@ -127,11 +129,15 @@ describe('PostgresProposalAuditRepository canonical durable evidence', () => {
       },
       {
         ...canonical,
-        request_digest: uppercaseOneHexLetter(canonical.request_digest as string),
+        request_digest: uppercaseOneHexLetter(
+          canonical.request_digest as string,
+        ),
       },
       {
         ...canonical,
-        content_digest: uppercaseOneHexLetter(canonical.content_digest as string),
+        content_digest: uppercaseOneHexLetter(
+          canonical.content_digest as string,
+        ),
       },
       { ...canonical, created_at: '2026-08-04T09:00:00+09:00' },
       { ...canonical, recorded_at: '2026-08-04T09:00:01+09:00' },
