@@ -26,7 +26,7 @@ jobs:
           GIT_CONFIG_KEY_0: init.defaultBranch
           GIT_CONFIG_VALUE_0: main
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           ref: ${{ github.sha }}
 
       - name: Set up Node 24
@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "bbd19c54eac207f1246e3ff5827f1697d7eb1a33"
+          git merge-base --is-ancestor "bbd19c54eac207f1246e3ff5827f1697d7eb1a33" HEAD
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "${GITHUB_SHA}"
