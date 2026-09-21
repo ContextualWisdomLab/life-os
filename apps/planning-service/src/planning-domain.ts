@@ -35,6 +35,22 @@ export interface Task {
   createdAt: string;
 }
 
+/** Task representation carrying Planning-owned durable deadline authority. */
+export interface TaskWithDueAuthority extends Task {
+  dueAt: string | null;
+}
+
+/** Dedicated persistence capability for task deadline-bearing reads and writes. */
+export interface TaskDueAuthorityRepository {
+  /** Persists one validated task and nullable deadline as one durable unit. */
+  saveTask(task: TaskWithDueAuthority): Promise<void>;
+  /** Lists task records with their durable nullable deadline authority. */
+  listTasks(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<TaskWithDueAuthority[]>;
+}
+
 /** Persistence boundary required by the tenant-safe planning domain service. */
 export interface PlanningRepository {
   /** Persists one validated workspace-owned goal. */
@@ -176,6 +192,30 @@ function requireOpaqueId(value: string): string {
   return normalized;
 }
 
+/** Requires an exact JavaScript ISO UTC instant or the explicit no-deadline value. */
+function requireCanonicalTaskDueAt(value: unknown): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    throw new Error('Task deadline must be a canonical UTC instant');
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new Error('Task deadline must be a canonical UTC instant');
+  }
+  return value;
+}
+
+/** Restores an explicit null deadline for legacy/in-memory repository adapters. */
+function taskWithDueAuthority(task: Task): TaskWithDueAuthority {
+  const dueAt = (task as Task & { dueAt?: unknown }).dueAt;
+  return {
+    ...task,
+    dueAt: requireCanonicalTaskDueAt(dueAt),
+  };
+}
+
 /** Creates an unpredictable UUIDv4 identifier for a new planning record. */
 function createOpaqueId(): string {
   return randomUUID();
@@ -183,8 +223,11 @@ function createOpaqueId(): string {
 
 /** Coordinates tenant-owned planning mutations, reads, and unified search. */
 export class PlanningService {
-  /** Creates a domain service backed by the supplied persistence adapter. */
-  constructor(private readonly repository: PlanningRepository) {}
+  /** Creates a domain service backed by the supplied persistence adapters. */
+  constructor(
+    private readonly repository: PlanningRepository,
+    private readonly taskDueAuthorityRepository?: TaskDueAuthorityRepository,
+  ) {}
 
   /** Creates and persists a goal in one validated workspace. */
   async createGoal(
@@ -226,22 +269,30 @@ export class PlanningService {
   /** Creates a task only when its parent project is visible in the workspace. */
   async createTask(
     workspaceId: string,
-    input: { projectId: string; title: string },
-  ): Promise<Task> {
+    input: { projectId: string; title: string; dueAt?: unknown },
+  ): Promise<TaskWithDueAuthority> {
     const safeWorkspaceId = requireOpaqueId(workspaceId);
     const safeProjectId = requireOpaqueId(input.projectId);
     if (!(await this.repository.findProject(safeWorkspaceId, safeProjectId))) {
       throw new Error('Project not found');
     }
-    const task: Task = {
+    const task: TaskWithDueAuthority = {
       id: createOpaqueId(),
       workspaceId: safeWorkspaceId,
       projectId: safeProjectId,
       title: normalizeTitle(input.title),
       status: 'todo',
       createdAt: new Date().toISOString(),
+      dueAt: requireCanonicalTaskDueAt(input.dueAt),
     };
-    await this.repository.saveTask(task);
+    if (task.dueAt !== null && !this.taskDueAuthorityRepository) {
+      throw new Error('Task deadline persistence authority is unavailable');
+    }
+    if (this.taskDueAuthorityRepository) {
+      await this.taskDueAuthorityRepository.saveTask(task);
+    } else {
+      await this.repository.saveTask(task);
+    }
     return task;
   }
 
@@ -259,11 +310,21 @@ export class PlanningService {
   }
 
   /** Lists tasks below one validated workspace-owned project. */
-  async listTasks(workspaceId: string, projectId: string): Promise<Task[]> {
-    return await this.repository.listTasks(
-      requireOpaqueId(workspaceId),
-      requireOpaqueId(projectId),
-    );
+  async listTasks(
+    workspaceId: string,
+    projectId: string,
+  ): Promise<TaskWithDueAuthority[]> {
+    const safeWorkspaceId = requireOpaqueId(workspaceId);
+    const safeProjectId = requireOpaqueId(projectId);
+    if (this.taskDueAuthorityRepository) {
+      return await this.taskDueAuthorityRepository.listTasks(
+        safeWorkspaceId,
+        safeProjectId,
+      );
+    }
+    return (
+      await this.repository.listTasks(safeWorkspaceId, safeProjectId)
+    ).map(taskWithDueAuthority);
   }
 
   /** Searches goals, projects, and tasks without returning workspace ownership. */

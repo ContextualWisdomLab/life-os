@@ -11,6 +11,7 @@ import {
   PostgresTodayRepository,
   type TodayTransactionalSqlClient,
 } from './postgres-today-repository';
+import { PostgresTaskDueAuthorityRepository } from './task-due-authority';
 import {
   PostgresTaskCompletionRepository,
   TaskCompletionService,
@@ -244,10 +245,13 @@ export function createPlanningRuntime(
   const pool = poolFactory(createPlanningPoolConfiguration(environment));
   const client = new NodePostgresPlanningSqlClient(pool);
   const repository = new PostgresPlanningRepository(client);
+  const taskDueAuthorityRepository = new PostgresTaskDueAuthorityRepository(
+    client,
+  );
   const todayRepository = new PostgresTodayRepository(client);
   return new PlanningRuntime(
     pool,
-    new PlanningService(repository),
+    new PlanningService(repository, taskDueAuthorityRepository),
     new TodaySyncService(todayRepository),
     new TaskCompletionService(new PostgresTaskCompletionRepository(client)),
     new PlanningDataRightsContributor(client),

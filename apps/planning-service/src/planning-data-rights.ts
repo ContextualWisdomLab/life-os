@@ -9,7 +9,7 @@ import type { TodayTransactionalSqlClient } from './postgres-today-repository';
 export const DATA_RIGHTS_CONTRIBUTOR_CONTRACT_VERSION =
   'life-os.data-rights-contributor.v1' as const;
 const CONTRIBUTOR_NAME = 'planning.service' as const;
-const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v2' as const;
+const EXPORT_SCHEMA_VERSION = 'planning.data-rights.v3' as const;
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
@@ -111,6 +111,7 @@ interface PlanningTaskExportRow extends PlanningGoalExportRow {
   project_id: unknown;
   status: unknown;
   completed_at: unknown;
+  due_at: unknown;
 }
 /**
  * Data-rights projection of user-owned completion evidence.
@@ -506,7 +507,7 @@ export class PlanningDataRightsContributor {
         ),
         collectExportRows<PlanningTaskExportRow>(
           transaction,
-          `SELECT id, project_id, title, status, completed_at, created_at
+          `SELECT id, project_id, title, status, completed_at, due_at, created_at
              FROM planning.tasks
              WHERE workspace_id = $1
              ORDER BY created_at ASC, id ASC
@@ -562,6 +563,7 @@ export class PlanningDataRightsContributor {
           title: requireString(row.title, 'task.title'),
           status: requireString(row.status, 'task.status'),
           completedAt: requireTimestamp(row.completed_at, 'task.completed_at'),
+          dueAt: requireTimestamp(row.due_at, 'task.due_at'),
           createdAt: requireTimestamp(row.created_at, 'task.created_at'),
         })),
         taskCompletionFacts: normalizeExportRows(

@@ -69,7 +69,7 @@ describe('Planning data-rights controller authority', () => {
       contributor: 'planning.service',
       requestId: REQUEST_ID,
       operation: 'export',
-      schemaVersion: 'planning.data-rights.v2',
+      schemaVersion: 'planning.data-rights.v3',
       recordCount: 0,
       sha256: '0'.repeat(64),
       data: {},

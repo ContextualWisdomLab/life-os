@@ -67,6 +67,7 @@ async function applyPlanningMigrations(pool: Pool): Promise<void> {
     '0005_task_completion_chronology.sql',
     '0006_validate_task_completion_chronology.sql',
     '0007_task_completion_facts.sql',
+    '0008_task_due_authority.sql',
   ]) {
     const sql = await readFile(
       resolve(__dirname, '../migrations', migrationFile),
@@ -101,8 +102,8 @@ async function seedWorkspace(pool: Pool): Promise<void> {
     [projectId, WORKSPACE_ID, goalId],
   );
   await pool.query(
-    `INSERT INTO planning.tasks (id, workspace_id, project_id, title, created_at)
-     VALUES ($1, $2, $3, 'Task', TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
+    `INSERT INTO planning.tasks (id, workspace_id, project_id, title, due_at, created_at)
+     VALUES ($1, $2, $3, 'Task', TIMESTAMPTZ '2026-08-11T09:30:00.123Z', TIMESTAMPTZ '2026-08-10T12:00:00.000Z')`,
     [taskId, WORKSPACE_ID, projectId],
   );
   await pool.query(
@@ -189,13 +190,17 @@ describeWithDatabase('PostgreSQL Planning data-rights lifecycle', () => {
       });
       expect(exported).toMatchObject({
         operation: 'export',
-        schemaVersion: 'planning.data-rights.v2',
+        schemaVersion: 'planning.data-rights.v3',
         recordCount: 6,
       });
       if (exported.operation !== 'export') {
         throw new Error('Expected Planning export response');
       }
       expect(exported.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(exported.data).toHaveProperty(
+        'tasks.0.dueAt',
+        '2026-08-11T09:30:00.123Z',
+      );
       expect(exported.data).toHaveProperty('taskCompletionFacts', [
         {
           taskId: '77777777-7777-4777-8777-777777777777',
