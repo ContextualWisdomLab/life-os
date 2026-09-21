@@ -409,10 +409,7 @@ function createHabitContextHeaders(
   }
   const issuedAt = String(nowSeconds);
   const signature = createHmac('sha256', safeSecret)
-    .update(
-      `life-os.workspace.v1\n${safeWorkspaceId}\n${issuedAt}`,
-      'utf8',
-    )
+    .update(`life-os.workspace.v1\n${safeWorkspaceId}\n${issuedAt}`, 'utf8')
     .digest('base64url');
   return Object.freeze({
     'x-life-os-workspace-id': safeWorkspaceId,
