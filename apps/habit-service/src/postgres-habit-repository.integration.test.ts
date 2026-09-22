@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -34,12 +34,16 @@ function requireDatabaseUrl(): string {
   return DATABASE_URL;
 }
 
-async function applyMigration(pool: Pool): Promise<void> {
-  const sql = await readFile(
-    resolve(__dirname, '../migrations/0001_recurring_habit_core.sql'),
-    'utf8',
-  );
-  await pool.query(sql);
+async function applyMigrations(pool: Pool): Promise<void> {
+  const migrationRoot = resolve(__dirname, '../migrations');
+  const migrationNames = (await readdir(migrationRoot))
+    .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
+    .sort();
+
+  for (const migrationName of migrationNames) {
+    const sql = await readFile(resolve(migrationRoot, migrationName), 'utf8');
+    await pool.query(sql);
+  }
 }
 
 function repository(pool: Pool): PostgresHabitRepository {
@@ -87,7 +91,7 @@ describeWithPostgres('PostgreSQL Habit repository integration', () => {
 
   beforeEach(async () => {
     await administrativePool.query('DROP SCHEMA IF EXISTS habit CASCADE');
-    await applyMigration(administrativePool);
+    await applyMigrations(administrativePool);
   });
 
   afterAll(async () => {
