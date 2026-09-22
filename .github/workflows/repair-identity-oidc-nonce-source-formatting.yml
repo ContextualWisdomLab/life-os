@@ -79,6 +79,11 @@ jobs:
           pnpm --filter @life-os/identity-service typecheck
           pnpm --filter @life-os/identity-service test
           git diff --check
+          formatter_delta="$(git diff --name-only HEAD -- \
+            apps/identity-service/src/oauth-provider-response.ts \
+            apps/identity-service/src/tests/oauth-provider-response-nonce-exact.test.ts \
+            .github/workflows/verify-identity-oidc-nonce-exact.yml | LC_ALL=C sort)"
+          test -n "${formatter_delta}"
           changed="$(git diff --name-only HEAD | LC_ALL=C sort)"
           allowed="$(printf '%s\n' \
             '.github/workflows/repair-identity-oidc-nonce-source-formatting.yml' \
