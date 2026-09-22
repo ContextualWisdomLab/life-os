@@ -41,12 +41,12 @@ it('rejects every noncanonical base64url spelling of an otherwise valid plugin d
     proof.signature[proof.signature.length - 1]!,
   );
   expect(finalIndex).toBeGreaterThanOrEqual(0);
-  // A 32-byte HMAC leaves only the high two bits of the final base64url sextet
-  // as data. Canonical unpadded encoding therefore requires the low four bits
-  // to be zero; all 15 other lower-nibble spellings decode to the same bytes.
-  expect(finalIndex % 16).toBe(0);
+  // A 32-byte HMAC leaves four data bits for the final unpadded base64url
+  // sextet. Canonical encoding therefore requires its low two pad bits to be
+  // zero; the other three low-bit spellings decode to the same 32 bytes.
+  expect(finalIndex % 4).toBe(0);
 
-  for (let aliasOffset = 1; aliasOffset < 16; aliasOffset += 1) {
+  for (let aliasOffset = 1; aliasOffset < 4; aliasOffset += 1) {
     const alternateFinalCharacter =
       BASE64URL_ALPHABET[finalIndex + aliasOffset]!;
     const noncanonicalSignature = `${proof.signature.slice(
