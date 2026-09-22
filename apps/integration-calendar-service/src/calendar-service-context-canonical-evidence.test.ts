@@ -59,9 +59,7 @@ describe('Calendar canonical signed context evidence', () => {
       const issuedAt = String(NOW_SECONDS);
       const signature = userSignature(WORKSPACE_ID, USER_ID, issuedAt);
 
-      expect(
-        workspaceId !== WORKSPACE_ID || userId !== USER_ID,
-      ).toBe(true);
+      expect(workspaceId !== WORKSPACE_ID || userId !== USER_ID).toBe(true);
       expect(() =>
         requireTrustedCalendarUserContext(
           {
