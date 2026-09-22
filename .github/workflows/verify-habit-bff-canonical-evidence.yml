@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Guard exact publication
+      - name: Guard exact semantic publication
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +36,8 @@ jobs:
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "$GITHUB_SHA"
-          git merge-base --is-ancestor bfaf0b7d9fa3b2bfa3d09f9e36424cfa2fadc748 "$GITHUB_SHA"
+          git merge-base --is-ancestor 0abc78ad85b69131df84696a9e9711af12f6d0cb "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-habit-bff-canonical-evidence.yml
           test ! -e .github/workflows/repair-habit-bff-verifier-harness.yml
 
       - name: Set up Node.js
@@ -55,9 +56,13 @@ jobs:
           pnpm exec prettier --single-quote --check
           apps/web/app/habit-client.ts
           apps/web/app/habit-client.test.ts
+          .github/workflows/verify-habit-bff-canonical-evidence.yml
 
       - name: Reproduce canonical-evidence regressions
         run: pnpm --filter @life-os/web exec tsx --test app/habit-client.test.ts
 
       - name: Typecheck Web package
         run: pnpm --filter @life-os/web typecheck
+
+      - name: Run complete Web suite
+        run: pnpm --filter @life-os/web test
