@@ -51,7 +51,13 @@ jobs:
           git cat-file -e 231805850891f4fdf0ac829c69c9e541b8701c6e^{commit}
           git merge-base --is-ancestor 231805850891f4fdf0ac829c69c9e541b8701c6e "$GITHUB_SHA"
           intervening="$(git diff --name-only 231805850891f4fdf0ac829c69c9e541b8701c6e "$GITHUB_SHA" | LC_ALL=C sort)"
-          test "$intervening" = ".github/workflows/repair-habit-rule-change-authority-v2.yml"
+          expected="$(printf '%s\n' \
+            .github/workflows/repair-habit-rule-change-authority-v2.yml \
+            apps/habit-service/src/habit-review-projection-postgres.test.ts \
+            apps/habit-service/src/habit-service.integration.test.ts \
+            apps/habit-service/src/postgres-habit-repository.integration.test.ts \
+            apps/habit-service/src/postgres-habit-repository.test.ts | LC_ALL=C sort)"
+          test "$intervening" = "$expected"
           git cat-file -e e7e6c68db1e1e243dcff48220e81819b7ed83762^{commit}
           git merge-base --is-ancestor e7e6c68db1e1e243dcff48220e81819b7ed83762 "$GITHUB_SHA"
           test ! -e .github/workflows/repair-habit-rule-change-authority.yml
@@ -146,6 +152,10 @@ jobs:
           apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          apps/habit-service/src/habit-review-projection-postgres.test.ts
+          apps/habit-service/src/habit-service.integration.test.ts
+          apps/habit-service/src/postgres-habit-repository.integration.test.ts
+          apps/habit-service/src/postgres-habit-repository.test.ts
 
       - name: Typecheck Habit
         run: pnpm --filter @life-os/habit-service typecheck
