@@ -35,13 +35,16 @@ describe('OIDC nonce exact-match authority', () => {
     },
   );
 
-  it('rejects a stored expected nonce that is recanonicalized before comparison', () => {
-    expect(() =>
-      validateVerifiedGoogleIdentity(verifiedToken('expected-nonce'), {
-        clientId: 'google-client-id',
-        nonce: ' expected-nonce ',
-        now: NOW,
-      }),
-    ).toThrowError('Google ID token is invalid');
-  });
+  it(
+    'rejects a stored expected nonce that is recanonicalized before comparison',
+    () => {
+      expect(() =>
+        validateVerifiedGoogleIdentity(verifiedToken('expected-nonce'), {
+          clientId: 'google-client-id',
+          nonce: ' expected-nonce ',
+          now: NOW,
+        }),
+      ).toThrowError('Google ID token is invalid');
+    },
+  );
 });
