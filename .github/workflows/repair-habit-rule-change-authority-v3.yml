@@ -73,6 +73,36 @@ jobs:
           PY
           bash /tmp/materialize-v2.sh
 
+      - name: Repair deterministic service clock boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/habit-service/src/habit-domain.ts')
+          text = path.read_text()
+
+          replacements = (
+              (
+                  '      createdAt: new Date().toISOString(),',
+                  '      createdAt: requireTimestamp(this.projectionClock()),',
+                  'habit creation timestamp',
+              ),
+              (
+                  '    const now = new Date().toISOString();',
+                  '    const now = requireTimestamp(this.projectionClock());',
+                  'completion recorded timestamp',
+              ),
+          )
+          for old, new, label in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one wall-clock target, found {count}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
       - name: Enable repository pnpm
         run: corepack enable
 
@@ -116,6 +146,12 @@ jobs:
           src/habit-rule-change-idempotency-postgres.integration.test.ts
           src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
           src/habit-definition-history-postgres.integration.test.ts
+
+      - name: Prove deterministic Review evidence clock
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
+          --no-file-parallelism
+          src/habit-review-projection.test.ts
 
       - name: Diagnose complete Habit suite serially
         run: >-
