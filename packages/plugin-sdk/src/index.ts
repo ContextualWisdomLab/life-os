@@ -148,6 +148,14 @@ function requireUuidV4(value: unknown): string {
   return normalized;
 }
 
+function requireCanonicalUuidV4(value: unknown): string {
+  const candidate = requireString(value, 36, 36);
+  if (!UUID_V4_PATTERN.test(candidate) || candidate !== candidate.toLowerCase()) {
+    return invalid();
+  }
+  return candidate;
+}
+
 function requireRfc3339Instant(value: unknown): string {
   const normalized = requireString(value, 20, 35);
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(normalized)) {
@@ -391,7 +399,7 @@ export function verifyPluginDelivery(
     if (proofInput.algorithm !== 'hmac-sha256') {
       return false;
     }
-    const deliveryId = requireUuidV4(proofInput.deliveryId);
+    const deliveryId = requireCanonicalUuidV4(proofInput.deliveryId);
     const timestamp = requireTimestamp(proofInput.timestamp);
     const signature = requireString(proofInput.signature, 43, 43);
     if (!SIGNATURE_PATTERN.test(signature)) {
@@ -411,6 +419,9 @@ export function verifyPluginDelivery(
       .update(signatureBase(serializedEvent, deliveryId, timestamp), 'utf8')
       .digest();
     const supplied = Buffer.from(signature, 'base64url');
+    if (supplied.toString('base64url') !== signature) {
+      return false;
+    }
     return supplied.byteLength === expected.byteLength && timingSafeEqual(supplied, expected);
   } catch {
     return false;
