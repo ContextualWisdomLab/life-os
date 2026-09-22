@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: repair-review-optional-reflection-exactness-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
@@ -34,6 +34,7 @@ jobs:
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "$remote_head"
           test "$remote_head" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 986cab20d4eaa645358bebdd76132bb4d498411f "$GITHUB_SHA"
           test -f apps/web/app/review-client.ts
           test -f .github/workflows/repair-review-optional-reflection-exactness.yml
 
@@ -79,6 +80,63 @@ jobs:
           NODE
           pnpm exec prettier --single-quote --write apps/web/app/review-client.ts
 
+      - name: Prove owner typecheck GREEN before semantic boundary repair
+        run: pnpm --filter @life-os/web typecheck
+
+      - name: Reproduce Review canonicality and requested-limit RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(pnpm --filter @life-os/web exec tsx --test app/review-client.test.ts app/review-client-canonical-evidence.test.ts app/api/reviews/routes.test.ts 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$status" -ne 0
+          printf '%s\n' "$output" | grep -F "rejects noncanonical Identity workspace authority before Review access" >/dev/null
+          printf '%s\n' "$output" | grep -F "rejects noncanonical Review record identity instead of recanonicalizing it" >/dev/null
+          printf '%s\n' "$output" | grep -F "rejects noncanonical Review workspace evidence instead of aliasing authority" >/dev/null
+          printf '%s\n' "$output" | grep -F "fails closed when Review returns more records than the requested limit" >/dev/null
+
+      - name: Apply minimum Review evidence-boundary repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/web/app/review-client.ts';
+          let source = fs.readFileSync(path, 'utf8');
+          const replacements = [
+            [
+              `  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;`,
+              `  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;`,
+              'canonical UUID grammar',
+            ],
+            [
+              `  return value.toLowerCase();`,
+              `  return value;`,
+              'UUID spelling preservation',
+            ],
+            [
+              `function parseReviewCollection(\n  value: unknown,\n  expectedWorkspaceId: string,\n): ReviewCompletionView[] {\n  if (!Array.isArray(value) || value.length > MAXIMUM_HISTORY_RECORDS) {`,
+              `function parseReviewCollection(\n  value: unknown,\n  expectedWorkspaceId: string,\n  maximumRecords: number,\n): ReviewCompletionView[] {\n  if (\n    !Array.isArray(value) ||\n    value.length > MAXIMUM_HISTORY_RECORDS ||\n    value.length > maximumRecords\n  ) {`,
+              'requested history limit enforcement',
+            ],
+            [
+              `    const history = parseReviewCollection(\n      await readBoundedJson(reviewResponse, MAXIMUM_RESPONSE_BYTES),\n      workspaceId,\n    );`,
+              `    const history = parseReviewCollection(\n      await readBoundedJson(reviewResponse, MAXIMUM_RESPONSE_BYTES),\n      workspaceId,\n      limit,\n    );`,
+              'history parser requested limit',
+            ],
+          ];
+          for (const [before, after, label] of replacements) {
+            const count = source.split(before).length - 1;
+            if (count !== 1) throw new Error(`${label}: expected one target, found ${count}`);
+            source = source.replace(before, after);
+          }
+          fs.writeFileSync(path, source);
+          NODE
+          pnpm exec prettier --single-quote --write apps/web/app/review-client.ts
+
       - name: Prove owner typecheck GREEN
         run: pnpm --filter @life-os/web typecheck
 
@@ -112,5 +170,5 @@ jobs:
           test "$remote_head" = "$GITHUB_SHA"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(web): omit absent Review reflection property'
+          git commit -m 'fix(web): preserve canonical Review evidence'
           git push origin "HEAD:${GITHUB_REF_NAME}"
