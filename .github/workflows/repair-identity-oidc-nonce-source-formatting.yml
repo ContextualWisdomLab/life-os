@@ -1,0 +1,102 @@
+name: Repair Identity OIDC Nonce Source Formatting
+
+on:
+  push:
+    branches:
+      - test/identity-oidc-nonce-exact-v1
+    paths:
+      - .github/workflows/repair-identity-oidc-nonce-source-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-identity-oidc-nonce-source-formatting-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Require semantic-repair ancestry and exact remote input
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "41afb364a998b7bfd6cd4cf4e0d5a70d7fd2d7a2" HEAD
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Reproduce focused formatting RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm exec prettier --check \
+            apps/identity-service/src/oauth-provider-response.ts \
+            apps/identity-service/src/tests/oauth-provider-response-nonce-exact.test.ts \
+            .github/workflows/verify-identity-oidc-nonce-exact.yml; then
+            echo 'Expected retained exact-nonce files to be noncanonical before formatter repair.' >&2
+            exit 1
+          fi
+
+      - name: Apply bounded formatter repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write \
+            apps/identity-service/src/oauth-provider-response.ts \
+            apps/identity-service/src/tests/oauth-provider-response-nonce-exact.test.ts \
+            .github/workflows/verify-identity-oidc-nonce-exact.yml
+          git rm .github/workflows/repair-identity-oidc-nonce-source-formatting.yml
+
+      - name: Verify unchanged Identity behavior and bounded delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --check \
+            apps/identity-service/src/oauth-provider-response.ts \
+            apps/identity-service/src/tests/oauth-provider-response-nonce-exact.test.ts \
+            .github/workflows/verify-identity-oidc-nonce-exact.yml
+          pnpm --filter @life-os/identity-service exec vitest run src/tests/oauth-provider-response-nonce-exact.test.ts
+          pnpm --filter @life-os/identity-service typecheck
+          pnpm --filter @life-os/identity-service test
+          git diff --check
+          changed="$(git diff --name-only HEAD | LC_ALL=C sort)"
+          allowed="$(printf '%s\n' \
+            '.github/workflows/repair-identity-oidc-nonce-source-formatting.yml' \
+            '.github/workflows/verify-identity-oidc-nonce-exact.yml' \
+            'apps/identity-service/src/oauth-provider-response.ts' \
+            'apps/identity-service/src/tests/oauth-provider-response-nonce-exact.test.ts' | LC_ALL=C sort)"
+          unexpected="$(comm -23 <(printf '%s\n' "${changed}") <(printf '%s\n' "${allowed}"))"
+          test -z "${unexpected}"
+
+      - name: Publish ordinary formatter descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "${GITHUB_SHA}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'style(identity): format exact OIDC nonce repair'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
