@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
 const MAXIMUM_RESPONSE_BYTES = 64 * 1024;
@@ -180,7 +180,7 @@ function requireWorkspaceId(value: unknown): string {
   ) {
     throw unavailable();
   }
-  return ((value as Record<string, unknown>).workspaceId as string).toLowerCase();
+  return (value as Record<string, unknown>).workspaceId as string;
 }
 
 function requireNowSeconds(value: number): number {
@@ -272,7 +272,7 @@ function requirePlanningAction(value: unknown): GatewayPlanningTodayAction {
   if (typeof action.id !== 'string' || !UUID_V4_PATTERN.test(action.id)) {
     throw unavailable();
   }
-  return Object.freeze({ ...action, id: action.id.toLowerCase() });
+  return Object.freeze({ ...action, id: action.id });
 }
 
 function requirePlanningToday(
@@ -301,8 +301,8 @@ function requirePlanningToday(
   const actions = record.actions.map(requirePlanningAction);
   return Object.freeze({
     version: 'life-os.today.v1',
-    aggregateId: record.aggregateId.toLowerCase(),
-    revision: record.revision.toLowerCase(),
+    aggregateId: record.aggregateId,
+    revision: record.revision,
     date: expectedDate,
     actions: Object.freeze(actions),
   });
@@ -340,14 +340,14 @@ function requireHabitTodayItem(
   return Object.freeze(
     record.completed
       ? {
-          habitId: record.habitId.toLowerCase(),
+          habitId: record.habitId,
           title: record.title,
           scheduledLocalDate: expectedDate,
           completed: true,
-          completionId: (record.completionId as string).toLowerCase(),
+          completionId: record.completionId as string,
         }
       : {
-          habitId: record.habitId.toLowerCase(),
+          habitId: record.habitId,
           title: record.title,
           scheduledLocalDate: expectedDate,
           completed: false,
