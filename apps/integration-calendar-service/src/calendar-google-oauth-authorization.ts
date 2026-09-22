@@ -3,8 +3,7 @@ import type { TrustedCalendarUserContext } from './calendar-service-context';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const ISO_INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const PKCE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/u;
 const PKCE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const AUTHORIZATION_STATE_LIFETIME_MILLISECONDS = 5 * 60 * 1000;
@@ -146,7 +145,9 @@ function requireVerifier(value: unknown): string {
 }
 
 function challengeFor(verifier: string): string {
-  const challenge = createHash('sha256').update(verifier, 'ascii').digest('base64url');
+  const challenge = createHash('sha256')
+    .update(verifier, 'ascii')
+    .digest('base64url');
   if (!PKCE_CHALLENGE_PATTERN.test(challenge)) {
     return unavailable();
   }
@@ -278,7 +279,10 @@ export class CalendarGoogleOAuthAuthorizationApplication {
   ): Promise<CalendarGoogleOAuthAuthorizationIssueResult> {
     const workspaceId = requireUuid(authority?.workspaceId);
     const userId = requireUuid(authority?.userId);
-    const redirectUri = requireExactRedirectUri(input?.redirectUri, this.redirectUri);
+    const redirectUri = requireExactRedirectUri(
+      input?.redirectUri,
+      this.redirectUri,
+    );
     const stateId = requireUuid(this.createStateId());
     const verifier = requireVerifier(this.createVerifier());
     const codeChallenge = challengeFor(verifier);
@@ -298,7 +302,9 @@ export class CalendarGoogleOAuthAuthorizationApplication {
         expiresAt,
         verifier,
       });
-      verifierSecretReference = requireDependencyUuid(rawVerifierSecretReference);
+      verifierSecretReference = requireDependencyUuid(
+        rawVerifierSecretReference,
+      );
     } catch {
       if (typeof rawVerifierSecretReference === 'string') {
         try {
@@ -375,7 +381,10 @@ export class CalendarGoogleOAuthAuthorizationApplication {
     const workspaceId = requireUuid(authority?.workspaceId);
     const userId = requireUuid(authority?.userId);
     const stateId = requireUuid(input?.state);
-    const redirectUri = requireExactRedirectUri(input?.redirectUri, this.redirectUri);
+    const redirectUri = requireExactRedirectUri(
+      input?.redirectUri,
+      this.redirectUri,
+    );
     const consumed = requireCurrentInstant(this.now);
 
     let record: CalendarGoogleOAuthAuthorizationStateRecord | null;
@@ -402,7 +411,9 @@ export class CalendarGoogleOAuthAuthorizationApplication {
         userId,
         purpose: PURPOSE,
         redirectUri,
-        verifierSecretReference: requireDependencyUuid(record.verifierSecretReference),
+        verifierSecretReference: requireDependencyUuid(
+          record.verifierSecretReference,
+        ),
         codeChallenge:
           typeof record.codeChallenge === 'string' &&
           PKCE_CHALLENGE_PATTERN.test(record.codeChallenge)
