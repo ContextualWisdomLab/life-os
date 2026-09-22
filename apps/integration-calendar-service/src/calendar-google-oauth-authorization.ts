@@ -3,6 +3,8 @@ import type { TrustedCalendarUserContext } from './calendar-service-context';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const CANONICAL_UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const PKCE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/u;
 const PKCE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -117,6 +119,13 @@ function requireUuid(value: unknown): string {
     return invalid();
   }
   return value.toLowerCase();
+}
+
+function requireCanonicalUuid(value: unknown): string {
+  if (typeof value !== 'string' || !CANONICAL_UUID_V4_PATTERN.test(value)) {
+    return invalid();
+  }
+  return value;
 }
 
 function requireDependencyUuid(value: unknown): string {
@@ -380,7 +389,7 @@ export class CalendarGoogleOAuthAuthorizationApplication {
   ): Promise<CalendarGoogleOAuthAuthorizationConsumeResult> {
     const workspaceId = requireUuid(authority?.workspaceId);
     const userId = requireUuid(authority?.userId);
-    const stateId = requireUuid(input?.state);
+    const stateId = requireCanonicalUuid(input?.state);
     const redirectUri = requireExactRedirectUri(
       input?.redirectUri,
       this.redirectUri,
