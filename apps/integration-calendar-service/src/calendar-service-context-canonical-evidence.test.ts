@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   CalendarContextInvalidError,
@@ -8,7 +8,7 @@ import {
 
 const WORKSPACE_ID = 'a0b1c2d3-e4f5-4a67-8b9c-d0e1f2a3b4c5';
 const USER_ID = 'b1c2d3e4-f5a6-4b78-9c0d-e1f2a3b4c5d6';
-const CONTEXT_SECRET = 'trusted-calendar-context-secret-32-bytes';
+const CONTEXT_SECRET = randomBytes(32).toString('base64url');
 const NOW_SECONDS = 1_786_291_200;
 
 function workspaceSignature(workspaceId: string, issuedAt: string): string {
