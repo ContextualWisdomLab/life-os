@@ -8,17 +8,17 @@
 This baseline separates protected shipped truth from active or work-in-progress evidence. A branch, mergeable PR, test source, queued check, successful predecessor run, or documentation claim is not shipped capability. Exact unchanged-head evidence must integrate through the live protected-branch policy before promotion.
 
 <!-- life-os-live-currentness:start -->
-> **Live currentness override — 2026-09-22T21:18:21Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
+> **Live currentness override — 2026-09-22T23:56:05Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
 >
 > Protected `main`: `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`.
 >
-> PR #211: head `513cfa86b76d1952c36c77525843884d03164c2b`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CodeQL PR `35772558296` queued.
+> PR #211: head `0ad9ea5221a5cd81fff57e3a24f820646bcb80a2`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35788477491` queued.
 >
 > PR #214: head `1d2f72ee5e38896eb76198e55dac8a5ca491ba98`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35477938684` success.
 >
 > PR #228: head `511170fecc30d077373386c3787eef87e5600e19`, base `217370c8effcd96b760e7b32f4cf4f117385133d`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
-> PR #229: head `2f756ba1377ff8020deff228c3235ef44170d397`, base `cc3cf43f28ba8308ce7829d16611e6bf4e10215f`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Goals Workspace Mutation Claim `35501473986` failure.
+> PR #229: head `2f756ba1377ff8020deff228c3235ef44170d397`, base `cc3cf43f28ba8308ce7829d16611e6bf4e10215f`, state `open`, draft `true`, mergeable `None`; latest exact-head workflow: Verify Goals Workspace Mutation Claim `35501473986` failure.
 >
 > PR #231: head `daae358c79610ef57fb79d40c07073c81050e0ed`, base `26c507b4246da82797d1ba67f22a8cbf3c6fd1af`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Projects Workspace Canonical Evidence `35498736734` failure.
 >
@@ -64,7 +64,7 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #281: head `ba3e137c6171cf213f36ed19319bd3b1cf1d5600`, base `3396c344d950d05cef3f37b5a6b01aa2dd912df9`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
-> PR #282: head `ecc4a9680f9d54a55846430b876cae7a13732d86`, base `ba3e137c6171cf213f36ed19319bd3b1cf1d5600`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Habit Rule Change Authority `35772999929` queued.
+> PR #282: head `e2fba6554922e3428a33d48103e9b904aace2cf2`, base `ba3e137c6171cf213f36ed19319bd3b1cf1d5600`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Habit Rule Change Authority `35788886675` queued.
 >
 > PR #283: head `4f5ab2d3e9e2076333e7d1b484954bb5528d51d9`, base `3a08b6792988cf5bd9d89e1f100b67a6e114fe41`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
@@ -76,25 +76,25 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #295: head `75e27f1765158053453df05840842b73be7e5260`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35689176295` failure.
 >
-> PR #296: head `a488d76c14a794423cb74d6fade9db3bbc07ecad`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35785402754` queued.
+> PR #296: head `36abfca7fc00aee3edd95ed1f80810ec62d7db54`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35795775689` action_required.
 >
-> PR #297: head `826197621b138ac43209b4b37aaf5756f52e9276`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35772336418` queued.
+> PR #297: head `f2c5dc1eb8610c0b35fb489013a15883d9fed0d1`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35786218575` success.
 >
-> PR #298: head `8a38ccfe97a0702c901d3f853296a581824e6f82`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35772359579` queued.
+> PR #298: head `311903dd88f25a6f2552d1a183176eaf1946f3ca`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35786102444` queued.
 >
-> PR #299: head `71a00611e79895c142cb3c632b1164268d5c4c16`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35772380004` queued.
+> PR #299: head `4d98286b6b6741abd53c87f5dec068a63095516f`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35786157207` queued.
 >
 > PR #300: head `2920682cd55c049dc54b9240f319e611ac809a3f`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35765018450` success.
 >
-> PR #301: head `f7808f63e42511029f43b72660fbc642833eb932`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CodeQL PR `35785317315` queued.
+> PR #301: head `a4cde9f5456ef4ebf7d0abadc3871eea3259ca71`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35796039928` action_required.
 >
-> PR #302: head `56f762444796c10de42ca89d0680874a948bd139`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Commercial Readiness `35785797739` queued.
+> PR #302: head `56f762444796c10de42ca89d0680874a948bd139`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35785797804` queued.
 >
 > PR #303: head `97793dd55d54eb76bda5bd7f27547445070f5973`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35702881384` success.
 >
-> PR #304: head `585da730ba2786ae1bba2ce635c5b96e9c26b3f1`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35784549536` queued.
+> PR #304: head `585da730ba2786ae1bba2ce635c5b96e9c26b3f1`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35784549557` queued.
 >
-> PR #305: head `4d03359e35d7436cbc800ff888ea1c918924fa2c`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Commercial Readiness `35778287043` queued.
+> PR #305: head `0c01d96eab08cd66a16911b8da12df431859f2ee`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35789457089` queued.
 >
 > PR #306: head `16f6f0cad11aa4b0f5bf42d55889ab08669bf5eb`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35691316811` success.
 >
