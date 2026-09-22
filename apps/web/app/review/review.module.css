@@ -1,0 +1,416 @@
+.shell {
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.header {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px clamp(18px, 4vw, 56px);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.brand {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.brand span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent-strong);
+  border-radius: 50%;
+  font-weight: 800;
+}
+
+.navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.navigation a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.navigation a:hover,
+.navigation a[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.main {
+  width: min(1180px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: clamp(32px, 6vw, 72px) 0 72px;
+}
+
+.workspaceHeader {
+  max-width: 720px;
+  margin-bottom: 36px;
+}
+
+.workspaceHeader h1 {
+  margin: 6px 0 14px;
+  font-size: clamp(2.4rem, 6vw, 4.8rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lede {
+  margin: 0;
+  max-width: 660px;
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+  border-top: 1px solid var(--line-strong);
+}
+
+.historyPane,
+.ritualPane {
+  min-width: 0;
+  padding: 28px 0;
+}
+
+.historyPane {
+  padding-right: clamp(24px, 4vw, 52px);
+}
+
+.ritualPane {
+  padding-left: clamp(24px, 4vw, 52px);
+  border-left: 1px solid var(--line-strong);
+}
+
+.sectionHeading,
+.historyHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sectionHeading {
+  margin-bottom: 18px;
+}
+
+.sectionHeading h2,
+.historyHeading h3,
+.emptyState h3 {
+  margin: 4px 0 0;
+}
+
+.sectionHeading > span {
+  min-width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  min-height: 52px;
+  margin-bottom: 18px;
+  color: var(--muted);
+}
+
+.status p {
+  margin: 0 0 10px;
+}
+
+.status button,
+.primaryAction {
+  min-height: 44px;
+  border: 1px solid var(--accent-strong);
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.status button {
+  padding: 0 14px;
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.emptyState {
+  padding: 28px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.emptyState p,
+.reflection,
+.formNote,
+.fieldHint {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.historyList > li {
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+
+.historyList > li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.historyHeading p {
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.historyHeading time {
+  color: var(--muted);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.metrics div {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.metrics dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.metrics dd {
+  margin: 5px 0 0;
+  font-size: 1.05rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.reflection {
+  margin: 14px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: grid;
+  gap: 18px;
+}
+
+.form label,
+.form fieldset {
+  min-width: 0;
+  font-weight: 700;
+}
+
+.form input[type='date'],
+.form input[inputmode='numeric'],
+.form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.form input[type='date'],
+.form input[inputmode='numeric'] {
+  min-height: 46px;
+  padding: 0 12px;
+}
+
+.form textarea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 12px;
+  line-height: 1.5;
+}
+
+.form fieldset {
+  margin: 0;
+  padding: 16px 0 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.form legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.checkRow {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-weight: 550 !important;
+  line-height: 1.4;
+}
+
+.checkRow input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.countGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.optional,
+.fieldHint,
+.formNote {
+  font-weight: 450;
+}
+
+.fieldHint {
+  margin: -12px 0 0;
+  font-size: 0.82rem;
+}
+
+.primaryAction {
+  width: 100%;
+  padding: 0 18px;
+  background: var(--accent-strong);
+  color: var(--panel);
+}
+
+.primaryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.formNote {
+  margin: -4px 0 0;
+  font-size: 0.9rem;
+}
+
+.brand:focus-visible,
+.navigation a:focus-visible,
+.status button:focus-visible,
+.form input:focus-visible,
+.form textarea:focus-visible,
+.primaryAction:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 840px) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .navigation {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .historyPane,
+  .ritualPane {
+    padding: 24px 0;
+  }
+
+  .ritualPane {
+    border-top: 1px solid var(--line-strong);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .main {
+    width: min(100% - 28px, 1180px);
+    padding-top: 30px;
+  }
+
+  .header {
+    padding-inline: 14px;
+  }
+
+  .navigation a {
+    flex: 0 0 auto;
+  }
+
+  .countGrid,
+  .metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionHeading,
+  .historyHeading {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell *,
+  .shell *::before,
+  .shell *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
