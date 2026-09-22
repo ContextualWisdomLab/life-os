@@ -44,6 +44,7 @@ jobs:
       - name: Check focused formatting
         run: >-
           pnpm exec prettier --check
+          apps/identity-service/src/oauth-provider-response.ts
           apps/identity-service/src/tests/oauth-provider-response-nonce-exact.test.ts
           .github/workflows/verify-identity-oidc-nonce-exact.yml
 
