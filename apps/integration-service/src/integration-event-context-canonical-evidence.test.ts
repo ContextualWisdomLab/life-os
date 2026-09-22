@@ -25,7 +25,9 @@ function expectInvalid(operation: () => unknown): void {
     thrown = error;
   }
   if (thrown === undefined) {
-    throw new Error('Expected signed Integration event workspace evidence to be rejected');
+    throw new Error(
+      'Expected signed Integration event workspace evidence to be rejected',
+    );
   }
   expect(thrown).toBeInstanceOf(HttpException);
   expect((thrown as HttpException).getStatus()).toBe(401);

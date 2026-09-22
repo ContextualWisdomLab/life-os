@@ -121,7 +121,11 @@ function problemException(
 }
 
 function invalidContract(): HttpException {
-  return problemException(400, 'Plugin contract is invalid', 'invalid_plugin_contract');
+  return problemException(
+    400,
+    'Plugin contract is invalid',
+    'invalid_plugin_contract',
+  );
 }
 
 function invalidGatewayContext(): never {
@@ -223,7 +227,8 @@ class IntegrationBadRequestFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const request = http.getRequest<IntegrationHttpRequest>();
     const response = http.getResponse<IntegrationHttpResponse>();
-    const path = (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+    const path =
+      (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
 
     if (isPluginOperatorPath(path)) {
       response.status(400).json({
@@ -510,7 +515,13 @@ export class PluginOperatorHttpController {
     issuedAt: unknown,
     signature: unknown,
   ): IntegrationOperatorContextHeaders {
-    return Object.freeze({ workspaceId, userId, evidenceId, issuedAt, signature });
+    return Object.freeze({
+      workspaceId,
+      userId,
+      evidenceId,
+      issuedAt,
+      signature,
+    });
   }
 
   /** Converts domain/dependency failures to fixed, credential-free HTTP problems. */
@@ -542,7 +553,9 @@ export class PluginOperatorHttpController {
 })
 export class IntegrationAppModule {
   /** Registers an explicitly constructed durable plugin operator for host deployments. */
-  static withPluginOperator(operator: PluginOperatorApplication): DynamicModule {
+  static withPluginOperator(
+    operator: PluginOperatorApplication,
+  ): DynamicModule {
     return {
       module: IntegrationAppModule,
       providers: [{ provide: PLUGIN_OPERATOR_APPLICATION, useValue: operator }],
