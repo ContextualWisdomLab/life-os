@@ -49,8 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if pnpm --filter @life-os/review-service exec vitest run \
-            src/review-context-canonical-evidence.test.ts; then
+          if pnpm --filter @life-os/review-service exec vitest run src/review-context-canonical-evidence.test.ts; then
             echo 'Expected the retained byte-different signed-workspace regression to fail before repair.' >&2
             exit 1
           fi
@@ -59,81 +58,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          boundary = Path('apps/review-service/src/http-boundary.ts')
-          text = boundary.read_text()
-          old = "    workspaceId = requireReviewWorkspaceId(headers.workspaceId);\n  } catch {"
-          new = "    workspaceId = requireReviewWorkspaceId(headers.workspaceId);\n    if (workspaceId !== headers.workspaceId) {\n      return invalidGatewayContext();\n    }\n  } catch {"
-          if text.count(old) != 1:
-              raise SystemExit('unexpected Review workspace verification shape')
-          boundary.write_text(text.replace(old, new, 1))
-
-          boundary_test = Path('apps/review-service/src/http-boundary.test.ts')
-          text = boundary_test.read_text()
-          old = '          workspaceId: WORKSPACE_ID.toUpperCase(),'
-          new = '          workspaceId: WORKSPACE_ID,'
-          if text.count(old) != 1:
-              raise SystemExit('unexpected stale uppercase positive fixture count')
-          boundary_test.write_text(text.replace(old, new, 1))
-
-          verifier = Path('.github/workflows/verify-review-context-canonical-evidence.yml')
-          text = verifier.read_text()
-          install = "      - name: Install reproducible dependencies\n        run: pnpm install --frozen-lockfile\n"
-          guarded = """      - name: Install reproducible dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Require workflow-free exact publication
-        shell: bash
-        run: |
-          set -euo pipefail
-          test ! -e .github/workflows/repair-review-context-canonical-evidence.yml
-          remote_head=\"$(git ls-remote --refs origin \"refs/heads/${GITHUB_REF_NAME}\" | awk '{print $1}')\"
-          test -n \"${remote_head}\"
-          test \"${remote_head}\" = \"${GITHUB_SHA}\"
-"""
-          if text.count(install) != 1:
-              raise SystemExit('unexpected Review verifier install step shape')
-          text = text.replace(install, guarded, 1)
-          typecheck = "      - name: Typecheck Review package\n        run: pnpm --filter @life-os/review-service typecheck\n"
-          complete = """      - name: Typecheck Review package
-        run: pnpm --filter @life-os/review-service typecheck
-
-      - name: Run complete Review package suite
-        run: pnpm --filter @life-os/review-service test
-"""
-          if text.count(typecheck) != 1:
-              raise SystemExit('unexpected Review verifier typecheck step shape')
-          verifier.write_text(text.replace(typecheck, complete, 1))
-          PY
+          python -c "from pathlib import Path; p=Path('apps/review-service/src/http-boundary.ts'); s=p.read_text(); old='    workspaceId = requireReviewWorkspaceId(headers.workspaceId);\\n  } catch {'; new='    workspaceId = requireReviewWorkspaceId(headers.workspaceId);\\n    if (workspaceId !== headers.workspaceId) {\\n      return invalidGatewayContext();\\n    }\\n  } catch {'; assert s.count(old) == 1; p.write_text(s.replace(old, new, 1))"
+          python -c "from pathlib import Path; p=Path('apps/review-service/src/http-boundary.test.ts'); s=p.read_text(); old='          workspaceId: WORKSPACE_ID.toUpperCase(),'; new='          workspaceId: WORKSPACE_ID,'; assert s.count(old) == 1; p.write_text(s.replace(old, new, 1))"
           git rm .github/workflows/repair-review-context-canonical-evidence.yml
-          pnpm exec prettier --single-quote --write \
-            apps/review-service/src/http-boundary.ts \
-            apps/review-service/src/http-boundary.test.ts \
-            .github/workflows/verify-review-context-canonical-evidence.yml
+          pnpm exec prettier --single-quote --write apps/review-service/src/http-boundary.ts apps/review-service/src/http-boundary.test.ts
 
       - name: Verify minimum repair and complete Review contract
         shell: bash
         run: |
           set -euo pipefail
-          pnpm exec prettier --single-quote --check \
-            apps/review-service/src/http-boundary.ts \
-            apps/review-service/src/http-boundary.test.ts \
-            apps/review-service/src/review-context-canonical-evidence.test.ts \
-            .github/workflows/verify-review-context-canonical-evidence.yml
-          pnpm --filter @life-os/review-service exec vitest run \
-            src/review-context-canonical-evidence.test.ts \
-            src/http-boundary.test.ts
+          pnpm exec prettier --single-quote --check apps/review-service/src/http-boundary.ts apps/review-service/src/http-boundary.test.ts apps/review-service/src/review-context-canonical-evidence.test.ts
+          pnpm --filter @life-os/review-service exec vitest run src/review-context-canonical-evidence.test.ts src/http-boundary.test.ts
           pnpm --filter @life-os/review-service typecheck
           pnpm --filter @life-os/review-service test
           git diff --check
           actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
-          expected="$(printf '%s\n' \
-            '.github/workflows/repair-review-context-canonical-evidence.yml' \
-            '.github/workflows/verify-review-context-canonical-evidence.yml' \
-            'apps/review-service/src/http-boundary.test.ts' \
-            'apps/review-service/src/http-boundary.ts' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' '.github/workflows/repair-review-context-canonical-evidence.yml' 'apps/review-service/src/http-boundary.test.ts' 'apps/review-service/src/http-boundary.ts' | LC_ALL=C sort)"
           test "${actual}" = "${expected}"
 
       - name: Publish ordinary semantic repair descendant
@@ -145,10 +85,6 @@ jobs:
           test "${remote_head}" = "${GITHUB_SHA}"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- \
-            .github/workflows/repair-review-context-canonical-evidence.yml \
-            .github/workflows/verify-review-context-canonical-evidence.yml \
-            apps/review-service/src/http-boundary.test.ts \
-            apps/review-service/src/http-boundary.ts
+          git add -A
           git commit -m 'fix(review): require canonical signed workspace evidence'
           git push origin "HEAD:${GITHUB_REF_NAME}"
