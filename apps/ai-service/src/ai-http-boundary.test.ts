@@ -105,8 +105,8 @@ describe('trusted AI service context', () => {
     expect(
       requireTrustedAiContext(
         contextHeaders({
-          workspaceId: WORKSPACE_ID.toUpperCase(),
-          actorId: ACTOR_ID.toUpperCase(),
+          workspaceId: WORKSPACE_ID,
+          actorId: ACTOR_ID,
         }),
         activeEnvironment(),
         'POST',

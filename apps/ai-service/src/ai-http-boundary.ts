@@ -30,7 +30,7 @@ interface AiProblemDetails {
 }
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const PROPOSAL_PATH_PATTERN =
@@ -145,8 +145,8 @@ export function requireTrustedAiContext(
     return invalidGatewayContext();
   }
 
-  const workspaceId = headers.workspaceId.toLowerCase();
-  const actorId = headers.actorId.toLowerCase();
+  const workspaceId = headers.workspaceId;
+  const actorId = headers.actorId;
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||
