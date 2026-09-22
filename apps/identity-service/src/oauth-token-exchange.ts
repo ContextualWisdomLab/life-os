@@ -9,6 +9,8 @@ const TOKEN_ENDPOINTS: Record<IdentityProvider, string> = {
   google: 'https://oauth2.googleapis.com/token',
   github: 'https://github.com/login/oauth/access_token',
 };
+const AUTHORIZATION_CODE_PATTERN = /^[\x20-\x7e]+$/;
+const PKCE_CODE_VERIFIER_PATTERN = /^[A-Za-z0-9\-._~]{43,128}$/;
 
 function requireText(value: string, message: string): string {
   const normalized = value.trim();
@@ -16,6 +18,24 @@ function requireText(value: string, message: string): string {
     throw new Error(message);
   }
   return normalized;
+}
+
+function requireAuthorizationCode(value: string): string {
+  if (
+    typeof value !== 'string' ||
+    !AUTHORIZATION_CODE_PATTERN.test(value) ||
+    Buffer.byteLength(value, 'utf8') > 2 * 1024
+  ) {
+    throw new Error('OAuth authorization code is required');
+  }
+  return value;
+}
+
+function requirePkceCodeVerifier(value: string): string {
+  if (typeof value !== 'string' || !PKCE_CODE_VERIFIER_PATTERN.test(value)) {
+    throw new Error('OAuth PKCE verifier is invalid');
+  }
+  return value;
 }
 
 export interface OAuthTokenExchangeRequest {
@@ -49,11 +69,8 @@ export function buildTokenExchangeRequest(
     throw new Error('OAuth transaction redirect URI mismatch');
   }
 
-  const code = requireText(authorizationCode, 'OAuth authorization code is required');
-  const codeVerifier = requireText(
-    transaction.codeVerifier,
-    'OAuth PKCE verifier is required',
-  );
+  const code = requireAuthorizationCode(authorizationCode);
+  const codeVerifier = requirePkceCodeVerifier(transaction.codeVerifier);
 
   const body = new URLSearchParams({
     client_id: clientId,
