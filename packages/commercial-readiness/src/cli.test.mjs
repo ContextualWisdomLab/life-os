@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -226,20 +226,26 @@ describe('commandWorkflowRegistry', () => {
 });
 
 describe('readJsonFile', () => {
-  it('reads bounded regular JSON files and rejects symlinks or oversized input', async () => {
+  it('reads bounded regular JSON files and rejects non-regular or oversized input', async () => {
     const root = await mkdtemp(join(tmpdir(), 'life-os-cli-'));
     const valid = join(root, 'valid.json');
     const target = join(root, 'target.json');
     const link = join(root, 'link.json');
+    const directory = join(root, 'directory');
     const large = join(root, 'large.json');
     await writeFile(valid, '{"ok":true}', 'utf8');
     await writeFile(target, '{"secret":true}', 'utf8');
     await symlink(target, link);
+    await mkdir(directory);
     await writeFile(large, JSON.stringify({ value: 'x'.repeat(2048) }), 'utf8');
 
     assert.deepEqual(await readJsonFile(valid, 1024), { ok: true });
     await assert.rejects(
       () => readJsonFile(link, 1024),
+      /JSON input must be a regular file/,
+    );
+    await assert.rejects(
+      () => readJsonFile(directory, 1024),
       /JSON input must be a regular file/,
     );
     await assert.rejects(
