@@ -45,7 +45,12 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prove focused formatting RED
+      - name: Require verifier workflow already canonical
+        run: >-
+          pnpm exec prettier --check
+          .github/workflows/verify-plugin-delivery-status-http.yml
+
+      - name: Prove source formatting RED
         shell: bash
         run: |
           set -euo pipefail
@@ -55,13 +60,12 @@ jobs:
             apps/integration-service/src/plugin-operator-application.ts \
             apps/integration-service/src/main.ts \
             apps/integration-service/src/plugin-vault-operator-composition.ts \
-            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
-            .github/workflows/verify-plugin-delivery-status-http.yml; then
-            echo 'Expected retained Plugin delivery status HTTP files to be noncanonical before repair.' >&2
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts; then
+            echo 'Expected retained Plugin delivery status HTTP sources to be noncanonical before repair.' >&2
             exit 1
           fi
 
-      - name: Apply bounded formatter repair
+      - name: Apply source-only formatter repair
         shell: bash
         run: |
           set -euo pipefail
@@ -71,11 +75,9 @@ jobs:
             apps/integration-service/src/plugin-operator-application.ts \
             apps/integration-service/src/main.ts \
             apps/integration-service/src/plugin-vault-operator-composition.ts \
-            apps/integration-service/src/plugin-vault-hosted-runtime.ts \
-            .github/workflows/verify-plugin-delivery-status-http.yml
-          git rm .github/workflows/repair-plugin-delivery-status-http-formatting.yml
+            apps/integration-service/src/plugin-vault-hosted-runtime.ts
 
-      - name: Verify bounded repair and retained behavior
+      - name: Verify bounded source repair and retained behavior
         shell: bash
         run: |
           set -euo pipefail
@@ -97,15 +99,12 @@ jobs:
           test -n "${actual}"
           while IFS= read -r path; do
             case "${path}" in
-              .github/workflows/repair-plugin-delivery-status-http-formatting.yml|.github/workflows/verify-plugin-delivery-status-http.yml|apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts|apps/integration-service/src/plugin-operator-context.ts|apps/integration-service/src/plugin-operator-application.ts|apps/integration-service/src/main.ts|apps/integration-service/src/plugin-vault-operator-composition.ts|apps/integration-service/src/plugin-vault-hosted-runtime.ts) ;;
+              apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts|apps/integration-service/src/plugin-operator-context.ts|apps/integration-service/src/plugin-operator-application.ts|apps/integration-service/src/main.ts|apps/integration-service/src/plugin-vault-operator-composition.ts|apps/integration-service/src/plugin-vault-hosted-runtime.ts) ;;
               *) echo "Unexpected formatter delta: ${path}" >&2; exit 1 ;;
             esac
           done <<< "${actual}"
-          printf '%s\n' "${actual}" | grep -Fx '.github/workflows/repair-plugin-delivery-status-http-formatting.yml'
-          source_delta="$(printf '%s\n' "${actual}" | grep -Ev '^\.github/workflows/repair-plugin-delivery-status-http-formatting\.yml$' || true)"
-          test -n "${source_delta}"
 
-      - name: Publish ordinary descendant
+      - name: Publish source-only ordinary descendant
         shell: bash
         run: |
           set -euo pipefail
@@ -115,7 +114,6 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            .github/workflows/verify-plugin-delivery-status-http.yml \
             apps/integration-service/src/plugin-delivery-attempt-status-http.integration.test.ts \
             apps/integration-service/src/plugin-operator-context.ts \
             apps/integration-service/src/plugin-operator-application.ts \
