@@ -1,0 +1,59 @@
+name: Verify Localization Resource Contract
+
+on:
+  push:
+    branches:
+      - test/localization-resource-contract-v1
+    paths:
+      - packages/contracts/src/localization-resource-contract.typecheck.ts
+      - packages/contracts/src/localization-resources.ts
+      - .github/workflows/verify-localization-resource-contract-v1.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-localization-resource-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Guard exact branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 193a87ef54c3fe6dcda4755bce4d6bc81e3a0297 "$GITHUB_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          packages/contracts/src/localization-resource-contract.typecheck.ts
+          .github/workflows/verify-localization-resource-contract-v1.yml
+
+      - name: Reproduce localization contract RED
+        run: pnpm --filter @life-os/contracts typecheck
