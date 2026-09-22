@@ -128,31 +128,24 @@ jobs:
             raise SystemExit('expected one operation-projection marker')
           text = text.replace(operation_marker, persisted_proposal + operation_marker, 1)
 
-          old_audit = '''  const verified = createProposalAuditRecord({
-            proposal: validateProposal(record.proposal),
-            request: validateRequest(record.request),
-            modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
-            recordedAt: requireTimestamp(record.recordedAt),
-          });
-          if (
-            verified.requestDigest !== requireDigest(record.requestDigest) ||
-            verified.contentDigest !== requireDigest(record.contentDigest)
-          ) {
-          '''
-          new_audit = '''  const verified = createProposalAuditRecord({
-            proposal: validatePersistedProposal(record.proposal),
-            request: validateRequest(record.request),
-            modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
-            recordedAt: requireCanonicalTimestamp(record.recordedAt),
-          });
-          if (
-            verified.requestDigest !== requireCanonicalDigest(record.requestDigest) ||
-            verified.contentDigest !== requireCanonicalDigest(record.contentDigest)
-          ) {
-          '''
-          if text.count(old_audit) != 1:
-            raise SystemExit('expected one audit-record validation block')
-          text = text.replace(old_audit, new_audit, 1)
+          audit_marker = '/** Validates persisted proposal evidence and verifies both canonical digests. */'
+          decision_create_marker = '/** Creates one validated append-only proposal decision event. */'
+          if text.count(audit_marker) != 1 or text.count(decision_create_marker) != 1:
+            raise SystemExit('expected one audit-validation segment')
+          audit_start = text.index(audit_marker)
+          audit_end = text.index(decision_create_marker, audit_start)
+          audit_segment = text[audit_start:audit_end]
+          audit_replacements = {
+              'proposal: validateProposal(record.proposal),': 'proposal: validatePersistedProposal(record.proposal),',
+              'recordedAt: requireTimestamp(record.recordedAt),': 'recordedAt: requireCanonicalTimestamp(record.recordedAt),',
+              'verified.requestDigest !== requireDigest(record.requestDigest)': 'verified.requestDigest !== requireCanonicalDigest(record.requestDigest)',
+              'verified.contentDigest !== requireDigest(record.contentDigest)': 'verified.contentDigest !== requireCanonicalDigest(record.contentDigest)',
+          }
+          for old, new in audit_replacements.items():
+            if audit_segment.count(old) != 1:
+              raise SystemExit(f'expected one audit validator occurrence: {old}')
+            audit_segment = audit_segment.replace(old, new, 1)
+          text = text[:audit_start] + audit_segment + text[audit_end:]
 
           decision_marker = '/** Validates an untrusted or persisted decision event. */'
           decision_index = text.index(decision_marker)
