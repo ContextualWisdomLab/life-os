@@ -86,11 +86,21 @@ jobs:
             apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts \
             apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts
           git diff --check
+          source_delta="$(git diff --name-only HEAD -- \
+            apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts \
+            apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts | LC_ALL=C sort)"
+          test -n "${source_delta}"
+          allowed_sources="$(printf '%s\n' \
+            'apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts' \
+            'apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts' | LC_ALL=C sort)"
+          unexpected_sources="$(comm -23 \
+            <(printf '%s\n' "${source_delta}") \
+            <(printf '%s\n' "${allowed_sources}"))"
+          test -z "${unexpected_sources}"
           actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
             '.github/workflows/repair-calendar-google-oauth-state-formatting.yml' \
-            'apps/integration-calendar-service/src/calendar-google-oauth-authorization.ts' \
-            'apps/integration-calendar-service/src/calendar-google-oauth-state-canonicality.test.ts' | LC_ALL=C sort)"
+            ${source_delta} | LC_ALL=C sort)"
           test "${actual}" = "${expected}"
 
       - name: Publish ordinary descendant
