@@ -131,23 +131,27 @@ describe('Gateway Today canonical service evidence', () => {
         completionId: COMPLETION_ID.toUpperCase(),
       },
     ],
-  ])('degrades instead of recanonicalizing %s evidence', async (_name, habit) => {
-    const fetcher = async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/v1/session')) return json({ workspaceId: WORKSPACE_ID });
-      if (url.includes('planning.example.test')) return json(planningToday());
-      return json([habit]);
-    };
+  ])(
+    'degrades instead of recanonicalizing %s evidence',
+    async (_name, habit) => {
+      const fetcher = async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/v1/session'))
+          return json({ workspaceId: WORKSPACE_ID });
+        if (url.includes('planning.example.test')) return json(planningToday());
+        return json([habit]);
+      };
 
-    const result = await composeToday(
-      'session=opaque',
-      DATE,
-      ENVIRONMENT,
-      fetcher,
-      NOW_SECONDS,
-    );
+      const result = await composeToday(
+        'session=opaque',
+        DATE,
+        ENVIRONMENT,
+        fetcher,
+        NOW_SECONDS,
+      );
 
-    expect(result.habits).toEqual([]);
-    expect(result.degraded).toEqual(['habits_unavailable']);
-  });
+      expect(result.habits).toEqual([]);
+      expect(result.degraded).toEqual(['habits_unavailable']);
+    },
+  );
 });
