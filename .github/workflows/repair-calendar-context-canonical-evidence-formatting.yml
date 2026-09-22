@@ -69,17 +69,25 @@ jobs:
             apps/integration-calendar-service/src/calendar-service-context.ts \
             apps/integration-calendar-service/src/calendar-service-context-canonical-evidence.test.ts
 
-      - name: Verify bounded source repair and retained behavior
+      - name: Check repaired formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/integration-calendar-service/src/calendar-service-context.ts
+          apps/integration-calendar-service/src/calendar-service-context-canonical-evidence.test.ts
+          .github/workflows/verify-calendar-context-canonical-evidence.yml
+
+      - name: Run canonical context evidence regression
+        run: >-
+          pnpm --filter @life-os/integration-calendar-service exec vitest run
+          src/calendar-service-context-canonical-evidence.test.ts
+
+      - name: Typecheck Calendar integration
+        run: pnpm --filter @life-os/integration-calendar-service typecheck
+
+      - name: Guard bounded formatter delta
         shell: bash
         run: |
           set -euo pipefail
-          pnpm exec prettier --single-quote --check \
-            apps/integration-calendar-service/src/calendar-service-context.ts \
-            apps/integration-calendar-service/src/calendar-service-context-canonical-evidence.test.ts \
-            .github/workflows/verify-calendar-context-canonical-evidence.yml
-          pnpm --filter @life-os/integration-calendar-service exec vitest run \
-            src/calendar-service-context-canonical-evidence.test.ts
-          pnpm --filter @life-os/integration-calendar-service typecheck
           git diff --check
           actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           test -n "${actual}"
