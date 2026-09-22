@@ -18,7 +18,10 @@ const TRANSACTION = Object.freeze({
   nonce: 'opaque_nonce',
 } satisfies ConsumedOAuthTransaction);
 
-function tokenExchange(code: string, transaction = TRANSACTION): URLSearchParams {
+function tokenExchange(
+  code: string,
+  transaction = TRANSACTION,
+): URLSearchParams {
   const request = buildTokenExchangeRequest(
     'google',
     {
