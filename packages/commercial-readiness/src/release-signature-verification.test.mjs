@@ -44,7 +44,11 @@ function canonicalNonSignatureArtifactMetadata(artifacts) {
   return JSON.stringify([...artifacts].sort(compareArtifactNames));
 }
 
-function signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifacts) {
+function signatureMessage(
+  subjectArtifactName,
+  subjectSha256,
+  nonSignatureArtifacts,
+) {
   return Buffer.from(
     [
       SIGNATURE_SCHEMA_VERSION,
@@ -80,7 +84,11 @@ function signedEnvelope(
     subject_sha256: subjectSha256,
     signature_base64: sign(
       null,
-      signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifacts),
+      signatureMessage(
+        subjectArtifactName,
+        subjectSha256,
+        nonSignatureArtifacts,
+      ),
       privateKey,
     ).toString('base64'),
   };
@@ -141,7 +149,10 @@ async function createFixture({
   );
   if (mutateEnvelope) mutateEnvelope(envelope);
   const signatureArtifactName = 'life-os-web.tar.sig.json';
-  const signatureArtifactBytes = Buffer.from(`${JSON.stringify(envelope)}\n`, 'utf8');
+  const signatureArtifactBytes = Buffer.from(
+    `${JSON.stringify(envelope)}\n`,
+    'utf8',
+  );
 
   const provenanceSignatureArtifactName = 'life-os.provenance.json.sig.json';
   const provenanceSignatureBytes = Buffer.from(
@@ -175,8 +186,14 @@ async function createFixture({
     writeFile(join(directory, sbomArtifactName), sbomBytes),
     writeFile(join(directory, provenanceArtifactName), provenanceBytes),
     writeFile(join(directory, checksumArtifactName), checksumBytes),
-    writeFile(join(directory, provenanceSignatureArtifactName), provenanceSignatureBytes),
-    writeFile(join(directory, checksumSignatureArtifactName), checksumSignatureBytes),
+    writeFile(
+      join(directory, provenanceSignatureArtifactName),
+      provenanceSignatureBytes,
+    ),
+    writeFile(
+      join(directory, checksumSignatureArtifactName),
+      checksumSignatureBytes,
+    ),
   ]);
 
   const signatureArtifact = (artifactName, bytes, subjectName, subjectDigest) =>
@@ -220,7 +237,8 @@ async function createFixture({
     subjectArtifactName,
     subjectBytes,
     trustedPublicKeys: {
-      [trustedKeyId]: trustedPublicKey ?? publicKey.export({ type: 'spki', format: 'pem' }),
+      [trustedKeyId]:
+        trustedPublicKey ?? publicKey.export({ type: 'spki', format: 'pem' }),
     },
   };
 }
@@ -236,7 +254,11 @@ async function withFixture(options, callback) {
 
 test('verifies each indexed detached Ed25519 signature against an explicit trusted key', async () => {
   await withFixture({}, async ({ directory, index, trustedPublicKeys }) => {
-    const verified = await verifyReleaseEvidenceSignatures(index, directory, trustedPublicKeys);
+    const verified = await verifyReleaseEvidenceSignatures(
+      index,
+      directory,
+      trustedPublicKeys,
+    );
     assert.equal(verified.source_commit, SOURCE_COMMIT);
     assert.equal(verified.channel, CHANNEL);
     assert.equal(verified.version, VERSION);
@@ -378,7 +400,13 @@ test('rejects a signed subject that changes after the initial artifact pass', as
   const slowSbomBytes = Buffer.alloc(64 * 1024 * 1024, 0x20);
   await withFixture(
     { sbomBytes: slowSbomBytes },
-    async ({ directory, index, subjectArtifactName, subjectBytes, trustedPublicKeys }) => {
+    async ({
+      directory,
+      index,
+      subjectArtifactName,
+      subjectBytes,
+      trustedPublicKeys,
+    }) => {
       let mutationError;
       const mutation = new Promise((resolve) => {
         setTimeout(async () => {
@@ -397,7 +425,11 @@ test('rejects a signed subject that changes after the initial artifact pass', as
 
       let verificationError;
       try {
-        await verifyReleaseEvidenceSignatures(index, directory, trustedPublicKeys);
+        await verifyReleaseEvidenceSignatures(
+          index,
+          directory,
+          trustedPublicKeys,
+        );
       } catch (error) {
         verificationError = error;
       }

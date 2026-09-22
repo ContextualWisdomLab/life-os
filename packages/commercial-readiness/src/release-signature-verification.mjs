@@ -1,4 +1,8 @@
-import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
+import {
+  createHash,
+  createPublicKey,
+  verify as verifySignature,
+} from 'node:crypto';
 import { constants as fileConstants } from 'node:fs';
 import { open } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -34,9 +38,11 @@ function invalidSignature() {
 
 /** Requires an ordinary or null-prototype record so inherited properties never become trust data. */
 function requirePlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return invalidSignature();
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return invalidSignature();
   const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return invalidSignature();
+  if (prototype !== Object.prototype && prototype !== null)
+    return invalidSignature();
   return value;
 }
 
@@ -56,11 +62,16 @@ function requireExactKeys(record, expected) {
 function requireTrustedPublicKeys(value) {
   const record = requirePlainObject(value);
   const entries = Object.entries(record);
-  if (entries.length === 0 || entries.length > MAXIMUM_TRUSTED_KEYS) return invalidSignature();
+  if (entries.length === 0 || entries.length > MAXIMUM_TRUSTED_KEYS)
+    return invalidSignature();
 
   const trustedKeys = new Map();
   for (const [keyId, encodedKey] of entries) {
-    if (!KEY_ID_PATTERN.test(keyId) || typeof encodedKey !== 'string' || encodedKey.length === 0) {
+    if (
+      !KEY_ID_PATTERN.test(keyId) ||
+      typeof encodedKey !== 'string' ||
+      encodedKey.length === 0
+    ) {
       return invalidSignature();
     }
     let publicKey;
@@ -96,7 +107,12 @@ async function readVerifiedSignatureEnvelope(directory, artifact) {
     const bytes = Buffer.allocUnsafe(metadata.size);
     let position = 0;
     while (position < bytes.length) {
-      const { bytesRead } = await handle.read(bytes, position, bytes.length - position, position);
+      const { bytesRead } = await handle.read(
+        bytes,
+        position,
+        bytes.length - position,
+        position,
+      );
       if (bytesRead <= 0) return invalidSignature();
       position += bytesRead;
     }
@@ -195,7 +211,10 @@ function signatureMessage(index, artifact) {
 
 /** Verifies envelope identity and the Ed25519 signature for one indexed signature artifact. */
 async function verifyIndexedSignature(index, directory, artifact, trustedKeys) {
-  const envelopeBytes = await readVerifiedSignatureEnvelope(directory, artifact);
+  const envelopeBytes = await readVerifiedSignatureEnvelope(
+    directory,
+    artifact,
+  );
   const envelope = parseCanonicalSignatureEnvelope(envelopeBytes);
   if (
     envelope.schema_version !== SIGNATURE_SCHEMA_VERSION ||
@@ -214,7 +233,14 @@ async function verifyIndexedSignature(index, directory, artifact, trustedKeys) {
   const publicKey = trustedKeys.get(envelope.key_id);
   if (!publicKey) return invalidSignature();
   const signatureBytes = requireSignatureBytes(envelope.signature_base64);
-  if (!verifySignature(null, signatureMessage(index, artifact), publicKey, signatureBytes)) {
+  if (
+    !verifySignature(
+      null,
+      signatureMessage(index, artifact),
+      publicKey,
+      signatureBytes,
+    )
+  ) {
     return invalidSignature();
   }
 }
@@ -253,7 +279,10 @@ export async function verifyReleaseEvidenceSignatures(
 ) {
   try {
     const trustedKeys = requireTrustedPublicKeys(trustedPublicKeys);
-    const index = await verifyReleaseEvidenceDirectory(value, artifactDirectory);
+    const index = await verifyReleaseEvidenceDirectory(
+      value,
+      artifactDirectory,
+    );
     const directory = resolve(artifactDirectory);
     for (const artifact of index.artifacts) {
       if (artifact.evidence_type !== 'signature') continue;

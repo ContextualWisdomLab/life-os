@@ -40,7 +40,11 @@ function compareArtifactNames(left, right) {
   return 0;
 }
 
-function signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifacts) {
+function signatureMessage(
+  subjectArtifactName,
+  subjectSha256,
+  nonSignatureArtifacts,
+) {
   return Buffer.from(
     [
       SIGNATURE_SCHEMA_VERSION,
@@ -59,7 +63,12 @@ function signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifa
   );
 }
 
-function signedEnvelope(privateKey, subjectArtifactName, subjectSha256, nonSignatureArtifacts) {
+function signedEnvelope(
+  privateKey,
+  subjectArtifactName,
+  subjectSha256,
+  nonSignatureArtifacts,
+) {
   return {
     schema_version: SIGNATURE_SCHEMA_VERSION,
     algorithm: 'ed25519',
@@ -71,7 +80,11 @@ function signedEnvelope(privateKey, subjectArtifactName, subjectSha256, nonSigna
     subject_sha256: subjectSha256,
     signature_base64: sign(
       null,
-      signatureMessage(subjectArtifactName, subjectSha256, nonSignatureArtifacts),
+      signatureMessage(
+        subjectArtifactName,
+        subjectSha256,
+        nonSignatureArtifacts,
+      ),
       privateKey,
     ).toString('base64'),
   };
@@ -99,7 +112,9 @@ function serializeReordered(envelope) {
 }
 
 test('rejects a byte-different signature envelope with reordered keys', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'life-os-release-envelope-order-'));
+  const directory = await mkdtemp(
+    join(tmpdir(), 'life-os-release-envelope-order-'),
+  );
   try {
     const { publicKey, privateKey } = generateKeyPairSync('ed25519');
     const containerName = 'life-os-web.tar';
@@ -147,13 +162,28 @@ test('rejects a byte-different signature envelope with reordered keys', async ()
     const provenanceSignatureName = 'life-os.provenance.json.sig.json';
     const checksumSignatureName = 'SHA256SUMS.sig.json';
     const containerSignatureBytes = serializeReordered(
-      signedEnvelope(privateKey, containerName, containerSha, nonSignatureArtifacts),
+      signedEnvelope(
+        privateKey,
+        containerName,
+        containerSha,
+        nonSignatureArtifacts,
+      ),
     );
     const provenanceSignatureBytes = serializeCanonical(
-      signedEnvelope(privateKey, provenanceName, provenanceSha, nonSignatureArtifacts),
+      signedEnvelope(
+        privateKey,
+        provenanceName,
+        provenanceSha,
+        nonSignatureArtifacts,
+      ),
     );
     const checksumSignatureBytes = serializeCanonical(
-      signedEnvelope(privateKey, checksumName, checksumSha, nonSignatureArtifacts),
+      signedEnvelope(
+        privateKey,
+        checksumName,
+        checksumSha,
+        nonSignatureArtifacts,
+      ),
     );
 
     await Promise.all([
@@ -162,12 +192,23 @@ test('rejects a byte-different signature envelope with reordered keys', async ()
       writeFile(join(directory, sbomName), sbomBytes),
       writeFile(join(directory, provenanceName), provenanceBytes),
       writeFile(join(directory, checksumName), checksumBytes),
-      writeFile(join(directory, containerSignatureName), containerSignatureBytes),
-      writeFile(join(directory, provenanceSignatureName), provenanceSignatureBytes),
+      writeFile(
+        join(directory, containerSignatureName),
+        containerSignatureBytes,
+      ),
+      writeFile(
+        join(directory, provenanceSignatureName),
+        provenanceSignatureBytes,
+      ),
       writeFile(join(directory, checksumSignatureName), checksumSignatureBytes),
     ]);
 
-    const signatureArtifact = (artifactName, bytes, subjectName, subjectDigest) =>
+    const signatureArtifact = (
+      artifactName,
+      bytes,
+      subjectName,
+      subjectDigest,
+    ) =>
       artifact(artifactName, 'signature', bytes, {
         subject_artifact_name: subjectName,
         subject_sha256: subjectDigest,
