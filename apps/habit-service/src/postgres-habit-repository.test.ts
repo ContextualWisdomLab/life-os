@@ -148,11 +148,16 @@ describe('PostgresHabitRepository', () => {
     ]);
 
     expect(client.calls[0]?.text).toContain(
-      'WHERE workspace_id = $1 AND id = $2',
+      'WHERE current.workspace_id = $1 AND current.id = $2',
     );
     expect(client.calls[0]?.text).toContain('LIMIT 2');
     expect(client.calls[0]?.values).toEqual([WORKSPACE_ID, HABIT_ID]);
-    expect(client.calls[1]?.text).toContain('ORDER BY created_at ASC, id ASC');
+    expect(client.calls[1]?.text).toContain(
+      'WHERE current.workspace_id = $1',
+    );
+    expect(client.calls[1]?.text).toContain(
+      'ORDER BY current.created_at ASC, current.id ASC',
+    );
     expect(client.calls[1]?.values).toEqual([WORKSPACE_ID]);
   });
 
