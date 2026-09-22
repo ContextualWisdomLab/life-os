@@ -58,12 +58,14 @@ jobs:
             exit 1
           fi
 
-      - name: Apply bounded formatter repair
+      - name: Apply complete bounded formatter repair
         shell: bash
         run: |
           set -euo pipefail
           pnpm exec prettier --single-quote --write \
+            apps/planning-service/src/http-boundary.ts \
             apps/planning-service/src/planning-context-canonical-evidence.test.ts \
+            apps/planning-service/src/planning-data-rights-http-boundary.ts \
             apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts
           git rm .github/workflows/repair-planning-context-canonical-evidence-formatting.yml
 
@@ -79,12 +81,16 @@ jobs:
           pnpm --filter @life-os/planning-service typecheck
           git diff --check
           source_delta="$(git diff --name-only HEAD -- \
+            apps/planning-service/src/http-boundary.ts \
             apps/planning-service/src/planning-context-canonical-evidence.test.ts \
+            apps/planning-service/src/planning-data-rights-http-boundary.ts \
             apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts | LC_ALL=C sort)"
           test -n "${source_delta}"
           allowed_sources="$(printf '%s\n' \
+            'apps/planning-service/src/http-boundary.ts' \
             'apps/planning-service/src/planning-context-canonical-evidence.test.ts' \
-            'apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts' | LC_ALL=C sort)"
+            'apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts' \
+            'apps/planning-service/src/planning-data-rights-http-boundary.ts' | LC_ALL=C sort)"
           unexpected_sources="$(comm -23 \
             <(printf '%s\n' "${source_delta}") \
             <(printf '%s\n' "${allowed_sources}"))"
@@ -95,7 +101,7 @@ jobs:
             ${source_delta} | LC_ALL=C sort)"
           test "${actual}" = "${expected}"
 
-      - name: Publish ordinary descendant
+      - name: Publish ordinary formatter descendant
         shell: bash
         run: |
           set -euo pipefail
@@ -105,7 +111,9 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
+            apps/planning-service/src/http-boundary.ts \
             apps/planning-service/src/planning-context-canonical-evidence.test.ts \
+            apps/planning-service/src/planning-data-rights-http-boundary.ts \
             apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts
-          git commit -m 'style(planning): format canonical evidence regressions'
+          git commit -m 'style(planning): format canonical evidence boundary'
           git push origin "HEAD:${GITHUB_REF_NAME}"
