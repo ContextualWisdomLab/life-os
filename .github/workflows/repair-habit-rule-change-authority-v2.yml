@@ -17,7 +17,7 @@ concurrency:
 jobs:
   repair:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
     services:
@@ -159,7 +159,12 @@ jobs:
           src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
           src/habit-definition-history-postgres.integration.test.ts
 
-      - name: Run complete Habit suite
+      - name: Diagnose complete Habit suite serially
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
+          --no-file-parallelism
+
+      - name: Run complete Habit suite with repository defaults
         run: pnpm --filter @life-os/habit-service test
 
       - name: Guard exact product delta and retire repair writer
