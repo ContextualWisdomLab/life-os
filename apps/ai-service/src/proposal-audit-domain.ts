@@ -154,6 +154,33 @@ function requireTimestamp(value: unknown): string {
   return parsed.toISOString();
 }
 
+/** Requires persisted UUID evidence to already use canonical lowercase spelling. */
+function requireCanonicalUuidV4(value: unknown): string {
+  const canonical = requireUuidV4(value);
+  if (value !== canonical) {
+    return invalid();
+  }
+  return canonical;
+}
+
+/** Requires persisted digest evidence to already use lowercase hexadecimal spelling. */
+function requireCanonicalDigest(value: unknown): string {
+  const canonical = requireDigest(value);
+  if (value !== canonical) {
+    return invalid();
+  }
+  return canonical;
+}
+
+/** Requires persisted string timestamps to already equal canonical UTC spelling. */
+function requireCanonicalTimestamp(value: unknown): string {
+  const canonical = requireTimestamp(value);
+  if (typeof value === 'string' && value !== canonical) {
+    return invalid();
+  }
+  return canonical;
+}
+
 /** Revalidates one proposal request and maps generator failures to audit validation. */
 function validateRequest(value: unknown): ProposalRequest {
   try {
@@ -224,6 +251,24 @@ function validateProposal(value: unknown): AuditableProposal {
     requiresConfirmation: true,
     createdAt: requireTimestamp(record.createdAt),
   });
+}
+
+/** Revalidates immutable proposal evidence without accepting representation aliases. */
+function validatePersistedProposal(value: unknown): AuditableProposal {
+  const record = requireRecord(value);
+  const proposal = validateProposal(value);
+  requireCanonicalUuidV4(record.proposalId);
+  requireCanonicalUuidV4(record.workspaceId);
+  requireCanonicalTimestamp(record.createdAt);
+  if (Array.isArray(record.operations)) {
+    for (const operation of record.operations) {
+      const operationRecord = requireRecord(operation);
+      if (Object.hasOwn(operationRecord, 'targetId')) {
+        requireCanonicalUuidV4(operationRecord.targetId);
+      }
+    }
+  }
+  return proposal;
 }
 
 /** Projects one validated operation into deterministic digest field order. */
@@ -331,14 +376,14 @@ export function validateProposalAuditRecord(
     'recordedAt',
   ]);
   const verified = createProposalAuditRecord({
-    proposal: validateProposal(record.proposal),
+    proposal: validatePersistedProposal(record.proposal),
     request: validateRequest(record.request),
     modelId: requireString(record.modelId, MAXIMUM_MODEL_ID_LENGTH),
-    recordedAt: requireTimestamp(record.recordedAt),
+    recordedAt: requireCanonicalTimestamp(record.recordedAt),
   });
   if (
-    verified.requestDigest !== requireDigest(record.requestDigest) ||
-    verified.contentDigest !== requireDigest(record.contentDigest)
+    verified.requestDigest !== requireCanonicalDigest(record.requestDigest) ||
+    verified.contentDigest !== requireCanonicalDigest(record.contentDigest)
   ) {
     return invalid();
   }
@@ -415,11 +460,11 @@ export function validateProposalDecisionEvent(
         ],
   );
   return createProposalDecisionEvent({
-    id: requireUuidV4(record.id),
-    workspaceId: requireUuidV4(record.workspaceId),
-    proposalId: requireUuidV4(record.proposalId),
-    proposalContentDigest: requireDigest(record.proposalContentDigest),
-    actorId: requireUuidV4(record.actorId),
+    id: requireCanonicalUuidV4(record.id),
+    workspaceId: requireCanonicalUuidV4(record.workspaceId),
+    proposalId: requireCanonicalUuidV4(record.proposalId),
+    proposalContentDigest: requireCanonicalDigest(record.proposalContentDigest),
+    actorId: requireCanonicalUuidV4(record.actorId),
     decision:
       record.decision === 'accepted' || record.decision === 'rejected'
         ? record.decision
@@ -427,8 +472,8 @@ export function validateProposalDecisionEvent(
     ...(hasReason
       ? { reason: requireString(record.reason, MAXIMUM_TEXT_LENGTH) }
       : {}),
-    idempotencyKey: requireUuidV4(record.idempotencyKey),
-    decidedAt: requireTimestamp(record.decidedAt),
-    recordedAt: requireTimestamp(record.recordedAt),
+    idempotencyKey: requireCanonicalUuidV4(record.idempotencyKey),
+    decidedAt: requireCanonicalTimestamp(record.decidedAt),
+    recordedAt: requireCanonicalTimestamp(record.recordedAt),
   });
 }
