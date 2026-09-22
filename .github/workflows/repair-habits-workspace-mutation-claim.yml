@@ -1,0 +1,131 @@
+name: Repair Habits Workspace Mutation Claim
+
+on:
+  push:
+    branches:
+      - feat/web-habits-workspace-v1
+    paths:
+      - .github/workflows/repair-habits-workspace-mutation-claim.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-habits-workspace-mutation-claim-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact repair head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Guard retained RED and exact remote input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 6b58ad0eeb1b435349791103e4f51e6062160514 HEAD
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          test -e .github/workflows/verify-habits-workspace-mutation-claim.yml
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @life-os/web exec playwright install --with-deps chromium
+
+      - name: Reproduce in-flight mutation claim RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm --filter @life-os/web exec playwright test e2e/habits-workspace.spec.ts --project=chromium --grep "list refresh cannot release an in-flight Habit mutation claim"; then
+            echo 'Expected the retained in-flight mutation-claim regression to fail before repair.' >&2
+            exit 1
+          fi
+
+      - name: Apply minimum claim-lifetime repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'apps/web/app/habits/habits-client.tsx';
+          let source = fs.readFileSync(path, 'utf8');
+          const replacements = [
+            [
+              `    const generation = loadGeneration.current + 1;\n    loadGeneration.current = generation;\n    releaseSubmission();\n    if (!navigator.onLine) {`,
+              `    const generation = loadGeneration.current + 1;\n    loadGeneration.current = generation;\n    if (!navigator.onLine) {`,
+              'list-refresh claim release',
+            ],
+            [
+              `    } catch {\n      if (generation !== loadGeneration.current) return;\n      releaseSubmission();\n      dispatch(\n        navigator.onLine ? { type: 'unavailable' } : { type: 'offline' },\n      );\n    }\n  }\n\n  useEffect(() => {`,
+              `    } catch {\n      if (generation !== loadGeneration.current) return;\n      releaseSubmission();\n      dispatch(\n        navigator.onLine ? { type: 'unavailable' } : { type: 'offline' },\n      );\n    } finally {\n      releaseSubmission();\n    }\n  }\n\n  useEffect(() => {`,
+              'mutation-finally claim release',
+            ],
+            [
+              `    const handleOffline = () => {\n      loadGeneration.current += 1;\n      releaseSubmission();\n      dispatch({ type: 'offline' });\n    };`,
+              `    const handleOffline = () => {\n      loadGeneration.current += 1;\n      dispatch({ type: 'offline' });\n    };`,
+              'offline-event claim release',
+            ],
+          ];
+          for (const [before, after, label] of replacements) {
+            const occurrences = source.split(before).length - 1;
+            if (occurrences !== 1) {
+              throw new Error(`Expected exactly one ${label} occurrence, found ${occurrences}`);
+            }
+            source = source.replace(before, after);
+          }
+          fs.writeFileSync(path, source);
+          NODE
+          pnpm exec prettier --single-quote --write apps/web/app/habits/habits-client.tsx
+
+      - name: Prove focused mutation claim GREEN
+        run: >-
+          pnpm --filter @life-os/web exec playwright test
+          e2e/habits-workspace.spec.ts
+          --project=chromium
+          --grep "list refresh cannot release an in-flight Habit mutation claim"
+
+      - name: Typecheck Web package
+        run: pnpm --filter @life-os/web typecheck
+
+      - name: Run complete Web suite
+        run: pnpm --filter @life-os/web test
+
+      - name: Guard bounded source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --check apps/web/app/habits/habits-client.tsx apps/web/e2e/habits-workspace.spec.ts
+          git diff --check
+          actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
+          test "${actual}" = 'apps/web/app/habits/habits-client.tsx'
+
+      - name: Publish ordinary source descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/app/habits/habits-client.tsx
+          git commit -m 'fix(web): keep Habit mutation claim through refresh'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
