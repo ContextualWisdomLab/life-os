@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/release-signature-verification-v2
+  workflow_dispatch:
 
 permissions:
   contents: read
