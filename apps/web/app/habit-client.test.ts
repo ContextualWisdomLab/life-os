@@ -7,11 +7,11 @@ import {
   type HabitFetch,
 } from './habit-client';
 
-const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const HABIT_ID = '22222222-2222-4222-8222-222222222222';
-const SECOND_HABIT_ID = '55555555-5555-4555-8555-555555555555';
-const USER_ID = '44444444-4444-4444-8444-444444444444';
-const SESSION_ID = '33333333-3333-4333-8333-333333333333';
+const WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const HABIT_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const SECOND_HABIT_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const USER_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const SESSION_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const CONTEXT_SECRET = 'habit-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_788_220_800;
 

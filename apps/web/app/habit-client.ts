@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u;
@@ -195,7 +195,7 @@ function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new Error('Habit identifier is invalid');
   }
-  return value.toLowerCase();
+  return value;
 }
 
 /** Requires one bounded, trimmed, control-free Habit title. */
