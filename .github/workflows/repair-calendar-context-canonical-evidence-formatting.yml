@@ -33,11 +33,12 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Require retained regression ancestry and exact remote input
+      - name: Require retained regression and semantic repair ancestry
         shell: bash
         run: |
           set -euo pipefail
           git merge-base --is-ancestor 500a290876d3e3b07622aa7e471b055c1184939b HEAD
+          git merge-base --is-ancestor b85e0867f3818e63494237783d0f0025e377e8bf HEAD
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "${GITHUB_SHA}"
