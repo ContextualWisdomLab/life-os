@@ -52,28 +52,19 @@ function evidence(
 }
 
 describe('PostgresPluginOperatorReplayGuard', () => {
-  it('atomically consumes one evidence UUID after pruning only rows expired by the database clock', async () => {
+  it('delegates atomic consume and bounded expiry cleanup through one PostgreSQL round trip', async () => {
     const client = new ScriptedSqlClient([
-      { rows: [], rowCount: 0 },
-      { rows: [{ evidence_id: EVIDENCE_ID }], rowCount: 1 },
+      { rows: [{ consumed: true }], rowCount: 1 },
     ]);
     const guard = new PostgresPluginOperatorReplayGuard(client);
 
     await expect(guard.consume(evidence())).resolves.toBe(true);
 
-    expect(client.queries).toHaveLength(2);
+    expect(client.queries).toHaveLength(1);
     expect(client.queries[0]?.text).toContain(
-      'DELETE FROM plugin_integration.plugin_operator_context_replay_record',
+      'plugin_integration.consume_plugin_operator_context_replay',
     );
-    expect(client.queries[0]?.text).toContain('expires_at < now()');
-    expect(client.queries[0]?.values).toBeUndefined();
-    expect(client.queries[1]?.text).toContain(
-      'INSERT INTO plugin_integration.plugin_operator_context_replay_record',
-    );
-    expect(client.queries[1]?.text).toContain(
-      'ON CONFLICT (evidence_id) DO NOTHING',
-    );
-    expect(client.queries[1]?.values).toEqual([
+    expect(client.queries[0]?.values).toEqual([
       EVIDENCE_ID,
       CONSUMED_AT,
       EXPIRES_AT,
@@ -82,8 +73,7 @@ describe('PostgresPluginOperatorReplayGuard', () => {
 
   it('normalizes accepted UUID evidence to lowercase before persistence', async () => {
     const client = new ScriptedSqlClient([
-      { rows: [], rowCount: 0 },
-      { rows: [{ evidence_id: LOWERCASE_EVIDENCE_ID }], rowCount: 1 },
+      { rows: [{ consumed: true }], rowCount: 1 },
     ]);
     const guard = new PostgresPluginOperatorReplayGuard(client);
 
@@ -93,21 +83,21 @@ describe('PostgresPluginOperatorReplayGuard', () => {
       ),
     ).resolves.toBe(true);
 
-    expect(client.queries[1]?.values).toEqual([
+    expect(client.queries[0]?.values).toEqual([
       LOWERCASE_EVIDENCE_ID,
       CONSUMED_AT,
       EXPIRES_AT,
     ]);
   });
 
-  it('returns false when another service instance already consumed the evidence UUID', async () => {
+  it('returns false when another service instance already consumed still-valid evidence', async () => {
     const client = new ScriptedSqlClient([
-      { rows: [], rowCount: 0 },
-      { rows: [], rowCount: 0 },
+      { rows: [{ consumed: false }], rowCount: 1 },
     ]);
     const guard = new PostgresPluginOperatorReplayGuard(client);
 
     await expect(guard.consume(evidence())).resolves.toBe(false);
+    expect(client.queries).toHaveLength(1);
   });
 
   it('rejects malformed or contradictory evidence before issuing SQL', async () => {
@@ -126,31 +116,100 @@ describe('PostgresPluginOperatorReplayGuard', () => {
     }
   });
 
-  it('rejects ambiguous or corrupted INSERT evidence instead of granting authority', async () => {
-    for (const inserted of [
-      { rows: [{ evidence_id: EVIDENCE_ID }], rowCount: null },
-      { rows: [], rowCount: 1 },
+  it('fails closed before SQL when replay request evidence access is hostile', async () => {
+    const revokedEvidence = Proxy.revocable(evidence(), {});
+    revokedEvidence.revoke();
+    const throwingEvidence = {
+      get evidenceId(): string {
+        throw new Error('password=must-not-escape-replay-request-evidence');
+      },
+      consumedAt: CONSUMED_AT,
+      expiresAt: EXPIRES_AT,
+    };
+
+    for (const candidate of [revokedEvidence.proxy, throwingEvidence]) {
+      const client = new ScriptedSqlClient([]);
+      const guard = new PostgresPluginOperatorReplayGuard(client);
+
+      await expect(guard.consume(candidate)).rejects.toMatchObject({
+        name: 'PluginOperatorReplayValidationError',
+        message: 'Plugin operator replay evidence is invalid',
+      });
+      expect(client.queries).toHaveLength(0);
+    }
+  });
+
+  it('rejects ambiguous or corrupted consume evidence instead of granting authority', async () => {
+    for (const result of [
+      { rows: [{ consumed: true }], rowCount: null },
+      { rows: [], rowCount: 0 },
       {
-        rows: [
-          { evidence_id: EVIDENCE_ID },
-          { evidence_id: EVIDENCE_ID },
-        ],
+        rows: [{ consumed: true }, { consumed: true }],
         rowCount: 2,
       },
-      {
-        rows: [{ evidence_id: '88888888-8888-4888-8888-888888888888' }],
-        rowCount: 1,
-      },
+      { rows: [{ consumed: 'true' }], rowCount: 1 },
     ] satisfies readonly PluginOperatorReplaySqlResult<unknown>[]) {
-      const client = new ScriptedSqlClient([
-        { rows: [], rowCount: 0 },
-        inserted,
-      ]);
+      const client = new ScriptedSqlClient([result]);
       const guard = new PostgresPluginOperatorReplayGuard(client);
 
       await expect(guard.consume(evidence())).rejects.toBeInstanceOf(
         PluginOperatorReplayValidationError,
       );
+      expect(client.queries).toHaveLength(1);
+    }
+  });
+
+  it('observes hostile replay SQL rows once before granting consume authority', async () => {
+    let rowsReads = 0;
+    const result = {
+      rowCount: 1,
+      get rows(): readonly unknown[] {
+        rowsReads += 1;
+        return rowsReads === 1
+          ? [{ consumed: 'not-a-boolean' }]
+          : [{ consumed: true }];
+      },
+    } satisfies PluginOperatorReplaySqlResult<unknown>;
+    const client = new ScriptedSqlClient([result]);
+    const guard = new PostgresPluginOperatorReplayGuard(client);
+
+    await expect(guard.consume(evidence())).rejects.toBeInstanceOf(
+      PluginOperatorReplayValidationError,
+    );
+    expect(rowsReads).toBe(1);
+    expect(client.queries).toHaveLength(1);
+  });
+
+  it('fails closed when replay SQL collection or row access is revoked', async () => {
+    const revokedRows = Proxy.revocable([{ consumed: true }], {});
+    revokedRows.revoke();
+    const revokedRow = Proxy.revocable({ consumed: true }, {});
+    revokedRow.revoke();
+
+    for (const result of [
+      {
+        rows: revokedRows.proxy as unknown as readonly unknown[],
+        rowCount: 1,
+      },
+      {
+        rows: [revokedRow.proxy],
+        rowCount: 1,
+      },
+      {
+        rowCount: 1,
+        get rows(): readonly unknown[] {
+          throw new Error('password=must-not-escape-replay-sql-evidence');
+        },
+      },
+    ] satisfies readonly PluginOperatorReplaySqlResult<unknown>[]) {
+      const client = new ScriptedSqlClient([result]);
+      const guard = new PostgresPluginOperatorReplayGuard(client);
+
+      await expect(guard.consume(evidence())).rejects.toMatchObject({
+        name: 'PluginOperatorReplayValidationError',
+        message: 'Plugin operator replay evidence is invalid',
+      });
+      expect(client.queries).toHaveLength(1);
     }
   });
 });
