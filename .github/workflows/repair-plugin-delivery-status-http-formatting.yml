@@ -38,6 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           git merge-base --is-ancestor 90b25f586f592e79cfe07c6be4d3d644759faae3 HEAD
+          git merge-base --is-ancestor f9e85c62dc34d8471ff9d6848cb6831ede9f1529 HEAD
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "${GITHUB_SHA}"
