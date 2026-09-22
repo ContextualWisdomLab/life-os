@@ -3,9 +3,15 @@ import {
   PRODUCT_LOCALES,
   type LocalizationResourceRequest,
   type LocalizationResourceResponse,
-} from './localization-resources.js';
+} from './index.js';
 
 const RESOURCE_VERSION_ID = '11111111-1111-4111-8111-111111111111';
+
+/**
+ * The regression consumes only the package public surface. A private source
+ * module is not a released contract until `@life-os/contracts` exports it.
+ */
+const publicContractVersion = LOCALIZATION_RESOURCE_CONTRACT_VERSION;
 
 /** The public product locale set is fixed by the LifeOS buyer contract. */
 const expectedLocales = [
@@ -68,6 +74,7 @@ const ambiguousResponse: LocalizationResourceResponse = {
   resourceDigestSha256: undefined,
 };
 
+void publicContractVersion;
 void expectedLocales;
 void tenantCoupledRequest;
 void staleVersionRequest;
