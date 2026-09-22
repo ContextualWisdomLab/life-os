@@ -13,7 +13,10 @@ const NOW_SECONDS = 1_786_291_200;
 
 function workspaceSignature(workspaceId: string, issuedAt: string): string {
   return createHmac('sha256', CONTEXT_SECRET)
-    .update(`life-os.calendar-workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
+    .update(
+      `life-os.calendar-workspace.v1\n${workspaceId}\n${issuedAt}`,
+      'utf8',
+    )
     .digest('base64url');
 }
 

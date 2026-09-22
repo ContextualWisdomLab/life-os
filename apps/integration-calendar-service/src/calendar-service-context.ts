@@ -112,10 +112,7 @@ function userSignature(
   );
 }
 
-function requireMatchingSignature(
-  value: unknown,
-  expected: Buffer,
-): void {
+function requireMatchingSignature(value: unknown, expected: Buffer): void {
   if (typeof value !== 'string' || !SIGNATURE_PATTERN.test(value)) {
     throw new CalendarContextInvalidError();
   }
