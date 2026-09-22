@@ -163,9 +163,10 @@ function normalizeRequest(body: unknown): NormalizedRequest {
 }
 
 /** Requires the single POST route that owns the v1 Habit contributor transport. */
-function requireRequestBinding(
-  binding: HabitDataRightsRequestBinding,
-): { readonly method: 'POST'; readonly path: typeof CONTRIBUTOR_PATH } {
+function requireRequestBinding(binding: HabitDataRightsRequestBinding): {
+  readonly method: 'POST';
+  readonly path: typeof CONTRIBUTOR_PATH;
+} {
   if (binding.method !== 'POST' || binding.path !== CONTRIBUTOR_PATH) {
     return invalidContext();
   }

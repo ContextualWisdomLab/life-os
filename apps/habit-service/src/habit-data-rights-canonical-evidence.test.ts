@@ -70,7 +70,9 @@ async function expectInvalidRequest(
     thrown = error;
   }
   if (thrown === undefined) {
-    throw new Error('Expected noncanonical signed data-rights evidence to be rejected');
+    throw new Error(
+      'Expected noncanonical signed data-rights evidence to be rejected',
+    );
   }
   expect(thrown).toBeInstanceOf(HttpException);
   expect((thrown as HttpException).getStatus()).toBe(400);
