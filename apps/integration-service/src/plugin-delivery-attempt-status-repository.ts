@@ -1,6 +1,5 @@
 import {
   canonicalPluginDeliveryAttemptRetryAt,
-  pluginDeliveryAttemptStatusRequiresControlHistory,
   type PluginDeliveryAttemptStatusCommand,
   type PluginDeliveryAttemptStatusEvidence,
   type PluginDeliveryAttemptStatusStore,
@@ -450,13 +449,6 @@ function parseRow(
     lastOutcomeCode,
     claim.claimed,
   );
-
-  if (
-    pluginDeliveryAttemptStatusRequiresControlHistory(deliveryStatus) &&
-    controlSequence === 0
-  ) {
-    return invalidEvidence();
-  }
 
   const uncontrolledScheduledRetry =
     deliveryStatus === 'pending' &&

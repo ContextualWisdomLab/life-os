@@ -2,11 +2,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Pool, type QueryResultRow } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type {
-  PluginDeliveryAttemptClaimSqlClient,
-  PluginDeliveryAttemptClaimSqlResult,
-} from './plugin-delivery-attempt-claim-repository';
-import { PostgresPluginDeliveryAttemptClaimStore } from './plugin-delivery-attempt-claim-repository';
 import {
   PluginDeliveryAttemptExecutionFenceApplication,
   PluginDeliveryAttemptExecutionFenceAuthorityError,
@@ -47,24 +42,16 @@ const USER_ID = '44444444-4444-4444-8444-444444444444';
 const CLAIM_TOKEN = '66666666-6666-4666-8666-666666666666';
 const CLAIM_TOKEN_DIGEST =
   'a9703d75e61670054471bf04ee63439c365fcb5f0c54dcb9d8d44ffb30cc56a1';
-const CLAIM_STARTED_AT = '2026-09-09T01:55:00.000Z';
 const CHECKED_AT = '2026-09-09T02:00:00.000Z';
 const CLAIM_EXPIRES_AT = '2026-09-09T02:05:00.000Z';
 
-class PoolSqlClient
-  implements
-    PluginDeliveryAttemptClaimSqlClient,
-    PluginDeliveryAttemptExecutionFenceSqlClient
-{
+class PoolSqlClient implements PluginDeliveryAttemptExecutionFenceSqlClient {
   constructor(private readonly pool: Pool) {}
 
   async query<Row>(
     text: string,
     values: readonly unknown[] = [],
-  ): Promise<
-    | PluginDeliveryAttemptClaimSqlResult<Row>
-    | PluginDeliveryAttemptExecutionFenceSqlResult<Row>
-  > {
+  ): Promise<PluginDeliveryAttemptExecutionFenceSqlResult<Row>> {
     const result = await this.pool.query<Row & QueryResultRow>(text, [
       ...values,
     ]);
@@ -112,28 +99,16 @@ async function prepareClaimedAttempt(): Promise<void> {
     INSERT INTO plugin_integration.plugin_delivery_attempt_record (
       authority_version, delivery_id, grant_id, installation_id, workspace_id,
       requested_by_user_id, delivery_status, attempt_count, max_attempts,
-      requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code
+      requested_at, updated_at, next_attempt_at, terminal_at, last_outcome_code,
+      claim_token_digest, claim_started_at, claim_expires_at
     ) VALUES (
       'life-os.plugin-delivery-attempt.v1', '${DELIVERY_ID}', '${GRANT_ID}',
-      '${INSTALLATION_ID}', '${WORKSPACE_ID}', '${USER_ID}', 'pending', 0, 3,
-      '2026-09-09T01:20:00.000Z', '2026-09-09T01:20:00.000Z',
-      '2026-09-09T01:20:00.000Z', NULL, NULL
+      '${INSTALLATION_ID}', '${WORKSPACE_ID}', '${USER_ID}', 'pending', 1, 3,
+      '2026-09-09T01:20:00.000Z', '2026-09-09T01:55:00.000Z',
+      '2026-09-09T01:20:00.000Z', NULL, NULL, '${CLAIM_TOKEN_DIGEST}',
+      '2026-09-09T01:55:00.000Z', '${CLAIM_EXPIRES_AT}'
     );
   `);
-
-  const claim = await new PostgresPluginDeliveryAttemptClaimStore(
-    new PoolSqlClient(pool),
-  ).claimDue({
-    deliveryId: DELIVERY_ID,
-    workspaceId: WORKSPACE_ID,
-    requestedByUserId: USER_ID,
-    claimTokenDigest: CLAIM_TOKEN_DIGEST,
-    claimedAt: CLAIM_STARTED_AT,
-    leaseExpiresAt: CLAIM_EXPIRES_AT,
-  });
-  if (claim === undefined || claim.attemptNumber !== 1) {
-    throw new Error('Execution-fence fixture claim was not accepted');
-  }
 }
 
 function app(): PluginDeliveryAttemptExecutionFenceApplication {
