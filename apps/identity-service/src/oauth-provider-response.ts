@@ -65,6 +65,13 @@ function requireString(value: unknown, message: string): string {
   return value.trim();
 }
 
+function requireExactNonce(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(INVALID_GOOGLE_ID_TOKEN);
+  }
+  return value;
+}
+
 function parseScopes(value: unknown): string[] {
   if (value === undefined || value === null || value === '') {
     return [];
@@ -142,6 +149,11 @@ function readStringClaim(claims: Record<string, unknown>, key: string): string |
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function readExactNonceClaim(claims: Record<string, unknown>): string | undefined {
+  const value = claims.nonce;
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
 function readAudience(claims: Record<string, unknown>): string[] | undefined {
   const value = claims.aud;
   if (typeof value === 'string' && value.trim()) {
@@ -175,7 +187,7 @@ export function validateVerifiedGoogleIdentity(
   },
 ): ProviderIdentityProfile {
   const clientId = requireString(expected.clientId, INVALID_GOOGLE_ID_TOKEN);
-  const nonce = requireString(expected.nonce, INVALID_GOOGLE_ID_TOKEN);
+  const nonce = requireExactNonce(expected.nonce);
   const clockSkewSeconds = expected.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS;
   const now = expected.now ?? new Date();
   if (
@@ -197,7 +209,7 @@ export function validateVerifiedGoogleIdentity(
   const issuer = readStringClaim(claims, 'iss');
   const providerSubject = readStringClaim(claims, 'sub');
   const audiences = readAudience(claims);
-  const tokenNonce = readStringClaim(claims, 'nonce');
+  const tokenNonce = readExactNonceClaim(claims);
   const expiration = claims.exp;
   const issuedAt = claims.iat;
   const nowSeconds = Math.floor(now.getTime() / 1000);
