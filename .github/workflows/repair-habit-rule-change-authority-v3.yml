@@ -1,0 +1,177 @@
+name: Repair Habit Rule Change Authority V3
+
+on:
+  push:
+    branches:
+      - feat/habit-rule-change-authority-v1
+    paths:
+      - .github/workflows/repair-habit-rule-change-authority-v3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-habit-rule-change-authority-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_DB: life_os_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d life_os_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout exact repair head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.sha }}
+
+      - name: Guard exact V2 successor authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "$remote_head"
+          test "$remote_head" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 2853928a974652a72dea987e7b28d252cd56d5d0 "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-habit-rule-change-authority-v2.yml
+          test -f .github/workflows/repair-habit-rule-change-authority-v3.yml
+
+      - name: Materialize retained V2 product repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 2853928a974652a72dea987e7b28d252cd56d5d0:.github/workflows/repair-habit-rule-change-authority-v2.yml > /tmp/v2.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/v2.yml').read_text().splitlines()
+          marker = '      - name: Materialize bounded repair from retained specification commit'
+          start = lines.index(marker)
+          run = next(i for i in range(start + 1, len(lines)) if lines[i] == '        run: |')
+          end = next(i for i in range(run + 1, len(lines)) if lines[i].startswith('      - name: '))
+          selected = lines[run + 1:end]
+          nonblank = [line for line in selected if line.strip()]
+          indent = min(len(line) - len(line.lstrip()) for line in nonblank)
+          Path('/tmp/materialize-v2.sh').write_text('\n'.join(line[indent:] if line.strip() else '' for line in selected) + '\n')
+          PY
+          bash /tmp/materialize-v2.sh
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Format complete retained Habit repair boundary
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/habit-service/src/habit-domain.ts
+          apps/habit-service/src/postgres-habit-repository.ts
+          apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
+          apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
+          apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          apps/habit-service/src/habit-review-projection-postgres.test.ts
+          apps/habit-service/src/habit-service.integration.test.ts
+          apps/habit-service/src/postgres-habit-repository.integration.test.ts
+          apps/habit-service/src/postgres-habit-repository.test.ts
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/habit-service/src/habit-domain.ts
+          apps/habit-service/src/postgres-habit-repository.ts
+          apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
+          apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
+          apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          apps/habit-service/src/habit-review-projection-postgres.test.ts
+          apps/habit-service/src/habit-service.integration.test.ts
+          apps/habit-service/src/postgres-habit-repository.integration.test.ts
+          apps/habit-service/src/postgres-habit-repository.test.ts
+
+      - name: Typecheck Habit
+        run: pnpm --filter @life-os/habit-service typecheck
+
+      - name: Prove effective-dated durable authority
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
+          --no-file-parallelism
+          src/habit-rule-change-postgres.integration.test.ts
+          src/habit-rule-change-idempotency-postgres.integration.test.ts
+          src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          src/habit-definition-history-postgres.integration.test.ts
+
+      - name: Diagnose complete Habit suite serially
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
+          --no-file-parallelism
+
+      - name: Run complete Habit suite with repository defaults
+        run: pnpm --filter @life-os/habit-service test
+
+      - name: Guard bounded product delta and retire V3 writer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/repair-habit-rule-change-authority-v3.yml
+          git add \
+            apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
+            apps/habit-service/src/habit-domain.ts \
+            apps/habit-service/src/postgres-habit-repository.ts \
+            apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts \
+            apps/habit-service/src/habit-review-projection-postgres.test.ts \
+            apps/habit-service/src/habit-service.integration.test.ts \
+            apps/habit-service/src/postgres-habit-repository.integration.test.ts \
+            apps/habit-service/src/postgres-habit-repository.test.ts
+          changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
+          allowed="$(printf '%s\n' \
+            .github/workflows/repair-habit-rule-change-authority-v3.yml \
+            apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
+            apps/habit-service/src/habit-domain.ts \
+            apps/habit-service/src/postgres-habit-repository.ts \
+            apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts \
+            apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts \
+            apps/habit-service/src/habit-review-projection-postgres.test.ts \
+            apps/habit-service/src/habit-service.integration.test.ts \
+            apps/habit-service/src/postgres-habit-repository.integration.test.ts \
+            apps/habit-service/src/postgres-habit-repository.test.ts | LC_ALL=C sort)"
+          unexpected="$(comm -23 <(printf '%s\n' "$changed") <(printf '%s\n' "$allowed"))"
+          test -z "$unexpected"
+          for required in \
+            .github/workflows/repair-habit-rule-change-authority-v3.yml \
+            apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
+            apps/habit-service/src/habit-domain.ts \
+            apps/habit-service/src/postgres-habit-repository.ts; do
+            printf '%s\n' "$changed" | grep -Fx "$required" >/dev/null
+          done
+          git diff --check --cached
+
+      - name: Publish exact GREEN repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(habit): own effective-dated rule changes"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
