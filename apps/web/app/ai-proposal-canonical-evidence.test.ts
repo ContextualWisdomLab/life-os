@@ -146,7 +146,9 @@ async function requestWithProducerEvidence(
   return { response, calls };
 }
 
-async function expectUnavailable(result: Promise<{ response: Response }>): Promise<void> {
+async function expectUnavailable(
+  result: Promise<{ response: Response }>,
+): Promise<void> {
   const { response } = await result;
   assert.equal(response.status, 503);
   assert.equal(
@@ -172,8 +174,14 @@ describe('AI proposal producer evidence canonicality', () => {
 
   it('rejects byte-different proposal evidence instead of recanonicalizing it', async () => {
     const cases: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
-      ['proposal id casing', proposal({ proposalId: PROPOSAL_ID.toUpperCase() })],
-      ['workspace id casing', proposal({ workspaceId: WORKSPACE_ID.toUpperCase() })],
+      [
+        'proposal id casing',
+        proposal({ proposalId: PROPOSAL_ID.toUpperCase() }),
+      ],
+      [
+        'workspace id casing',
+        proposal({ workspaceId: WORKSPACE_ID.toUpperCase() }),
+      ],
       [
         'operation target casing',
         proposal({
