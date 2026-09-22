@@ -11,6 +11,17 @@ import { verifyReleaseEvidenceDirectory } from './release-evidence.mjs';
 
 const SIGNATURE_SCHEMA_VERSION = 'life-os.release-signature.v1';
 const SIGNATURE_ALGORITHM = 'ed25519';
+const SIGNATURE_ENVELOPE_KEYS = Object.freeze([
+  'schema_version',
+  'algorithm',
+  'key_id',
+  'source_commit',
+  'channel',
+  'version',
+  'subject_artifact_name',
+  'subject_sha256',
+  'signature_base64',
+]);
 const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const MAXIMUM_TRUSTED_KEYS = 64;
 const MAXIMUM_SIGNATURE_ENVELOPE_BYTES = 16 * 1024;
@@ -142,19 +153,12 @@ function parseCanonicalSignatureEnvelope(bytes) {
     if (error instanceof ReleaseSignatureVerificationError) throw error;
     return invalidSignature();
   }
-  requireExactKeys(record, [
-    'schema_version',
-    'algorithm',
-    'key_id',
-    'source_commit',
-    'channel',
-    'version',
-    'subject_artifact_name',
-    'subject_sha256',
-    'signature_base64',
-  ]);
+  requireExactKeys(record, SIGNATURE_ENVELOPE_KEYS);
 
-  const canonical = Buffer.from(`${JSON.stringify(record)}\n`, 'utf8');
+  const canonicalRecord = Object.fromEntries(
+    SIGNATURE_ENVELOPE_KEYS.map((key) => [key, record[key]]),
+  );
+  const canonical = Buffer.from(`${JSON.stringify(canonicalRecord)}\n`, 'utf8');
   if (!canonical.equals(bytes)) return invalidSignature();
   return record;
 }
