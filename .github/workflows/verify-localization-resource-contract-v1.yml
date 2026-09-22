@@ -5,6 +5,7 @@ on:
     branches:
       - test/localization-resource-contract-v1
     paths:
+      - packages/contracts/src/index.ts
       - packages/contracts/src/localization-resource-contract.typecheck.ts
       - packages/contracts/src/localization-resources.ts
       - .github/workflows/verify-localization-resource-contract-v1.yml
