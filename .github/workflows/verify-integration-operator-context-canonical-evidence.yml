@@ -30,11 +30,19 @@ jobs:
           GIT_CONFIG_KEY_0: init.defaultBranch
           GIT_CONFIG_VALUE_0: main
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Verify exact checkout
-        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Guard exact formatter publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-integration-context-canonical-evidence-formatting.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -54,6 +62,7 @@ jobs:
           apps/integration-service/src/integration-event-context-canonical-evidence.test.ts
           apps/integration-service/src/plugin-operator-context.ts
           apps/integration-service/src/main.ts
+          .github/workflows/verify-integration-operator-context-canonical-evidence.yml
 
       - name: Reproduce Integration canonical signed-evidence regressions
         run: >-
@@ -63,3 +72,6 @@ jobs:
 
       - name: Typecheck Integration service
         run: pnpm --filter @life-os/integration-service typecheck
+
+      - name: Run complete Integration suite
+        run: pnpm --filter @life-os/integration-service test
