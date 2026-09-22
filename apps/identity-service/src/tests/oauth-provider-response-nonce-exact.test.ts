@@ -22,15 +22,18 @@ function verifiedToken(nonce: string) {
 }
 
 describe('OIDC nonce exact-match authority', () => {
-  it('rejects a signature-verified nonce claim whose bytes differ only by surrounding whitespace', () => {
-    expect(() =>
-      validateVerifiedGoogleIdentity(verifiedToken(' expected-nonce '), {
-        clientId: 'google-client-id',
-        nonce: 'expected-nonce',
-        now: NOW,
-      }),
-    ).toThrowError('Google ID token is invalid');
-  });
+  it(
+    'rejects a signature-verified nonce claim whose bytes differ only by surrounding whitespace',
+    () => {
+      expect(() =>
+        validateVerifiedGoogleIdentity(verifiedToken(' expected-nonce '), {
+          clientId: 'google-client-id',
+          nonce: 'expected-nonce',
+          now: NOW,
+        }),
+      ).toThrowError('Google ID token is invalid');
+    },
+  );
 
   it('rejects a stored expected nonce that is recanonicalized before comparison', () => {
     expect(() =>
