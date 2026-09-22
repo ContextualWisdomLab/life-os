@@ -56,6 +56,26 @@ function requireBoundedText(value: unknown, fieldName: string): string {
   return value.trim();
 }
 
+function requireBoundedRawQueryValue(value: unknown, fieldName: string): string {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    Buffer.byteLength(value, 'utf8') > QUERY_VALUE_LIMIT_BYTES ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    throw new Error(`${fieldName} is invalid`);
+  }
+  return value;
+}
+
+function requireOpaqueQueryValue(value: unknown, fieldName: string): string {
+  const bounded = requireBoundedRawQueryValue(value, fieldName);
+  if (!OPAQUE_COOKIE_VALUE_PATTERN.test(bounded)) {
+    throw new Error(`${fieldName} is invalid`);
+  }
+  return bounded;
+}
+
 function optionalSingleQueryValue(
   query: Readonly<Record<string, unknown>>,
   key: string,
@@ -68,6 +88,34 @@ function optionalSingleQueryValue(
     throw new Error(`OAuth callback parameter ${key} must appear once`);
   }
   return requireBoundedText(value, `OAuth callback parameter ${key}`);
+}
+
+function optionalSingleRawQueryValue(
+  query: Readonly<Record<string, unknown>>,
+  key: string,
+): string | undefined {
+  const value = query[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    throw new Error(`OAuth callback parameter ${key} must appear once`);
+  }
+  return requireBoundedRawQueryValue(value, `OAuth callback parameter ${key}`);
+}
+
+function optionalSingleOpaqueQueryValue(
+  query: Readonly<Record<string, unknown>>,
+  key: string,
+): string | undefined {
+  const value = query[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    throw new Error(`OAuth callback parameter ${key} must appear once`);
+  }
+  return requireOpaqueQueryValue(value, `OAuth callback parameter ${key}`);
 }
 
 function requireCookieName(value: string): string {
@@ -191,7 +239,7 @@ export function readOpaqueCookie(
       return failInvalidCookie();
     }
     const segmentName = requireCookieName(segment.slice(0, separator).trim());
-    const value = segment.slice(separator + 1).trim();
+    const value = segment.slice(separator + 1);
     if (!RFC6265_COOKIE_VALUE_PATTERN.test(value)) {
       return failInvalidCookie();
     }
@@ -222,8 +270,8 @@ export function parseOAuthCallbackQuery(
     }
   }
 
-  const code = optionalSingleQueryValue(query, 'code');
-  const state = optionalSingleQueryValue(query, 'state');
+  const code = optionalSingleRawQueryValue(query, 'code');
+  const state = optionalSingleOpaqueQueryValue(query, 'state');
   const error = optionalSingleQueryValue(query, 'error');
   const errorDescription = optionalSingleQueryValue(query, 'error_description');
   const errorUri = optionalSingleQueryValue(query, 'error_uri');
