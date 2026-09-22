@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const ISSUED_AT_PATTERN = /^\d{10}$/u;
 const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const MINIMUM_SECRET_BYTES = 32;
@@ -60,7 +60,7 @@ function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new CalendarContextInvalidError();
   }
-  return value.toLowerCase();
+  return value;
 }
 
 function requireIssuedAt(value: unknown, nowSeconds: number): string {
