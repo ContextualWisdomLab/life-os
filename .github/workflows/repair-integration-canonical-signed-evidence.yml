@@ -38,6 +38,8 @@ jobs:
         run: |
           set -euo pipefail
           git merge-base --is-ancestor "826197621b138ac43209b4b37aaf5756f52e9276" HEAD
+          test ! -e .github/workflows/repair-integration-context-canonical-evidence-formatting.yml
+          test -e .github/workflows/verify-integration-operator-context-canonical-evidence.yml
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "${GITHUB_SHA}"
