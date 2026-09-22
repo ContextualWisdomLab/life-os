@@ -79,7 +79,7 @@ describe('Review HTTP boundary', () => {
     expect(
       requireTrustedWorkspaceContext(
         {
-          workspaceId: WORKSPACE_ID.toUpperCase(),
+          workspaceId: WORKSPACE_ID,
           issuedAt,
           signature: signature(issuedAt),
         },
