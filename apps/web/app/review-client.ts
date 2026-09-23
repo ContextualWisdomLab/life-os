@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/u;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
@@ -15,9 +15,7 @@ const UPSTREAM_TIMEOUT_MS = 3_000;
 type WebEnvironment = Readonly<Record<string, string | undefined>>;
 
 export type ReviewRitualKind =
-  | 'daily-planning'
-  | 'daily-shutdown'
-  | 'weekly-review';
+  'daily-planning' | 'daily-shutdown' | 'weekly-review';
 
 /** Browser-safe immutable projection of one completed review ritual. */
 export interface ReviewCompletionView {
@@ -211,7 +209,7 @@ function requireUuid(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     throw new Error('Review identifier is invalid');
   }
-  return value.toLowerCase();
+  return value;
 }
 
 /** Requires one real Gregorian date and optional Monday anchoring. */
@@ -432,6 +430,7 @@ async function parseWeeklyReviewRequest(
     throw new Error('Review completion counts are invalid');
   }
 
+  const reflection = requireReflection(value.reflection);
   return Object.freeze({
     periodStartDate: requireLocalDate(value.periodStartDate, true),
     idempotencyKey: requireUuid(value.idempotencyKey),
@@ -440,7 +439,7 @@ async function parseWeeklyReviewRequest(
     plannedItemCount,
     completedItemCount,
     habitCompletionCount,
-    reflection: requireReflection(value.reflection),
+    ...(reflection === undefined ? {} : { reflection }),
     completedAt: requireInstant(value.completedAt),
   });
 }
@@ -545,7 +544,10 @@ function requireHistoryLimit(request: Request): number {
     throw new Error('Review history request is invalid');
   }
   const keys = [...url.searchParams.keys()];
-  if (keys.some((key) => key !== 'limit') || url.searchParams.getAll('limit').length > 1) {
+  if (
+    keys.some((key) => key !== 'limit') ||
+    url.searchParams.getAll('limit').length > 1
+  ) {
     throw new Error('Review history request is invalid');
   }
   const value = url.searchParams.get('limit');
@@ -560,11 +562,18 @@ function requireHistoryLimit(request: Request): number {
 function parseReviewCollection(
   value: unknown,
   expectedWorkspaceId: string,
+  maximumRecords: number,
 ): ReviewCompletionView[] {
-  if (!Array.isArray(value) || value.length > MAXIMUM_HISTORY_RECORDS) {
+  if (
+    !Array.isArray(value) ||
+    value.length > MAXIMUM_HISTORY_RECORDS ||
+    value.length > maximumRecords
+  ) {
     throw new Error('Review collection is invalid');
   }
-  const parsed = value.map((item) => parseReviewRecord(item, expectedWorkspaceId));
+  const parsed = value.map((item) =>
+    parseReviewRecord(item, expectedWorkspaceId),
+  );
   const ids = new Set(parsed.map((item) => item.view.id));
   if (ids.size !== parsed.length) {
     throw new Error('Review collection contains duplicate identities');
@@ -593,17 +602,26 @@ export async function handleWeeklyReviewCompletionRequest(
   }
 
   try {
-    const identityOrigin = requireServiceOrigin(environment.IDENTITY_SERVICE_ORIGIN);
-    const reviewOrigin = requireServiceOrigin(environment.REVIEW_SERVICE_ORIGIN);
-    const secret = requireGatewaySecret(environment.REVIEW_GATEWAY_CONTEXT_SECRET);
+    const identityOrigin = requireServiceOrigin(
+      environment.IDENTITY_SERVICE_ORIGIN,
+    );
+    const reviewOrigin = requireServiceOrigin(
+      environment.REVIEW_SERVICE_ORIGIN,
+    );
+    const secret = requireGatewaySecret(
+      environment.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
     const correlationId = randomUUID();
-    const identityResponse = await fetcher(new URL('/v1/session', identityOrigin), {
-      method: 'GET',
-      headers: requestHeaders({ cookie, 'x-correlation-id': correlationId }),
-      cache: 'no-store',
-      redirect: 'error',
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+    const identityResponse = await fetcher(
+      new URL('/v1/session', identityOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({ cookie, 'x-correlation-id': correlationId }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
     if (identityResponse.status === 401) {
       return problemResponse(
         401,
@@ -671,17 +689,26 @@ export async function handleReviewHistoryRequest(
   }
 
   try {
-    const identityOrigin = requireServiceOrigin(environment.IDENTITY_SERVICE_ORIGIN);
-    const reviewOrigin = requireServiceOrigin(environment.REVIEW_SERVICE_ORIGIN);
-    const secret = requireGatewaySecret(environment.REVIEW_GATEWAY_CONTEXT_SECRET);
+    const identityOrigin = requireServiceOrigin(
+      environment.IDENTITY_SERVICE_ORIGIN,
+    );
+    const reviewOrigin = requireServiceOrigin(
+      environment.REVIEW_SERVICE_ORIGIN,
+    );
+    const secret = requireGatewaySecret(
+      environment.REVIEW_GATEWAY_CONTEXT_SECRET,
+    );
     const correlationId = randomUUID();
-    const identityResponse = await fetcher(new URL('/v1/session', identityOrigin), {
-      method: 'GET',
-      headers: requestHeaders({ cookie, 'x-correlation-id': correlationId }),
-      cache: 'no-store',
-      redirect: 'error',
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+    const identityResponse = await fetcher(
+      new URL('/v1/session', identityOrigin),
+      {
+        method: 'GET',
+        headers: requestHeaders({ cookie, 'x-correlation-id': correlationId }),
+        cache: 'no-store',
+        redirect: 'error',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      },
+    );
     if (identityResponse.status === 401) {
       return problemResponse(
         401,
@@ -716,6 +743,7 @@ export async function handleReviewHistoryRequest(
     const history = parseReviewCollection(
       await readBoundedJson(reviewResponse, MAXIMUM_RESPONSE_BYTES),
       workspaceId,
+      limit,
     );
     return Response.json(history, {
       status: 200,
