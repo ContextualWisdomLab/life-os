@@ -146,6 +146,9 @@ jobs:
 
           path.write_text(source)
           PY
+          # The verifier is formatted transiently so this run can prove the same
+          # exact assertions, but it is restored before publication. GitHub App
+          # workflow-file mutation is not an available publication credential.
           pnpm exec prettier --single-quote --write \
             apps/web/app/ai-proposal-client-core.ts \
             .github/workflows/verify-web-ai-proposal-canonical-evidence.yml
@@ -162,16 +165,16 @@ jobs:
           pnpm --filter @life-os/web typecheck
           pnpm --filter @life-os/web test
 
-      - name: Guard bounded semantic delta and self-retire
+      - name: Guard bounded source publication
         shell: bash
         run: |
           set -euo pipefail
-          git rm .github/workflows/repair-web-ai-proposal-canonical-evidence.yml
-          git add \
-            apps/web/app/ai-proposal-client-core.ts \
-            .github/workflows/verify-web-ai-proposal-canonical-evidence.yml
+          # Preserve the branch workflow tree; workflow retirement/canonicalization
+          # is performed by the authorized repository writer after source publish.
+          git restore --source="$GITHUB_SHA" -- .github/workflows/verify-web-ai-proposal-canonical-evidence.yml
+          git add apps/web/app/ai-proposal-client-core.ts
           changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
-          expected="$(printf '%s\n' .github/workflows/repair-web-ai-proposal-canonical-evidence.yml .github/workflows/verify-web-ai-proposal-canonical-evidence.yml apps/web/app/ai-proposal-client-core.ts | LC_ALL=C sort)"
+          expected='apps/web/app/ai-proposal-client-core.ts'
           test "$changed" = "$expected"
           git diff --check --cached
 
