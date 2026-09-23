@@ -151,17 +151,23 @@ jobs:
           PY
           pnpm exec prettier --single-quote --write apps/web/app/planning-search-client.ts
 
-      - name: Prove exact Web repair GREEN
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm exec prettier --single-quote --check \
-            apps/web/app/planning-search-client.ts \
-            apps/web/app/planning-search-canonical-evidence.test.ts \
-            .github/workflows/verify-web-planning-search-canonical-evidence.yml
-          pnpm --filter @life-os/web exec tsx --test app/planning-search-canonical-evidence.test.ts
-          pnpm --filter @life-os/web typecheck
-          pnpm --filter @life-os/web test
+      - name: Check repaired source and evidence formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/web/app/planning-search-client.ts
+          apps/web/app/planning-search-canonical-evidence.test.ts
+          .github/workflows/verify-web-planning-search-canonical-evidence.yml
+
+      - name: Prove canonical producer-evidence regression GREEN
+        run: >-
+          pnpm --filter @life-os/web exec tsx --test
+          app/planning-search-canonical-evidence.test.ts
+
+      - name: Typecheck Web after repair
+        run: pnpm --filter @life-os/web typecheck
+
+      - name: Run complete Web suite after repair
+        run: pnpm --filter @life-os/web test
 
       - name: Guard bounded source publication
         shell: bash
