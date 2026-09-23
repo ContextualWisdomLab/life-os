@@ -1,0 +1,61 @@
+name: Verify Storybook Material Evidence RED
+
+on:
+  push:
+    branches:
+      - test/storybook-material-evidence-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require bounded RED authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          protected_main='193a87ef54c3fe6dcda4755bce4d6bc81e3a0297'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "$remote_head"
+          test "$remote_head" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$protected_main" "$GITHUB_SHA"
+
+          changed="$(git diff --name-only "$protected_main" "$GITHUB_SHA" | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            '.github/workflows/verify-storybook-material-evidence-red.yml' \
+            'apps/web/app/components/storybook-material-evidence-red.test.ts')"
+          test "$changed" = "$expected"
+          git diff --check "$protected_main" "$GITHUB_SHA"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/web/app/components/storybook-material-evidence-red.test.ts
+          .github/workflows/verify-storybook-material-evidence-red.yml
+
+      - name: Reproduce missing Storybook material evidence
+        run: >-
+          pnpm --filter @life-os/web exec tsx --test
+          app/components/storybook-material-evidence-red.test.ts
