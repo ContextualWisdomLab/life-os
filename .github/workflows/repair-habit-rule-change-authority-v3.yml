@@ -112,12 +112,16 @@ jobs:
 
           path = Path('apps/habit-service/src/habit-review-projection.test.ts')
           text = path.read_text()
-          old = """    const [daily] = await service.listHabits(WORKSPACE_ID);
-              if (!daily) throw new Error('Expected seeded habit');"""
-          new = """    const daily = (await service.listHabits(WORKSPACE_ID)).find(
-                (habit) => habit.title === 'Read deliberately',
-              );
-              if (!daily) throw new Error('Expected seeded habit');"""
+          old = (
+              "    const [daily] = await service.listHabits(WORKSPACE_ID);\n"
+              "    if (!daily) throw new Error('Expected seeded habit');"
+          )
+          new = (
+              "    const daily = (await service.listHabits(WORKSPACE_ID)).find(\n"
+              "      (habit) => habit.title === 'Read deliberately',\n"
+              "    );\n"
+              "    if (!daily) throw new Error('Expected seeded habit');"
+          )
           count = text.count(old)
           if count != 2:
               raise SystemExit(
@@ -206,7 +210,7 @@ jobs:
           changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
           allowed="$(printf '%s\n' \
             .github/workflows/repair-habit-rule-change-authority-v3.yml \
-            apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
+            apps/habit-service/migrations/0005_habit_rule_change-authority.sql \
             apps/habit-service/src/habit-domain.ts \
             apps/habit-service/src/postgres-habit-repository.ts \
             apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
