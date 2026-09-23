@@ -13,10 +13,7 @@ function sign(
   secret = GATEWAY_SECRET,
 ): string {
   return createHmac('sha256', secret)
-    .update(
-      `life-os.workspace.v1\n${workspaceId.toLowerCase()}\n${issuedAt}`,
-      'utf8',
-    )
+    .update(`life-os.workspace.v1\n${workspaceId}\n${issuedAt}`, 'utf8')
     .digest('base64url');
 }
 
@@ -30,7 +27,10 @@ function expectProblem(
   } catch (error) {
     expect(error).toBeInstanceOf(HttpException);
     expect((error as HttpException).getStatus()).toBe(status);
-    expect((error as HttpException).getResponse()).toMatchObject({ status, code });
+    expect((error as HttpException).getResponse()).toMatchObject({
+      status,
+      code,
+    });
     return;
   }
   throw new Error(`Expected HTTP ${status}`);
@@ -42,7 +42,7 @@ describe('Habit signed workspace context', () => {
     expect(
       requireTrustedWorkspaceContext(
         {
-          workspaceId: WORKSPACE_ID.toUpperCase(),
+          workspaceId: WORKSPACE_ID,
           issuedAt,
           signature: sign(WORKSPACE_ID, issuedAt),
         },
