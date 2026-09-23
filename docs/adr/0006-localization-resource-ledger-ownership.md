@@ -98,7 +98,7 @@ Exact table/API shapes remain intentionally undecided until RED evidence and mig
 
 BCP 47 / RFC 5646 defines the language-tag framework and distinguishes syntactic well-formedness from semantic validity. LifeOS intentionally exposes only a fixed product allowlist today; broad BCP 47 acceptance would be a separate contract revision rather than an implicit parser behavior.
 
-Unicode CLDR/UTS #35 is the authoritative locale-data ecosystem for language/locale data such as formatting conventions. The latest stable CLDR available at this decision date is 48.2 (released 2026-03-17); CLDR 49 is still draft/alpha and therefore is not treated as stable publication authority. LifeOS translation entries are product copy, not a replacement for CLDR locale data. Future date/number/plural formatting should consume platform/ICU/CLDR semantics rather than duplicating them in this ledger.
+Unicode CLDR/UTS #35 is the authoritative locale-data ecosystem for language/locale data such as formatting conventions. As of 2026-09-23, Unicode's releases/downloads index still lists **CLDR 48.2 (2026-03-17)** as the latest stable CLDR release, while the CLDR 48 release notes also record a **48.2.1 JSON maintenance update (2026-07-08)** for TZDB 2026c compatibility. **CLDR 49 Alpha** was published for integration testing on 2026-09-04 and is not treated as stable publication authority. LifeOS translation entries are product copy, not a replacement for CLDR locale data. Future date/number/plural formatting should consume platform/ICU/CLDR semantics rather than duplicating them in this ledger.
 
 ## Evidence
 
@@ -124,4 +124,8 @@ Phillips, A., & Davis, M. (Eds.). (2009). *Tags for identifying languages (BCP 4
 
 Unicode Consortium. (2026). *Unicode Locale Data Markup Language (LDML), Version 48.2 (Unicode Technical Standard #35).* https://www.unicode.org/reports/tr35/
 
-Unicode Consortium. (2026, March 17). *Common Locale Data Repository 48.2.* https://cldr.unicode.org/
+Unicode Consortium. (2026, March 17). *Common Locale Data Repository 48.2.* https://cldr.unicode.org/index/downloads
+
+Unicode Consortium. (2026, July 8). *CLDR 48.2.1 changes.* https://cldr.unicode.org/downloads/cldr-48
+
+Unicode Consortium. (2026, September 4). *Unicode CLDR 49 Alpha available for testing.* https://blog.unicode.org/2026/09/unicode-cldr-49-alpha-available-for.html
