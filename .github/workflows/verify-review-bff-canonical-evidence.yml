@@ -40,6 +40,7 @@ jobs:
           test "${remote_head}" = "$GITHUB_SHA"
           git merge-base --is-ancestor 5d6f22b33c58e73d4481cd8380e824db9fbf77f1 "$GITHUB_SHA"
           test ! -e .github/workflows/repair-review-optional-reflection-exactness.yml
+          test ! -e .github/workflows/repair-review-bff-canonical-evidence-formatting.yml
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
