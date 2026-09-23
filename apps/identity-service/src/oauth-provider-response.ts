@@ -79,7 +79,14 @@ function parseScopes(value: unknown): string[] {
   if (typeof value !== 'string') {
     return failProviderResponse();
   }
-  return [...new Set(value.split(/[\s,]+/).map((scope) => scope.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      value
+        .split(/[\s,]+/)
+        .map((scope) => scope.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function parsePositiveSeconds(value: unknown): number {
@@ -101,7 +108,8 @@ export function parseOAuthTokenResponse(
     typeof response.body !== 'string' ||
     Buffer.byteLength(response.body, 'utf8') > MAX_PROVIDER_RESPONSE_BYTES ||
     typeof response.contentType !== 'string' ||
-    response.contentType.split(';', 1)[0]?.trim().toLowerCase() !== 'application/json'
+    response.contentType.split(';', 1)[0]?.trim().toLowerCase() !==
+      'application/json'
   ) {
     return failProviderResponse();
   }
@@ -113,8 +121,14 @@ export function parseOAuthTokenResponse(
     return failProviderResponse();
   }
   const payload = asRecord(parsed);
-  const accessToken = requireString(payload.access_token, INVALID_PROVIDER_RESPONSE);
-  const tokenType = requireString(payload.token_type, INVALID_PROVIDER_RESPONSE).toLowerCase();
+  const accessToken = requireString(
+    payload.access_token,
+    INVALID_PROVIDER_RESPONSE,
+  );
+  const tokenType = requireString(
+    payload.token_type,
+    INVALID_PROVIDER_RESPONSE,
+  ).toLowerCase();
   if (tokenType !== 'bearer') {
     return failProviderResponse();
   }
@@ -141,15 +155,23 @@ export function parseOAuthTokenResponse(
 function constantTimeEqual(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left, 'utf8');
   const rightBuffer = Buffer.from(right, 'utf8');
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
 }
 
-function readStringClaim(claims: Record<string, unknown>, key: string): string | undefined {
+function readStringClaim(
+  claims: Record<string, unknown>,
+  key: string,
+): string | undefined {
   const value = claims[key];
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function readExactNonceClaim(claims: Record<string, unknown>): string | undefined {
+function readExactNonceClaim(
+  claims: Record<string, unknown>,
+): string | undefined {
   const value = claims.nonce;
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
@@ -188,7 +210,8 @@ export function validateVerifiedGoogleIdentity(
 ): ProviderIdentityProfile {
   const clientId = requireString(expected.clientId, INVALID_GOOGLE_ID_TOKEN);
   const nonce = requireExactNonce(expected.nonce);
-  const clockSkewSeconds = expected.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS;
+  const clockSkewSeconds =
+    expected.clockSkewSeconds ?? DEFAULT_CLOCK_SKEW_SECONDS;
   const now = expected.now ?? new Date();
   if (
     !token ||
@@ -215,7 +238,8 @@ export function validateVerifiedGoogleIdentity(
   const nowSeconds = Math.floor(now.getTime() / 1000);
 
   if (
-    (issuer !== 'https://accounts.google.com' && issuer !== 'accounts.google.com') ||
+    (issuer !== 'https://accounts.google.com' &&
+      issuer !== 'accounts.google.com') ||
     !providerSubject ||
     providerSubject.length > 255 ||
     !/^[\x21-\x7e]+$/.test(providerSubject) ||
@@ -237,8 +261,10 @@ export function validateVerifiedGoogleIdentity(
     throw new Error(INVALID_GOOGLE_ID_TOKEN);
   }
 
-  const verifiedEmail = claims.email_verified === true ? validEmail(claims.email) : undefined;
-  const displayName = readStringClaim(claims, 'name') ?? verifiedEmail ?? 'Google user';
+  const verifiedEmail =
+    claims.email_verified === true ? validEmail(claims.email) : undefined;
+  const displayName =
+    readStringClaim(claims, 'name') ?? verifiedEmail ?? 'Google user';
   return {
     provider: 'google',
     providerSubject,
@@ -296,7 +322,11 @@ export function normalizeGitHubIdentity(
   userPayloadValue: unknown,
   emailPayloadValue: unknown,
 ): ProviderIdentityProfile {
-  if (!userPayloadValue || typeof userPayloadValue !== 'object' || Array.isArray(userPayloadValue)) {
+  if (
+    !userPayloadValue ||
+    typeof userPayloadValue !== 'object' ||
+    Array.isArray(userPayloadValue)
+  ) {
     throw new Error(INVALID_GITHUB_IDENTITY);
   }
   if (!Array.isArray(emailPayloadValue)) {
@@ -320,9 +350,12 @@ export function normalizeGitHubIdentity(
       email: validEmail(entry.email),
       primary: entry.primary === true,
     }))
-    .filter((entry): entry is { email: string; primary: boolean } => Boolean(entry.email));
+    .filter((entry): entry is { email: string; primary: boolean } =>
+      Boolean(entry.email),
+    );
   const verifiedEmail =
-    verifiedEmails.find((entry) => entry.primary)?.email ?? verifiedEmails[0]?.email;
+    verifiedEmails.find((entry) => entry.primary)?.email ??
+    verifiedEmails[0]?.email;
 
   return {
     provider: 'github',
