@@ -103,19 +103,19 @@ replace_once(
     "else requestHeaders.set('if-match', `\"${revision}\"`);",
 )
 
-planning = "apps/planning-service/src/today-http.ts"
+planning_http = "apps/planning-service/src/today-http.ts"
 replace_once(
-    planning,
+    planning_http,
     "import { canonicalTodayDate, canonicalTodayUuidV4 } from './today-invariants';",
     "import { canonicalTodayDate } from './today-invariants';",
 )
 replace_once(
-    planning,
+    planning_http,
     "} from './today-sync';\n\n",
     "} from './today-sync';\n\nconst TODAY_REVISION_ENTITY_TAG_PATTERN =\n  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\n",
 )
 replace_once(
-    planning,
+    planning_http,
     """  const match = /^\"([^\"\\r\\n]+)\"$/u.exec(ifMatch ?? '');
   if (!match?.[1]) return invalidTodayPrecondition();
   return Object.freeze({
@@ -128,5 +128,29 @@ replace_once(
     return invalidTodayPrecondition();
   }
   return Object.freeze({ kind: 'match', revision: match[1] });
+""",
+)
+
+planning_sync = "apps/planning-service/src/today-sync.ts"
+replace_once(
+    planning_sync,
+    "export type { DurableTodayAction, DurableTodayDraft } from './today-invariants';\n\n",
+    "export type { DurableTodayAction, DurableTodayDraft } from './today-invariants';\n\nconst TODAY_REVISION_TOKEN_PATTERN =\n  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\n\n",
+)
+replace_once(
+    planning_sync,
+    """  if (value.kind === 'match') {
+    return Object.freeze({
+      kind: 'match',
+      revision: canonicalTodayUuidV4(value.revision, invalidTodayInput),
+    });
+  }
+""",
+    """  if (value.kind === 'match') {
+    if (!TODAY_REVISION_TOKEN_PATTERN.test(value.revision)) {
+      throw new TodayValidationError();
+    }
+    return Object.freeze({ kind: 'match', revision: value.revision });
+  }
 """,
 )
