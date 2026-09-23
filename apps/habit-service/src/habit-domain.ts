@@ -15,6 +15,25 @@ export interface WeeklyRecurrence {
 
 export type HabitRecurrence = DailyRecurrence | WeeklyRecurrence;
 
+/** Canonical semantic command for one effective-dated Habit definition revision. */
+export interface HabitDefinitionRevisionCommand {
+  effectiveFromLocalDate: string;
+  title: string;
+  timezone: string;
+  recurrence: HabitRecurrence;
+  idempotencyKey: string;
+}
+
+/** Durable producer evidence returned after one accepted definition revision. */
+export interface HabitDefinitionRevisionEvidence {
+  schemaVersion: 'life-os.habit-definition-revision.v1';
+  workspaceId: string;
+  habitId: string;
+  revisionNumber: number;
+  effectiveFromLocalDate: string;
+  recordedAt: string;
+}
+
 export interface Habit {
   id: string;
   workspaceId: string;
@@ -80,10 +99,17 @@ export interface HabitReviewCompletionEvidence {
   scheduledLocalDate: string;
 }
 
+/** Definition that was effective for one Habit-local Review date. */
+export interface HabitReviewDefinitionDayEvidence {
+  localDate: string;
+  habit: Habit;
+}
+
 /** Bounded Habit-owned persistence evidence for exactly one Review week. */
 export interface HabitReviewWeekEvidence {
   habits: readonly Habit[];
   completions: readonly HabitReviewCompletionEvidence[];
+  definitionDays?: readonly HabitReviewDefinitionDayEvidence[];
 }
 
 export interface HabitRepository {
@@ -108,6 +134,16 @@ export interface HabitRepository {
     maximumHabits: number,
     asOf: string,
   ): Promise<HabitReviewWeekEvidence>;
+}
+
+/** Persistence capability for atomic, durable effective-dated definition changes. */
+export interface HabitDefinitionRevisionRepository {
+  reviseHabitDefinition(
+    workspaceId: string,
+    habitId: string,
+    command: HabitDefinitionRevisionCommand,
+    recordedAt: string,
+  ): Promise<HabitDefinitionRevisionEvidence>;
 }
 
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -487,7 +523,7 @@ export class HabitService {
       timezone: requireTimezone(input.timezone),
       startsOn: parseLocalDate(input.startsOn).text,
       recurrence: normalizeRecurrence(input.recurrence),
-      createdAt: new Date().toISOString(),
+      createdAt: requireTimestamp(this.projectionClock()),
     };
     await this.repository.saveHabit(habit);
     return cloneHabit(habit);
@@ -495,6 +531,32 @@ export class HabitService {
 
   async listHabits(workspaceId: string): Promise<Habit[]> {
     return await this.repository.listHabits(requireOpaqueId(workspaceId));
+  }
+
+  /** Applies one normalized definition change through the repository's atomic authority. */
+  async reviseHabitDefinition(
+    workspaceId: string,
+    habitId: string,
+    command: HabitDefinitionRevisionCommand,
+  ): Promise<HabitDefinitionRevisionEvidence> {
+    const repository = this.repository as HabitRepository &
+      Partial<HabitDefinitionRevisionRepository>;
+    if (typeof repository.reviseHabitDefinition !== 'function') {
+      throw new Error('Habit repository does not support definition revisions');
+    }
+    return await repository.reviseHabitDefinition(
+      requireOpaqueId(workspaceId),
+      requireOpaqueId(habitId),
+      {
+        effectiveFromLocalDate: parseLocalDate(command.effectiveFromLocalDate)
+          .text,
+        title: requireTitle(command.title),
+        timezone: requireTimezone(command.timezone),
+        recurrence: normalizeRecurrence(command.recurrence),
+        idempotencyKey: requireUuidV4(command.idempotencyKey),
+      },
+      requireTimestamp(this.projectionClock()),
+    );
   }
 
   /** Returns Habit-owned scheduled/completion evidence for one local date. */
@@ -573,6 +635,36 @@ export class HabitService {
     if (habitIds.size !== habits.length) {
       throw new Error('Review projection habit evidence is invalid');
     }
+    const definitionDaysByHabit = new Map<string, Map<string, Habit>>();
+    if (evidence.definitionDays !== undefined) {
+      if (evidence.definitionDays.length !== habits.length * REVIEW_WEEK_DAYS) {
+        throw new Error('Review projection definition evidence is invalid');
+      }
+      for (const definitionDay of evidence.definitionDays) {
+        const localDate = parseLocalDate(definitionDay.localDate).text;
+        const definition = definitionDay.habit;
+        if (
+          localDate < periodStart.text ||
+          localDate > periodEndDate ||
+          definition.workspaceId !== safeWorkspaceId ||
+          !habitIds.has(definition.id)
+        ) {
+          throw new Error('Review projection definition evidence is invalid');
+        }
+        const definitions =
+          definitionDaysByHabit.get(definition.id) ?? new Map<string, Habit>();
+        if (definitions.has(localDate)) {
+          throw new Error('Review projection definition evidence is invalid');
+        }
+        definitions.set(localDate, cloneHabit(definition));
+        definitionDaysByHabit.set(definition.id, definitions);
+      }
+      for (const habit of habits) {
+        if (definitionDaysByHabit.get(habit.id)?.size !== REVIEW_WEEK_DAYS) {
+          throw new Error('Review projection definition evidence is invalid');
+        }
+      }
+    }
     const completionDatesByHabit = new Map<string, Set<string>>();
     for (const completion of evidence.completions) {
       if (
@@ -594,11 +686,36 @@ export class HabitService {
       if (habit.workspaceId !== safeWorkspaceId) {
         throw new Error('Review projection ownership is invalid');
       }
-      const scheduledDates = new Set(
-        generateHabitOccurrences(habit, periodStart.text, periodEndDate).map(
-          (occurrence) => occurrence.scheduledLocalDate,
-        ),
-      );
+      let presentationHabit = habit;
+      let scheduledDates: Set<string>;
+      const definitions = definitionDaysByHabit.get(habit.id);
+      if (definitions) {
+        scheduledDates = new Set<string>();
+        for (
+          let epochDay = periodStart.epochDay;
+          epochDay <= periodStart.epochDay + REVIEW_WEEK_DAYS - 1;
+          epochDay += 1
+        ) {
+          const localDate = localDateFromEpochDay(epochDay).text;
+          const definition = definitions.get(localDate);
+          if (!definition) {
+            throw new Error('Review projection definition evidence is invalid');
+          }
+          if (
+            generateHabitOccurrences(definition, localDate, localDate)
+              .length === 1
+          ) {
+            scheduledDates.add(localDate);
+          }
+          presentationHabit = definition;
+        }
+      } else {
+        scheduledDates = new Set(
+          generateHabitOccurrences(habit, periodStart.text, periodEndDate).map(
+            (occurrence) => occurrence.scheduledLocalDate,
+          ),
+        );
+      }
       const completedDates =
         completionDatesByHabit.get(habit.id) ?? new Set<string>();
       for (const completedDate of completedDates) {
@@ -608,8 +725,8 @@ export class HabitService {
       }
       entries.push({
         habitId: habit.id,
-        title: habit.title,
-        timezone: habit.timezone,
+        title: presentationHabit.title,
+        timezone: presentationHabit.timezone,
         scheduledOpportunityCount: scheduledDates.size,
         completedOpportunityCount: completedDates.size,
       });
@@ -692,7 +809,7 @@ export class HabitService {
     ) {
       throw new Error('Habit is not scheduled on this date');
     }
-    const now = new Date().toISOString();
+    const now = requireTimestamp(this.projectionClock());
     return await this.repository.appendCompletion({
       id: randomUUID(),
       workspaceId: safeWorkspaceId,

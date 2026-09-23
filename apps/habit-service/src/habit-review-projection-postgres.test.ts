@@ -114,9 +114,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
     );
     expect(client.calls[1]?.values).toEqual(client.calls[0]?.values);
     expect(client.calls[1]?.text).toContain('CROSS JOIN review_days');
-    expect(client.calls[1]?.text).toContain(
-      'habit.habit_definition_revisions',
-    );
+    expect(client.calls[1]?.text).toContain('habit.habit_definition_revisions');
     expect(evidence.habits).toHaveLength(1);
     expect(evidence.completions).toEqual([
       {

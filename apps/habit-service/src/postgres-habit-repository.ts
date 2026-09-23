@@ -1,9 +1,12 @@
 import type {
   Habit,
   HabitCompletionEvent,
+  HabitDefinitionRevisionCommand,
+  HabitDefinitionRevisionEvidence,
   HabitRecurrence,
   HabitRepository,
   HabitReviewCompletionEvidence,
+  HabitReviewDefinitionDayEvidence,
   HabitReviewWeekEvidence,
   IsoWeekday,
 } from './habit-domain';
@@ -47,6 +50,18 @@ interface ReviewProjectionRow extends HabitRow {
   completion_workspace_id: unknown;
   completion_habit_id: unknown;
   completion_scheduled_local_date: unknown;
+}
+
+interface DefinitionDayRow extends HabitRow {
+  scheduled_local_date: unknown;
+}
+
+interface HabitDefinitionRevisionRow {
+  workspace_id: unknown;
+  habit_id: unknown;
+  revision_number: unknown;
+  effective_from_local_date: unknown;
+  recorded_at: unknown;
 }
 
 interface PostgreSqlErrorShape {
@@ -133,6 +148,35 @@ function snapshotReviewProjectionRows(
       });
     }
     return snapshot;
+  });
+}
+
+function snapshotDefinitionDayRows(
+  result: HabitSqlQueryResult<DefinitionDayRow>,
+  maximumRows: number,
+): DefinitionDayRow[] {
+  return boundedReviewEvidenceRead(() => {
+    const rows = result.rows;
+    if (!Array.isArray(rows) || rows.length > maximumRows) {
+      return invalidRow();
+    }
+    return rows.map((row) => {
+      if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+        return invalidRow();
+      }
+      return {
+        id: row.id,
+        workspace_id: row.workspace_id,
+        title: row.title,
+        timezone_name: row.timezone_name,
+        recurrence_kind: row.recurrence_kind,
+        recurrence_interval: row.recurrence_interval,
+        weekday_mask: row.weekday_mask,
+        starts_on: row.starts_on,
+        created_at: row.created_at,
+        scheduled_local_date: row.scheduled_local_date,
+      };
+    });
   });
 }
 
@@ -345,6 +389,29 @@ function parseCompletion(
   return completion;
 }
 
+function parseDefinitionRevisionEvidence(
+  row: HabitDefinitionRevisionRow,
+  expectedWorkspaceId: string,
+  expectedHabitId: string,
+): HabitDefinitionRevisionEvidence {
+  const workspaceId = requireUuidV4(row.workspace_id);
+  const habitId = requireUuidV4(row.habit_id);
+  requireExpected(workspaceId, expectedWorkspaceId);
+  requireExpected(habitId, expectedHabitId);
+  return {
+    schemaVersion: 'life-os.habit-definition-revision.v1',
+    workspaceId,
+    habitId,
+    revisionNumber: requireInteger(
+      row.revision_number,
+      2,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    effectiveFromLocalDate: requireLocalDate(row.effective_from_local_date),
+    recordedAt: requireTimestamp(row.recorded_at),
+  };
+}
+
 function validateHabit(habit: Habit): Habit {
   const recurrence = recurrenceValues(habit.recurrence);
   return parseHabit({
@@ -453,10 +520,26 @@ export class PostgresHabitRepository implements HabitRepository {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const safeHabitId = requireUuidV4(habitId);
     const result = await this.query<HabitRow>(
-      `SELECT id, workspace_id, title, timezone_name, recurrence_kind,
-              recurrence_interval, weekday_mask, starts_on, created_at
-       FROM habit.habit_definitions
-       WHERE workspace_id = $1 AND id = $2
+      `SELECT current.id, current.workspace_id,
+              COALESCE(revision.title, current.title) AS title,
+              COALESCE(revision.timezone_name, current.timezone_name) AS timezone_name,
+              COALESCE(revision.recurrence_kind, current.recurrence_kind) AS recurrence_kind,
+              COALESCE(revision.recurrence_interval, current.recurrence_interval)
+                AS recurrence_interval,
+              COALESCE(revision.weekday_mask, current.weekday_mask) AS weekday_mask,
+              current.starts_on, current.created_at
+       FROM habit.habit_definitions AS current
+       LEFT JOIN LATERAL (
+         SELECT title, timezone_name, recurrence_kind,
+                recurrence_interval, weekday_mask
+         FROM habit.habit_definition_revisions
+         WHERE workspace_id = current.workspace_id
+           AND habit_id = current.id
+           AND effective_from <= clock_timestamp()
+         ORDER BY effective_from DESC, revision_number DESC
+         LIMIT 1
+       ) AS revision ON TRUE
+       WHERE current.workspace_id = $1 AND current.id = $2
        LIMIT 2`,
       [safeWorkspaceId, safeHabitId],
     );
@@ -467,17 +550,77 @@ export class PostgresHabitRepository implements HabitRepository {
   async listHabits(workspaceId: string): Promise<Habit[]> {
     const safeWorkspaceId = requireUuidV4(workspaceId);
     const result = await this.query<HabitRow>(
-      `SELECT id, workspace_id, title, timezone_name, recurrence_kind,
-              recurrence_interval, weekday_mask, starts_on, created_at
-       FROM habit.habit_definitions
-       WHERE workspace_id = $1
-       ORDER BY created_at ASC, id ASC`,
+      `SELECT current.id, current.workspace_id,
+              COALESCE(revision.title, current.title) AS title,
+              COALESCE(revision.timezone_name, current.timezone_name) AS timezone_name,
+              COALESCE(revision.recurrence_kind, current.recurrence_kind) AS recurrence_kind,
+              COALESCE(revision.recurrence_interval, current.recurrence_interval)
+                AS recurrence_interval,
+              COALESCE(revision.weekday_mask, current.weekday_mask) AS weekday_mask,
+              current.starts_on, current.created_at
+       FROM habit.habit_definitions AS current
+       LEFT JOIN LATERAL (
+         SELECT title, timezone_name, recurrence_kind,
+                recurrence_interval, weekday_mask
+         FROM habit.habit_definition_revisions
+         WHERE workspace_id = current.workspace_id
+           AND habit_id = current.id
+           AND effective_from <= clock_timestamp()
+         ORDER BY effective_from DESC, revision_number DESC
+         LIMIT 1
+       ) AS revision ON TRUE
+       WHERE current.workspace_id = $1
+       ORDER BY current.created_at ASC, current.id ASC`,
       [safeWorkspaceId],
     );
     return result.rows.map((row) => parseHabit(row, safeWorkspaceId));
   }
 
-  /** Reads one tenant week in a single bounded statement to avoid N+1 history scans. */
+  /** Persists one semantic definition change as a single short PostgreSQL authority call. */
+  async reviseHabitDefinition(
+    workspaceId: string,
+    habitId: string,
+    command: HabitDefinitionRevisionCommand,
+    recordedAt: string,
+  ): Promise<HabitDefinitionRevisionEvidence> {
+    const safeWorkspaceId = requireUuidV4(workspaceId);
+    const safeHabitId = requireUuidV4(habitId);
+    const safeEffectiveFromLocalDate = requireLocalDate(
+      command.effectiveFromLocalDate,
+    );
+    const safeTitle = requireText(command.title).trim();
+    const safeTimezone = requireTimezone(command.timezone);
+    const recurrence = recurrenceValues(command.recurrence);
+    const safeIdempotencyKey = requireUuidV4(command.idempotencyKey);
+    const safeRecordedAt = requireTimestamp(recordedAt);
+    const result = await this.query<HabitDefinitionRevisionRow>(
+      `SELECT workspace_id, habit_id, revision_number,
+              effective_from_local_date, recorded_at
+       FROM habit.revise_habit_definition(
+         $1::uuid, $2::uuid, $3::date, $4::text, $5::text,
+         $6::text, $7::smallint, $8::smallint, $9::uuid, $10::timestamptz
+       )`,
+      [
+        safeWorkspaceId,
+        safeHabitId,
+        safeEffectiveFromLocalDate,
+        safeTitle,
+        safeTimezone,
+        recurrence.kind,
+        recurrence.interval,
+        recurrence.weekdayMask,
+        safeIdempotencyKey,
+        safeRecordedAt,
+      ],
+    );
+    return parseDefinitionRevisionEvidence(
+      exactlyOne(result.rows),
+      safeWorkspaceId,
+      safeHabitId,
+    );
+  }
+
+  /** Reads one tenant week in bounded statements without per-Habit history scans. */
   async readReviewWeekEvidence(
     workspaceId: string,
     periodStartDate: string,
@@ -566,7 +709,7 @@ export class PostgresHabitRepository implements HabitRepository {
       queryLimit * REVIEW_WEEK_DAYS,
     );
 
-    return boundedReviewEvidenceRead(() => {
+    const baseEvidence = boundedReviewEvidenceRead(() => {
       const habitsById = new Map<string, Habit>();
       const completions: HabitReviewCompletionEvidence[] = [];
       for (const row of rows) {
@@ -614,6 +757,108 @@ export class PostgresHabitRepository implements HabitRepository {
       }
       return { habits: [...habitsById.values()], completions };
     });
+
+    const definitionResult = await this.query<DefinitionDayRow>(
+      `WITH bounded_current_habits AS (
+         SELECT id, workspace_id, title, timezone_name, recurrence_kind,
+                recurrence_interval, weekday_mask, starts_on, created_at
+         FROM habit.habit_definitions
+         WHERE workspace_id = $1
+           AND created_at <= $4::timestamptz
+         ORDER BY created_at ASC, id ASC
+         LIMIT $5
+       ),
+       bounded_habits AS (
+         SELECT COALESCE(history.id, current.id) AS id,
+                COALESCE(history.workspace_id, current.workspace_id) AS workspace_id,
+                COALESCE(history.title, current.title) AS title,
+                COALESCE(history.timezone_name, current.timezone_name) AS timezone_name,
+                COALESCE(history.recurrence_kind, current.recurrence_kind) AS recurrence_kind,
+                COALESCE(history.recurrence_interval, current.recurrence_interval)
+                  AS recurrence_interval,
+                COALESCE(history.weekday_mask, current.weekday_mask) AS weekday_mask,
+                COALESCE(history.starts_on, current.starts_on) AS starts_on,
+                COALESCE(history.created_at, current.created_at) AS created_at
+         FROM bounded_current_habits AS current
+         LEFT JOIN LATERAL (
+           SELECT id, workspace_id, title, timezone_name, recurrence_kind,
+                  recurrence_interval, weekday_mask, starts_on, created_at
+           FROM habit.habit_definition_history
+           WHERE workspace_id = current.workspace_id
+             AND id = current.id
+             AND superseded_at > $4::timestamptz
+           ORDER BY superseded_at ASC, history_sequence ASC
+           LIMIT 1
+         ) AS history ON TRUE
+       ),
+       review_days AS (
+         SELECT generate_series(
+           $2::date,
+           $3::date,
+           interval '1 day'
+         )::date AS local_date
+       )
+       SELECT h.id, h.workspace_id,
+              COALESCE(revision.title, h.title) AS title,
+              COALESCE(revision.timezone_name, h.timezone_name) AS timezone_name,
+              COALESCE(revision.recurrence_kind, h.recurrence_kind) AS recurrence_kind,
+              COALESCE(revision.recurrence_interval, h.recurrence_interval)
+                AS recurrence_interval,
+              COALESCE(revision.weekday_mask, h.weekday_mask) AS weekday_mask,
+              h.starts_on, h.created_at,
+              day.local_date AS scheduled_local_date
+       FROM bounded_habits AS h
+       CROSS JOIN review_days AS day
+       LEFT JOIN LATERAL (
+         SELECT title, timezone_name, recurrence_kind,
+                recurrence_interval, weekday_mask
+         FROM habit.habit_definition_revisions
+         WHERE workspace_id = h.workspace_id
+           AND habit_id = h.id
+           AND effective_from_local_date <= day.local_date
+           AND recorded_at <= $4::timestamptz
+         ORDER BY effective_from_local_date DESC, revision_number DESC
+         LIMIT 1
+       ) AS revision ON TRUE
+       ORDER BY h.created_at ASC, h.id ASC, day.local_date ASC`,
+      [
+        safeWorkspaceId,
+        safePeriodStartDate,
+        safePeriodEndDate,
+        safeAsOf,
+        queryLimit,
+      ],
+    );
+    const definitionRows = snapshotDefinitionDayRows(
+      definitionResult,
+      queryLimit * REVIEW_WEEK_DAYS,
+    );
+    const definitionDays = boundedReviewEvidenceRead(() => {
+      const expectedHabitIds = new Set(
+        baseEvidence.habits.map((habit) => habit.id),
+      );
+      const days: HabitReviewDefinitionDayEvidence[] = definitionRows.map(
+        (row) => {
+          const localDate = requireLocalDate(row.scheduled_local_date);
+          if (
+            localDate < safePeriodStartDate ||
+            localDate > safePeriodEndDate
+          ) {
+            return invalidRow();
+          }
+          const habit = parseHabit(row, safeWorkspaceId);
+          if (!expectedHabitIds.has(habit.id)) {
+            return invalidRow();
+          }
+          return { localDate, habit };
+        },
+      );
+      if (days.length !== baseEvidence.habits.length * REVIEW_WEEK_DAYS) {
+        return invalidRow();
+      }
+      return days;
+    });
+    return { ...baseEvidence, definitionDays };
   }
 
   async appendCompletion(
