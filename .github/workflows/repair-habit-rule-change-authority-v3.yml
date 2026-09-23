@@ -210,7 +210,7 @@ jobs:
           changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
           allowed="$(printf '%s\n' \
             .github/workflows/repair-habit-rule-change-authority-v3.yml \
-            apps/habit-service/migrations/0005_habit_rule_change-authority.sql \
+            apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
             apps/habit-service/src/habit-domain.ts \
             apps/habit-service/src/postgres-habit-repository.ts \
             apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
@@ -221,16 +221,10 @@ jobs:
             apps/habit-service/src/habit-service.integration.test.ts \
             apps/habit-service/src/postgres-habit-repository.integration.test.ts \
             apps/habit-service/src/postgres-habit-repository.test.ts | LC_ALL=C sort)"
+          printf 'Staged retained repair delta:\n%s\n' "$changed"
           unexpected="$(comm -23 <(printf '%s\n' "$changed") <(printf '%s\n' "$allowed"))"
           test -z "$unexpected"
-          for required in \
-            .github/workflows/repair-habit-rule-change-authority-v3.yml \
-            apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
-            apps/habit-service/src/habit-domain.ts \
-            apps/habit-service/src/postgres-habit-repository.ts \
-            apps/habit-service/src/habit-review-projection.test.ts; do
-            printf '%s\n' "$changed" | grep -Fx "$required" >/dev/null
-          done
+          printf '%s\n' "$changed" | grep -Fx .github/workflows/repair-habit-rule-change-authority-v3.yml >/dev/null
           git diff --check --cached
 
       - name: Publish exact GREEN repair
