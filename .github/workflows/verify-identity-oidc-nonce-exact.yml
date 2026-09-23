@@ -28,7 +28,8 @@ jobs:
           remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
           test -n "$remote_head"
           test "$remote_head" = "$GITHUB_SHA"
-          test ! -e .github/workflows/repair-identity-oidc-nonce-formatting.yml
+          git merge-base --is-ancestor 41afb364a998b7bfd6cd4cf4e0d5a70d7fd2d7a2 "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-identity-oidc-nonce-source-formatting.yml
 
       - name: Set up Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
