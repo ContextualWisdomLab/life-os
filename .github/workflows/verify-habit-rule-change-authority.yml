@@ -11,9 +11,10 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       HABIT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/life_os_test
+      SEMANTIC_PUBLICATION_SHA: 12e691887b2626500dc57d09dee94299b27f54c3
     services:
       postgres:
         image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
@@ -32,13 +33,22 @@ jobs:
       - name: Checkout exact branch head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
+      - name: Guard exact semantic publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$SEMANTIC_PUBLICATION_SHA" "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-habit-rule-change-authority-v3.yml
       - name: Set up Node 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '24'
+          node-version: "24"
       - name: Enable repository pnpm
         run: corepack enable
       - name: Install frozen workspace
@@ -46,15 +56,32 @@ jobs:
       - name: Check focused formatting
         run: >-
           pnpm exec prettier --single-quote --check
+          .github/workflows/verify-habit-rule-change-authority.yml
+          apps/habit-service/src/habit-domain.ts
+          apps/habit-service/src/postgres-habit-repository.ts
+          apps/habit-service/src/postgres-habit-repository.test.ts
+          apps/habit-service/src/habit-review-projection.test.ts
+          apps/habit-service/src/habit-review-projection-postgres.test.ts
           apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
       - name: Typecheck Habit
         run: pnpm --filter @life-os/habit-service typecheck
-      - name: Prove Habit owns effective-dated rule changes
+      - name: Prove effective-dated rule changes in PostgreSQL
         run: >-
           pnpm --filter @life-os/habit-service exec vitest run
           --no-file-parallelism
           src/habit-rule-change-postgres.integration.test.ts
           src/habit-rule-change-idempotency-postgres.integration.test.ts
           src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+      - name: Prove Review projection and repository compatibility
+        run: >-
+          pnpm --filter @life-os/habit-service exec vitest run
+          --no-file-parallelism
+          src/habit-review-projection.test.ts
+          src/habit-review-projection-postgres.test.ts
+          src/postgres-habit-repository.test.ts
+      - name: Prove complete Habit service suite
+        run: pnpm --filter @life-os/habit-service test
+      - name: Check semantic-descendant diff hygiene
+        run: git diff --check "$SEMANTIC_PUBLICATION_SHA..HEAD"
