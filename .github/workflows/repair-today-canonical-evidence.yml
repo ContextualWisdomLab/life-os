@@ -26,7 +26,7 @@ jobs:
           persist-credentials: true
           ref: ${{ github.sha }}
 
-      - name: Guard retained RED and exact remote head
+      - name: Guard retained RED, Planning prerequisite, and exact remote head
         shell: bash
         run: |
           set -euo pipefail
@@ -35,6 +35,7 @@ jobs:
           test -n "$remote_head"
           test "$remote_head" = "$GITHUB_SHA"
           git merge-base --is-ancestor 7542a74f5d179a197b717533ca5faa1480701101 "$GITHUB_SHA"
+          git merge-base --is-ancestor 0ab08993a8923fc7693619020def6475aad96abe "$GITHUB_SHA"
           test -e .github/scripts/repair-today-canonical-evidence.py
           test -e .github/workflows/verify-today-canonical-evidence.yml
           test ! -e .github/workflows/repair-today-canonical-evidence-formatting.yml
@@ -94,10 +95,13 @@ jobs:
           pnpm --filter @life-os/planning-service test
           git diff --check
 
-      - name: Guard bounded source publication
+      - name: Guard bounded publication and self-retire
         shell: bash
         run: |
           set -euo pipefail
+          git rm \
+            .github/scripts/repair-today-canonical-evidence.py \
+            .github/workflows/repair-today-canonical-evidence.yml
           git add \
             apps/planning-service/src/today-http.ts \
             apps/planning-service/src/today-sync.ts \
@@ -105,6 +109,8 @@ jobs:
             apps/web/app/today-workspace-sync.ts
           changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
+            '.github/scripts/repair-today-canonical-evidence.py' \
+            '.github/workflows/repair-today-canonical-evidence.yml' \
             'apps/planning-service/src/today-http.ts' \
             'apps/planning-service/src/today-sync.ts' \
             'apps/web/app/today-sync-client.ts' \
