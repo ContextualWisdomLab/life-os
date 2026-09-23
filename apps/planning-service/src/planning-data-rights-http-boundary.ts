@@ -25,7 +25,7 @@ interface PlanningDataRightsProblemDetails {
 }
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const CONTRIBUTOR_PATH = '/v1/internal/data-rights/contributor';
@@ -105,12 +105,12 @@ function requireExactKeys(
   }
 }
 
-/** Requires and canonicalizes one opaque UUIDv4 product identity. */
+/** Requires already-canonical lowercase UUIDv4 signed product identity. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalidRequest();
   }
-  return value.toLowerCase();
+  return value;
 }
 
 /** Normalizes exactly the protected v1 contributor request schema. */

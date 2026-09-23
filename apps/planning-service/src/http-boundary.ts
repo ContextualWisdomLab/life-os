@@ -28,7 +28,7 @@ const VALIDATION_MESSAGES = new Set([
   'Planning search request is invalid',
 ]);
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const TODAY_PATH_PATTERN = /^\/v1\/today\/\d{4}-\d{2}-\d{2}$/u;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -173,7 +173,7 @@ export function requireTrustedWorkspaceContext(
     return invalidGatewayContext();
   }
 
-  const workspaceId = headers.workspaceId.toLowerCase();
+  const workspaceId = headers.workspaceId;
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||
