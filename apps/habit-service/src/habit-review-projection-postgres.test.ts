@@ -18,15 +18,19 @@ interface QueryCall {
 
 class RecordingSqlClient implements HabitSqlClient {
   readonly calls: QueryCall[] = [];
+  private readonly responses: readonly Record<string, unknown>[][];
 
-  constructor(private readonly rows: readonly Record<string, unknown>[]) {}
+  constructor(...responses: readonly Record<string, unknown>[][]) {
+    this.responses = [...responses];
+  }
 
   async query<Row>(
     text: string,
     values: readonly unknown[],
   ): Promise<HabitSqlQueryResult<Row>> {
     this.calls.push({ text, values });
-    return { rows: [...this.rows] as Row[] };
+    const response = this.responses[this.calls.length - 1] ?? [];
+    return { rows: [...response] as Row[] };
   }
 }
 
@@ -50,8 +54,25 @@ function reviewRow(
   };
 }
 
+function definitionWeekRows(): Record<string, unknown>[] {
+  return Array.from({ length: 7 }, (_, offset) => ({
+    id: HABIT_ID,
+    workspace_id: WORKSPACE_ID,
+    title: 'Read deliberately',
+    timezone_name: 'Asia/Seoul',
+    recurrence_kind: 'daily',
+    recurrence_interval: 1,
+    weekday_mask: 0,
+    starts_on: '2026-09-07',
+    created_at: new Date('2026-09-01T00:00:00.000Z'),
+    scheduled_local_date: `2026-09-${String(7 + offset).padStart(2, '0')}`,
+  }));
+}
+
 async function readEvidence(rows: readonly Record<string, unknown>[]) {
-  const repository = new PostgresHabitRepository(new RecordingSqlClient(rows));
+  const repository = new PostgresHabitRepository(
+    new RecordingSqlClient([...rows], definitionWeekRows()),
+  );
   return await repository.readReviewWeekEvidence(
     WORKSPACE_ID,
     '2026-09-07',
@@ -62,8 +83,8 @@ async function readEvidence(rows: readonly Record<string, unknown>[]) {
 }
 
 describe('Habit Weekly Review PostgreSQL read model', () => {
-  it('reads a seven-day projection in one bounded tenant-scoped statement', async () => {
-    const client = new RecordingSqlClient([reviewRow()]);
+  it('reads a seven-day projection in bounded tenant-scoped statements', async () => {
+    const client = new RecordingSqlClient([reviewRow()], definitionWeekRows());
     const repository = new PostgresHabitRepository(client);
 
     const evidence = await repository.readReviewWeekEvidence(
@@ -74,7 +95,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
       AS_OF,
     );
 
-    expect(client.calls).toHaveLength(1);
+    expect(client.calls).toHaveLength(2);
     expect(client.calls[0]?.values).toEqual([
       WORKSPACE_ID,
       '2026-09-07',
@@ -91,6 +112,9 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
     expect(client.calls[0]?.text).toContain(
       'DISTINCT ON (scheduled_local_date)',
     );
+    expect(client.calls[1]?.values).toEqual(client.calls[0]?.values);
+    expect(client.calls[1]?.text).toContain('CROSS JOIN review_days');
+    expect(client.calls[1]?.text).toContain('habit.habit_definition_revisions');
     expect(evidence.habits).toHaveLength(1);
     expect(evidence.completions).toEqual([
       {
@@ -99,6 +123,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
         scheduledLocalDate: '2026-09-07',
       },
     ]);
+    expect(evidence.definitionDays).toHaveLength(7);
   });
 
   it('retains habits with no completion evidence without fabricating a numerator', async () => {
@@ -112,6 +137,7 @@ describe('Habit Weekly Review PostgreSQL read model', () => {
 
     expect(evidence.habits).toHaveLength(1);
     expect(evidence.completions).toEqual([]);
+    expect(evidence.definitionDays).toHaveLength(7);
   });
 
   it('fails closed when the repository is asked for anything except one review week', async () => {

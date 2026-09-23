@@ -127,7 +127,9 @@ describe('Habit weekly Review projection', () => {
     expect(before.projectionRevision).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(unchanged.projectionRevision).toBe(before.projectionRevision);
 
-    const [daily] = await service.listHabits(WORKSPACE_ID);
+    const daily = (await service.listHabits(WORKSPACE_ID)).find(
+      (habit) => habit.title === 'Read deliberately',
+    );
     if (!daily) throw new Error('Expected seeded habit');
     await service.completeHabit(WORKSPACE_ID, daily.id, {
       scheduledLocalDate: '2026-09-08',
@@ -164,7 +166,9 @@ describe('Habit weekly Review projection', () => {
 
   it('counts a scheduled opportunity at most once despite duplicate completion events', async () => {
     const service = await createService();
-    const [daily] = await service.listHabits(WORKSPACE_ID);
+    const daily = (await service.listHabits(WORKSPACE_ID)).find(
+      (habit) => habit.title === 'Read deliberately',
+    );
     if (!daily) throw new Error('Expected seeded habit');
 
     await service.completeHabit(WORKSPACE_ID, daily.id, {
