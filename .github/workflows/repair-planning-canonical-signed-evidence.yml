@@ -50,10 +50,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if pnpm --filter @life-os/planning-service exec vitest run \
-            src/planning-context-canonical-evidence.test.ts \
-            src/planning-data-rights-canonical-evidence.test.ts; then
-            echo 'Expected byte-different signed Planning evidence to fail before repair.' >&2
+          context_status=0
+          rights_status=0
+          pnpm --filter @life-os/planning-service exec vitest run \
+            src/planning-context-canonical-evidence.test.ts || context_status=$?
+          pnpm --filter @life-os/planning-service exec vitest run \
+            src/planning-data-rights-canonical-evidence.test.ts || rights_status=$?
+          if [ "${context_status}" -eq 0 ] || [ "${rights_status}" -eq 0 ]; then
+            echo 'Expected both signed Planning evidence regressions to fail before repair.' >&2
             exit 1
           fi
 
@@ -61,9 +65,43 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -c "from pathlib import Path; p=Path('apps/planning-service/src/http-boundary.ts'); s=p.read_text(); old='/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;'; new='/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;'; assert s.count(old)==1; s=s.replace(old,new,1); old2='  const workspaceId = headers.workspaceId.toLowerCase();'; assert s.count(old2)==1; p.write_text(s.replace(old2,'  const workspaceId = headers.workspaceId;',1))"
-          python -c "from pathlib import Path; p=Path('apps/planning-service/src/http-boundary.test.ts'); s=p.read_text(); old='${workspaceId.toLowerCase()}'; assert s.count(old)==1; s=s.replace(old,'${workspaceId}',1); old2='          workspaceId: WORKSPACE_ID.toUpperCase(),'; assert s.count(old2)==1; p.write_text(s.replace(old2,'          workspaceId: WORKSPACE_ID,',1))"
-          python -c "from pathlib import Path; p=Path('apps/planning-service/src/planning-data-rights-http-boundary.ts'); s=p.read_text(); old='/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;'; new='/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;'; assert s.count(old)==1; s=s.replace(old,new,1); s=s.replace('/** Requires and canonicalizes one opaque UUIDv4 product identity. */','/** Requires already-canonical lowercase UUIDv4 signed product identity. */',1); old2='  return value.toLowerCase();'; assert s.count(old2)==1; p.write_text(s.replace(old2,'  return value;',1))"
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/planning-service/src/http-boundary.ts')
+          source = path.read_text()
+          old = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;'
+          new = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;'
+          assert source.count(old) == 1
+          source = source.replace(old, new, 1)
+          old = '  const workspaceId = headers.workspaceId.toLowerCase();'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, '  const workspaceId = headers.workspaceId;', 1))
+
+          path = Path('apps/planning-service/src/http-boundary.test.ts')
+          source = path.read_text()
+          old = '${workspaceId.toLowerCase()}'
+          assert source.count(old) == 1
+          source = source.replace(old, '${workspaceId}', 1)
+          old = '          workspaceId: WORKSPACE_ID.toUpperCase(),'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, '          workspaceId: WORKSPACE_ID,', 1))
+
+          path = Path('apps/planning-service/src/planning-data-rights-http-boundary.ts')
+          source = path.read_text()
+          old = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;'
+          new = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;'
+          assert source.count(old) == 1
+          source = source.replace(old, new, 1)
+          source = source.replace(
+              '/** Requires and canonicalizes one opaque UUIDv4 product identity. */',
+              '/** Requires already-canonical lowercase UUIDv4 signed product identity. */',
+              1,
+          )
+          old = '  return value.toLowerCase();'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, '  return value;', 1))
+          PY
           git rm .github/workflows/repair-planning-canonical-signed-evidence.yml
           pnpm exec prettier --single-quote --write \
             apps/planning-service/src/http-boundary.ts \
