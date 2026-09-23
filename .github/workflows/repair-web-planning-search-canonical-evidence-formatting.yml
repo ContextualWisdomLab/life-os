@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: true
           ref: ${{ github.sha }}
 
       - name: Set up Node 24
@@ -37,6 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor "8e61e0506f12dba930817bf825458823c29cb3e1" HEAD
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
@@ -98,10 +100,17 @@ jobs:
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "${GITHUB_SHA}"
+          git add -A
+          staged="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
+          allowed="$(printf '%s\n' \
+            '.github/workflows/repair-web-planning-search-canonical-evidence-formatting.yml' \
+            '.github/workflows/verify-web-planning-search-canonical-evidence.yml' \
+            'apps/web/app/planning-search-canonical-evidence.test.ts' | LC_ALL=C sort)"
+          unexpected="$(comm -23 <(printf '%s\n' "$staged") <(printf '%s\n' "$allowed"))"
+          test -z "$unexpected"
+          test -n "$staged"
+          git diff --cached --check
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            apps/web/app/planning-search-canonical-evidence.test.ts \
-            .github/workflows/verify-web-planning-search-canonical-evidence.yml
           git commit -m 'style(web): format planning search evidence regression'
           git push origin "HEAD:${GITHUB_REF_NAME}"
