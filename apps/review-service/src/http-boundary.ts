@@ -156,6 +156,9 @@ export function requireTrustedWorkspaceContext(
   let workspaceId: string;
   try {
     workspaceId = requireReviewWorkspaceId(headers.workspaceId);
+    if (workspaceId !== headers.workspaceId) {
+      return invalidGatewayContext();
+    }
   } catch {
     return invalidGatewayContext();
   }
