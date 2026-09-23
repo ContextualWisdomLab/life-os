@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-const repositoryRoot = new URL('../../../../../', import.meta.url);
+const repositoryRoot = new URL('../../../../', import.meta.url);
 
 function readRepositoryFile(path: string): string {
   return readFileSync(new URL(path, repositoryRoot), 'utf8');
