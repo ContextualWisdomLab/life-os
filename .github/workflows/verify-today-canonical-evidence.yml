@@ -16,6 +16,7 @@ on:
       - docs/operations/durable-today-synchronization.md
       - .github/workflows/verify-today-canonical-evidence.yml
       - .github/workflows/repair-today-canonical-evidence-formatting.yml
+      - .github/workflows/repair-today-canonical-evidence.yml
 
 permissions:
   contents: read
@@ -44,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           test ! -e .github/workflows/repair-today-canonical-evidence-formatting.yml
+          test ! -e .github/workflows/repair-today-canonical-evidence.yml
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Set up Node.js
@@ -87,3 +89,9 @@ jobs:
 
       - name: Typecheck Planning package
         run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Run complete Web suite
+        run: pnpm --filter @life-os/web test
+
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service test
