@@ -146,7 +146,9 @@ jobs:
 
           path.write_text(source)
           PY
-          pnpm exec prettier --single-quote --write apps/web/app/ai-proposal-client-core.ts
+          pnpm exec prettier --single-quote --write \
+            apps/web/app/ai-proposal-client-core.ts \
+            .github/workflows/verify-web-ai-proposal-canonical-evidence.yml
 
       - name: Prove exact Web repair GREEN
         shell: bash
@@ -165,9 +167,11 @@ jobs:
         run: |
           set -euo pipefail
           git rm .github/workflows/repair-web-ai-proposal-canonical-evidence.yml
-          git add apps/web/app/ai-proposal-client-core.ts
+          git add \
+            apps/web/app/ai-proposal-client-core.ts \
+            .github/workflows/verify-web-ai-proposal-canonical-evidence.yml
           changed="$(git diff --cached --name-only "$GITHUB_SHA" | LC_ALL=C sort)"
-          expected="$(printf '%s\n' .github/workflows/repair-web-ai-proposal-canonical-evidence.yml apps/web/app/ai-proposal-client-core.ts | LC_ALL=C sort)"
+          expected="$(printf '%s\n' .github/workflows/repair-web-ai-proposal-canonical-evidence.yml .github/workflows/verify-web-ai-proposal-canonical-evidence.yml apps/web/app/ai-proposal-client-core.ts | LC_ALL=C sort)"
           test "$changed" = "$expected"
           git diff --check --cached
 
