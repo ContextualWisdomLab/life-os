@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Guard exact formatter publication
+      - name: Guard exact semantic publication
         shell: bash
         run: |
           set -euo pipefail
@@ -42,6 +42,8 @@ jobs:
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "$GITHUB_SHA"
+          git merge-base --is-ancestor c2e626235574d42a49012f732560b03d4608c795 "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-integration-canonical-signed-evidence.yml
           test ! -e .github/workflows/repair-integration-context-canonical-evidence-formatting.yml
 
       - name: Set up Node.js
@@ -54,6 +56,9 @@ jobs:
 
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build Integration test prerequisite
+        run: pnpm --filter @life-os/plugin-sdk build
 
       - name: Check focused formatting
         run: >-
@@ -75,3 +80,6 @@ jobs:
 
       - name: Run complete Integration suite
         run: pnpm --filter @life-os/integration-service test
+
+      - name: Check exact diff hygiene
+        run: git diff --check HEAD^
