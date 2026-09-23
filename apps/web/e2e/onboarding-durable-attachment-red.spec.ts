@@ -32,6 +32,7 @@ test('retains the exact local onboarding direction for later explicit durable at
   await page.getByRole('button', { name: 'Create my first plan' }).click();
 
   await expect(page).toHaveURL('/');
+  await page.waitForLoadState('networkidle');
   expect(goalWrites).toEqual([]);
 
   const stored = await page.evaluate(
