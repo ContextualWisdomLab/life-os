@@ -16,7 +16,7 @@ function assertRepositoryFile(path: string): string {
   }
 }
 
-test('Web exposes an executable, accessibility-capable Storybook boundary', () => {
+test('Web exposes an executable, configured accessibility-capable Storybook boundary', () => {
   const packageJson = JSON.parse(
     readRepositoryFile('apps/web/package.json'),
   ) as {
@@ -35,14 +35,19 @@ test('Web exposes an executable, accessibility-capable Storybook boundary', () =
   );
   assert.ok(
     packageJson.devDependencies?.['@storybook/addon-a11y'],
-    'material stories must have an accessibility-capable Storybook test path',
+    'material stories must have a lockfile-owned accessibility addon',
   );
 
   const config = assertRepositoryFile('apps/web/.storybook/main.ts');
   assert.match(config, /stories/, 'Storybook config must declare story discovery');
+  assert.match(
+    config,
+    /@storybook\/addon-a11y/,
+    'the accessibility addon must be enabled by Storybook, not merely installed',
+  );
 });
 
-test('QuickCapture story imports production code and names the material state matrix', () => {
+test('QuickCapture story renders production code and names the material state matrix', () => {
   const story = assertRepositoryFile(
     'apps/web/app/components/quick-capture.stories.tsx',
   );
@@ -50,7 +55,12 @@ test('QuickCapture story imports production code and names the material state ma
   assert.match(
     story,
     /from ['"]\.\/quick-capture['"]/,
-    'the story must render production QuickCapture rather than a source copy',
+    'the story must import production QuickCapture rather than a source copy',
+  );
+  assert.match(
+    story,
+    /component\s*:\s*QuickCapture\b/,
+    'Storybook metadata must bind the story to the production QuickCapture component',
   );
 
   for (const state of [
@@ -70,7 +80,7 @@ test('QuickCapture story imports production code and names the material state ma
   }
 });
 
-test('QuickCapture story carries exact Figma authority traceability', () => {
+test('QuickCapture story carries non-placeholder exact Figma authority traceability', () => {
   const story = assertRepositoryFile(
     'apps/web/app/components/quick-capture.stories.tsx',
   );
@@ -82,7 +92,41 @@ test('QuickCapture story carries exact Figma authority traceability', () => {
   );
   assert.match(
     story,
-    /figma[^\n]*(?:node-id|nodeId|node_id)/i,
-    'material story must record an exact Figma node identity, not only a file link',
+    /(?:node-id=\d+(?:[-:]\d+)+|node(?:Id|_id)\s*[:=]\s*['"]\d+(?:[-:]\d+)+['"])/i,
+    'material story must record a concrete numeric Figma node identity, not a TODO or label-only placeholder',
   );
+});
+
+test('QuickCapture story exposes interaction, status, and responsive evidence hooks', () => {
+  const story = assertRepositoryFile(
+    'apps/web/app/components/quick-capture.stories.tsx',
+  );
+
+  assert.match(
+    story,
+    /\bplay\s*:/,
+    'material Storybook evidence must include an executable interaction play function',
+  );
+  assert.match(
+    story,
+    /(?:userEvent|within|getByRole|findByRole)/,
+    'the play function must use interaction or accessibility queries rather than a visual-only story',
+  );
+  assert.match(
+    story,
+    /(?:getByRole|findByRole)\s*\(\s*['"]status['"]/,
+    'material evidence must exercise the QuickCapture status announcement contract',
+  );
+  assert.match(
+    story,
+    /viewport/i,
+    'material evidence must declare responsive viewport coverage',
+  );
+  for (const viewport of ['mobile', 'intermediate', 'desktop']) {
+    assert.match(
+      story,
+      new RegExp(viewport, 'i'),
+      `material evidence must identify a ${viewport} viewport`,
+    );
+  }
 });
