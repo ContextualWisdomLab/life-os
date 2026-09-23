@@ -95,7 +95,7 @@ export const PLUGIN_OPERATOR_APPLICATION = Symbol(
 );
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
@@ -299,7 +299,7 @@ export function requireTrustedEventWorkspaceContext(
     return invalidGatewayContext();
   }
 
-  const workspaceId = headers.workspaceId.toLowerCase();
+  const workspaceId = headers.workspaceId;
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||

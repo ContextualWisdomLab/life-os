@@ -1,9 +1,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PluginInstallationContext } from './plugin-installation';
 
-/** UUIDv4 grammar accepted for tenant, user, and one-time evidence identities; values normalize to lowercase. */
+/** Canonical lowercase UUIDv4 grammar for signed tenant, user, and one-time evidence identities. */
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 /** Canonical unsigned decimal Unix-second grammar used by short-lived signed evidence. */
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 /** Canonical unpadded base64url grammar for exactly one SHA-256 HMAC digest. */
@@ -70,12 +70,12 @@ function unavailable(): never {
   throw new IntegrationOperatorContextError('unavailable');
 }
 
-/** Requires UUIDv4 identity evidence and returns its canonical lowercase representation. */
+/** Requires already-canonical lowercase UUIDv4 signed identity evidence byte-for-byte. */
 function requireUuidV4(value: unknown): string {
   if (typeof value !== 'string' || !UUID_V4_PATTERN.test(value)) {
     return invalid();
   }
-  return value.toLowerCase();
+  return value;
 }
 
 /**
