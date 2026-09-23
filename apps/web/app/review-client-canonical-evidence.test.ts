@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import {
-  handleReviewHistoryRequest,
-  type ReviewFetch,
-} from './review-client';
+import { handleReviewHistoryRequest, type ReviewFetch } from './review-client';
 
 const WORKSPACE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const REVIEW_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -17,10 +14,13 @@ const environment = {
 };
 
 function historyRequest(): Request {
-  return new Request('https://life-os.example/api/reviews/completions?limit=20', {
-    method: 'GET',
-    headers: { cookie: 'life_os_session=opaque_session_value' },
-  });
+  return new Request(
+    'https://life-os.example/api/reviews/completions?limit=20',
+    {
+      method: 'GET',
+      headers: { cookie: 'life_os_session=opaque_session_value' },
+    },
+  );
 }
 
 function reviewRecord(

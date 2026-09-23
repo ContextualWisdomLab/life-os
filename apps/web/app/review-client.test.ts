@@ -140,7 +140,10 @@ describe('authenticated Weekly Review completion BFF', () => {
     const headers = new Headers(calls[1]?.init?.headers);
     assert.equal(headers.get('cookie'), null);
     assert.equal(headers.get('x-life-os-workspace-id'), WORKSPACE_ID);
-    assert.equal(headers.get('x-life-os-context-issued-at'), String(NOW_SECONDS));
+    assert.equal(
+      headers.get('x-life-os-context-issued-at'),
+      String(NOW_SECONDS),
+    );
     assert.equal(
       headers.get('x-life-os-context-signature'),
       createHmac('sha256', CONTEXT_SECRET)

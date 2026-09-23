@@ -62,9 +62,12 @@ describe('Review Next.js route handlers', () => {
       assert.equal(
         (
           await reviewHistoryGET(
-            new Request('https://life-os.example/api/reviews/completions?limit=20', {
-              headers: { cookie: 'life_os_session=opaque' },
-            }),
+            new Request(
+              'https://life-os.example/api/reviews/completions?limit=20',
+              {
+                headers: { cookie: 'life_os_session=opaque' },
+              },
+            ),
           )
         ).status,
         200,
@@ -103,11 +106,14 @@ describe('Review Next.js route handlers', () => {
       ]);
     } finally {
       globalThis.fetch = originalFetch;
-      if (originalIdentityOrigin === undefined) delete process.env.IDENTITY_SERVICE_ORIGIN;
+      if (originalIdentityOrigin === undefined)
+        delete process.env.IDENTITY_SERVICE_ORIGIN;
       else process.env.IDENTITY_SERVICE_ORIGIN = originalIdentityOrigin;
-      if (originalReviewOrigin === undefined) delete process.env.REVIEW_SERVICE_ORIGIN;
+      if (originalReviewOrigin === undefined)
+        delete process.env.REVIEW_SERVICE_ORIGIN;
       else process.env.REVIEW_SERVICE_ORIGIN = originalReviewOrigin;
-      if (originalContextSecret === undefined) delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
+      if (originalContextSecret === undefined)
+        delete process.env.REVIEW_GATEWAY_CONTEXT_SECRET;
       else process.env.REVIEW_GATEWAY_CONTEXT_SECRET = originalContextSecret;
     }
   });
