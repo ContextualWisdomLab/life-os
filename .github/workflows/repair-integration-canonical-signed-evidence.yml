@@ -47,14 +47,21 @@ jobs:
       - name: Install reproducible dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build Integration package prerequisite
+        run: pnpm --filter @life-os/plugin-sdk build
+
       - name: Reproduce canonical signed-evidence RED
         shell: bash
         run: |
           set -euo pipefail
-          if pnpm --filter @life-os/integration-service exec vitest run \
-            src/plugin-operator-context-canonical-evidence.test.ts \
-            src/integration-event-context-canonical-evidence.test.ts; then
-            echo 'Expected byte-different signed Integration identity evidence to fail before repair.' >&2
+          plugin_status=0
+          event_status=0
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/plugin-operator-context-canonical-evidence.test.ts || plugin_status=$?
+          pnpm --filter @life-os/integration-service exec vitest run \
+            src/integration-event-context-canonical-evidence.test.ts || event_status=$?
+          if [ "${plugin_status}" -eq 0 ] || [ "${event_status}" -eq 0 ]; then
+            echo 'Expected both signed Integration identity-evidence regressions to fail before repair.' >&2
             exit 1
           fi
 
@@ -62,9 +69,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -c "from pathlib import Path; p=Path('apps/integration-service/src/plugin-operator-context.ts'); s=p.read_text(); s=s.replace('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;', '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;', 1); s=s.replace('/** UUIDv4 grammar accepted for tenant, user, and one-time evidence identities; values normalize to lowercase. */', '/** Canonical lowercase UUIDv4 grammar for signed tenant, user, and one-time evidence identities. */', 1); s=s.replace('/** Requires UUIDv4 identity evidence and returns its canonical lowercase representation. */', '/** Requires already-canonical lowercase UUIDv4 signed identity evidence byte-for-byte. */', 1); old='  return value.toLowerCase();'; assert s.count(old) == 1; p.write_text(s.replace(old, '  return value;', 1))"
-          python -c "from pathlib import Path; p=Path('apps/integration-service/src/main.ts'); s=p.read_text(); old='/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;'; new='/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;'; assert s.count(old) == 1; s=s.replace(old,new,1); old2='  const workspaceId = headers.workspaceId.toLowerCase();'; assert s.count(old2) == 1; p.write_text(s.replace(old2, '  const workspaceId = headers.workspaceId;', 1))"
-          python -c "from pathlib import Path; p=Path('apps/integration-service/src/integration-controller-authority.test.ts'); s=p.read_text(); old='${workspaceId.toLowerCase()}'; assert s.count(old) == 1; s=s.replace(old, '${workspaceId}', 1); old2='          workspaceId: WORKSPACE_ID.toUpperCase(),'; assert s.count(old2) == 1; p.write_text(s.replace(old2, '          workspaceId: WORKSPACE_ID,', 1))"
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/integration-service/src/plugin-operator-context.ts')
+          source = path.read_text()
+          source = source.replace(
+              '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;',
+              '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;',
+              1,
+          )
+          source = source.replace(
+              '/** UUIDv4 grammar accepted for tenant, user, and one-time evidence identities; values normalize to lowercase. */',
+              '/** Canonical lowercase UUIDv4 grammar for signed tenant, user, and one-time evidence identities. */',
+              1,
+          )
+          source = source.replace(
+              '/** Requires UUIDv4 identity evidence and returns its canonical lowercase representation. */',
+              '/** Requires already-canonical lowercase UUIDv4 signed identity evidence byte-for-byte. */',
+              1,
+          )
+          old = '  return value.toLowerCase();'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, '  return value;', 1))
+
+          path = Path('apps/integration-service/src/main.ts')
+          source = path.read_text()
+          old = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;'
+          new = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;'
+          assert source.count(old) == 1
+          source = source.replace(old, new, 1)
+          old = '  const workspaceId = headers.workspaceId.toLowerCase();'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, '  const workspaceId = headers.workspaceId;', 1))
+
+          path = Path('apps/integration-service/src/integration-controller-authority.test.ts')
+          source = path.read_text()
+          old = '${workspaceId.toLowerCase()}'
+          assert source.count(old) == 1
+          source = source.replace(old, '${workspaceId}', 1)
+          old = '          workspaceId: WORKSPACE_ID.toUpperCase(),'
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, '          workspaceId: WORKSPACE_ID,', 1))
+          PY
           git rm .github/workflows/repair-integration-canonical-signed-evidence.yml
           pnpm exec prettier --single-quote --write \
             apps/integration-service/src/plugin-operator-context.ts \
