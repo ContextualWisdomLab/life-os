@@ -38,6 +38,8 @@ export interface CompleteHabitRequest {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -127,7 +129,7 @@ export function requireTrustedWorkspaceContext(
     typeof headers.workspaceId !== 'string' ||
     typeof headers.issuedAt !== 'string' ||
     typeof headers.signature !== 'string' ||
-    !UUID_V4_PATTERN.test(headers.workspaceId) ||
+    !CANONICAL_UUID_V4_PATTERN.test(headers.workspaceId) ||
     !UNIX_SECONDS_PATTERN.test(headers.issuedAt) ||
     !BASE64URL_SHA256_PATTERN.test(headers.signature) ||
     !Number.isSafeInteger(nowSeconds) ||
@@ -136,7 +138,7 @@ export function requireTrustedWorkspaceContext(
     return invalidGatewayContext();
   }
 
-  const workspaceId = headers.workspaceId.toLowerCase();
+  const workspaceId = headers.workspaceId;
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||
