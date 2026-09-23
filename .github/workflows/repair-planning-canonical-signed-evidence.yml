@@ -108,23 +108,33 @@ jobs:
             apps/planning-service/src/http-boundary.test.ts \
             apps/planning-service/src/planning-data-rights-http-boundary.ts
 
-      - name: Verify minimum repair and complete Planning contract
+      - name: Check focused formatting after repair
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/planning-service/src/http-boundary.ts
+          apps/planning-service/src/http-boundary.test.ts
+          apps/planning-service/src/planning-context-canonical-evidence.test.ts
+          apps/planning-service/src/planning-data-rights-http-boundary.ts
+          apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts
+          .github/workflows/verify-planning-context-canonical-evidence.yml
+
+      - name: Verify focused signed-evidence repair
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          src/planning-context-canonical-evidence.test.ts
+          src/planning-data-rights-canonical-evidence.test.ts
+          src/http-boundary.test.ts
+
+      - name: Typecheck Planning package
+        run: pnpm --filter @life-os/planning-service typecheck
+
+      - name: Run complete Planning suite
+        run: pnpm --filter @life-os/planning-service test
+
+      - name: Guard bounded product delta
         shell: bash
         run: |
           set -euo pipefail
-          pnpm exec prettier --single-quote --check \
-            apps/planning-service/src/http-boundary.ts \
-            apps/planning-service/src/http-boundary.test.ts \
-            apps/planning-service/src/planning-context-canonical-evidence.test.ts \
-            apps/planning-service/src/planning-data-rights-http-boundary.ts \
-            apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts \
-            .github/workflows/verify-planning-context-canonical-evidence.yml
-          pnpm --filter @life-os/planning-service exec vitest run \
-            src/planning-context-canonical-evidence.test.ts \
-            src/planning-data-rights-canonical-evidence.test.ts \
-            src/http-boundary.test.ts
-          pnpm --filter @life-os/planning-service typecheck
-          pnpm --filter @life-os/planning-service test
           git diff --check
           actual="$(git diff --name-only HEAD | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
