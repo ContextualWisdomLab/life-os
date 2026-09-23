@@ -133,6 +133,14 @@ function requireUuid(value: unknown, message: string): string {
   return value.toLowerCase();
 }
 
+/** Requires canonical producer-owned UUIDv4 evidence without rewriting it. */
+function requireProducerUuid(value: unknown, message: string): string {
+  if (typeof value !== 'string' || !CANONICAL_UUID_V4_PATTERN.test(value)) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 /** Requires one canonical lowercase UUIDv4 path parameter. */
 function requireCanonicalUuid(value: unknown): string {
   if (typeof value !== 'string' || !CANONICAL_UUID_V4_PATTERN.test(value)) {
@@ -159,16 +167,16 @@ function requireString(
   return normalized;
 }
 
-/** Requires and canonicalizes one RFC 3339 timestamp. */
+/** Requires canonical producer-owned RFC 3339 UTC evidence without rewriting it. */
 function requireTimestamp(value: unknown): string {
   if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
     throw new Error('AI service response is invalid');
   }
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     throw new Error('AI service response is invalid');
   }
-  return new Date(parsed).toISOString();
+  return value;
 }
 
 /** Requires a fixed HTTP(S) service origin without credentials or path data. */
@@ -235,11 +243,14 @@ export function parseAiSessionPrincipal(value: unknown): AiSessionPrincipal {
     throw new Error('Identity session response is invalid');
   }
   return Object.freeze({
-    workspaceId: requireUuid(
+    workspaceId: requireProducerUuid(
       value.workspaceId,
       'Identity session response is invalid',
     ),
-    actorId: requireUuid(value.userId, 'Identity session response is invalid'),
+    actorId: requireProducerUuid(
+      value.userId,
+      'Identity session response is invalid',
+    ),
   });
 }
 
@@ -630,7 +641,7 @@ function parseProposal(value: unknown): Record<string, unknown> {
       description: requireString(operation.description, MAXIMUM_TEXT_LENGTH),
       ...(hasTargetId
         ? {
-            targetId: requireUuid(
+            targetId: requireProducerUuid(
               operation.targetId,
               'AI service response is invalid',
             ),
@@ -639,11 +650,11 @@ function parseProposal(value: unknown): Record<string, unknown> {
     };
   });
   return {
-    proposalId: requireUuid(
+    proposalId: requireProducerUuid(
       record.proposalId,
       'AI service response is invalid',
     ),
-    workspaceId: requireUuid(
+    workspaceId: requireProducerUuid(
       record.workspaceId,
       'AI service response is invalid',
     ),
@@ -742,22 +753,25 @@ function parseDecisionEvent(value: unknown): Record<string, unknown> {
     throw new Error('AI service response is invalid');
   }
   return {
-    id: requireUuid(record.id, 'AI service response is invalid'),
-    workspaceId: requireUuid(
+    id: requireProducerUuid(record.id, 'AI service response is invalid'),
+    workspaceId: requireProducerUuid(
       record.workspaceId,
       'AI service response is invalid',
     ),
-    proposalId: requireUuid(
+    proposalId: requireProducerUuid(
       record.proposalId,
       'AI service response is invalid',
     ),
     proposalContentDigest: record.proposalContentDigest,
-    actorId: requireUuid(record.actorId, 'AI service response is invalid'),
+    actorId: requireProducerUuid(
+      record.actorId,
+      'AI service response is invalid',
+    ),
     decision: record.decision,
     ...(hasReason
       ? { reason: requireString(record.reason, MAXIMUM_REASON_LENGTH) }
       : {}),
-    idempotencyKey: requireUuid(
+    idempotencyKey: requireProducerUuid(
       record.idempotencyKey,
       'AI service response is invalid',
     ),
