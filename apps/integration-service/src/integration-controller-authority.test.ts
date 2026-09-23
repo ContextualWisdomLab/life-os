@@ -24,7 +24,7 @@ function signContext(
 ): string {
   return createHmac('sha256', GATEWAY_SECRET)
     .update(
-      `life-os.integration-event-context.v2\n${workspaceId.toLowerCase()}\n${issuedAt}\n${binding.method}\n${binding.path}`,
+      `life-os.integration-event-context.v2\n${workspaceId}\n${issuedAt}\n${binding.method}\n${binding.path}`,
       'utf8',
     )
     .digest('base64url');
@@ -57,7 +57,7 @@ describe('Integration event tenant authority contract', () => {
     expect(
       requireTrustedEventWorkspaceContext(
         {
-          workspaceId: WORKSPACE_ID.toUpperCase(),
+          workspaceId: WORKSPACE_ID,
           issuedAt,
           signature: signContext(WORKSPACE_ID, issuedAt),
         },
@@ -259,20 +259,23 @@ describe('Integration event tenant authority contract', () => {
       status: 503,
       code: 'gateway_context_unavailable',
     },
-  ])('fails closed for $name', ({ issuedAt, nowSeconds, secret, status, code }) => {
-    expectContextProblem(
-      () =>
-        requireTrustedEventWorkspaceContext(
-          {
-            workspaceId: WORKSPACE_ID,
-            issuedAt,
-            signature: signContext(WORKSPACE_ID, issuedAt),
-          },
-          secret,
-          EVENT_BINDING,
-          nowSeconds,
-        ),
-      { status, code },
-    );
-  });
+  ])(
+    'fails closed for $name',
+    ({ issuedAt, nowSeconds, secret, status, code }) => {
+      expectContextProblem(
+        () =>
+          requireTrustedEventWorkspaceContext(
+            {
+              workspaceId: WORKSPACE_ID,
+              issuedAt,
+              signature: signContext(WORKSPACE_ID, issuedAt),
+            },
+            secret,
+            EVENT_BINDING,
+            nowSeconds,
+          ),
+        { status, code },
+      );
+    },
+  );
 });

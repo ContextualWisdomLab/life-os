@@ -95,7 +95,7 @@ export const PLUGIN_OPERATOR_APPLICATION = Symbol(
 );
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const UNIX_SECONDS_PATTERN = /^(?:0|[1-9]\d{0,12})$/u;
 const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 const MINIMUM_GATEWAY_SECRET_BYTES = 32;
@@ -121,7 +121,11 @@ function problemException(
 }
 
 function invalidContract(): HttpException {
-  return problemException(400, 'Plugin contract is invalid', 'invalid_plugin_contract');
+  return problemException(
+    400,
+    'Plugin contract is invalid',
+    'invalid_plugin_contract',
+  );
 }
 
 function invalidGatewayContext(): never {
@@ -223,7 +227,8 @@ class IntegrationBadRequestFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const request = http.getRequest<IntegrationHttpRequest>();
     const response = http.getResponse<IntegrationHttpResponse>();
-    const path = (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
+    const path =
+      (request.originalUrl ?? request.url ?? '').split('?', 1)[0] ?? '';
 
     if (isPluginOperatorPath(path)) {
       response.status(400).json({
@@ -294,7 +299,7 @@ export function requireTrustedEventWorkspaceContext(
     return invalidGatewayContext();
   }
 
-  const workspaceId = headers.workspaceId.toLowerCase();
+  const workspaceId = headers.workspaceId;
   const issuedAtSeconds = Number(headers.issuedAt);
   if (
     !Number.isSafeInteger(issuedAtSeconds) ||
@@ -510,7 +515,13 @@ export class PluginOperatorHttpController {
     issuedAt: unknown,
     signature: unknown,
   ): IntegrationOperatorContextHeaders {
-    return Object.freeze({ workspaceId, userId, evidenceId, issuedAt, signature });
+    return Object.freeze({
+      workspaceId,
+      userId,
+      evidenceId,
+      issuedAt,
+      signature,
+    });
   }
 
   /** Converts domain/dependency failures to fixed, credential-free HTTP problems. */
@@ -542,7 +553,9 @@ export class PluginOperatorHttpController {
 })
 export class IntegrationAppModule {
   /** Registers an explicitly constructed durable plugin operator for host deployments. */
-  static withPluginOperator(operator: PluginOperatorApplication): DynamicModule {
+  static withPluginOperator(
+    operator: PluginOperatorApplication,
+  ): DynamicModule {
     return {
       module: IntegrationAppModule,
       providers: [{ provide: PLUGIN_OPERATOR_APPLICATION, useValue: operator }],
