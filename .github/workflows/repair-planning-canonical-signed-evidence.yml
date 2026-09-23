@@ -61,7 +61,20 @@ jobs:
             exit 1
           fi
 
-      - name: Apply minimum signed-evidence repair
+      - name: Confirm inherited import-time bootstrap RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${PLANNING_DATABASE_URL:-}"
+          status=0
+          pnpm --filter @life-os/planning-service exec vitest run \
+            src/planning-controller-authority.test.ts || status=$?
+          if [ "${status}" -eq 0 ]; then
+            echo 'Expected Planning controller import to fail while main.ts bootstraps on import.' >&2
+            exit 1
+          fi
+
+      - name: Apply minimum signed-evidence and bootstrap repair
         shell: bash
         run: |
           set -euo pipefail
@@ -101,12 +114,20 @@ jobs:
           old = '  return value.toLowerCase();'
           assert source.count(old) == 1
           path.write_text(source.replace(old, '  return value;', 1))
+
+          path = Path('apps/planning-service/src/main.ts')
+          source = path.read_text()
+          old = 'void bootstrap();\n'
+          new = "if (require.main === module) {\n  void bootstrap();\n}\n"
+          assert source.count(old) == 1
+          path.write_text(source.replace(old, new, 1))
           PY
           git rm .github/workflows/repair-planning-canonical-signed-evidence.yml
           pnpm exec prettier --single-quote --write \
             apps/planning-service/src/http-boundary.ts \
             apps/planning-service/src/http-boundary.test.ts \
-            apps/planning-service/src/planning-data-rights-http-boundary.ts
+            apps/planning-service/src/planning-data-rights-http-boundary.ts \
+            apps/planning-service/src/main.ts
 
       - name: Check focused formatting after repair
         run: >-
@@ -116,6 +137,7 @@ jobs:
           apps/planning-service/src/planning-context-canonical-evidence.test.ts
           apps/planning-service/src/planning-data-rights-http-boundary.ts
           apps/planning-service/src/planning-data-rights-canonical-evidence.test.ts
+          apps/planning-service/src/main.ts
           .github/workflows/verify-planning-context-canonical-evidence.yml
 
       - name: Verify focused signed-evidence repair
@@ -125,10 +147,19 @@ jobs:
           src/planning-data-rights-canonical-evidence.test.ts
           src/http-boundary.test.ts
 
+      - name: Verify import-safe Planning controller
+        env:
+          PLANNING_DATABASE_URL: ''
+        run: >-
+          pnpm --filter @life-os/planning-service exec vitest run
+          src/planning-controller-authority.test.ts
+
       - name: Typecheck Planning package
         run: pnpm --filter @life-os/planning-service typecheck
 
       - name: Run complete Planning suite
+        env:
+          PLANNING_DATABASE_URL: ''
         run: pnpm --filter @life-os/planning-service test
 
       - name: Guard bounded product delta
@@ -141,6 +172,7 @@ jobs:
             '.github/workflows/repair-planning-canonical-signed-evidence.yml' \
             'apps/planning-service/src/http-boundary.test.ts' \
             'apps/planning-service/src/http-boundary.ts' \
+            'apps/planning-service/src/main.ts' \
             'apps/planning-service/src/planning-data-rights-http-boundary.ts' | LC_ALL=C sort)"
           test "${actual}" = "${expected}"
 
