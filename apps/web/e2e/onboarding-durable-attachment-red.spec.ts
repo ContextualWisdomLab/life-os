@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+const TODAY_DRAFT_KEY = 'life-os.today-draft.v1';
+const ONBOARDING_COMPLETION_KEY = 'life-os.onboarding-completion.v1';
 const ATTACHMENT_DRAFT_KEY = 'life-os.onboarding-attachment-draft.v1';
 
 test.beforeEach(async ({ page }) => {
@@ -32,12 +34,36 @@ test('retains the exact local onboarding direction for later explicit durable at
   await expect(page).toHaveURL('/');
   expect(goalWrites).toEqual([]);
 
-  const storedAttachmentDraft = await page.evaluate((key) => {
-    return window.localStorage.getItem(key);
-  }, ATTACHMENT_DRAFT_KEY);
+  const stored = await page.evaluate(
+    ({ todayDraftKey, onboardingCompletionKey, attachmentDraftKey }) => ({
+      todayDraft: window.localStorage.getItem(todayDraftKey),
+      onboardingCompletion: window.localStorage.getItem(onboardingCompletionKey),
+      attachmentDraft: window.localStorage.getItem(attachmentDraftKey),
+    }),
+    {
+      todayDraftKey: TODAY_DRAFT_KEY,
+      onboardingCompletionKey: ONBOARDING_COMPLETION_KEY,
+      attachmentDraftKey: ATTACHMENT_DRAFT_KEY,
+    },
+  );
 
-  expect(storedAttachmentDraft).not.toBeNull();
-  expect(JSON.parse(storedAttachmentDraft ?? '{}')).toMatchObject({
+  expect(stored.todayDraft).not.toBeNull();
+  expect(JSON.parse(stored.todayDraft ?? '{}')).toMatchObject({
+    version: TODAY_DRAFT_KEY,
+    actions: [
+      expect.objectContaining({
+        title: 'Review the release evidence',
+      }),
+    ],
+  });
+
+  expect(stored.onboardingCompletion).not.toBeNull();
+  expect(JSON.parse(stored.onboardingCompletion ?? '{}')).toMatchObject({
+    version: ONBOARDING_COMPLETION_KEY,
+  });
+
+  expect(stored.attachmentDraft).not.toBeNull();
+  expect(JSON.parse(stored.attachmentDraft ?? '{}')).toMatchObject({
     version: ATTACHMENT_DRAFT_KEY,
     direction: 'Prepare a calm product launch',
     nextAction: 'Review the release evidence',
