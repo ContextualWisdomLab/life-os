@@ -30,15 +30,20 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Guard exact formatter publication
+      - name: Guard exact semantic publication
         shell: bash
         run: |
           set -euo pipefail
+          semantic_head='c2377e0d54feab7d537169352572d0c8e989c55f'
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "${remote_head}"
           test "${remote_head}" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "${semantic_head}" "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-habit-canonical-signed-evidence.yml
           test ! -e .github/workflows/repair-habit-context-canonical-evidence-formatting.yml
+          changed_files="$(git diff --name-only "${semantic_head}" "$GITHUB_SHA")"
+          test "${changed_files}" = '.github/workflows/verify-habit-context-canonical-evidence.yml'
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -71,3 +76,7 @@ jobs:
 
       - name: Run complete Habit suite
         run: pnpm --filter @life-os/habit-service test
+
+      - name: Check verifier-only diff hygiene
+        shell: bash
+        run: git diff --check c2377e0d54feab7d537169352572d0c8e989c55f "$GITHUB_SHA" -- .github/workflows/verify-habit-context-canonical-evidence.yml
