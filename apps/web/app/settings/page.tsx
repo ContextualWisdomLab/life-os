@@ -38,7 +38,9 @@ export default function SettingsPage() {
           <div className="section-heading">
             <div>
               <p className="eyebrow">Current availability</p>
-              <h2 id="settings-availability-heading">No account controls yet</h2>
+              <h2 id="settings-availability-heading">
+                No account controls yet
+              </h2>
             </div>
           </div>
           <div className="empty-state" role="status">
