@@ -103,6 +103,29 @@ jobs:
           path.write_text(text)
           PY
 
+      - name: Repair deterministic Review fixture identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/habit-service/src/habit-review-projection.test.ts')
+          text = path.read_text()
+          old = """    const [daily] = await service.listHabits(WORKSPACE_ID);
+              if (!daily) throw new Error('Expected seeded habit');"""
+          new = """    const daily = (await service.listHabits(WORKSPACE_ID)).find(
+                (habit) => habit.title === 'Read deliberately',
+              );
+              if (!daily) throw new Error('Expected seeded habit');"""
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(
+                  f'Review fixture selector: expected two order-coupled targets, found {count}'
+              )
+          path.write_text(text.replace(old, new))
+          PY
+
       - name: Enable repository pnpm
         run: corepack enable
 
@@ -117,6 +140,7 @@ jobs:
           apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          apps/habit-service/src/habit-review-projection.test.ts
           apps/habit-service/src/habit-review-projection-postgres.test.ts
           apps/habit-service/src/habit-service.integration.test.ts
           apps/habit-service/src/postgres-habit-repository.integration.test.ts
@@ -130,6 +154,7 @@ jobs:
           apps/habit-service/src/habit-rule-change-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts
           apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts
+          apps/habit-service/src/habit-review-projection.test.ts
           apps/habit-service/src/habit-review-projection-postgres.test.ts
           apps/habit-service/src/habit-service.integration.test.ts
           apps/habit-service/src/postgres-habit-repository.integration.test.ts
@@ -173,6 +198,7 @@ jobs:
             apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
             apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts \
             apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts \
+            apps/habit-service/src/habit-review-projection.test.ts \
             apps/habit-service/src/habit-review-projection-postgres.test.ts \
             apps/habit-service/src/habit-service.integration.test.ts \
             apps/habit-service/src/postgres-habit-repository.integration.test.ts \
@@ -186,6 +212,7 @@ jobs:
             apps/habit-service/src/habit-rule-change-postgres.integration.test.ts \
             apps/habit-service/src/habit-rule-change-idempotency-postgres.integration.test.ts \
             apps/habit-service/src/habit-rule-change-idempotency-payload-postgres.integration.test.ts \
+            apps/habit-service/src/habit-review-projection.test.ts \
             apps/habit-service/src/habit-review-projection-postgres.test.ts \
             apps/habit-service/src/habit-service.integration.test.ts \
             apps/habit-service/src/postgres-habit-repository.integration.test.ts \
@@ -196,7 +223,8 @@ jobs:
             .github/workflows/repair-habit-rule-change-authority-v3.yml \
             apps/habit-service/migrations/0005_habit_rule_change_authority.sql \
             apps/habit-service/src/habit-domain.ts \
-            apps/habit-service/src/postgres-habit-repository.ts; do
+            apps/habit-service/src/postgres-habit-repository.ts \
+            apps/habit-service/src/habit-review-projection.test.ts; do
             printf '%s\n' "$changed" | grep -Fx "$required" >/dev/null
           done
           git diff --check --cached
