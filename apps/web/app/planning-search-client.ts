@@ -2,6 +2,8 @@ import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RFC_3339_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
@@ -91,16 +93,24 @@ function requireUuid(value: unknown, message: string): string {
   return value.toLowerCase();
 }
 
-/** Requires one valid timestamp and returns canonical UTC ISO 8601. */
+/** Requires canonical producer-owned UUIDv4 evidence without rewriting it. */
+function requireProducerUuid(value: unknown, message: string): string {
+  if (typeof value !== 'string' || !CANONICAL_UUID_V4_PATTERN.test(value)) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+/** Requires canonical producer-owned UTC timestamp evidence without rewriting it. */
 function requireTimestamp(value: unknown): string {
   if (typeof value !== 'string' || !RFC_3339_TIMESTAMP_PATTERN.test(value)) {
     throw new Error('Planning search response is invalid');
   }
   const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
     throw new Error('Planning search response is invalid');
   }
-  return new Date(parsed).toISOString();
+  return value;
 }
 
 /** Requires a bounded, nonblank, control-free display title. */
@@ -159,7 +169,10 @@ export function parseSessionWorkspace(value: unknown): string {
   if (!isPlainObject(value)) {
     throw new Error('Identity session response is invalid');
   }
-  return requireUuid(value.workspaceId, 'Identity session response is invalid');
+  return requireProducerUuid(
+    value.workspaceId,
+    'Identity session response is invalid',
+  );
 }
 
 /** Requires one bounded absolute Planning resource path without a query/fragment. */
@@ -221,7 +234,7 @@ function parseResult(value: unknown): PlanningSearchView {
   }
   const result: PlanningSearchView = {
     entityType,
-    id: requireUuid(value.id, 'Planning search response is invalid'),
+    id: requireProducerUuid(value.id, 'Planning search response is invalid'),
     title: requireTitle(value.title),
     createdAt: requireTimestamp(value.createdAt),
   };
@@ -231,7 +244,7 @@ function parseResult(value: unknown): PlanningSearchView {
     }
     return result;
   }
-  result.parentId = requireUuid(
+  result.parentId = requireProducerUuid(
     value.parentId,
     'Planning search response is invalid',
   );
