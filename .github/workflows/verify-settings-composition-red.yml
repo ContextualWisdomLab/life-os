@@ -1,4 +1,4 @@
-name: Verify Settings Composition RED
+name: Verify Settings Composition First GREEN
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -20,7 +20,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Require bounded RED authority
+      - name: Require bounded first GREEN authority
         shell: bash
         run: |
           set -euo pipefail
@@ -34,7 +34,8 @@ jobs:
           changed="$(git diff --name-only "$protected_main" "$GITHUB_SHA" | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
             '.github/workflows/verify-settings-composition-red.yml' \
-            'apps/web/app/settings-composition-red.test.ts')"
+            'apps/web/app/settings-composition-red.test.ts' \
+            'apps/web/app/settings/page.tsx')"
           test "$changed" = "$expected"
           git diff --check "$protected_main" "$GITHUB_SHA"
 
@@ -53,9 +54,16 @@ jobs:
         run: >-
           pnpm exec prettier --single-quote --check
           apps/web/app/settings-composition-red.test.ts
+          apps/web/app/settings/page.tsx
           .github/workflows/verify-settings-composition-red.yml
 
-      - name: Reproduce missing Settings buyer surface
+      - name: Prove first-party Settings route GREEN
         run: >-
           pnpm --filter @life-os/web exec tsx --test
           app/settings-composition-red.test.ts
+
+      - name: Typecheck Web
+        run: pnpm --filter @life-os/web typecheck
+
+      - name: Run complete Web suite
+        run: pnpm --filter @life-os/web test
