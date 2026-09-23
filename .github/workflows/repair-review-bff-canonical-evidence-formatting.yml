@@ -1,0 +1,130 @@
+name: Repair Review BFF Canonical Evidence Formatting
+
+on:
+  push:
+    branches:
+      - feat/web-review-bff-v1
+    paths:
+      - apps/web/app/review-client.ts
+      - apps/web/app/review-client.test.ts
+      - apps/web/app/review-client-canonical-evidence.test.ts
+      - apps/web/app/api/reviews/routes.test.ts
+      - .github/workflows/verify-review-bff-canonical-evidence.yml
+      - .github/workflows/repair-review-bff-canonical-evidence-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-review-bff-canonical-evidence-formatting-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact formatter head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.sha }}
+
+      - name: Guard retained semantic repair and exact owner head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test -n "${remote_head}"
+          test "${remote_head}" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 5d6f22b33c58e73d4481cd8380e824db9fbf77f1 "$GITHUB_SHA"
+          test ! -e .github/workflows/repair-review-optional-reflection-exactness.yml
+          test -e .github/workflows/verify-review-bff-canonical-evidence.yml
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install reproducible dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Reproduce focused formatting RED
+        shell: bash
+        run: |
+          set -euo pipefail
+          if pnpm exec prettier --single-quote --check \
+            apps/web/app/review-client.ts \
+            apps/web/app/review-client.test.ts \
+            apps/web/app/review-client-canonical-evidence.test.ts \
+            apps/web/app/api/reviews/routes.test.ts \
+            .github/workflows/verify-review-bff-canonical-evidence.yml; then
+            echo "Expected retained focused-formatting RED, but the exact head is already canonical." >&2
+            exit 1
+          fi
+
+      - name: Apply bounded formatter repair
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/web/app/review-client.ts
+          apps/web/app/review-client.test.ts
+          apps/web/app/review-client-canonical-evidence.test.ts
+          apps/web/app/api/reviews/routes.test.ts
+          .github/workflows/verify-review-bff-canonical-evidence.yml
+
+      - name: Prove Review repair remains GREEN
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --check \
+            apps/web/app/review-client.ts \
+            apps/web/app/review-client.test.ts \
+            apps/web/app/review-client-canonical-evidence.test.ts \
+            apps/web/app/api/reviews/routes.test.ts \
+            .github/workflows/verify-review-bff-canonical-evidence.yml
+          pnpm --filter @life-os/web exec tsx --test \
+            app/review-client.test.ts \
+            app/review-client-canonical-evidence.test.ts \
+            app/api/reviews/routes.test.ts
+          pnpm --filter @life-os/web typecheck
+          pnpm --filter @life-os/web test
+
+      - name: Guard bounded formatter delta and self-retire
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- \
+            apps/web/app/review-client.ts \
+            apps/web/app/review-client.test.ts \
+            apps/web/app/review-client-canonical-evidence.test.ts \
+            apps/web/app/api/reviews/routes.test.ts \
+            .github/workflows/verify-review-bff-canonical-evidence.yml
+          git rm .github/workflows/repair-review-bff-canonical-evidence-formatting.yml
+          git diff --cached --check
+          git diff --cached --name-only | grep -v '^.github/workflows/repair-review-bff-canonical-evidence-formatting.yml$' | grep -q .
+          while IFS= read -r path; do
+            case "$path" in
+              apps/web/app/review-client.ts|apps/web/app/review-client.test.ts|apps/web/app/review-client-canonical-evidence.test.ts|apps/web/app/api/reviews/routes.test.ts|.github/workflows/verify-review-bff-canonical-evidence.yml|.github/workflows/repair-review-bff-canonical-evidence-formatting.yml) ;;
+              *) echo "Unexpected staged path: $path" >&2; exit 1 ;;
+            esac
+          done < <(git diff --cached --name-only)
+
+      - name: Publish ordinary formatter descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "life-os-maintainer"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(web): canonicalize Review BFF evidence"
+          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
+          test "${remote_head}" = "$GITHUB_SHA"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
