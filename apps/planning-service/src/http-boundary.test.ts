@@ -27,7 +27,7 @@ function signContext(
 ): string {
   return createHmac('sha256', secret)
     .update(
-      `life-os.planning-context.v2\n${workspaceId.toLowerCase()}\n${issuedAt}\n${binding.method}\n${binding.path}`,
+      `life-os.planning-context.v2\n${workspaceId}\n${issuedAt}\n${binding.method}\n${binding.path}`,
       'utf8',
     )
     .digest('base64url');
@@ -74,7 +74,7 @@ describe('planning HTTP boundary', () => {
     expect(
       requireTrustedWorkspaceContext(
         {
-          workspaceId: WORKSPACE_ID.toUpperCase(),
+          workspaceId: WORKSPACE_ID,
           issuedAt,
           signature: signContext(WORKSPACE_ID, issuedAt),
         },
