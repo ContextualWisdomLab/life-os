@@ -32,8 +32,11 @@ jobs:
           remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
           test -n "$remote_head"
           test "$remote_head" = "$GITHUB_SHA"
-          git merge-base --is-ancestor 96dfbe60360dfb895e0ffc22377dd8ee5276c0d7 "$GITHUB_SHA"
+          git merge-base --is-ancestor c6961c7b2f8b3ce8321327621ae4c60ee5d948b5 "$GITHUB_SHA"
           test ! -e .github/workflows/repair-commercial-readiness-docstring.yml
+          mapfile -t changed_paths < <(git diff --name-only c6961c7b2f8b3ce8321327621ae4c60ee5d948b5 "$GITHUB_SHA")
+          test "${#changed_paths[@]}" -eq 1
+          test "${changed_paths[0]}" = ".github/workflows/verify-commercial-readiness-docstring-repair.yml"
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
