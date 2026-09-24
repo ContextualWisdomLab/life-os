@@ -39,7 +39,11 @@ test('Web exposes an executable, configured accessibility-capable Storybook boun
   );
 
   const config = assertRepositoryFile('apps/web/.storybook/main.ts');
-  assert.match(config, /stories/, 'Storybook config must declare story discovery');
+  assert.match(
+    config,
+    /stories/,
+    'Storybook config must declare story discovery',
+  );
   assert.match(
     config,
     /@storybook\/addon-a11y/,
