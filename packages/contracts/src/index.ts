@@ -1,4 +1,5 @@
 export * from './data-rights.js';
+export * from './service-origin.js';
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 

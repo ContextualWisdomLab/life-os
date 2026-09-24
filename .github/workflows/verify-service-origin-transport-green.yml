@@ -1,0 +1,91 @@
+name: Verify Service Origin Transport GREEN
+
+on:
+  push:
+    branches:
+      - test/web-service-origin-transport-v1
+    paths:
+      - .github/workflows/verify-service-origin-transport-green.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-service-origin-transport-green-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact verifier head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Bind verifier to the workflow-free semantic publication
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          semantic='eb9dc18b7256bc7cd45dce4e3ca9000eaa55f09c'
+          verifier='.github/workflows/verify-service-origin-transport-green.yml'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          remote_head="$(git ls-remote --refs origin refs/heads/test/web-service-origin-transport-v1 | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$semantic"
+          git merge-base --is-ancestor "$semantic" "$GITHUB_SHA"
+          test "$(git diff --name-only "$semantic" "$GITHUB_SHA")" = "$verifier"
+          test ! -e .github/workflows/verify-web-service-origin-transport-red.yml
+          test ! -e .github/workflows/repair-service-origin-transport.yml
+          test ! -e .github/scripts/repair-service-origin-transport.py
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Prove exact semantic GREEN
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pnpm exec prettier --check \
+            packages/contracts/src/service-origin.ts \
+            packages/contracts/service-origin.test.mjs \
+            packages/contracts/src/index.ts \
+            packages/contracts/package.json \
+            apps/web/package.json \
+            apps/web/app/service-origin-transport.test.ts \
+            apps/web/app/ai-service-origin-transport.test.ts \
+            apps/web/app/planning-search-client.ts \
+            apps/web/app/today-sync-client.ts \
+            apps/web/app/ai-proposal-client-core.ts \
+            apps/web/app/planning-search-client.test.ts \
+            apps/web/app/ai-proposal-client.test.ts \
+            apps/web/app/ai-proposal-scope-regression.test.ts \
+            apps/web/app/ai-proposal-identity-stream-regression.test.ts \
+            apps/web/app/api/ai/proposals/routes.test.ts \
+            apps/gateway/src/today-composition.ts \
+            apps/gateway/src/service-origin-transport.test.ts \
+            docs/operations/durable-today-synchronization.md \
+            docs/operations/production-deployment.md \
+            CHANGELOG.md
+          pnpm --filter @life-os/contracts typecheck
+          pnpm --filter @life-os/contracts build
+          pnpm --filter @life-os/contracts test
+          pnpm --filter @life-os/web typecheck
+          pnpm --filter @life-os/web test
+          pnpm --filter @life-os/gateway typecheck
+          pnpm --filter @life-os/gateway test
+          pnpm --filter @life-os/web build
+          pnpm --filter @life-os/gateway build
+          grep -F 'SERVICE_ORIGIN_HTTP_MODE=loopback' docs/operations/durable-today-synchronization.md
+          grep -F 'must not be set on cluster workloads' docs/operations/production-deployment.md
+          git diff --check

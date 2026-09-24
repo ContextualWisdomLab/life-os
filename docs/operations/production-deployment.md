@@ -110,7 +110,7 @@ kubectl label namespace <ingress-namespace> life-os.io/edge-access=true
 
 Restrict that label through cluster admission policy. Removing it withdraws edge ingress without changing LifeOS workloads.
 
-The base denies all ambient traffic, then permits DNS, edge ingress, web-to-gateway TCP `4000`, and gateway egress to explicitly named LifeOS pods on service ports `4101` through `4107`, NATS `4222`, and PostgreSQL `5432`. The current gateway endpoint is a placeholder and does not yet require PostgreSQL or NATS, but these internal paths are ready for separately deployed, correctly labeled LifeOS services.
+The base denies all ambient traffic, then permits DNS, edge ingress, web-to-gateway TCP `4000`, and gateway egress to explicitly named LifeOS pods on service ports `4101` through `4107`, NATS `4222`, and PostgreSQL `5432`. The current gateway endpoint is a placeholder and does not yet require PostgreSQL or NATS. NetworkPolicy reachability does not establish encrypted application transport: before enabling an internal Identity, Planning, Habit, or AI origin, terminate authenticated TLS at the service, sidecar, or reviewed service-mesh boundary and configure an exact HTTPS origin. `SERVICE_ORIGIN_HTTP_MODE=loopback` is a local-only exception and must not be set on cluster workloads or used to authorize service-DNS/IP cleartext.
 
 Managed PostgreSQL, managed NATS, and external APIs are intentionally still blocked. Before enabling them, add an operator-owned NetworkPolicy or CNI-native FQDN policy containing only the reviewed destination CIDRs or names and exact ports. Never use `0.0.0.0/0` as a convenience fallback. Confirm the provider's endpoint stability, private routing, DNS behavior, and failover addresses before rollout.
 
@@ -185,10 +185,10 @@ These controls reduce common deployment risk but do not replace cluster hardenin
 
 ## Standards basis
 
-- Kubernetes, *Declarative Management of Kubernetes Objects Using Kustomize*: https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/
-- Kubernetes, *Using RBAC Authorization*: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
-- Kubernetes, *Pod Security Standards*: https://kubernetes.io/docs/concepts/security/pod-security-standards/
-- Kubernetes, *Liveness, Readiness, and Startup Probes*: https://kubernetes.io/docs/concepts/workloads/pods/probes/
-- Kubernetes, *Good practices for Kubernetes Secrets*: https://kubernetes.io/docs/concepts/security/secrets-good-practices/
-- PostgreSQL, *The Connection Service File*: https://www.postgresql.org/docs/current/libpq-pgservice.html
-- PostgreSQL, *Environment Variables*: https://www.postgresql.org/docs/current/libpq-envars.html
+- Kubernetes, _Declarative Management of Kubernetes Objects Using Kustomize_: https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/
+- Kubernetes, _Using RBAC Authorization_: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+- Kubernetes, _Pod Security Standards_: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+- Kubernetes, _Liveness, Readiness, and Startup Probes_: https://kubernetes.io/docs/concepts/workloads/pods/probes/
+- Kubernetes, _Good practices for Kubernetes Secrets_: https://kubernetes.io/docs/concepts/security/secrets-good-practices/
+- PostgreSQL, _The Connection Service File_: https://www.postgresql.org/docs/current/libpq-pgservice.html
+- PostgreSQL, _Environment Variables_: https://www.postgresql.org/docs/current/libpq-envars.html

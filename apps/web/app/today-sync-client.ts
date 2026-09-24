@@ -305,11 +305,14 @@ export async function handleTodaySyncRequest(
   }
 
   try {
+    const transportMode = environment.SERVICE_ORIGIN_HTTP_MODE;
     const identityOrigin = requireServiceOrigin(
       environment.IDENTITY_SERVICE_ORIGIN,
+      transportMode,
     );
     const planningOrigin = requireServiceOrigin(
       environment.PLANNING_SERVICE_ORIGIN,
+      transportMode,
     );
     const secret = requireGatewaySecret(
       environment.PLANNING_GATEWAY_CONTEXT_SECRET,

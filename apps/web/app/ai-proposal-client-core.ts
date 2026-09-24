@@ -1,3 +1,4 @@
+import { requireSecureServiceOrigin } from '@life-os/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
@@ -171,28 +172,16 @@ function requireTimestamp(value: unknown): string {
   return new Date(parsed).toISOString();
 }
 
-/** Requires a fixed HTTP(S) service origin without credentials or path data. */
-export function requireAiServiceOrigin(value: string | undefined): string {
-  if (!value || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw new Error('AI service origin is invalid');
-  }
-  let parsed: URL;
+/** Applies the shared upstream transport policy with the AI-facing stable error. */
+export function requireAiServiceOrigin(
+  value: string | undefined,
+  httpMode?: string,
+): string {
   try {
-    parsed = new URL(value);
+    return requireSecureServiceOrigin(value, httpMode);
   } catch {
     throw new Error('AI service origin is invalid');
   }
-  if (
-    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
-    parsed.username ||
-    parsed.password ||
-    parsed.pathname !== '/' ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw new Error('AI service origin is invalid');
-  }
-  return parsed.origin;
 }
 
 /** Requires a bounded server-only HMAC secret. */
@@ -844,10 +833,15 @@ export async function handleAiProposalRequest(
 
   const correlationId = randomUUID();
   try {
+    const transportMode = environment.SERVICE_ORIGIN_HTTP_MODE;
     const identityOrigin = requireAiServiceOrigin(
       environment.IDENTITY_SERVICE_ORIGIN,
+      transportMode,
     );
-    const aiOrigin = requireAiServiceOrigin(environment.AI_SERVICE_ORIGIN);
+    const aiOrigin = requireAiServiceOrigin(
+      environment.AI_SERVICE_ORIGIN,
+      transportMode,
+    );
     const signingKey = requireAiGatewaySigningKey(environment);
     const identityResponse = await fetcher(
       new URL('/v1/session', identityOrigin),

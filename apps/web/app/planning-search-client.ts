@@ -1,3 +1,4 @@
+import { requireSecureServiceOrigin } from '@life-os/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
@@ -117,28 +118,16 @@ function requireTitle(value: unknown): string {
   return value;
 }
 
-/** Requires a fixed service origin with no credentials, path, query, or fragment. */
-export function requireServiceOrigin(value: string | undefined): string {
-  if (!value || value.length > 2048 || /[\u0000-\u001f\u007f]/.test(value)) {
-    throw new Error('Service origin is invalid');
-  }
-  let parsed: URL;
+/** Applies the shared upstream transport policy with the Web-facing stable error. */
+export function requireServiceOrigin(
+  value: string | undefined,
+  httpMode?: string,
+): string {
   try {
-    parsed = new URL(value);
+    return requireSecureServiceOrigin(value, httpMode);
   } catch {
     throw new Error('Service origin is invalid');
   }
-  if (
-    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
-    parsed.username ||
-    parsed.password ||
-    parsed.pathname !== '/' ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw new Error('Service origin is invalid');
-  }
-  return parsed.origin;
 }
 
 /** Requires the shared HMAC secret used only between the BFF and planning service. */
@@ -398,11 +387,14 @@ export async function handlePlanningSearchRequest(
   }
 
   try {
+    const transportMode = environment.SERVICE_ORIGIN_HTTP_MODE;
     const identityOrigin = requireServiceOrigin(
       environment.IDENTITY_SERVICE_ORIGIN,
+      transportMode,
     );
     const planningOrigin = requireServiceOrigin(
       environment.PLANNING_SERVICE_ORIGIN,
+      transportMode,
     );
     const contextSecret = requireGatewaySecret(
       environment.PLANNING_GATEWAY_CONTEXT_SECRET,
