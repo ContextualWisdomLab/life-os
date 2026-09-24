@@ -38,15 +38,30 @@ jobs:
           GIT_CONFIG_VALUE_0: main
         with:
           persist-credentials: false
+          fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Require workflow-free acceptance head
+      - name: Require exact workflow-free semantic publication
         shell: bash
         run: |
           set -euo pipefail
+          semantic_publication="0c7a915fa7e2b9dbb1b849914cf02c61d2fdb274"
+          remote_ref="refs/remotes/origin/test/web-today-canonical-evidence-v1"
+
           test ! -e .github/workflows/repair-today-canonical-evidence-formatting.yml
           test ! -e .github/workflows/repair-today-canonical-evidence.yml
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+          git fetch --no-tags origin \
+            refs/heads/test/web-today-canonical-evidence-v1:"$remote_ref"
+          test "$(git rev-parse "$remote_ref")" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$semantic_publication" HEAD
+
+          mapfile -t post_publication_paths < <(
+            git diff --name-only "$semantic_publication"...HEAD
+          )
+          test "${#post_publication_paths[@]}" -eq 1
+          test "${post_publication_paths[0]}" = ".github/workflows/verify-today-canonical-evidence.yml"
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -71,6 +86,7 @@ jobs:
           apps/planning-service/src/today-sync.ts
           apps/planning-service/src/today-if-match-strong-comparison-regression.test.ts
           docs/operations/durable-today-synchronization.md
+          .github/workflows/verify-today-canonical-evidence.yml
 
       - name: Reproduce Web canonical-evidence regressions
         run: >-
