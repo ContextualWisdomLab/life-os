@@ -1,5 +1,7 @@
 # LifeOS
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ContextualWisdomLab/life-os)
+
 **The open-source personal operating system for goals, projects, tasks, habits, and reviews.**
 
 LifeOS connects everyday action to longer-term direction. It is designed as a multi-user, self-hostable SaaS with domain-oriented microservices, user-owned data, and auditable AI assistance.
