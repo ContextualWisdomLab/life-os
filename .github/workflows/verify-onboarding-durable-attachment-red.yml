@@ -1,4 +1,4 @@
-name: Verify Onboarding Durable Attachment RED
+name: Verify Onboarding Durable Attachment GREEN
 
 on:
   push:
@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Require exact formatted RED publication
+      - name: Require exact formatted publication and product repair
         shell: bash
         run: |
           set -euo pipefail
@@ -41,15 +41,10 @@ jobs:
           git merge-base --is-ancestor "$protected_main" "$GITHUB_SHA"
           git merge-base --is-ancestor "$formatter_publication" "$GITHUB_SHA"
 
-          mapfile -t post_publication_paths < <(
-            git diff --name-only "$formatter_publication"...HEAD
-          )
-          test "${#post_publication_paths[@]}" -eq 1
-          test "${post_publication_paths[0]}" = '.github/workflows/verify-onboarding-durable-attachment-red.yml'
-
           changed="$(git diff --name-only "$protected_main" "$GITHUB_SHA" | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
             '.github/workflows/verify-onboarding-durable-attachment-red.yml' \
+            'apps/web/app/onboarding/onboarding-flow.tsx' \
             'apps/web/e2e/onboarding-durable-attachment-red.spec.ts')"
           test "$changed" = "$expected"
           git diff --check "$protected_main" "$GITHUB_SHA"
@@ -71,10 +66,11 @@ jobs:
       - name: Check focused formatting
         run: >-
           pnpm exec prettier --single-quote --check
+          apps/web/app/onboarding/onboarding-flow.tsx
           apps/web/e2e/onboarding-durable-attachment-red.spec.ts
           .github/workflows/verify-onboarding-durable-attachment-red.yml
 
-      - name: Reproduce missing local attachment draft
+      - name: Verify retained local attachment draft
         run: >-
           pnpm --filter @life-os/web exec playwright test
           e2e/onboarding-durable-attachment-red.spec.ts
