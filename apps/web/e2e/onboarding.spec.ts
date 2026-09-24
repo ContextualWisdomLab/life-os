@@ -31,10 +31,21 @@ test('creates a useful first plan without overwriting the Today contract', async
   await expect(page.getByText('09:00–10:00')).toBeVisible();
   await expect(page.getByText('1 / 3')).toBeVisible();
 
-  const storedCompletion = await page.evaluate(() =>
-    window.localStorage.getItem('life-os.onboarding-completion.v1'),
-  );
-  expect(storedCompletion).toContain('life-os.onboarding-completion.v1');
+  const storedState = await page.evaluate(() => ({
+    completion: window.localStorage.getItem(
+      'life-os.onboarding-completion.v1',
+    ),
+    attachment: window.localStorage.getItem(
+      'life-os.onboarding-attachment-draft.v1',
+    ),
+  }));
+  expect(storedState.completion).toContain('life-os.onboarding-completion.v1');
+  expect(JSON.parse(storedState.attachment ?? 'null')).toEqual({
+    version: 'life-os.onboarding-attachment-draft.v1',
+    direction: 'Prepare a calm product launch',
+    nextAction: 'Review the release evidence',
+    attachmentDecision: 'pending',
+  });
 });
 
 test('restores the existing Today draft when completion storage fails', async ({
@@ -108,6 +119,94 @@ test('restores the existing Today draft when completion storage fails', async ({
       ),
     )
     .toBeNull();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.localStorage.getItem('life-os.onboarding-attachment-draft.v1'),
+      ),
+    )
+    .toBeNull();
+});
+
+test('rolls back all onboarding state when attachment storage fails', async ({
+  page,
+}) => {
+  const previous = await page.evaluate(() => {
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const today = JSON.stringify({
+      version: 'life-os.today-draft.v1',
+      date,
+      actions: [],
+    });
+    const completion = JSON.stringify({
+      version: 'life-os.onboarding-completion.v1',
+      completedAt: '2026-09-01T00:00:00.000Z',
+    });
+    const attachment = JSON.stringify({
+      version: 'life-os.onboarding-attachment-draft.v1',
+      direction: 'Keep the prior direction',
+      nextAction: 'Keep the prior action',
+      attachmentDecision: 'pending',
+    });
+    window.localStorage.setItem('life-os.today-draft.v1', today);
+    window.localStorage.setItem('life-os.onboarding-completion.v1', completion);
+    window.localStorage.setItem(
+      'life-os.onboarding-attachment-draft.v1',
+      attachment,
+    );
+    return { today, completion, attachment };
+  });
+
+  await page.addInitScript(() => {
+    const nativeSetItem = Storage.prototype.setItem;
+    let failedOnce = false;
+    Storage.prototype.setItem = function setItem(
+      key: string,
+      value: string,
+    ): void {
+      if (
+        key === 'life-os.onboarding-attachment-draft.v1' &&
+        !failedOnce
+      ) {
+        failedOnce = true;
+        throw new DOMException(
+          'Simulated attachment storage failure',
+          'QuotaExceededError',
+        );
+      }
+      nativeSetItem.call(this, key, value);
+    };
+  });
+  await page.reload();
+
+  await page
+    .getByLabel('What direction matters most right now?')
+    .fill('Prepare a calm product launch');
+  await page
+    .getByLabel('What is the next visible action?')
+    .fill('Review the release evidence');
+  await page.getByRole('button', { name: 'Create my first plan' }).click();
+
+  await expect(
+    page.getByText(
+      'Your browser could not save the complete plan safely. Your previous Today draft was restored.',
+    ),
+  ).toBeVisible();
+  await expect(page).toHaveURL('/onboarding');
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        today: window.localStorage.getItem('life-os.today-draft.v1'),
+        completion: window.localStorage.getItem(
+          'life-os.onboarding-completion.v1',
+        ),
+        attachment: window.localStorage.getItem(
+          'life-os.onboarding-attachment-draft.v1',
+        ),
+      })),
+    )
+    .toEqual(previous);
 });
 
 test('fails closed when required planning inputs are absent', async ({
