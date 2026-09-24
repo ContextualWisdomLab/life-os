@@ -8,6 +8,8 @@ import {
 
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const MAXIMUM_COOKIE_BYTES = 4 * 1024;
 const MAXIMUM_BROWSER_BODY_BYTES = 64 * 1024;
@@ -179,13 +181,22 @@ async function readBrowserPutBody(
   return JSON.stringify(parsed);
 }
 
-/** Requires a strong revision ETag returned by planning-service. */
-function requireEtag(value: string | null): string {
+/** Requires one strong UUID-shaped browser entity-tag without rewriting octets. */
+function requireOpaqueRevisionEtag(value: string | null): string {
   const match = /^"([0-9a-f-]+)"$/iu.exec(value ?? '');
   if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
     throw new Error('invalid etag');
   }
-  return `"${match[1].toLowerCase()}"`;
+  return value as string;
+}
+
+/** Requires one lowercase-canonical revision ETag produced by Planning. */
+function requireCanonicalRevisionEtag(value: string | null): string {
+  const match = /^"([0-9a-f-]+)"$/u.exec(value ?? '');
+  if (!match?.[1] || !CANONICAL_UUID_V4_PATTERN.test(match[1])) {
+    throw new Error('invalid etag');
+  }
+  return value as string;
 }
 
 /** Restricts browser write authority to one strong match or explicit create. */
@@ -210,7 +221,7 @@ function requireWriteHeaders(
       'idempotency-key': idempotencyKey.toLowerCase(),
     });
   }
-  const etag = requireEtag(ifMatch);
+  const etag = requireOpaqueRevisionEtag(ifMatch);
   return Object.freeze({
     'if-match': etag,
     'idempotency-key': idempotencyKey.toLowerCase(),
@@ -243,9 +254,9 @@ function parseRevisionConflict(value: unknown): string | null | undefined {
   if (record.currentRevision === null) return null;
   if (
     typeof record.currentRevision === 'string' &&
-    UUID_V4_PATTERN.test(record.currentRevision)
+    CANONICAL_UUID_V4_PATTERN.test(record.currentRevision)
   ) {
-    return record.currentRevision.toLowerCase();
+    return record.currentRevision;
   }
   return undefined;
 }
@@ -266,9 +277,9 @@ function parseAggregate(
     record.version !== 'life-os.today.v1' ||
     record.date !== expectedDate ||
     typeof record.aggregateId !== 'string' ||
-    !UUID_V4_PATTERN.test(record.aggregateId) ||
+    !CANONICAL_UUID_V4_PATTERN.test(record.aggregateId) ||
     typeof record.revision !== 'string' ||
-    !UUID_V4_PATTERN.test(record.revision) ||
+    !CANONICAL_UUID_V4_PATTERN.test(record.revision) ||
     !Array.isArray(record.actions) ||
     record.actions.length > 50
   ) {
@@ -398,8 +409,10 @@ export async function handleTodaySyncRequest(
       await readBoundedJson(planningResponse, MAXIMUM_UPSTREAM_BODY_BYTES),
       safeDate,
     );
-    const etag = requireEtag(planningResponse.headers.get('etag'));
-    if (`"${String(aggregate.revision).toLowerCase()}"` !== etag) {
+    const etag = requireCanonicalRevisionEtag(
+      planningResponse.headers.get('etag'),
+    );
+    if (`"${String(aggregate.revision)}"` !== etag) {
       return unavailable();
     }
     return Response.json(aggregate, {

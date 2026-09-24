@@ -1,8 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import {
-  canonicalTodayDate,
-  canonicalTodayUuidV4,
-} from './today-invariants';
+import { canonicalTodayDate } from './today-invariants';
 import {
   TodayIdempotencyConflictError,
   TodayPersistenceError,
@@ -10,6 +7,9 @@ import {
   TodayValidationError,
   type TodayWritePrecondition,
 } from './today-sync';
+
+const TODAY_REVISION_ENTITY_TAG_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Bounded RFC 9457-compatible problem object for Today synchronization. */
 interface TodayProblem {
@@ -90,11 +90,10 @@ export function parseTodayWritePrecondition(
     return Object.freeze({ kind: 'absent' });
   }
   const match = /^"([^"\r\n]+)"$/u.exec(ifMatch ?? '');
-  if (!match?.[1]) return invalidTodayPrecondition();
-  return Object.freeze({
-    kind: 'match',
-    revision: canonicalTodayUuidV4(match[1], invalidTodayPrecondition),
-  });
+  if (!match?.[1] || !TODAY_REVISION_ENTITY_TAG_PATTERN.test(match[1])) {
+    return invalidTodayPrecondition();
+  }
+  return Object.freeze({ kind: 'match', revision: match[1] });
 }
 
 /** Maps Today domain/persistence failures to stable credential-free HTTP errors. */

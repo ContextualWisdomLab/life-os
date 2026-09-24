@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { handleTodaySyncRequest } from './today-sync-client';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
-const REVISION = '22222222-2222-4222-8222-222222222222';
+const REVISION = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DATE = '2026-08-09';
 const ENVIRONMENT = {
   IDENTITY_SERVICE_ORIGIN: 'https://identity.example.test',
@@ -19,7 +19,7 @@ function identityResponse(): Response {
 function aggregate() {
   return {
     version: 'life-os.today.v1',
-    aggregateId: '44444444-4444-4444-8444-444444444444',
+    aggregateId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     revision: REVISION,
     date: DATE,
     actions: [],
@@ -118,6 +118,129 @@ describe('Today synchronization review regressions', () => {
       status: 409,
       code: 'today_revision_conflict',
       currentRevision: REVISION,
+    });
+  });
+
+  it('rejects noncanonical durable Today aggregate identity from Planning', async () => {
+    const request = new Request(
+      `https://life.example.test/api/planning/today/${DATE}`,
+      {
+        method: 'GET',
+        headers: { cookie: 'session=opaque' },
+      },
+    );
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) return identityResponse();
+      return new Response(
+        JSON.stringify({
+          ...aggregate(),
+          aggregateId: aggregate().aggregateId.toUpperCase(),
+        }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            etag: `\"${REVISION}\"`,
+          },
+        },
+      );
+    };
+
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+    const body = (await response.json()) as { code: string };
+
+    assert.equal(response.status, 503);
+    assert.equal(body.code, 'today_sync_unavailable');
+  });
+
+  it('rejects noncanonical durable Today revision and matching ETag from Planning', async () => {
+    const request = new Request(
+      `https://life.example.test/api/planning/today/${DATE}`,
+      {
+        method: 'GET',
+        headers: { cookie: 'session=opaque' },
+      },
+    );
+    const uppercaseRevision = REVISION.toUpperCase();
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) return identityResponse();
+      return new Response(
+        JSON.stringify({ ...aggregate(), revision: uppercaseRevision }),
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            etag: `\"${uppercaseRevision}\"`,
+          },
+        },
+      );
+    };
+
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+    const body = (await response.json()) as { code: string };
+
+    assert.equal(response.status, 503);
+    assert.equal(body.code, 'today_sync_unavailable');
+  });
+
+  it('does not recanonicalize noncanonical conflict revision evidence from Planning', async () => {
+    const request = new Request(
+      `https://life.example.test/api/planning/today/${DATE}`,
+      {
+        method: 'PUT',
+        headers: {
+          cookie: 'session=opaque',
+          'content-type': 'application/json',
+          'if-match': `\"${REVISION}\"`,
+          'idempotency-key': randomUUID(),
+        },
+        body: JSON.stringify({
+          version: 'life-os.today.v1',
+          date: DATE,
+          actions: [],
+        }),
+      },
+    );
+    const fetcher = async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/v1/session')) return identityResponse();
+      return new Response(
+        JSON.stringify({
+          type: 'about:blank',
+          title: 'The durable Today changed while you were editing',
+          status: 409,
+          code: 'today_revision_conflict',
+          currentRevision: REVISION.toUpperCase(),
+        }),
+        {
+          status: 409,
+          headers: { 'content-type': 'application/problem+json' },
+        },
+      );
+    };
+
+    const response = await handleTodaySyncRequest(
+      request,
+      DATE,
+      ENVIRONMENT,
+      fetcher,
+    );
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), {
+      type: 'about:blank',
+      title: 'Today write conflicts with an earlier request',
+      status: 409,
+      code: 'today_write_conflict',
     });
   });
 });

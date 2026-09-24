@@ -1,7 +1,7 @@
 import { parseTodayDraft, type TodayDraft } from './today-state';
 
 const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAXIMUM_RESPONSE_BYTES = 64 * 1024;
 
 type BrowserFetch = (
@@ -93,7 +93,7 @@ function requireRevision(response: Response): string {
   if (!match?.[1] || !UUID_V4_PATTERN.test(match[1])) {
     throw new Error('invalid revision');
   }
-  return match[1].toLowerCase();
+  return match[1];
 }
 
 /** Converts one trusted-BFF durable response back to validated local draft state. */
@@ -147,7 +147,7 @@ async function parseConflict(
     typeof record.currentRevision === 'string' &&
     UUID_V4_PATTERN.test(record.currentRevision)
   ) {
-    return record.currentRevision.toLowerCase();
+    return record.currentRevision;
   }
   return undefined;
 }
@@ -199,7 +199,7 @@ export async function saveWorkspaceToday(
       'idempotency-key': globalThis.crypto.randomUUID(),
     });
     if (revision === null) requestHeaders.set('if-none-match', '*');
-    else requestHeaders.set('if-match', `"${revision.toLowerCase()}"`);
+    else requestHeaders.set('if-match', `"${revision}"`);
     const response = await fetcher(
       `/api/planning/today/${encodeURIComponent(document.date)}`,
       {

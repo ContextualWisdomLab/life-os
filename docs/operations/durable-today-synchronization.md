@@ -1,6 +1,6 @@
 # Durable Today synchronization runbook
 
-**Status:** Implemented on active PR #127  
+**Status:** Implemented on protected `main` via merged PR #127  
 **Owner:** Planning bounded context with web BFF mediation
 
 ## Purpose
@@ -91,24 +91,25 @@ Before merge or release, require exact-current-head evidence for:
 - planning domain/unit tests;
 - real PostgreSQL restart, tenant-isolation, concurrent-update, replay, and conflicting-key tests;
 - BFF authentication/credential-separation tests;
+- RFC 9110 strong `ETag` / `If-Match` comparison, preserving opaque entity-tag octets character-for-character;
 - browser explicit-migration and stale-conflict journeys;
 - CI browser acceptance in Chromium;
 - formatting, lint, typecheck, build, Compose validation;
 - AppGuardrail, Semgrep, Security Scan, Commercial Readiness, CodeRabbit, and all actionable human/automated review findings.
 
-A predecessor-head pass does not transfer after any source or base change.
+A predecessor-head pass does not transfer after any source, documentation, or base change.
 
 ## Diagnosis guide
 
-| Symptom | First boundary to inspect | Safe action |
-| --- | --- | --- |
-| Browser shows sign-in required | identity `/v1/session` | Verify session validity; do not add client-selected workspace IDs. |
-| Browser shows workspace unavailable | BFF dependency call or bounded-response validation | Inspect exact upstream status/timeout without exposing payloads; retry only after a fresh user action. |
-| `today_revision_conflict` | current aggregate revision | Preserve local state and perform a fresh explicit read. |
-| `today_idempotency_conflict` | idempotency-key/request digest pair | Generate a new key for a genuinely new request; never coerce the stored record. |
-| Repeated database serialization failure | planning PostgreSQL statement/lock boundary | Inspect transaction evidence and current revision; do not weaken optimistic concurrency. |
-| Cross-workspace result | authenticated context / SQL tenant predicate | Treat as a security incident; fail closed and stop release. |
-| Browser acceptance fails before app starts | Playwright/browser bootstrap | RCA runner/dependency failure separately from product behavior; do not mark browser journey passing. |
+| Symptom                                    | First boundary to inspect                          | Safe action                                                                                            |
+| ------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Browser shows sign-in required             | identity `/v1/session`                             | Verify session validity; do not add client-selected workspace IDs.                                     |
+| Browser shows workspace unavailable        | BFF dependency call or bounded-response validation | Inspect exact upstream status/timeout without exposing payloads; retry only after a fresh user action. |
+| `today_revision_conflict`                  | current aggregate revision                         | Preserve local state and perform a fresh explicit read.                                                |
+| `today_idempotency_conflict`               | idempotency-key/request digest pair                | Generate a new key for a genuinely new request; never coerce the stored record.                        |
+| Repeated database serialization failure    | planning PostgreSQL statement/lock boundary        | Inspect transaction evidence and current revision; do not weaken optimistic concurrency.               |
+| Cross-workspace result                     | authenticated context / SQL tenant predicate       | Treat as a security incident; fail closed and stop release.                                            |
+| Browser acceptance fails before app starts | Playwright/browser bootstrap                       | RCA runner/dependency failure separately from product behavior; do not mark browser journey passing.   |
 
 ## Rollback
 

@@ -9,7 +9,7 @@ import {
 
 const DATE = '2026-08-09';
 const ACTION_ID = '33333333-3333-4333-8333-333333333333';
-const REVISION = '22222222-2222-4222-8222-222222222222';
+const REVISION = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 function draft() {
   return addTodayAction(createEmptyTodayDraft(DATE), {
@@ -22,7 +22,7 @@ function draft() {
 function aggregate() {
   return {
     ...toDurableTodayDocument(draft()),
-    aggregateId: '44444444-4444-4444-8444-444444444444',
+    aggregateId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     revision: REVISION,
   };
 }
@@ -42,7 +42,7 @@ describe('browser Today workspace synchronization', () => {
       calls.push({ input: String(input), init });
       return Response.json(aggregate(), {
         status: 200,
-        headers: { etag: `"${REVISION}"` },
+        headers: { etag: `\"${REVISION}\"` },
       });
     });
 
@@ -65,7 +65,7 @@ describe('browser Today workspace synchronization', () => {
         captured = init;
         return Response.json(aggregate(), {
           status: 201,
-          headers: { etag: `"${REVISION}"` },
+          headers: { etag: `\"${REVISION}\"` },
         });
       },
     );
@@ -90,12 +90,12 @@ describe('browser Today workspace synchronization', () => {
       captured = init;
       return Response.json(aggregate(), {
         status: 200,
-        headers: { etag: `"${REVISION}"` },
+        headers: { etag: `\"${REVISION}\"` },
       });
     });
 
     const headers = captured?.headers as Headers;
-    assert.equal(headers.get('if-match'), `"${REVISION}"`);
+    assert.equal(headers.get('if-match'), `\"${REVISION}\"`);
     assert.equal(headers.get('if-none-match'), null);
   });
 
@@ -142,9 +142,51 @@ describe('browser Today workspace synchronization', () => {
     const result = await fetchWorkspaceToday(DATE, async () =>
       Response.json(
         { ...aggregate(), actions: [{ id: 'attacker-data' }] },
-        { status: 200, headers: { etag: `"${REVISION}"` } },
+        { status: 200, headers: { etag: `\"${REVISION}\"` } },
       ),
     );
     assert.deepEqual(result, { kind: 'unavailable' });
+  });
+
+  it('does not recanonicalize noncanonical producer-owned Today evidence', async () => {
+    assert.deepEqual(
+      await fetchWorkspaceToday(DATE, async () =>
+        Response.json(
+          {
+            ...aggregate(),
+            aggregateId: aggregate().aggregateId.toUpperCase(),
+          },
+          { status: 200, headers: { etag: `\"${REVISION}\"` } },
+        ),
+      ),
+      { kind: 'unavailable' },
+    );
+
+    const uppercaseRevision = REVISION.toUpperCase();
+    assert.deepEqual(
+      await fetchWorkspaceToday(DATE, async () =>
+        Response.json(
+          { ...aggregate(), revision: uppercaseRevision },
+          { status: 200, headers: { etag: `\"${uppercaseRevision}\"` } },
+        ),
+      ),
+      { kind: 'unavailable' },
+    );
+
+    assert.deepEqual(
+      await saveWorkspaceToday(draft(), REVISION, async () =>
+        Response.json(
+          {
+            type: 'about:blank',
+            title: 'Today changed on another device',
+            status: 409,
+            code: 'today_revision_conflict',
+            currentRevision: uppercaseRevision,
+          },
+          { status: 409 },
+        ),
+      ),
+      { kind: 'unavailable' },
+    );
   });
 });

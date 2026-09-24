@@ -10,6 +10,9 @@ import {
 
 export type { DurableTodayAction, DurableTodayDraft } from './today-invariants';
 
+const TODAY_REVISION_TOKEN_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /** Server-owned durable Today aggregate returned to authenticated callers. */
 export interface DurableTodayAggregate extends DurableTodayDraft {
   readonly aggregateId: string;
@@ -157,10 +160,10 @@ function requirePrecondition(
     return Object.freeze({ kind: 'absent' });
   }
   if (value.kind === 'match') {
-    return Object.freeze({
-      kind: 'match',
-      revision: canonicalTodayUuidV4(value.revision, invalidTodayInput),
-    });
+    if (!TODAY_REVISION_TOKEN_PATTERN.test(value.revision)) {
+      throw new TodayValidationError();
+    }
+    return Object.freeze({ kind: 'match', revision: value.revision });
   }
   throw new TodayValidationError();
 }
