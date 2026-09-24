@@ -1,0 +1,92 @@
+name: Repair Onboarding Durable Attachment GREEN Formatting
+
+on:
+  push:
+    branches:
+      - test/onboarding-durable-attachment-v1
+    paths:
+      - .github/workflows/repair-onboarding-durable-attachment-green-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-onboarding-durable-attachment-green-formatting-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: test/onboarding-durable-attachment-v1
+
+      - name: Require current repair authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          predecessor='358cc7cdf913f46bebd1aa9d8911fae94f18eaa7'
+          protected_main='193a87ef54c3fe6dcda4755bce4d6bc81e3a0297'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$predecessor" HEAD
+          git merge-base --is-ancestor "$protected_main" HEAD
+          remote_head="$(git ls-remote --refs origin refs/heads/test/onboarding-durable-attachment-v1 | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Canonicalize current GREEN boundary
+        run: >-
+          pnpm exec prettier --single-quote --write
+          apps/web/app/onboarding/onboarding-flow.tsx
+          apps/web/e2e/onboarding-durable-attachment-red.spec.ts
+          apps/web/e2e/onboarding.spec.ts
+          .github/workflows/verify-onboarding-durable-attachment-red.yml
+
+      - name: Prove bounded formatter repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --check \
+            apps/web/app/onboarding/onboarding-flow.tsx \
+            apps/web/e2e/onboarding-durable-attachment-red.spec.ts \
+            apps/web/e2e/onboarding.spec.ts \
+            .github/workflows/verify-onboarding-durable-attachment-red.yml
+          rm .github/workflows/repair-onboarding-durable-attachment-green-formatting.yml
+          changed="$(git diff --name-only "$protected_main" | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            '.github/workflows/verify-onboarding-durable-attachment-red.yml' \
+            'apps/web/app/onboarding/onboarding-flow.tsx' \
+            'apps/web/e2e/onboarding-durable-attachment-red.spec.ts' \
+            'apps/web/e2e/onboarding.spec.ts')"
+          test "$changed" = "$expected"
+          git diff --check
+          git status --short
+
+      - name: Publish ordinary formatter descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            apps/web/app/onboarding/onboarding-flow.tsx \
+            apps/web/e2e/onboarding-durable-attachment-red.spec.ts \
+            apps/web/e2e/onboarding.spec.ts \
+            .github/workflows/verify-onboarding-durable-attachment-red.yml \
+            .github/workflows/repair-onboarding-durable-attachment-green-formatting.yml
+          git commit -m 'style(onboarding): canonicalize durable attachment GREEN'
+          git push origin HEAD:test/onboarding-durable-attachment-v1
