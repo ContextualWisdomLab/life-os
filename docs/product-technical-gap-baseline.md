@@ -8,13 +8,15 @@
 This baseline separates protected shipped truth from active or work-in-progress evidence. A branch, mergeable PR, test source, queued check, successful predecessor run, or documentation claim is not shipped capability. Exact unchanged-head evidence must integrate through the live protected-branch policy before promotion.
 
 <!-- life-os-live-currentness:start -->
-> **Live currentness override — 2026-09-24T06:40:04Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
+> **Live currentness override — 2026-09-24T10:23:23Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
 >
 > Protected `main`: `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`.
 >
 > PR #211 is this containing documentation branch; its final output SHA is intentionally not serialized because a Git commit cannot contain its own final SHA. Snapshot metadata: base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`. The containing commit itself is the exact #211 source authority.
 >
 > PR #214: head `1d2f72ee5e38896eb76198e55dac8a5ca491ba98`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CodeQL PR `35477938614` failure.
+>
+> PR #217: head `59c9d94a5bc61e062e4596f737280581cd684bad`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CodeQL PR `34146507626` failure.
 >
 > PR #228: head `511170fecc30d077373386c3787eef87e5600e19`, base `217370c8effcd96b760e7b32f4cf4f117385133d`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
@@ -28,9 +30,13 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #234: head `74bebfe3717559bef0d45aa2e8c1bad5771d65d9`, base `2f31462ef82d6a9876fca6f41a0548dd0ecf34b5`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Verify Review Workspace Mutation Claim `35651023775` failure.
 >
+> PR #236: head `734d3f484ffd60b9ca5d7a1a73d92da695130411`, base `59c9d94a5bc61e062e4596f737280581cd684bad`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
+>
 > PR #237: head `8c19d25b505e9ced6dbda36a8fa68e35869d5c79`, base `1d2f72ee5e38896eb76198e55dac8a5ca491ba98`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
-> PR #247: head `835d6d14504a12fdafeac460acca43e85231bfaf`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35948886845` queued.
+> PR #238: head `b9f55f9ce7c1973e65665451ab1303ebda7f2a88`, base `be0bf882e35a38bd49575d7492c057d34fe15d8e`, state `open`, draft `true`, mergeable `False`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
+>
+> PR #247: head `5d4665bb5a41d08907ba8db2f0906837bd6b626a`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35968657518` skipped.
 >
 > PR #249: head `484652e094e4f197bfa1a9ca21211c6bd6d32aac`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35173905115` success.
 >
@@ -68,7 +74,7 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #283: head `4f5ab2d3e9e2076333e7d1b484954bb5528d51d9`, base `3a08b6792988cf5bd9d89e1f100b67a6e114fe41`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
-> PR #292: head `24b5a2ebcebee27eb696146f04be31458c767bff`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35962914393` queued.
+> PR #292: head `24b5a2ebcebee27eb696146f04be31458c767bff`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35962914469` queued.
 >
 > PR #293: head `aa057b02ce42fbeede003a33407cf85c6c879dd9`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35710964842` failure.
 >
@@ -92,7 +98,7 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #303: head `97793dd55d54eb76bda5bd7f27547445070f5973`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35702881404` failure.
 >
-> PR #304: head `392e890f072f4836f16160a09d2d05607ac13996`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CodeQL PR `35941343199` queued.
+> PR #304: head `392e890f072f4836f16160a09d2d05607ac13996`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35941343162` success.
 >
 > PR #305: head `e21e7ef9a83682aeab548a4ec8252ec19e9086f9`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35879633541` failure.
 >
@@ -102,13 +108,13 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #309: head `bb9d5bc30ea5f96e6b84e3ada2694136af8dbfee`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35852442423` success.
 >
-> PR #311: head `db546dbdc0fd169602c95d578fedc726b3339f99`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35941376038` queued.
+> PR #311: head `db546dbdc0fd169602c95d578fedc726b3339f99`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35941375942` success.
 >
-> PR #313: head `56cffe45ad9e56f6e54dfd5a44276e6f8a34087f`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: SAST Semgrep `35963099544` queued.
+> PR #313: head `56cffe45ad9e56f6e54dfd5a44276e6f8a34087f`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35963099654` queued.
 >
 > PR #315: head `28b5fa85625d96b8dae3512abebbac3970a7bf22`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35963317144` queued.
 >
-> PR #317: head `a4fcbfbb47e241bc5e677dd6315c6b07912391ca`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35949473055` queued.
+> PR #317: head `d45303000b8e330f13090baca682655d4716a8fc`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35986181222` queued.
 >
 > Mutable sibling heads and unreleased external owner contracts remain non-consumable; predecessor GREEN remains ancestry evidence only after any head/base movement.
 <!-- life-os-live-currentness:end -->
