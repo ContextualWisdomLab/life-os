@@ -15,8 +15,8 @@ const GATEWAY_SECRET = 'trusted-ai-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
-  IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
-  AI_SERVICE_ORIGIN: 'http://ai-service:4105',
+  IDENTITY_SERVICE_ORIGIN: 'https://identity-service:4101',
+  AI_SERVICE_ORIGIN: 'https://ai-service:4105',
   AI_GATEWAY_ACTIVE_KEY_ID: ACTIVE_KEY_ID,
   AI_GATEWAY_ACTIVE_KEY_SECRET: GATEWAY_SECRET,
 };

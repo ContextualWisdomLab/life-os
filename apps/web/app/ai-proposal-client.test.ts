@@ -25,8 +25,8 @@ const GATEWAY_SECRET = Buffer.alloc(32, 7).toString('base64url');
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
-  IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
-  AI_SERVICE_ORIGIN: 'http://ai-service:4105',
+  IDENTITY_SERVICE_ORIGIN: 'https://identity-service:4101',
+  AI_SERVICE_ORIGIN: 'https://ai-service:4105',
   AI_GATEWAY_ACTIVE_KEY_ID: ACTIVE_KEY_ID,
   AI_GATEWAY_ACTIVE_KEY_SECRET: GATEWAY_SECRET,
 };
@@ -190,7 +190,7 @@ describe('authenticated AI proposal BFF', () => {
     assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await response.json(), proposal);
     assert.equal(calls.length, 2);
-    assert.equal(calls[0]?.url, 'http://identity-service:4101/v1/session');
+    assert.equal(calls[0]?.url, 'https://identity-service:4101/v1/session');
     const identityHeaders = new Headers(calls[0]?.init?.headers);
     assert.equal(
       identityHeaders.get('cookie'),
@@ -201,7 +201,7 @@ describe('authenticated AI proposal BFF', () => {
       /^[a-f0-9-]{36}$/u,
     );
 
-    assert.equal(calls[1]?.url, 'http://ai-service:4105/v1/proposals');
+    assert.equal(calls[1]?.url, 'https://ai-service:4105/v1/proposals');
     const aiHeaders = new Headers(calls[1]?.init?.headers);
     assert.equal(aiHeaders.get('cookie'), null);
     assert.equal(aiHeaders.get('authorization'), null);
@@ -292,7 +292,7 @@ describe('authenticated AI proposal BFF', () => {
       assert.equal(response.status, testCase.expectedStatus);
       assert.equal(
         calls[1]?.url,
-        `http://ai-service:4105${testCase.expectedPath}`,
+        `https://ai-service:4105${testCase.expectedPath}`,
       );
       const headers = new Headers(calls[1]?.init?.headers);
       assert.equal(

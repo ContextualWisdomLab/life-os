@@ -16,8 +16,8 @@ const CONTEXT_SECRET = 'planning-gateway-context-secret-32-bytes';
 const NOW_SECONDS = 1_785_806_400;
 
 const environment = {
-  IDENTITY_SERVICE_ORIGIN: 'http://identity-service:4101',
-  PLANNING_SERVICE_ORIGIN: 'http://planning-service:4102',
+  IDENTITY_SERVICE_ORIGIN: 'https://identity-service:4101',
+  PLANNING_SERVICE_ORIGIN: 'https://planning-service:4102',
   PLANNING_GATEWAY_CONTEXT_SECRET: CONTEXT_SECRET,
 };
 
@@ -82,14 +82,14 @@ describe('planning search BFF', () => {
         createdAt: '2026-08-04T02:00:00.000Z',
       },
     ]);
-    assert.equal(calls[0]?.url, 'http://identity-service:4101/v1/session');
+    assert.equal(calls[0]?.url, 'https://identity-service:4101/v1/session');
     assert.equal(
       new Headers(calls[0]?.init?.headers).get('cookie'),
       'life_os_session=opaque_session_value',
     );
     assert.equal(
       calls[1]?.url,
-      'http://planning-service:4102/v1/search?q=Ship+Search&limit=12',
+      'https://planning-service:4102/v1/search?q=Ship+Search&limit=12',
     );
     const planningHeaders = new Headers(calls[1]?.init?.headers);
     const expectedContext = createPlanningContextHeaders(

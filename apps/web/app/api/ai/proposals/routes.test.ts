@@ -103,8 +103,8 @@ describe('AI proposal Next.js route handlers', () => {
     const originalKeyId = process.env.AI_GATEWAY_ACTIVE_KEY_ID;
     const originalSecret = process.env.AI_GATEWAY_ACTIVE_KEY_SECRET;
     const aiCalls: Array<{ method: string; path: string }> = [];
-    process.env.IDENTITY_SERVICE_ORIGIN = 'http://identity-service:4101';
-    process.env.AI_SERVICE_ORIGIN = 'http://ai-service:4105';
+    process.env.IDENTITY_SERVICE_ORIGIN = 'https://identity-service:4101';
+    process.env.AI_SERVICE_ORIGIN = 'https://ai-service:4105';
     process.env.AI_GATEWAY_ACTIVE_KEY_ID = ACTIVE_KEY_ID;
     process.env.AI_GATEWAY_ACTIVE_KEY_SECRET = SECRET;
     globalThis.fetch = async (input, init) => {

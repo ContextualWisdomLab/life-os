@@ -1,3 +1,4 @@
+import { requireSecureServiceOrigin } from '@life-os/contracts';
 import { createHmac, randomUUID } from 'node:crypto';
 
 const UUID_V4_PATTERN =
@@ -15,6 +16,7 @@ const UPSTREAM_TIMEOUT_MS = 3_000;
 export interface GatewayTodayEnvironment {
   readonly IDENTITY_SERVICE_ORIGIN?: string;
   readonly PLANNING_SERVICE_ORIGIN?: string;
+  readonly SERVICE_ORIGIN_HTTP_MODE?: string;
   readonly PLANNING_GATEWAY_CONTEXT_SECRET?: string;
   readonly HABIT_SERVICE_ORIGIN?: string;
   readonly HABIT_GATEWAY_CONTEXT_SECRET?: string;
@@ -59,8 +61,7 @@ export interface GatewayPlanningTodayView {
 }
 
 export type GatewayTodayDegradation =
-  | 'habits_not_configured'
-  | 'habits_unavailable';
+  'habits_not_configured' | 'habits_unavailable';
 
 /** Buyer-visible Gateway Today response composed only from validated service evidence. */
 export interface GatewayTodayView {
@@ -133,27 +134,15 @@ function requireCookie(value: string | undefined): string | undefined {
   return value;
 }
 
-function requireServiceOrigin(value: string | undefined): string {
-  if (!value || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw unavailable();
-  }
-  let parsed: URL;
+function requireServiceOrigin(
+  value: string | undefined,
+  httpMode?: string,
+): string {
   try {
-    parsed = new URL(value);
+    return requireSecureServiceOrigin(value, httpMode);
   } catch {
     throw unavailable();
   }
-  if (
-    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
-    parsed.username ||
-    parsed.password ||
-    parsed.pathname !== '/' ||
-    parsed.search ||
-    parsed.hash
-  ) {
-    throw unavailable();
-  }
-  return parsed.origin;
 }
 
 function requireGatewaySecret(value: string | undefined): string {
@@ -180,7 +169,9 @@ function requireWorkspaceId(value: unknown): string {
   ) {
     throw unavailable();
   }
-  return ((value as Record<string, unknown>).workspaceId as string).toLowerCase();
+  return (
+    (value as Record<string, unknown>).workspaceId as string
+  ).toLowerCase();
 }
 
 function requireNowSeconds(value: number): number {
@@ -316,9 +307,10 @@ function requireHabitTodayItem(
     throw unavailable();
   }
   const record = value as Record<string, unknown>;
-  const expectedKeys = record.completed === true
-    ? ['habitId', 'title', 'scheduledLocalDate', 'completed', 'completionId']
-    : ['habitId', 'title', 'scheduledLocalDate', 'completed'];
+  const expectedKeys =
+    record.completed === true
+      ? ['habitId', 'title', 'scheduledLocalDate', 'completed', 'completionId']
+      : ['habitId', 'title', 'scheduledLocalDate', 'completed'];
   if (
     Object.keys(record).length !== expectedKeys.length ||
     expectedKeys.some((key) => !Object.hasOwn(record, key)) ||
@@ -410,11 +402,14 @@ async function composePlanning(
 ): Promise<PlanningComposition> {
   const safeDate = requireDate(date);
   const safeCookie = requireCookie(cookie);
+  const transportMode = environment.SERVICE_ORIGIN_HTTP_MODE;
   const identityOrigin = requireServiceOrigin(
     environment.IDENTITY_SERVICE_ORIGIN,
+    transportMode,
   );
   const planningOrigin = requireServiceOrigin(
     environment.PLANNING_SERVICE_ORIGIN,
+    transportMode,
   );
   const planningSecret = requireGatewaySecret(
     environment.PLANNING_GATEWAY_CONTEXT_SECRET,
@@ -448,27 +443,26 @@ async function composePlanning(
     await discardBody(identityResponse);
     throw unavailable();
   }
-  const workspaceId = requireWorkspaceId(await readBoundedJson(identityResponse));
+  const workspaceId = requireWorkspaceId(
+    await readBoundedJson(identityResponse),
+  );
 
   let planningResponse: Response;
   try {
     const planningPath = `/v1/today/${safeDate}`;
-    planningResponse = await fetcher(
-      new URL(planningPath, planningOrigin),
-      {
-        method: 'GET',
-        headers: serviceHeaders({
-          ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds, {
-            method: 'GET',
-            path: planningPath,
-          }),
-          'x-correlation-id': correlationId,
+    planningResponse = await fetcher(new URL(planningPath, planningOrigin), {
+      method: 'GET',
+      headers: serviceHeaders({
+        ...workspaceContextHeaders(workspaceId, planningSecret, nowSeconds, {
+          method: 'GET',
+          path: planningPath,
         }),
-        cache: 'no-store',
-        redirect: 'error',
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      },
-    );
+        'x-correlation-id': correlationId,
+      }),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
   } catch {
     throw unavailable();
   }
@@ -555,7 +549,10 @@ export async function composeToday(
   let habitOrigin: string;
   let habitSecret: string;
   try {
-    habitOrigin = requireServiceOrigin(habitOriginValue);
+    habitOrigin = requireServiceOrigin(
+      habitOriginValue,
+      environment.SERVICE_ORIGIN_HTTP_MODE,
+    );
     habitSecret = requireGatewaySecret(habitSecretValue);
   } catch {
     return Object.freeze({
