@@ -12,6 +12,7 @@ import styles from './onboarding.module.css';
 
 const TODAY_STORAGE_KEY = 'life-os.today-draft.v1';
 const ONBOARDING_STORAGE_KEY = 'life-os.onboarding-completion.v1';
+const ATTACHMENT_STORAGE_KEY = 'life-os.onboarding-attachment-draft.v1';
 const DURATIONS = [30, 45, 60, 90, 120] as const;
 
 function localDate(): string {
@@ -56,11 +57,13 @@ export function OnboardingFlow({
     setSubmitting(true);
     let previousToday: string | null | undefined;
     let previousCompletion: string | null | undefined;
+    let previousAttachment: string | null | undefined;
     try {
       const date = localDate();
       const stored = window.localStorage.getItem(TODAY_STORAGE_KEY);
       previousToday = stored;
       previousCompletion = window.localStorage.getItem(ONBOARDING_STORAGE_KEY);
+      previousAttachment = window.localStorage.getItem(ATTACHMENT_STORAGE_KEY);
       let draft = parseStoredTodayDraft(stored, date);
       const actionId = globalThis.crypto.randomUUID();
       draft = addTodayAction(draft, {
@@ -95,14 +98,28 @@ export function OnboardingFlow({
           completedAt: new Date().toISOString(),
         }),
       );
+      window.localStorage.setItem(
+        ATTACHMENT_STORAGE_KEY,
+        JSON.stringify({
+          version: ATTACHMENT_STORAGE_KEY,
+          direction: normalizedFocus,
+          nextAction: normalizedAction,
+          attachmentDecision: 'pending',
+        }),
+      );
       window.location.assign('/');
     } catch {
       setSubmitting(false);
       let restored = false;
-      if (previousToday !== undefined && previousCompletion !== undefined) {
+      if (
+        previousToday !== undefined &&
+        previousCompletion !== undefined &&
+        previousAttachment !== undefined
+      ) {
         try {
           restoreStorageValue(TODAY_STORAGE_KEY, previousToday);
           restoreStorageValue(ONBOARDING_STORAGE_KEY, previousCompletion);
+          restoreStorageValue(ATTACHMENT_STORAGE_KEY, previousAttachment);
           restored = true;
         } catch {
           // Browser storage is unavailable; keep the user on this page.
