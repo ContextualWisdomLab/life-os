@@ -493,10 +493,10 @@ describe('Gateway service-origin transport', () => {
           throw new Error('fetch must not run');
         },
       ),
-    ).rejects.toMatchObject<Partial<GatewayTodayError>>({
+    ).rejects.toMatchObject({
       status: 503,
       code: 'today_composition_unavailable',
-    });
+    } satisfies Partial<GatewayTodayError>);
     expect(calls).toBe(0);
   });
 });
