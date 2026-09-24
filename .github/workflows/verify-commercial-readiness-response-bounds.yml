@@ -1,0 +1,90 @@
+name: Verify Commercial Readiness Response Bounds
+
+on:
+  push:
+    branches:
+      - fix/actions-draft-queue-pressure-v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: life-os-commercial-readiness-response-bounds
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      issues: read
+      pull-requests: read
+      statuses: read
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Bind exact remote head and repair ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/fix/actions-draft-queue-pressure-v1 | cut -f1)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor c6961c7b2f8b3ce8321327621ae4c60ee5d948b5 "$GITHUB_SHA"
+          test ! -e .github/workflows/verify-commercial-readiness-docstring-repair.yml
+
+      - name: Verify bounded-response regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            packages/commercial-readiness/src/github-client-page-size.test.mjs \
+            packages/commercial-readiness/src/github-client-workflow-response-boundary.test.mjs \
+            packages/commercial-readiness/src/github-client-stream-boundary.test.mjs \
+            packages/commercial-readiness/src/github-snapshot-collection-limit.test.mjs
+
+      - name: Reproduce downstream collection path against live repository
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          node packages/commercial-readiness/src/cli.mjs snapshot \
+            --repository "$GITHUB_REPOSITORY" \
+            --policy product/commercial-readiness-policy.json \
+            --commit "$GITHUB_SHA" \
+            --generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --output "$tmp"
+          node - "$tmp" "$GITHUB_SHA" <<'NODE'
+          const fs = require('node:fs');
+          const [path, sha] = process.argv.slice(2);
+          const snapshot = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (snapshot.schema !== 'life-os.github-snapshot.v1') throw new Error('unexpected snapshot schema');
+          if (snapshot.commit_sha !== sha) throw new Error('snapshot is not bound to exact verifier head');
+          if (snapshot.repository !== 'ContextualWisdomLab/life-os') throw new Error('snapshot repository mismatch');
+          if (snapshot.truncated !== false) throw new Error('snapshot must be complete');
+          if (!Array.isArray(snapshot.pull_requests) || !Array.isArray(snapshot.issues)) throw new Error('snapshot collections missing');
+          NODE
+
+      - name: Verify clean read-only execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -z "$(git status --porcelain)"
