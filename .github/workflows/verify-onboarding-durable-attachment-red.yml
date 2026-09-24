@@ -15,21 +15,37 @@ jobs:
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Require bounded RED authority
+      - name: Require exact formatted RED publication
         shell: bash
         run: |
           set -euo pipefail
           protected_main='193a87ef54c3fe6dcda4755bce4d6bc81e3a0297'
+          formatter_publication='285653c3369c4d52ea4b228f6c76b61b665793e2'
+          remote_ref='refs/remotes/origin/test/onboarding-durable-attachment-v1'
+
+          test ! -e .github/workflows/repair-onboarding-durable-attachment-formatting.yml
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          remote_head="$(git ls-remote --refs origin "refs/heads/${GITHUB_REF_NAME}" | awk '{print $1}')"
-          test -n "$remote_head"
-          test "$remote_head" = "$GITHUB_SHA"
+
+          git fetch --no-tags origin \
+            refs/heads/test/onboarding-durable-attachment-v1:"$remote_ref"
+          test "$(git rev-parse "$remote_ref")" = "$GITHUB_SHA"
           git merge-base --is-ancestor "$protected_main" "$GITHUB_SHA"
+          git merge-base --is-ancestor "$formatter_publication" "$GITHUB_SHA"
+
+          mapfile -t post_publication_paths < <(
+            git diff --name-only "$formatter_publication"...HEAD
+          )
+          test "${#post_publication_paths[@]}" -eq 1
+          test "${post_publication_paths[0]}" = '.github/workflows/verify-onboarding-durable-attachment-red.yml'
 
           changed="$(git diff --name-only "$protected_main" "$GITHUB_SHA" | LC_ALL=C sort)"
           expected="$(printf '%s\n' \
