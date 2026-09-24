@@ -1,0 +1,77 @@
+name: Verify Storybook Material Evidence RED
+
+on:
+  push:
+    branches:
+      - test/storybook-material-evidence-v1
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require exact formatted RED publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          protected_main='193a87ef54c3fe6dcda4755bce4d6bc81e3a0297'
+          formatter_publication='e7a6528447694f6d7abf34c0da7790357190b9e7'
+          remote_ref='refs/remotes/origin/test/storybook-material-evidence-v1'
+
+          test ! -e .github/workflows/repair-storybook-material-evidence-formatting.yml
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+          git fetch --no-tags origin \
+            refs/heads/test/storybook-material-evidence-v1:"$remote_ref"
+          test "$(git rev-parse "$remote_ref")" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$protected_main" "$GITHUB_SHA"
+          git merge-base --is-ancestor "$formatter_publication" "$GITHUB_SHA"
+
+          mapfile -t post_publication_paths < <(
+            git diff --name-only "$formatter_publication"...HEAD
+          )
+          test "${#post_publication_paths[@]}" -eq 1
+          test "${post_publication_paths[0]}" = '.github/workflows/verify-storybook-material-evidence-red.yml'
+
+          changed="$(git diff --name-only "$protected_main" "$GITHUB_SHA" | LC_ALL=C sort)"
+          expected="$(printf '%s\n' \
+            '.github/workflows/verify-storybook-material-evidence-red.yml' \
+            'apps/web/app/components/storybook-material-evidence-red.test.ts')"
+          test "$changed" = "$expected"
+          git diff --check "$protected_main" "$GITHUB_SHA"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Check focused formatting
+        run: >-
+          pnpm exec prettier --single-quote --check
+          apps/web/app/components/storybook-material-evidence-red.test.ts
+          .github/workflows/verify-storybook-material-evidence-red.yml
+
+      - name: Reproduce missing Storybook material evidence
+        run: >-
+          pnpm --filter @life-os/web exec tsx --test
+          app/components/storybook-material-evidence-red.test.ts
