@@ -45,7 +45,8 @@ jobs:
           expected="$(printf '%s\n' \
             '.github/workflows/verify-onboarding-durable-attachment-red.yml' \
             'apps/web/app/onboarding/onboarding-flow.tsx' \
-            'apps/web/e2e/onboarding-durable-attachment-red.spec.ts')"
+            'apps/web/e2e/onboarding-durable-attachment-red.spec.ts' \
+            'apps/web/e2e/onboarding.spec.ts')"
           test "$changed" = "$expected"
           git diff --check "$protected_main" "$GITHUB_SHA"
 
@@ -68,10 +69,12 @@ jobs:
           pnpm exec prettier --single-quote --check
           apps/web/app/onboarding/onboarding-flow.tsx
           apps/web/e2e/onboarding-durable-attachment-red.spec.ts
+          apps/web/e2e/onboarding.spec.ts
           .github/workflows/verify-onboarding-durable-attachment-red.yml
 
-      - name: Verify retained local attachment draft
+      - name: Verify durable attachment and rollback paths
         run: >-
           pnpm --filter @life-os/web exec playwright test
           e2e/onboarding-durable-attachment-red.spec.ts
+          e2e/onboarding.spec.ts
           --project=chromium
