@@ -8,7 +8,7 @@
 This baseline separates protected shipped truth from active or work-in-progress evidence. A branch, mergeable PR, test source, queued check, successful predecessor run, or documentation claim is not shipped capability. Exact unchanged-head evidence must integrate through the live protected-branch policy before promotion.
 
 <!-- life-os-live-currentness:start -->
-> **Live currentness override — 2026-09-24T14:58:04Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
+> **Live currentness override — 2026-09-24T19:37:20Z.** This block supersedes conflicting active head/base/run identifiers below while preserving the dated ledger as audit history. It does not promote any active PR, predecessor proof, or queued workflow to protected/shipped truth.
 >
 > Protected `main`: `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`.
 >
@@ -36,7 +36,7 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #238: head `b9f55f9ce7c1973e65665451ab1303ebda7f2a88`, base `be0bf882e35a38bd49575d7492c057d34fe15d8e`, state `open`, draft `true`, mergeable `False`; latest exact-head workflow: no exact-head workflow in latest 20 branch runs.
 >
-> PR #247: head `c84d3a84a2e6082194d39aeda94c19a22772e2c5`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Commercial Readiness `35991752160` skipped.
+> PR #247: head `c0b30d10716d2b300fb69eb18d9553f2be360d0e`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Commercial Readiness `36017885681` skipped.
 >
 > PR #249: head `484652e094e4f197bfa1a9ca21211c6bd6d32aac`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35173905115` success.
 >
@@ -110,11 +110,11 @@ This baseline separates protected shipped truth from active or work-in-progress 
 >
 > PR #311: head `db546dbdc0fd169602c95d578fedc726b3339f99`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `35941376038` failure.
 >
-> PR #313: head `358cc7cdf913f46bebd1aa9d8911fae94f18eaa7`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Security Scan `35992264535` queued.
+> PR #313: head `e48c5847ef2a4f110eb59fca2dc75b33d14bb1d3`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: CI `36025062081` queued.
 >
 > PR #315: head `28b5fa85625d96b8dae3512abebbac3970a7bf22`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `35963317226` success.
 >
-> PR #317: head `ef2cb00ee33f14df4a378a1e7951b7b7a77d28ef`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: AppGuardrail `36005529324` queued.
+> PR #317: head `ef2cb00ee33f14df4a378a1e7951b7b7a77d28ef`, base `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`, state `open`, draft `true`, mergeable `True`; latest exact-head workflow: Required OpenCode Review ContextualWisdomLab/life-os#317@ef2cb00ee33f14df4a378a1e7951b7b7a77d28ef `36005528340` queued.
 >
 > Mutable sibling heads and unreleased external owner contracts remain non-consumable; predecessor GREEN remains ancestry evidence only after any head/base movement.
 <!-- life-os-live-currentness:end -->
