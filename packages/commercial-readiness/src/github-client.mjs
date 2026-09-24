@@ -407,7 +407,8 @@ async function collectPaginatedArray(
               if (
                 !Array.isArray(confirmation) ||
                 confirmation.length > pageSize ||
-                JSON.stringify(confirmation) !== JSON.stringify(pages[pageIndex])
+                JSON.stringify(confirmation) !==
+                  JSON.stringify(pages[pageIndex])
               ) {
                 throw new Error(stabilityErrorMessage);
               }
@@ -460,9 +461,10 @@ function workflowRunAnchor(run) {
     head_sha: run?.head_sha ?? null,
     run_attempt: run?.run_attempt ?? null,
     updated_at: run?.updated_at ?? null,
-    pull_requests: (Array.isArray(run?.pull_requests) ? run.pull_requests : []).map(
-      (pullRequest) => pullRequest?.number ?? null,
-    ),
+    pull_requests: (Array.isArray(run?.pull_requests)
+      ? run.pull_requests
+      : []
+    ).map((pullRequest) => pullRequest?.number ?? null),
   };
 }
 
@@ -640,7 +642,9 @@ async function collectReviewThreadTraversal(client, query, variables) {
         throw new Error('GitHub review thread response was invalid');
       }
       if (seenThreadIds.has(id)) {
-        throw new Error('GitHub review thread response changed during pagination');
+        throw new Error(
+          'GitHub review thread response changed during pagination',
+        );
       }
       seenThreadIds.add(id);
       pageAnchor.push({ id, isResolved: node.isResolved });
@@ -696,7 +700,9 @@ async function unresolvedThreadCount(client, repository, number) {
       JSON.stringify(confirmation.pageAnchors) !==
       JSON.stringify(initial.pageAnchors)
     ) {
-      throw new Error('GitHub review thread response changed during pagination');
+      throw new Error(
+        'GitHub review thread response changed during pagination',
+      );
     }
   }
   return initial.count;
@@ -796,7 +802,9 @@ function latestWorkflowRuns(runs, headSha) {
   }
   return [...latest.values()]
     .map(({ id: _id, ...run }) => run)
-    .sort((left, right) => compareStableEvidenceIdentity(left.name, right.name));
+    .sort((left, right) =>
+      compareStableEvidenceIdentity(left.name, right.name),
+    );
 }
 
 /** Orders duplicate commit-status evidence by immutable status identity and creation time. */
@@ -908,6 +916,16 @@ function normalizeDraftAuthority(value) {
   return typeof value === 'boolean' ? value : null;
 }
 
+/**
+ * Preserve untrusted GitHub scalar authority only when upstream evidence is already a string.
+ *
+ * Merge evidence must not coerce arrays, objects, numbers, or null into apparently valid
+ * identities or states. Malformed scalar authority collapses to one explicit fail-closed
+ * sentinel so downstream evaluators cannot accidentally grant trust through coercion.
+ *
+ * @param {unknown} value Untrusted scalar from a GitHub REST response.
+ * @returns {string} Original string evidence or the fail-closed invalid sentinel.
+ */
 function stringAuthority(value) {
   return typeof value === 'string' ? value : '__invalid__';
 }
