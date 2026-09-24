@@ -70,6 +70,42 @@ jobs:
           pnpm install --lockfile-only
           pnpm install --frozen-lockfile
 
+      - name: Keep transport operations evidence code-current
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one documentation anchor')
+              target.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'docs/operations/durable-today-synchronization.md',
+              '- `PLANNING_GATEWAY_CONTEXT_SECRET` with at least 32 bytes\n',
+              '- `PLANNING_GATEWAY_CONTEXT_SECRET` with at least 32 bytes\n'
+              '- HTTPS `IDENTITY_SERVICE_ORIGIN` and `PLANNING_SERVICE_ORIGIN` in non-local environments\n'
+              '- `SERVICE_ORIGIN_HTTP_MODE=loopback` only for explicit local development when every cleartext service origin is an exact loopback host; omit it in deployed environments\n',
+          )
+
+          replace_once(
+              'docs/operations/production-deployment.md',
+              'The base denies all ambient traffic, then permits DNS, edge ingress, web-to-gateway TCP `4000`, and gateway egress to explicitly named LifeOS pods on service ports `4101` through `4107`, NATS `4222`, and PostgreSQL `5432`. The current gateway endpoint is a placeholder and does not yet require PostgreSQL or NATS, but these internal paths are ready for separately deployed, correctly labeled LifeOS services.\n',
+              'The base denies all ambient traffic, then permits DNS, edge ingress, web-to-gateway TCP `4000`, and gateway egress to explicitly named LifeOS pods on service ports `4101` through `4107`, NATS `4222`, and PostgreSQL `5432`. The current gateway endpoint is a placeholder and does not yet require PostgreSQL or NATS. NetworkPolicy reachability does not establish encrypted application transport: before enabling an internal Identity, Planning, Habit, or AI origin, terminate authenticated TLS at the service, sidecar, or reviewed service-mesh boundary and configure an exact HTTPS origin. `SERVICE_ORIGIN_HTTP_MODE=loopback` is a local-only exception and must not be set on cluster workloads or used to authorize service-DNS/IP cleartext.\n',
+          )
+
+          replace_once(
+              'CHANGELOG.md',
+              '### Security\n\n',
+              '### Security\n\n'
+              '- Web and Gateway upstream service origins now fail closed to HTTPS; cleartext is accepted only through an explicit local loopback mode, with one shared transport validator preventing browser or service configuration from widening the exception.\n',
+          )
+          PY
+
       - name: Prove focused and owned GREEN
         shell: bash
         run: |
@@ -91,7 +127,10 @@ jobs:
             apps/web/app/ai-proposal-identity-stream-regression.test.ts \
             apps/web/app/api/ai/proposals/routes.test.ts \
             apps/gateway/src/today-composition.ts \
-            apps/gateway/src/service-origin-transport.test.ts
+            apps/gateway/src/service-origin-transport.test.ts \
+            docs/operations/durable-today-synchronization.md \
+            docs/operations/production-deployment.md \
+            CHANGELOG.md
           pnpm --filter @life-os/contracts typecheck
           pnpm --filter @life-os/contracts build
           pnpm --filter @life-os/contracts test
@@ -99,6 +138,10 @@ jobs:
           pnpm --filter @life-os/web test
           pnpm --filter @life-os/gateway typecheck
           pnpm --filter @life-os/gateway test
+          pnpm --filter @life-os/web build
+          pnpm --filter @life-os/gateway build
+          grep -F 'SERVICE_ORIGIN_HTTP_MODE=loopback' docs/operations/durable-today-synchronization.md
+          grep -F 'must not be set on cluster workloads' docs/operations/production-deployment.md
           git diff --check
 
       - name: Publish ordinary workflow-free repair
