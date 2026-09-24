@@ -1,0 +1,72 @@
+name: Repair Storybook Material Evidence Formatting
+
+on:
+  push:
+    branches:
+      - test/storybook-material-evidence-v1
+    paths:
+      - .github/workflows/repair-storybook-material-evidence-formatting.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-storybook-material-evidence-formatting-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: test/storybook-material-evidence-v1
+
+      - name: Require current predecessor authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          predecessor='2a45028ca4bc02a59efc826035b722b2e7da4d0f'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$predecessor" HEAD
+          remote_head="$(git ls-remote --refs origin refs/heads/test/storybook-material-evidence-v1 | awk '{print $1}')"
+          test "$remote_head" = "$GITHUB_SHA"
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Enable repository pnpm
+        run: corepack enable
+
+      - name: Install frozen workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Canonicalize Storybook RED spec
+        run: pnpm exec prettier --single-quote --write apps/web/app/components/storybook-material-evidence-red.test.ts
+
+      - name: Prove bounded formatter repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --single-quote --check \
+            apps/web/app/components/storybook-material-evidence-red.test.ts \
+            .github/workflows/verify-storybook-material-evidence-red.yml
+          rm .github/workflows/repair-storybook-material-evidence-formatting.yml
+          git diff --check
+          git status --short
+
+      - name: Publish ordinary formatter descendant
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/web/app/components/storybook-material-evidence-red.test.ts \
+            .github/workflows/repair-storybook-material-evidence-formatting.yml
+          git commit -m 'style(ui): format Storybook material-evidence RED'
+          git push origin HEAD:test/storybook-material-evidence-v1
