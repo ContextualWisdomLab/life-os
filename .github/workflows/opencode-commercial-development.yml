@@ -936,6 +936,7 @@ jobs:
       - name: Compose credential-free development receipt
         if: always()
         env:
+          RECEIPT_DIR: ${{ runner.temp }}/commercial-development
           OPEN_PULL_REQUESTS: ${{ steps.github_evidence.outputs.open_pull_requests }}
           SELECTED: ${{ steps.selection.outputs.selected }}
           MODEL_CATALOG_OUTCOME: ${{ steps.model_catalog.outcome }}
@@ -957,6 +958,7 @@ jobs:
           from pathlib import Path
 
           directory = Path(os.environ['RECEIPT_DIR'])
+          directory.mkdir(mode=0o700, parents=True, exist_ok=True)
           run_path = directory / 'run.json'
           if run_path.exists():
               run = json.loads(run_path.read_text(encoding='utf-8'))
@@ -1058,6 +1060,8 @@ jobs:
 
       - name: Remove private agent material
         if: always()
+        env:
+          RECEIPT_DIR: ${{ runner.temp }}/commercial-development
         run: |
           set +e
           sudo pkill --signal TERM --euid opencode_bridge 2>/dev/null || true

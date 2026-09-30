@@ -1,0 +1,16 @@
+# LifeOS product and technical gap baseline
+
+Status values in this baseline describe protected-branch evidence. Open pull-request content remains Proposed until ordinary review, exact-head Checks, and merge complete.
+
+## Current evidence
+
+| Gap                                      | Status          | Exact evidence                                                                                                                                                                                                                                                                                                      | Owner action                                                                                                                                                                                                                                  |
+| ---------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Credential-free OpenCode failure receipt | Proposed repair | Protected `main` `193a87ef54c3fe6dcda4755bce4d6bc81e3a0297`; OpenCode Commercial Development run `36723068800`, job `109912868001`. Exact CLI verification failed before `Prepare private evidence directory`; the always-run composer then raised `KeyError: 'RECEIPT_DIR'`, and artifact upload found no receipt. | Keep the upstream CLI mismatch fail-closed. Make the composer and cleanup own `${{ runner.temp }}/commercial-development`, create the directory with mode `0700`, retain the credential-free receipt, and revalidate the proposed exact head. |
+| Exact OpenCode 1.18.9 installation       | Open            | The same run failed its pinned CLI-version verification before model or mutation authority ran. The hosted command substitution did not expose a credential-free actual-version value, and a restricted local package fetch did not complete.                                                                       | Establish the exact installed CLI output from a new hosted run after the receipt repair. Repair the package/lock/install owner only from that evidence; do not relax the pin or comparison.                                                   |
+
+## RCA boundary
+
+The missing receipt is a LifeOS workflow sequencing defect: an `always()` step consumed state exported only by a prior step that could be skipped. The version mismatch is a distinct unresolved installation defect. This repair changes neither provider routing nor security gates, model selection, mutation authority, package pins, or exact-version admission.
+
+Operational behavior and failure classifications remain authoritative in [the OpenCode commercial development loop runbook](operations/opencode-commercial-development-loop.md).
