@@ -13,6 +13,8 @@ const LIVE_SOURCE_REF =
 const SARIF_SOURCE_REF =
   "ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref }}";
 const SARIF_SOURCE_SHA = 'sha: ${{ github.event.pull_request.head.sha || github.sha }}';
+const READY_PULL_REQUEST_ONLY =
+  "if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft == false }}";
 
 /** Reads one repository workflow as UTF-8 text. */
 function readWorkflow(name) {
@@ -97,7 +99,10 @@ test('required source-verification jobs explicitly checkout the contributor head
 
 test('merge compatibility reconstructs a fresh integration tree from current API identities', () => {
   const block = jobBlock(readWorkflow('ci.yml'), 'merge_compatibility');
-  assert.ok(block.includes("if: github.event_name == 'pull_request'"));
+  assert.ok(
+    block.includes(READY_PULL_REQUEST_ONLY),
+    'merge compatibility must run only for a Ready pull request',
+  );
   assert.ok(block.includes('id: live-identities'));
   assert.ok(block.includes('GITHUB_TOKEN: ${{ github.token }}'));
   assert.ok(block.includes('/pulls/${{ github.event.pull_request.number }}'));

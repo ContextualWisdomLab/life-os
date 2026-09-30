@@ -26,10 +26,7 @@ describe('commercial readiness exact-head contract', () => {
     assert.notEqual(snapshotEnd, -1);
     const snapshotCommand = workflow.slice(snapshotStart, snapshotEnd);
 
-    assert.match(
-      snapshotCommand,
-      new RegExp(`--commit "${sourceExpression}"`),
-    );
+    assert.match(snapshotCommand, new RegExp(`--commit "${sourceExpression}"`));
     assert.doesNotMatch(snapshotCommand, /--commit "\$GITHUB_SHA"/);
   });
 });

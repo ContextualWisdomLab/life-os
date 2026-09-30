@@ -3,6 +3,7 @@ name: Commercial Readiness
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     branches: [main]
   schedule:
@@ -22,6 +23,7 @@ env:
 
 jobs:
   audit:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -143,7 +145,9 @@ jobs:
 
   drain:
     if: >-
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      always()
+      && needs.audit.result == 'success'
+      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
       && github.ref == 'refs/heads/main'
     needs: [audit, publish]
     runs-on: ubuntu-24.04
@@ -154,6 +158,7 @@ jobs:
       # GitHub's merge endpoint requires Contents: write; other scopes stay read-only.
       contents: write
       issues: read
+      pull-requests: read
       statuses: read
     steps:
       - name: Checkout repository

@@ -6,6 +6,7 @@ import { MATURITY_LEVELS, MATURITY_RANK } from './schema.mjs';
 const REPORT_SCHEMA = 'life-os.commercial-readiness-report.v1';
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
 
+/** Rejects lexical evidence paths that escape the repository root before any filesystem access occurs. */
 function ensureInsideRoot(rootDir, relativePath) {
   const root = resolve(rootDir);
   const candidate = resolve(root, relativePath);
@@ -15,6 +16,7 @@ function ensureInsideRoot(rootDir, relativePath) {
   return candidate;
 }
 
+/** Rechecks real paths after metadata validation so symlink or mount indirection cannot move evidence outside the audited repository. */
 async function ensureResolvedInsideRoot(rootDir, candidate) {
   const [resolvedRoot, resolvedCandidate] = await Promise.all([
     realpath(resolve(rootDir)),
@@ -29,6 +31,7 @@ async function ensureResolvedInsideRoot(rootDir, candidate) {
   return resolvedCandidate;
 }
 
+/** Evaluates one bounded evidence probe while collapsing filesystem failures into credential-free readiness states. */
 async function evaluateEvidence(rootDir, evidence) {
   const candidate = ensureInsideRoot(rootDir, evidence.path);
   try {
@@ -55,6 +58,7 @@ async function evaluateEvidence(rootDir, evidence) {
   }
 }
 
+/** Advances observed maturity only when every evidence item required through that level is satisfied. */
 function observedMaturity(evidenceResults) {
   let observed = 'missing';
   for (const maturity of MATURITY_LEVELS.slice(1)) {
@@ -69,6 +73,7 @@ function observedMaturity(evidenceResults) {
   return observed;
 }
 
+/** Measures downstream capability coupling without mutating the manifest so dependency blast radius can affect prioritization. */
 function transitiveDependents(capabilities, targetId) {
   const dependents = new Set();
   let changed = true;
@@ -88,6 +93,7 @@ function transitiveDependents(capabilities, targetId) {
   return dependents.size;
 }
 
+/** Orders capability gaps deterministically from configured impact, risk, dependency blast radius, maturity distance, and effort. */
 function gapPriority(capability, observed, dependentCount) {
   const maturityDistance = Math.max(
     0,
@@ -103,6 +109,25 @@ function gapPriority(capability, observed, dependentCount) {
   );
 }
 
+/**
+ * Compare canonical manifest identifiers without consulting the process locale.
+ *
+ * Commercial Readiness reports are durable evidence. Equal-priority gaps must therefore keep
+ * the same order on every runner instead of inheriting ICU collation from `LANG`/`LC_ALL`.
+ * Manifest identifiers are canonical ASCII strings, so direct code-unit ordering is stable and
+ * preserves the schema identity rather than applying language-specific collation rules.
+ *
+ * @param {string} left First canonical manifest identifier.
+ * @param {string} right Second canonical manifest identifier.
+ * @returns {number} Negative, zero, or positive lexical ordering result.
+ */
+function compareCanonicalIdentifier(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+/** Returns the unique unsatisfied evidence paths required to reach a capability target without treating prose claims as proof. */
 function missingEvidenceForTarget(capability, evidenceResults) {
   const targetRank = MATURITY_RANK[capability.target_maturity];
   return [
@@ -202,7 +227,7 @@ export async function evaluateCapabilities(
     .sort(
       (left, right) =>
         right.priority_score - left.priority_score ||
-        left.capability_id.localeCompare(right.capability_id),
+        compareCanonicalIdentifier(left.capability_id, right.capability_id),
     );
 
   let weightedObserved = 0;

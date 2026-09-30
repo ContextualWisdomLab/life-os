@@ -21,14 +21,16 @@ function inventoryClient(overrides = {}) {
     async requestJson(path) {
       if (overrides[path]) return overrides[path](branchReads++);
       if (path === `/repos/${REPOSITORY}`) return { default_branch: 'main' };
-      if (path === `/repos/${REPOSITORY}/branches/main`) return { commit: { sha: SHA } };
+      if (path === `/repos/${REPOSITORY}/branches/main`)
+        return { commit: { sha: SHA } };
       if (path === `/repos/${REPOSITORY}/git/commits/${SHA}`) {
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
         return { truncated: false, tree: [] };
       }
-      if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
+      if (path.endsWith('per_page=100&page=1'))
+        return { total_count: 0, workflows: [] };
       throw new Error(`unexpected ${path}`);
     },
   };
@@ -43,7 +45,12 @@ test('classifies repository workflows by exact path without trusting names', () 
       '.github/workflows/live-repair.yml',
     ],
     workflows: [
-      workflow(1, '.github/workflows/ci.yml', 'active', 'Repair-looking production name'),
+      workflow(
+        1,
+        '.github/workflows/ci.yml',
+        'active',
+        'Repair-looking production name',
+      ),
       workflow(2, '.github/workflows/deleted-repair.yml', 'active', 'CI'),
       workflow(3, '.github/workflows/old.yml', 'disabled_manually'),
       workflow(4, 'dynamic/dependabot/dependabot-updates', 'active'),
@@ -53,10 +60,22 @@ test('classifies repository workflows by exact path without trusting names', () 
 
   assert.equal(snapshot.schema, 'life-os.workflow-registry-snapshot.v1');
   assert.equal(snapshot.commit_sha, SHA);
-  assert.deepEqual(snapshot.present.map((entry) => entry.id), [1]);
-  assert.deepEqual(snapshot.active_orphans.map((entry) => entry.id), [2, 5]);
-  assert.deepEqual(snapshot.disabled_orphans.map((entry) => entry.id), [3]);
-  assert.deepEqual(snapshot.dynamic.map((entry) => entry.id), [4]);
+  assert.deepEqual(
+    snapshot.present.map((entry) => entry.id),
+    [1],
+  );
+  assert.deepEqual(
+    snapshot.active_orphans.map((entry) => entry.id),
+    [2, 5],
+  );
+  assert.deepEqual(
+    snapshot.disabled_orphans.map((entry) => entry.id),
+    [3],
+  );
+  assert.deepEqual(
+    snapshot.dynamic.map((entry) => entry.id),
+    [4],
+  );
 });
 
 test('rejects ambiguous workflow identities and unsafe repository paths', () => {
@@ -111,7 +130,8 @@ test('rejects relative repository and default-branch API path segments', async (
   for (const defaultBranch of ['.', '..', 'feature/unsafe']) {
     const client = {
       async requestJson(path) {
-        if (path === `/repos/${REPOSITORY}`) return { default_branch: defaultBranch };
+        if (path === `/repos/${REPOSITORY}`)
+          return { default_branch: defaultBranch };
         throw new Error(`unexpected request ${path}`);
       },
     };
@@ -152,15 +172,23 @@ test('paginates the complete registry and binds receipts to an unchanged default
         };
       }
       if (path.endsWith('per_page=100&page=2')) {
-        return { total_count: 101, workflows: [workflow(101, '.github/workflows/ci.yml')] };
+        return {
+          total_count: 101,
+          workflows: [workflow(101, '.github/workflows/ci.yml')],
+        };
       }
       throw new Error(`unexpected ${path}`);
     },
   };
 
-  const result = await collectWorkflowRegistrySnapshot(client, REPOSITORY, SHA, {
-    generatedAt: GENERATED_AT,
-  });
+  const result = await collectWorkflowRegistrySnapshot(
+    client,
+    REPOSITORY,
+    SHA,
+    {
+      generatedAt: GENERATED_AT,
+    },
+  );
 
   assert.equal(result.commit_sha, SHA);
   assert.equal(result.tree_sha, TREE_SHA);
@@ -168,8 +196,14 @@ test('paginates the complete registry and binds receipts to an unchanged default
   assert.deepEqual(result.registry_receipt, { pages: 2, total_count: 101 });
   assert.equal(result.workflow_count, 101);
   assert.equal(result.active_orphans.length, 100);
-  assert.deepEqual(result.present.map((entry) => entry.id), [101]);
-  assert.equal(calls.filter((path) => path.includes('/actions/workflows?')).length, 2);
+  assert.deepEqual(
+    result.present.map((entry) => entry.id),
+    [101],
+  );
+  assert.equal(
+    calls.filter((path) => path.includes('/actions/workflows?')).length,
+    2,
+  );
   assert.equal(calls.at(-1), `/repos/${REPOSITORY}/branches/main`);
 });
 
@@ -210,7 +244,10 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
             workflow(index + 1, `.github/workflows/${index + 1}.yml`),
           ),
         },
-        { total_count: 102, workflows: [workflow(101, '.github/workflows/101.yml')] },
+        {
+          total_count: 102,
+          workflows: [workflow(101, '.github/workflows/101.yml')],
+        },
       ],
     },
     {
@@ -238,7 +275,8 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
   const pageLimitClient = {
     async requestJson(path) {
       if (path === `/repos/${REPOSITORY}`) return { default_branch: 'main' };
-      if (path === `/repos/${REPOSITORY}/branches/main`) return { commit: { sha: SHA } };
+      if (path === `/repos/${REPOSITORY}/branches/main`)
+        return { commit: { sha: SHA } };
       if (path === `/repos/${REPOSITORY}/git/commits/${SHA}`) {
         return { sha: SHA, tree: { sha: TREE_SHA } };
       }
@@ -249,7 +287,10 @@ test('fails closed on incomplete or inconsistent workflow pagination', async () 
         return {
           total_count: 1001,
           workflows: Array.from({ length: 100 }, (_, index) =>
-            workflow(index + 1, `.github/workflows/page-${path.at(-1)}-${index}.yml`),
+            workflow(
+              index + 1,
+              `.github/workflows/page-${path.at(-1)}-${index}.yml`,
+            ),
           ),
         };
       }
@@ -286,7 +327,9 @@ test('fails closed on tree, commit, branch, timestamp, and client evidence defec
   );
 
   const movedBeforeClient = inventoryClient({
-    [`/repos/${REPOSITORY}/branches/main`]: () => ({ commit: { sha: 'e'.repeat(40) } }),
+    [`/repos/${REPOSITORY}/branches/main`]: () => ({
+      commit: { sha: 'e'.repeat(40) },
+    }),
   });
   await assert.rejects(
     collectWorkflowRegistrySnapshot(movedBeforeClient, REPOSITORY, SHA),
@@ -307,7 +350,8 @@ test('fails closed on tree, commit, branch, timestamp, and client evidence defec
       if (path === `/repos/${REPOSITORY}/git/trees/${TREE_SHA}?recursive=1`) {
         return { truncated: false, tree: [] };
       }
-      if (path.endsWith('per_page=100&page=1')) return { total_count: 0, workflows: [] };
+      if (path.endsWith('per_page=100&page=1'))
+        return { total_count: 0, workflows: [] };
       throw new Error(`unexpected ${path}`);
     },
   };

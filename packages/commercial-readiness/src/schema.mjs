@@ -34,16 +34,19 @@ const TRUSTED_AUTHOR_ASSOCIATIONS = new Set([
   'COLLABORATOR',
 ]);
 
+/** Centralizes stable manifest validation errors without echoing untrusted capability content. */
 function failManifest(detail = '') {
   throw new Error(`Invalid capability manifest${detail ? `: ${detail}` : ''}`);
 }
 
+/** Centralizes stable policy validation errors without reflecting untrusted merge-policy values. */
 function failPolicy(detail = '') {
   throw new Error(
     `Invalid commercial readiness policy${detail ? `: ${detail}` : ''}`,
   );
 }
 
+/** Restricts schema records to plain objects before exact structural validation, excluding arrays and custom prototypes. */
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value))
     return false;
@@ -51,16 +54,19 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
+/** Normalizes required bounded text through a caller-selected validation boundary before policy logic consumes it. */
 function requiredString(value, fail, label) {
   if (typeof value !== 'string' || !value.trim()) fail(label);
   return value.trim();
 }
 
+/** Accepts only the configured one-to-five integer scale used by deterministic commercial gap prioritization. */
 function score(value, fail, label) {
   if (!Number.isSafeInteger(value) || value < 1 || value > 5) fail(label);
   return value;
 }
 
+/** Normalizes optional tracking authority to either a positive safe issue identity or explicit absence. */
 function positiveIssueOrNull(value) {
   if (value === null || value === undefined) return null;
   if (!Number.isSafeInteger(value) || value <= 0)
@@ -68,6 +74,7 @@ function positiveIssueOrNull(value) {
   return value;
 }
 
+/** Rejects absolute, traversal, backslash, and control-character evidence paths before filesystem probing. */
 function validateRelativePath(value) {
   const path = requiredString(value, failManifest, 'invalid evidence path');
   if (
@@ -81,6 +88,7 @@ function validateRelativePath(value) {
   return path;
 }
 
+/** Classifies only repository documentation locations that are allowed to satisfy documentation evidence. */
 function isDocumentationPath(path) {
   return (
     [
@@ -95,6 +103,7 @@ function isDocumentationPath(path) {
   );
 }
 
+/** Classifies conventional test locations so implementation prose cannot masquerade as test evidence. */
 function isTestPath(path) {
   return (
     path.startsWith('tests/') ||
@@ -103,6 +112,7 @@ function isTestPath(path) {
   );
 }
 
+/** Validates evidence kind, maturity, path, probe mode, and byte ceiling before evidence can affect capability maturity. */
 function validateEvidence(value) {
   if (!isPlainObject(value)) failManifest('invalid evidence');
   const maturity = requiredString(
@@ -174,6 +184,7 @@ function validateEvidence(value) {
   });
 }
 
+/** Rejects unknown capability dependencies and cycles before dependency blast radius can influence prioritization. */
 function detectDependencyProblems(capabilities) {
   const ids = new Set(capabilities.map((item) => item.id));
   for (const capability of capabilities) {
@@ -199,6 +210,7 @@ function detectDependencyProblems(capabilities) {
   for (const capability of capabilities) visit(capability.id, []);
 }
 
+/** Validates and freezes the complete capability manifest, including evidence contracts and acyclic dependency ownership. */
 export function validateCapabilityManifest(value) {
   if (
     !isPlainObject(value) ||
@@ -285,6 +297,7 @@ export function validateCapabilityManifest(value) {
   });
 }
 
+/** Requires bounded unique policy lists so duplicated workflow or status names cannot distort gate interpretation. */
 function uniqueStrings(value, label) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 25)
     failPolicy(label);
@@ -293,6 +306,7 @@ function uniqueStrings(value, label) {
   return values;
 }
 
+/** Validates and freezes merge policy while requiring the repository security workflows, CodeRabbit status, bounded retention, and squash semantics. */
 export function validateCommercialReadinessPolicy(value) {
   if (!isPlainObject(value) || value.schema !== POLICY_SCHEMA) failPolicy();
   const defaultBranch = requiredString(
@@ -367,17 +381,22 @@ export function validateCommercialReadinessPolicy(value) {
 
 const SNAPSHOT_SCHEMA = 'life-os.github-snapshot.v1';
 const SNAPSHOT_REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const SNAPSHOT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+/** Maximum raw GitHub list cardinality that may cross the durable snapshot boundary. */
+const SNAPSHOT_COLLECTION_MAX_ITEMS = 1_000;
 
+/** Centralizes stable repository-snapshot errors without leaking malformed GitHub evidence. */
 function failSnapshot(detail = '') {
   throw new Error(`Invalid GitHub snapshot${detail ? `: ${detail}` : ''}`);
 }
 
+/** Rejects undeclared snapshot fields so remote payload expansion cannot silently become merge authority. */
 function exactKeys(value, allowed) {
   if (!isPlainObject(value)) return false;
   return Object.keys(value).every((key) => allowed.has(key));
 }
 
+/** Normalizes bounded snapshot text and rejects control characters before remote evidence is retained. */
 function snapshotString(value, label, max = 300) {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
     failSnapshot(label);
@@ -385,25 +404,51 @@ function snapshotString(value, label, max = 300) {
   return value;
 }
 
+/** Accepts only positive safe external identities for pull requests and issues. */
 function snapshotExternalNumber(value, label) {
   if (!Number.isSafeInteger(value) || value <= 0) failSnapshot(label);
   return value;
 }
 
+/**
+ * Preserve bounded review commit binding evidence, including an empty/malformed sentinel.
+ *
+ * Legacy `life-os.github-snapshot.v1` rows predate `commit_id`; their missing binding is
+ * normalized to the empty sentinel so downstream merge evaluation stays fail closed instead of
+ * inferring the current head. New collector output still supplies the raw bounded binding.
+ *
+ * @param {unknown} value Raw normalized review commit binding or legacy empty sentinel.
+ * @returns {string} Bounded review commit evidence exactly as collected or normalized for v1.
+ */
+function snapshotReviewCommitId(value) {
+  if (
+    typeof value !== 'string' ||
+    value.length > 100 ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    failSnapshot('invalid review commit');
+  }
+  return value;
+}
+
+/** Validates the minimal review projection and requires parseable timestamps before review evidence is trusted. */
 function validateSnapshotReview(value) {
-  const allowed = new Set(['actor', 'state', 'submitted_at']);
+  const allowed = new Set(['actor', 'state', 'submitted_at', 'commit_id']);
   if (!exactKeys(value, allowed)) failSnapshot('invalid review');
   const submittedAt = value.submitted_at;
   if (submittedAt !== null && !Number.isFinite(Date.parse(submittedAt))) {
     failSnapshot('invalid review timestamp');
   }
+  const commitId = Object.hasOwn(value, 'commit_id') ? value.commit_id : '';
   return Object.freeze({
     actor: snapshotString(value.actor, 'invalid review actor', 100),
     state: snapshotString(value.state, 'invalid review state', 50),
     submitted_at: submittedAt,
+    commit_id: snapshotReviewCommitId(commitId),
   });
 }
 
+/** Validates workflow identity, exact head SHA, attempt, timing, status, and conclusion before gate evaluation. */
 function validateSnapshotWorkflow(value) {
   const allowed = new Set([
     'name',
@@ -439,6 +484,7 @@ function validateSnapshotWorkflow(value) {
   });
 }
 
+/** Validates commit-status context and exact SHA binding before status evidence can satisfy policy. */
 function validateSnapshotStatus(value) {
   const allowed = new Set(['context', 'state', 'sha']);
   if (!exactKeys(value, allowed)) failSnapshot('invalid status');
@@ -451,6 +497,7 @@ function validateSnapshotStatus(value) {
   });
 }
 
+/** Validates the bounded pull-request evidence projection before any field can contribute to merge eligibility. */
 function validateSnapshotPullRequest(value) {
   const allowed = new Set([
     'number',
@@ -490,13 +537,22 @@ function validateSnapshotPullRequest(value) {
   }
   if (typeof value.eligible !== 'boolean')
     failSnapshot('invalid merge eligibility');
-  if (!Array.isArray(value.reviews) || value.reviews.length > 100) {
+  if (
+    !Array.isArray(value.reviews) ||
+    value.reviews.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid reviews');
   }
-  if (!Array.isArray(value.workflows) || value.workflows.length > 100) {
+  if (
+    !Array.isArray(value.workflows) ||
+    value.workflows.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid workflows');
   }
-  if (!Array.isArray(value.statuses) || value.statuses.length > 100) {
+  if (
+    !Array.isArray(value.statuses) ||
+    value.statuses.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid statuses');
   }
   if (!Array.isArray(value.blockers) || value.blockers.length > 100) {
@@ -558,6 +614,7 @@ function validateSnapshotPullRequest(value) {
   });
 }
 
+/** Validates bounded issue identity, state, title, and labels for readiness reporting without importing arbitrary API fields. */
 function validateSnapshotIssue(value) {
   const allowed = new Set(['number', 'title', 'state', 'labels']);
   if (!exactKeys(value, allowed)) failSnapshot('invalid issue');
@@ -576,6 +633,7 @@ function validateSnapshotIssue(value) {
   });
 }
 
+/** Validates and freezes the exact-commit repository snapshot used by audit and merge-drain commands. */
 export function validateGitHubSnapshot(value) {
   const allowed = new Set([
     'schema',
@@ -601,10 +659,16 @@ export function validateGitHubSnapshot(value) {
     failSnapshot('invalid timestamp');
   if (typeof value.truncated !== 'boolean')
     failSnapshot('invalid truncation flag');
-  if (!Array.isArray(value.pull_requests) || value.pull_requests.length > 100) {
+  if (
+    !Array.isArray(value.pull_requests) ||
+    value.pull_requests.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid pull requests');
   }
-  if (!Array.isArray(value.issues) || value.issues.length > 100) {
+  if (
+    !Array.isArray(value.issues) ||
+    value.issues.length > SNAPSHOT_COLLECTION_MAX_ITEMS
+  ) {
     failSnapshot('invalid issues');
   }
   return Object.freeze({

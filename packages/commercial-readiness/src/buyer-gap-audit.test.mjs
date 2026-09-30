@@ -65,7 +65,10 @@ describe('evaluateCapabilities with canonical buyer-gap evidence', () => {
       enriched.summary.weighted_maturity_percent,
       legacy.summary.weighted_maturity_percent,
     );
-    assert.equal(enriched.summary.unresolved_gaps, legacy.summary.unresolved_gaps);
+    assert.equal(
+      enriched.summary.unresolved_gaps,
+      legacy.summary.unresolved_gaps,
+    );
     assert.equal(enriched.summary.capability_evidence_gaps, 0);
     assert.equal(enriched.summary.unresolved_buyer_gaps, 1);
     assert.equal(enriched.summary.unknown_buyer_gap_states, 0);
