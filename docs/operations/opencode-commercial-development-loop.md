@@ -100,6 +100,8 @@ Retention is seven days. The receipt records counts, stable classifications, exa
 
 ## Failure handling
 
+The always-run receipt composer and cleanup steps each derive the private receipt directory directly from `runner.temp`; the composer creates it with mode `0700`. They must not depend on `Prepare private evidence directory`, because an earlier installation or configuration failure skips that setup step. This preserves one sanitized receipt for the actual upstream failure and prevents an unset cleanup path from expanding against the filesystem root.
+
 | Reason code                   | Operator interpretation                                                       | Remote mutation                                                |
 | ----------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `no_eligible_issue`           | Open PRs remain or no allowlisted issue is available                          | None                                                           |

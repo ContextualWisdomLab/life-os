@@ -521,6 +521,21 @@ describe('OpenCode commercial development workflow contract', () => {
     );
   });
 
+  it('can compose a fail-safe receipt before evidence setup runs', () => {
+    const receipt = step('Compose credential-free development receipt');
+    const cleanup = step('Remove private agent material');
+
+    expect(receipt).toContain(
+      'RECEIPT_DIR: ${{ runner.temp }}/commercial-development',
+    );
+    expect(receipt).toContain(
+      'directory.mkdir(mode=0o700, parents=True, exist_ok=True)',
+    );
+    expect(cleanup).toContain(
+      'RECEIPT_DIR: ${{ runner.temp }}/commercial-development',
+    );
+  });
+
   it('retains only credential-free receipts and removes model/bridge material', () => {
     const upload = step('Upload credential-free development receipt');
     expect(upload).toContain(
