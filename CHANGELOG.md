@@ -33,6 +33,8 @@ All notable changes to LifeOS are documented in this file.
 
 ### Fixed
 
+- The shared NestJS/Express dependency graph now pins Multer 2.4.0, closing CVE-2026-88932 while retaining the previously patched Next.js 15.5.25, qs 6.16.0, and Sharp 0.35.4 graph; an executable frozen-lock contract prevents vulnerable Multer 2.0–2.3 snapshots from returning.
+
 - Commercial Readiness now rejects malformed UTF-8 in bounded GitHub response bodies before JSON parsing, preventing decoder replacement characters from normalizing untrusted merge-authoritative evidence.
 
 - Commercial Readiness now requests merge-freshness evidence through a file-free paginated GitHub Compare response (`?per_page=1&page=2`), preserving exact base/merge-base/behind provenance without downloading changed-file payloads that can exceed the bounded response envelope.
